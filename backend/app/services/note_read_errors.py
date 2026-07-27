@@ -1,0 +1,2 @@
+class NoteTitleAmbiguousError(ValueError):
+    pass

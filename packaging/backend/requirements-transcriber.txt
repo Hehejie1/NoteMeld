@@ -1,0 +1,9 @@
+av==14.2.0
+ctranslate2==4.6.0
+faster-whisper==1.1.1
+hf-xet==1.0.0
+huggingface-hub==0.30.2
+modelscope==1.25.0
+onnxruntime==1.21.0
+rapidocr-onnxruntime==1.4.4
+tokenizers==0.21.1

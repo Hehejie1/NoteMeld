@@ -1,0 +1,208 @@
+name: Release Desktop App
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS (Apple Silicon + Intel)
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [aarch64, x86_64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-apple-darwin
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Install Python dependencies (backend)
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli
+
+      - name: Build backend sidecar
+        run: ./packaging/scripts/build-backend-macos.sh --arch ${{ matrix.arch }}
+        env:
+          PYTHON_PATH: backend/.venv/bin/python
+
+      - name: Build desktop app
+        working-directory: desktop
+        run: pnpm tauri build --target ${{ matrix.arch }}-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Prepare DMG
+        run: |
+          DMG_PATH=$(find desktop/src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            mkdir -p dist
+            cp "$DMG_PATH" dist/
+          fi
+          APP_TAR=$(find desktop/src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle -name "*.app.tar.gz" | head -1)
+          if [ -n "$APP_TAR" ]; then
+            mkdir -p dist
+            cp "$APP_TAR" dist/
+          fi
+          SIG_FILE=$(find desktop/src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle -name "*.app.tar.gz.sig" | head -1)
+          if [ -n "$SIG_FILE" ]; then
+            cp "$SIG_FILE" dist/
+          fi
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Install Python dependencies (backend)
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv\Scripts\activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli
+
+      - name: Build backend sidecar
+        run: powershell -ExecutionPolicy Bypass -File .\packaging\scripts\build-backend-windows.ps1
+
+      - name: Build desktop app
+        working-directory: desktop
+        run: pnpm tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Prepare MSI
+        run: |
+          $msiPath = Get-ChildItem -Path "desktop\src-tauri\target\release\bundle\msi" -Filter "*.msi" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if ($msiPath) {
+            New-Item -ItemType Directory -Path dist -Force
+            Copy-Item $msiPath -Destination dist\
+          }
+          $zipPath = Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if ($zipPath) {
+            Copy-Item $zipPath -Destination dist\
+          }
+          $sigPath = Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip.sig" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if ($sigPath) {
+            Copy-Item $sigPath -Destination dist\
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*
+
+  release:
+    name: Create Release
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
+          cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
+          cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
+          ls -la release/
+
+      - name: Generate updater manifest
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          python3 packaging/scripts/generate-latest-json.py release "$VERSION" "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}"
+          cp release/latest.json latest.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.dmg
+            release/*.msi
+            release/*.app.tar.gz
+            release/*.app.tar.gz.sig
+            release/*.msi.zip
+            release/*.msi.zip.sig
+            latest.json
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}

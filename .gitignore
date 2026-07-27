@@ -1,0 +1,282 @@
+# ==========================================
+# NoteMeld .gitignore
+# ==========================================
+
+# --- macOS System ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Thumbnails
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Editors & IDEs ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode-test
+
+# --- AI Coding Tools ---
+# Trae
+.trae/
+
+# Cursor
+.cursor/
+.cursorrules
+
+# Claude
+.claude/
+claude_desktop_config.json
+
+# Codex
+.codex/
+.codex_project.md
+
+# Continue.dev
+.continue/
+
+# Windsurf
+.windsurf/
+
+# Cline
+.cline/
+.cline-rules.md
+
+# --- Node.js / Frontend ---
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.nuxt/
+.vuepress/dist
+.vitepress/dist
+.docusaurus/
+
+# Cache
+.cache/
+.parcel-cache
+.eslintcache
+.stylelintcache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+*.tsbuildinfo
+
+# Package manager
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+.pnpm-debug.log*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+tmp_logs/
+
+# Misc
+.yarn-integrity
+*.tgz
+.node_repl_history
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# --- Python / Backend ---
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller (keep packaging spec)
+*.manifest
+*.spec
+!packaging/backend/pyinstaller/
+!packaging/backend/pyinstaller/backend.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Flask / FastAPI stuff
+instance/
+.webassets-cache
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Python package managers
+.pdm.toml
+.pdm-python
+.pdm-build/
+__pypackages__/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# Cython debug symbols
+cython_debug/
+
+# PyPI
+.pypirc
+
+# --- Virtual Environments ---
+.venv
+.venv-x86/
+.venv-x64-003/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# --- Environment Variables ---
+.env
+.env.*
+!.env.example
+
+# --- Runtime Data (NoteMeld specific) ---
+# SQLite database
+notemeld.db
+note_tasks.db
+
+# Task results & notes
+note_results/
+note_results
+
+# Vector database
+vector_db/
+chroma/
+
+# Uploads
+uploads/
+
+# Static files generated at runtime
+static/
+static/screenshots/
+
+# Models
+models/
+
+# Legacy backend paths
+/backend/data/*
+/backend/static/*
+/backend/bin/
+/backend/logs/
+/backend/note_results
+/backend/models
+/backend/uploads/*
+/backend/config/*
+/backend/vector_db/
+
+# --- Desktop / Tauri ---
+desktop/src-tauri/bin/
+desktop/src-tauri/target/
+desktop/src-tauri/resources/ffmpeg/*.zip
+
+# --- FFmpeg ---
+ffmpeg*/
+ffmpg*/
+
+# --- Logs ---
+logs/
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# --- Misc / Local ---
+# Worktrees
+.worktrees/
+
+# Release artifacts
+.release/
+
+# Deploy
+deploy/deploy.env
+
+# Local visual artifacts
+frontend/tmp-*.png
+/tmp_test.png
+/note.png
+/wiki.png
+
+# Superpowers (local only)
+superpowers/
+
+# Local dev
+.NoteMeld-dev/*
+
+# --- Docs ---
+# 忽略 docs 下所有内容，只保留 system,images 目录
+/docs/*
+!/docs/system/
+!/docs/images/

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "volcengine",
+    "name": "火山引擎",
+    "logo": "Volcengine",
+    "api_key": "",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3"
+  },
+  {
+    "id": "ollama",
+    "name": "ollama",
+    "logo": "Ollama",
+    "api_key": "",
+    "base_url": "http://127.0.0.1:11434/v1"
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "logo": "DeepSeek",
+    "api_key": "",
+    "base_url": "https://api.deepseek.com"
+  },
+  {
+    "id": "qwen",
+    "name": "Qwen",
+    "logo": "Qwen",
+    "api_key": "",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  },
+  {
+    "id": "freemodel",
+    "name": "FreeModel",
+    "logo": "FreeModel",
+    "api_key": "",
+    "base_url": "https://api.freemodel.dev/v1"
+  },
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "logo": "OpenAI",
+    "api_key": "",
+    "base_url": "https://api.openai.com/v1"
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini",
+    "logo": "Gemini",
+    "api_key": "",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"
+  },
+  {
+    "id": "groq",
+    "name": "Groq",
+    "logo": "Groq",
+    "api_key": "",
+    "base_url": "https://api.groq.com/openai/v1"
+  }
+]

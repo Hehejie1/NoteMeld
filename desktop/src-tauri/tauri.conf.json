@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NoteMeld",
+  "version": "0.0.4",
+  "identifier": "ai.notemeld.desktop",
+  "build": {
+    "beforeDevCommand": "cd ../frontend && corepack pnpm dev --host 127.0.0.1 --port 3015",
+    "beforeBuildCommand": "cd ../frontend && corepack pnpm build",
+    "devUrl": "http://127.0.0.1:3015",
+    "frontendDist": "../../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "NoteMeld",
+        "width": 1440,
+        "height": 960,
+        "resizable": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "app",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {}
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "endpoints": [
+        "http://43.167.164.213/releases/notemeld/stable/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI4RkI0ODg4QzQ2Rjc3OEYKUldTUGQyL0VpRWo3S0grN2pBRlB1dEZHYURzVThuWVZQdVdYWEFORXAxOWNTRG1hQWNNVDYrSk0K",
+      "windows": {
+        "installMode": "passive"
+      },
+      "dangerousInsecureTransportProtocol": true
+    }
+  }
+}

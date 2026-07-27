@@ -1,0 +1,13 @@
+Brotli==1.1.0
+cssselect2==0.8.0
+fonttools==4.58.4
+markdown_pdf==1.7
+pdfkit==1.0.0
+pydyf==0.11.0
+PyMuPDF==1.25.3
+pyphen==0.17.2
+tinycss2==1.4.0
+tinyhtml5==2.0.0
+weasyprint==65.1
+webencodings==0.5.1
+zopfli==0.2.3.post1
