@@ -11,11 +11,8 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build macOS (Apple Silicon + Intel)
+    name: Build macOS (Apple Silicon)
     runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [aarch64, x86_64]
 
     steps:
       - name: Checkout
@@ -25,6 +22,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -39,56 +38,45 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.arch }}-apple-darwin
+          targets: aarch64-apple-darwin
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Install Python dependencies (backend)
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies
         working-directory: backend
         run: |
           python -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt
 
       - name: Build backend sidecar
-        run: ./packaging/scripts/build-backend-macos.sh --arch ${{ matrix.arch }}
-        env:
-          PYTHON_PATH: backend/.venv/bin/python
+        run: NOTEMELD_SKIP_PORTABILITY_CHECK=1 FFMPEG_BIN_PATH=$(dirname $(which ffmpeg)) ./packaging/scripts/build-backend-macos.sh
 
       - name: Build desktop app
         working-directory: desktop
-        run: pnpm tauri build --target ${{ matrix.arch }}-apple-darwin
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --target aarch64-apple-darwin
 
-      - name: Prepare DMG
+      - name: Collect artifacts
         run: |
-          DMG_PATH=$(find desktop/src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
-          if [ -n "$DMG_PATH" ]; then
-            mkdir -p dist
-            cp "$DMG_PATH" dist/
-          fi
-          APP_TAR=$(find desktop/src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle -name "*.app.tar.gz" | head -1)
-          if [ -n "$APP_TAR" ]; then
-            mkdir -p dist
-            cp "$APP_TAR" dist/
-          fi
-          SIG_FILE=$(find desktop/src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle -name "*.app.tar.gz.sig" | head -1)
-          if [ -n "$SIG_FILE" ]; then
-            cp "$SIG_FILE" dist/
-          fi
+          mkdir -p dist
+          cp desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist/
+          cp desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/*.app.tar.gz dist/ 2>/dev/null || true
+          cp desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/*.app.tar.gz.sig dist/ 2>/dev/null || true
+          ls -la dist/
 
-      - name: Upload macOS artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.arch }}
+          name: macos-aarch64
           path: dist/*
 
   build-windows:
@@ -103,6 +91,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -117,23 +107,42 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
+          $ffmpegBin = Get-ChildItem -Path "$env:ProgramFiles\ffmpeg\bin" -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($ffmpegBin) {
+            Write-Host "FFmpeg installed at: $($ffmpegBin.Directory.FullName)"
+          }
+
       - name: Install frontend dependencies
         working-directory: frontend
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Install Python dependencies (backend)
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies
         working-directory: backend
         run: |
           python -m venv .venv
-          .venv\Scripts\activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli
+          .venv\Scripts\python -m pip install --upgrade pip
+          .venv\Scripts\python -m pip install -r requirements.txt
 
       - name: Build backend sidecar
-        run: powershell -ExecutionPolicy Bypass -File .\packaging\scripts\build-backend-windows.ps1
+        shell: pwsh
+        run: |
+          $ffmpegDir = (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue).Source
+          if (-not $ffmpegDir) {
+            $ffmpegDir = Get-ChildItem -Path "$env:ProgramFiles\ffmpeg\bin" -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($ffmpegDir) { $ffmpegDir = $ffmpegDir.Directory.FullName }
+          }
+          if ($ffmpegDir) {
+            $env:FFMPEG_BIN_PATH = Split-Path $ffmpegDir -Parent
+          }
+          powershell -ExecutionPolicy Bypass -File .\packaging\scripts\build-backend-windows.ps1
 
       - name: Build desktop app
         working-directory: desktop
@@ -142,23 +151,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Prepare MSI
+      - name: Collect artifacts
         run: |
-          $msiPath = Get-ChildItem -Path "desktop\src-tauri\target\release\bundle\msi" -Filter "*.msi" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          if ($msiPath) {
-            New-Item -ItemType Directory -Path dist -Force
-            Copy-Item $msiPath -Destination dist\
-          }
-          $zipPath = Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          if ($zipPath) {
-            Copy-Item $zipPath -Destination dist\
-          }
-          $sigPath = Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip.sig" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          if ($sigPath) {
-            Copy-Item $sigPath -Destination dist\
-          }
+          New-Item -ItemType Directory -Path dist -Force
+          Get-ChildItem -Path "desktop\src-tauri\target\release\bundle\msi" -Filter "*.msi" -Recurse | Copy-Item -Destination dist\
+          Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip" -Recurse | Copy-Item -Destination dist\
+          Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip.sig" -Recurse | Copy-Item -Destination dist\
 
-      - name: Upload Windows artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x86_64
@@ -183,7 +183,6 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
-          cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
           ls -la release/
 

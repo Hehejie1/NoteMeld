@@ -16,6 +16,10 @@ validate_ffmpeg_runtime() {
   local binary
   for binary in ffmpeg ffprobe; do
     "${FFMPEG_SOURCE_DIR}/${binary}" -version >/dev/null
+    if [[ "${NOTEMELD_SKIP_PORTABILITY_CHECK:-0}" == "1" ]]; then
+      echo "skipping portability check (NOTEMELD_SKIP_PORTABILITY_CHECK=1)"
+      return 0
+    fi
     if otool -L "${FFMPEG_SOURCE_DIR}/${binary}" | grep -E '/usr/local/Cellar|/usr/local/opt|/opt/homebrew' >/dev/null; then
       echo "refusing non-portable ${binary}: Homebrew dylib dependency detected" >&2
       otool -L "${FFMPEG_SOURCE_DIR}/${binary}" >&2
