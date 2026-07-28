@@ -60,6 +60,7 @@ jobs:
         run: |
           NOTEMELD_SKIP_PORTABILITY_CHECK=1 \
           NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3 \
+          NOTEMELD_TARGET_ARCH=arm64 \
           FFMPEG_BIN_PATH=$(dirname "$(which ffmpeg)") \
           ./packaging/scripts/build-backend-macos.sh
 
@@ -144,7 +145,11 @@ jobs:
           arch -x86_64 bash -c '
             export NOTEMELD_SKIP_PORTABILITY_CHECK=1
             export NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3
+            export NOTEMELD_TARGET_ARCH=x86_64
             export FFMPEG_BIN_PATH=/tmp/ffmpeg-x86
+            export ARCHFLAGS="-arch x86_64"
+            export CFLAGS="-arch x86_64"
+            export LDFLAGS="-arch x86_64"
             ./packaging/scripts/build-backend-macos.sh
           '
 
