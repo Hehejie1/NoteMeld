@@ -83,6 +83,91 @@ jobs:
           name: macos-aarch64
           path: dist/*
 
+  build-macos-intel:
+    name: Build macOS (Intel)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Install x86_64 ffmpeg
+        run: |
+          cd /tmp
+          curl -L https://evermeet.cx/ffmpeg/getrelease/zip -o ffmpeg.zip
+          unzip -o ffmpeg.zip
+          chmod +x ffmpeg
+          curl -L https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip -o ffprobe.zip
+          unzip -o ffprobe.zip
+          chmod +x ffprobe
+          mkdir -p /tmp/ffmpeg-x86
+          mv ffmpeg ffprobe /tmp/ffmpeg-x86/
+          ls -la /tmp/ffmpeg-x86/
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies (x86_64)
+        working-directory: backend
+        run: |
+          arch -x86_64 python3 -m venv .venv
+          arch -x86_64 .venv/bin/python -m pip install --upgrade pip
+          arch -x86_64 .venv/bin/python -m pip install -r requirements.txt
+
+      - name: Build backend sidecar (x86_64)
+        run: |
+          arch -x86_64 bash -c '
+            export NOTEMELD_SKIP_PORTABILITY_CHECK=1
+            export NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3
+            export FFMPEG_BIN_PATH=/tmp/ffmpeg-x86
+            ./packaging/scripts/build-backend-macos.sh
+          '
+
+      - name: Build desktop app (x86_64)
+        working-directory: desktop
+        run: arch -x86_64 pnpm tauri build --target x86_64-apple-darwin
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          BUNDLE_DIR="desktop/src-tauri/target/x86_64-apple-darwin/release/bundle"
+          if [ -d "$BUNDLE_DIR/dmg" ]; then
+            cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
+          fi
+          cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
+          ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64
+          path: dist/*
+
   build-windows:
     name: Build Windows
     runs-on: windows-latest
@@ -181,7 +266,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-macos-intel, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -198,6 +283,7 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
+          cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
           ls -la release/
 
