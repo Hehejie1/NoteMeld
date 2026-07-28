@@ -207,22 +207,13 @@ jobs:
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
           ls -la release/
 
-      - name: Generate updater manifest
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          python3 packaging/scripts/generate-latest-json.py release "$VERSION" "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}"
-          cp release/latest.json latest.json
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/*.dmg
             release/*.msi
+            release/*.exe
             release/*.app.tar.gz
-            release/*.app.tar.gz.sig
-            release/*.msi.zip
-            release/*.msi.zip.sig
-            latest.json
-          generate_release_notes: true
+          generate-release-notes: true
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
