@@ -68,12 +68,13 @@ chmod +x "${WINDOWS_STAGE_BIN}"
 
 mkdir -p "${FFMPEG_STAGE_DIR}"
 rm -f "${FFMPEG_ARCHIVE}"
-"${PYTHON_BIN}" - <<PY
+FFMPEG_ARCHIVE="${FFMPEG_ARCHIVE}" FFMPEG_SOURCE_DIR="${FFMPEG_SOURCE_DIR}" "${PYTHON_BIN}" - <<'PY'
+import os
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-archive = Path(${FFMPEG_ARCHIVE@Q})
-source_dir = Path(${FFMPEG_SOURCE_DIR@Q})
+archive = Path(os.environ["FFMPEG_ARCHIVE"])
+source_dir = Path(os.environ["FFMPEG_SOURCE_DIR"])
 
 with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zip_file:
     zip_file.write(source_dir / "ffmpeg", arcname="ffmpeg")
