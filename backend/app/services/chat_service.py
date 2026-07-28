@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Optional
 from typing import Generator
 
@@ -11,6 +12,7 @@ from app.services.chat_tools import TOOLS, execute_tool
 from app.services.wiki_search import WikiSearch
 from app.services.context_builder import QueryContext, build_query_context
 from app.services.query_intent import build_vector_quotas, classify_query_intent
+from app.services.usage_tracker import record_usage
 from app.utils.logger import get_logger
 from app.utils.storage_paths import note_output_dir
 
@@ -204,12 +206,40 @@ def free_chat(
         name=provider["name"],
     )
     gpt = GPTFactory.from_config(config)
-    response = gpt.client.chat.completions.create(
-        model=gpt.model,
-        messages=messages,
-        temperature=0.7,
-    )
-    return {"answer": response.choices[0].message.content or "", "sources": query_context.sources}
+    started_at = datetime.now(timezone.utc)
+    try:
+        response = gpt.client.chat.completions.create(
+            model=gpt.model,
+            messages=messages,
+            temperature=0.7,
+        )
+        finished_at = datetime.now(timezone.utc)
+        record_usage(
+            provider_id=provider["id"],
+            provider_name=provider["name"],
+            model_name=model_name,
+            phase="free_chat",
+            task_id=linked_task_id,
+            response=response,
+            status="success",
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        return {"answer": response.choices[0].message.content or "", "sources": query_context.sources}
+    except Exception as exc:
+        finished_at = datetime.now(timezone.utc)
+        record_usage(
+            provider_id=provider["id"],
+            provider_name=provider["name"],
+            model_name=model_name,
+            phase="free_chat",
+            task_id=linked_task_id,
+            status="failed",
+            error_message=str(exc)[:1000],
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        raise
 
 
 def free_chat_stream(
@@ -251,6 +281,9 @@ def free_chat_stream(
         name=provider["name"],
     )
     gpt = GPTFactory.from_config(config)
+    started_at = datetime.now(timezone.utc)
+    full_answer = ""
+    last_chunk = None
     stream = gpt.client.chat.completions.create(
         model=gpt.model,
         messages=messages,
@@ -258,18 +291,48 @@ def free_chat_stream(
         stream=True,
     )
 
-    full_answer = ""
-    for chunk in stream:
-        try:
-            delta = chunk.choices[0].delta.content or ""
-        except Exception:
-            delta = ""
-        if not delta:
-            continue
-        full_answer += delta
-        yield {"type": "delta", "content": delta}
+    try:
+        for chunk in stream:
+            last_chunk = chunk
+            try:
+                delta = chunk.choices[0].delta.content or ""
+            except Exception:
+                delta = ""
+            if not delta:
+                continue
+            full_answer += delta
+            yield {"type": "delta", "content": delta}
 
-    yield {"type": "done", "answer": full_answer, "sources": query_context.sources}
+        finished_at = datetime.now(timezone.utc)
+        stream_usage = getattr(stream, "usage", None)
+        if stream_usage is None and last_chunk is not None:
+            stream_usage = getattr(last_chunk, "usage", None)
+        record_usage(
+            provider_id=provider["id"],
+            provider_name=provider["name"],
+            model_name=model_name,
+            phase="free_chat_stream",
+            task_id=linked_task_id,
+            response_usage=stream_usage,
+            status="success",
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        yield {"type": "done", "answer": full_answer, "sources": query_context.sources}
+    except Exception as exc:
+        finished_at = datetime.now(timezone.utc)
+        record_usage(
+            provider_id=provider["id"],
+            provider_name=provider["name"],
+            model_name=model_name,
+            phase="free_chat_stream",
+            task_id=linked_task_id,
+            status="failed",
+            error_message=str(exc)[:1000],
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        raise
 
 
 def chat(
@@ -321,12 +384,42 @@ def chat(
     # 4. Tool calling 循环（最多 3 轮）
     max_rounds = 3
     for round_i in range(max_rounds):
-        response = gpt.client.chat.completions.create(
-            model=gpt.model,
-            messages=messages,
-            tools=TOOLS,
-            temperature=0.7,
-        )
+        started_at = datetime.now(timezone.utc)
+        try:
+            response = gpt.client.chat.completions.create(
+                model=gpt.model,
+                messages=messages,
+                tools=TOOLS,
+                temperature=0.7,
+            )
+            finished_at = datetime.now(timezone.utc)
+            record_usage(
+                provider_id=provider["id"],
+                provider_name=provider["name"],
+                model_name=model_name,
+                phase="chat_tool_call",
+                task_id=task_id,
+                response=response,
+                status="success",
+                started_at=started_at,
+                finished_at=finished_at,
+                request_meta={"round": round_i + 1, "has_tools": True},
+            )
+        except Exception as exc:
+            finished_at = datetime.now(timezone.utc)
+            record_usage(
+                provider_id=provider["id"],
+                provider_name=provider["name"],
+                model_name=model_name,
+                phase="chat_tool_call",
+                task_id=task_id,
+                status="failed",
+                error_message=str(exc)[:1000],
+                started_at=started_at,
+                finished_at=finished_at,
+                request_meta={"round": round_i + 1, "has_tools": True},
+            )
+            raise
 
         msg = response.choices[0].message
 
@@ -355,10 +448,38 @@ def chat(
             })
 
     # 超过最大轮次，做最后一次不带 tools 的调用
-    response = gpt.client.chat.completions.create(
-        model=gpt.model,
-        messages=messages,
-        temperature=0.7,
-    )
+    started_at = datetime.now(timezone.utc)
+    try:
+        response = gpt.client.chat.completions.create(
+            model=gpt.model,
+            messages=messages,
+            temperature=0.7,
+        )
+        finished_at = datetime.now(timezone.utc)
+        record_usage(
+            provider_id=provider["id"],
+            provider_name=provider["name"],
+            model_name=model_name,
+            phase="chat_final",
+            task_id=task_id,
+            response=response,
+            status="success",
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+    except Exception as exc:
+        finished_at = datetime.now(timezone.utc)
+        record_usage(
+            provider_id=provider["id"],
+            provider_name=provider["name"],
+            model_name=model_name,
+            phase="chat_final",
+            task_id=task_id,
+            status="failed",
+            error_message=str(exc)[:1000],
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        raise
 
     return {"answer": response.choices[0].message.content or "", "sources": sources}

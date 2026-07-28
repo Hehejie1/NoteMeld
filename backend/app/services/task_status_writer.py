@@ -397,6 +397,9 @@ def write_task_status(task_id: Optional[str], status: Union[str, TaskStatus], me
         return existing
     payload = {"status": _status_value(status), **_task_status_meta(task_id)}
     payload.update(_with_stage_timing(existing, status_value, _now()))
+    # 保留已有的 collector_timings，避免被覆盖
+    if isinstance(existing.get("collector_timings"), dict):
+        payload["collector_timings"] = existing["collector_timings"]
     if message:
         payload["message"] = message
 

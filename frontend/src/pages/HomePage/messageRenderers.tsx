@@ -326,8 +326,9 @@ const NoteProgressBubble: FC<ConversationMessageRendererProps> = ({
                 )
               })}
             </ol>
+            {/* TODO: 暂时隐藏并行采集素材卡片，等待后端修复完成后移除 hidden 类 */}
             {collectorSubStatuses.length > 0 && (
-              <div className="mt-3 rounded-lg bg-surface-container/60 px-3 py-2">
+              <div className="hidden mt-3 rounded-lg bg-surface-container/60 px-3 py-2">
                 <div className="mb-2 text-[11px] font-medium text-on-surface-variant">并行采集素材</div>
                 <div className="space-y-1.5">
                   {collectorSubStatuses.map(item => {

@@ -68,7 +68,8 @@ class BilibiliDownloader(Downloader, ABC):
         video_url: str,
         output_dir: Union[str, None] = None,
         quality: DownloadQuality = "fast",
-        need_video:Optional[bool]=False
+        need_video:Optional[bool]=False,
+        skip_download: bool = False
     ) -> AudioDownloadResult:
         self._refresh_cookie_context()
         if output_dir is None:

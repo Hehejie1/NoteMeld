@@ -1,6 +1,9 @@
 import json
 import logging
 import os
+from datetime import datetime, timezone
+
+from app.services.usage_tracker import record_usage
 
 
 logger = logging.getLogger(__name__)
@@ -21,7 +24,11 @@ class WikiPageMerger:
         if gpt is None or not getattr(gpt, "client", None) or not getattr(gpt, "model", None):
             return fallback_markdown
 
+        provider_id = getattr(gpt, "usage_context", {}).get("provider_id") or "unknown"
+        provider_name = getattr(gpt, "usage_context", {}).get("provider_name") or "unknown"
+
         prompt = self._build_prompt(page_type, page_title, current_markdown, contribution_payload)
+        started_at = datetime.now(timezone.utc)
         try:
             response = gpt.client.chat.completions.create(
                 model=gpt.model,
@@ -39,9 +46,33 @@ class WikiPageMerger:
                     {"role": "user", "content": prompt},
                 ],
             )
+            finished_at = datetime.now(timezone.utc)
+            record_usage(
+                provider_id=provider_id,
+                provider_name=provider_name,
+                model_name=gpt.model,
+                phase="wiki_merge",
+                response=response,
+                status="success",
+                started_at=started_at,
+                finished_at=finished_at,
+                request_meta={"page_type": page_type, "page_title": page_title},
+            )
             content = ((response.choices or [None])[0].message.content or "").strip()
             return content or fallback_markdown
         except Exception as exc:
+            finished_at = datetime.now(timezone.utc)
+            record_usage(
+                provider_id=provider_id,
+                provider_name=provider_name,
+                model_name=gpt.model,
+                phase="wiki_merge",
+                status="failed",
+                error_message=str(exc)[:1000],
+                started_at=started_at,
+                finished_at=finished_at,
+                request_meta={"page_type": page_type, "page_title": page_title},
+            )
             logger.warning("LLM Wiki merger failed for %s:%s, fallback to deterministic merge: %s", page_type, page_title, exc)
             return fallback_markdown
 

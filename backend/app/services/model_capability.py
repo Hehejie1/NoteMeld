@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from app.db.model_capability_dao import get_model_capability, upsert_model_capability
 from app.services.provider import ProviderService
+from app.services.usage_tracker import record_usage
 from app.utils.logger import get_logger
 
 
@@ -92,6 +93,8 @@ class ModelCapabilityService:
     @staticmethod
     def probe_json_mode(provider: dict, model_name: str) -> dict:
         provider_id = str(provider["id"])
+        provider_name = str(provider.get("name", "unknown"))
+        started_at = datetime.now(timezone.utc)
         try:
             client = OpenAI(
                 api_key=ModelCapabilityService._resolve_api_key(provider),
@@ -108,6 +111,18 @@ class ModelCapabilityService:
                 max_tokens=32,
                 response_format={"type": "json_object"},
             )
+            finished_at = datetime.now(timezone.utc)
+            record_usage(
+                provider_id=provider_id,
+                provider_name=provider_name,
+                model_name=model_name,
+                phase="capability_probe",
+                response=response,
+                status="success",
+                started_at=started_at,
+                finished_at=finished_at,
+                request_meta={"probe_type": "json_mode"},
+            )
             content = response.choices[0].message.content or ""
             json.loads(content)
             result = upsert_model_capability(
@@ -119,6 +134,18 @@ class ModelCapabilityService:
             logger.info("模型能力探测成功: provider_id=%s model=%s supports_json_mode=True", provider_id, model_name)
             return result
         except Exception as exc:
+            finished_at = datetime.now(timezone.utc)
+            record_usage(
+                provider_id=provider_id,
+                provider_name=provider_name,
+                model_name=model_name,
+                phase="capability_probe",
+                status="failed",
+                error_message=str(exc)[:1000],
+                started_at=started_at,
+                finished_at=finished_at,
+                request_meta={"probe_type": "json_mode"},
+            )
             error = str(exc)[:1000]
             result = upsert_model_capability(
                 provider_id=provider_id,
