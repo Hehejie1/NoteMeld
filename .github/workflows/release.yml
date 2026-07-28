@@ -11,8 +11,19 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build macOS (Apple Silicon)
-    runs-on: macos-latest
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            artifact: macos-aarch64
+          - arch: x86_64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            artifact: macos-x86_64
 
     steps:
       - name: Checkout
@@ -36,7 +47,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          targets: ${{ matrix.target }}
 
       - name: Install ffmpeg
         run: brew install ffmpeg
@@ -65,12 +76,12 @@ jobs:
 
       - name: Build desktop app
         working-directory: desktop
-        run: pnpm tauri build --target aarch64-apple-darwin
+        run: pnpm tauri build --target ${{ matrix.target }}
 
       - name: Collect artifacts
         run: |
           mkdir -p dist
-          BUNDLE_DIR="desktop/src-tauri/target/aarch64-apple-darwin/release/bundle"
+          BUNDLE_DIR="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
           if [ -d "$BUNDLE_DIR/dmg" ]; then
             cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
           fi
@@ -82,7 +93,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-aarch64
+          name: ${{ matrix.artifact }}
           path: dist/*
 
   build-windows:
@@ -204,6 +215,7 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
+          cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
           ls -la release/
 
@@ -215,5 +227,5 @@ jobs:
             release/*.msi
             release/*.exe
             release/*.app.tar.gz
-          generate-release-notes: true
+          generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
