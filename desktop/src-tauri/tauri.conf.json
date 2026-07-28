@@ -26,8 +26,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": "app",
-    "createUpdaterArtifacts": true,
+    "targets": ["app", "dmg", "msi"],
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -39,12 +39,11 @@
   },
   "plugins": {
     "updater": {
-      "active": true,
+      "active": false,
       "dialog": false,
       "endpoints": [
         "http://43.167.164.213/releases/notemeld/stable/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI4RkI0ODg4QzQ2Rjc3OEYKUldTUGQyL0VpRWo3S0grN2pBRlB1dEZHYURzVThuWVZQdVdYWEFORXAxOWNTRG1hQWNNVDYrSk0K",
       "windows": {
         "installMode": "passive"
       },

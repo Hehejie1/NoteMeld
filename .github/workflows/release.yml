@@ -70,9 +70,13 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p dist
-          cp desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist/
-          cp desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/*.app.tar.gz dist/ 2>/dev/null || true
-          cp desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/*.app.tar.gz.sig dist/ 2>/dev/null || true
+          BUNDLE_DIR="desktop/src-tauri/target/aarch64-apple-darwin/release/bundle"
+          if [ -d "$BUNDLE_DIR/dmg" ]; then
+            cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
+          fi
+          cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/*.app.tar.gz.sig dist/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/*.app.tar.gz.sig2 dist/ 2>/dev/null || true
           ls -la dist/
 
       - name: Upload artifacts
@@ -159,16 +163,21 @@ jobs:
       - name: Build desktop app
         working-directory: desktop
         run: pnpm tauri build
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Collect artifacts
         run: |
           New-Item -ItemType Directory -Path dist -Force
-          Get-ChildItem -Path "desktop\src-tauri\target\release\bundle\msi" -Filter "*.msi" -Recurse | Copy-Item -Destination dist\
-          Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip" -Recurse | Copy-Item -Destination dist\
-          Get-ChildItem -Path "desktop\src-tauri\target\release\bundle" -Filter "*.msi.zip.sig" -Recurse | Copy-Item -Destination dist\
+          $bundleDir = "desktop\src-tauri\target\release\bundle"
+          if (Test-Path "$bundleDir\msi") {
+            Get-ChildItem -Path "$bundleDir\msi" -Filter "*.msi" -Recurse | Copy-Item -Destination dist\
+          }
+          Get-ChildItem -Path $bundleDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Get-ChildItem -Path $bundleDir -Filter "*.msi.zip" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Get-ChildItem -Path $bundleDir -Filter "*.msi.zip.sig" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Get-ChildItem -Path $bundleDir -Filter "*.app.zip" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Get-ChildItem -Path $bundleDir -Filter "*.app.zip.sig" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Write-Host "Collected artifacts:"
+          Get-ChildItem -Path dist\ | Format-Table Name, Length
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
