@@ -414,7 +414,6 @@ pub fn run() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let port = ensure_fixed_backend_port_available().map_err(std::io::Error::other)?;
             let runtime_payload = build_runtime_payload(port, generate_session_token());

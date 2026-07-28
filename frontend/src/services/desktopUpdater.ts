@@ -36,7 +36,15 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateCheckResult> {
   }
 
   const { check } = await import('@tauri-apps/plugin-updater')
-  const update = await check()
+  let update: Awaited<ReturnType<typeof check>> | null = null
+  try {
+    update = await check()
+  } catch {
+    return {
+      status: 'unavailable',
+      message: '应用内更新未配置，请前往 GitHub Releases 下载最新版本。',
+    }
+  }
   pendingUpdate = update
 
   if (!update?.available) {

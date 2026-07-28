@@ -36,18 +36,5 @@
       "icons/icon.ico"
     ],
     "resources": {}
-  },
-  "plugins": {
-    "updater": {
-      "active": false,
-      "dialog": false,
-      "endpoints": [
-        "http://43.167.164.213/releases/notemeld/stable/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      },
-      "dangerousInsecureTransportProtocol": true
-    }
   }
 }
