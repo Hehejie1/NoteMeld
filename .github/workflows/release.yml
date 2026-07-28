@@ -11,19 +11,8 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build macOS (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - arch: aarch64
-            runner: macos-latest
-            target: aarch64-apple-darwin
-            artifact: macos-aarch64
-          - arch: x86_64
-            runner: macos-13
-            target: x86_64-apple-darwin
-            artifact: macos-x86_64
+    name: Build macOS (Apple Silicon)
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
@@ -47,7 +36,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Install ffmpeg
         run: brew install ffmpeg
@@ -76,24 +65,22 @@ jobs:
 
       - name: Build desktop app
         working-directory: desktop
-        run: pnpm tauri build --target ${{ matrix.target }}
+        run: pnpm tauri build --target aarch64-apple-darwin
 
       - name: Collect artifacts
         run: |
           mkdir -p dist
-          BUNDLE_DIR="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          BUNDLE_DIR="desktop/src-tauri/target/aarch64-apple-darwin/release/bundle"
           if [ -d "$BUNDLE_DIR/dmg" ]; then
             cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
           fi
           cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/*.app.tar.gz.sig dist/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/*.app.tar.gz.sig2 dist/ 2>/dev/null || true
           ls -la dist/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: macos-aarch64
           path: dist/*
 
   build-windows:
@@ -183,10 +170,6 @@ jobs:
             Get-ChildItem -Path "$bundleDir\msi" -Filter "*.msi" -Recurse | Copy-Item -Destination dist\
           }
           Get-ChildItem -Path $bundleDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
-          Get-ChildItem -Path $bundleDir -Filter "*.msi.zip" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
-          Get-ChildItem -Path $bundleDir -Filter "*.msi.zip.sig" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
-          Get-ChildItem -Path $bundleDir -Filter "*.app.zip" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
-          Get-ChildItem -Path $bundleDir -Filter "*.app.zip.sig" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
           Write-Host "Collected artifacts:"
           Get-ChildItem -Path dist\ | Format-Table Name, Length
 
@@ -215,7 +198,6 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
-          cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
           ls -la release/
 
