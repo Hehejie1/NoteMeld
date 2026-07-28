@@ -204,9 +204,10 @@ jobs:
           Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
           $ffmpegDir = Get-ChildItem -Path $extractPath -Directory | Select-Object -First 1
           $ffmpegBin = Join-Path $ffmpegDir.FullName "bin"
-          $env:PATH = "$ffmpegBin;$env:PATH"
+          Add-Content -Path $env:GITHUB_PATH -Value $ffmpegBin
           Write-Host "ffmpeg extracted to: $ffmpegBin"
           Test-Path (Join-Path $ffmpegBin "ffmpeg.exe")
+          Test-Path (Join-Path $ffmpegBin "ffprobe.exe")
 
       - name: Install frontend dependencies
         working-directory: frontend
