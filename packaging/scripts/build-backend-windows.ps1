@@ -1,7 +1,14 @@
 $ErrorActionPreference = "Stop"
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$PythonBin = Join-Path $RootDir ".venv\Scripts\python.exe"
+if ($env:NOTEMELD_PYTHON_BIN) {
+  $PythonBin = $env:NOTEMELD_PYTHON_BIN
+  if (-not [System.IO.Path]::IsPathRooted($PythonBin)) {
+    $PythonBin = Join-Path $RootDir $PythonBin
+  }
+} else {
+  $PythonBin = Join-Path $RootDir ".venv\Scripts\python.exe"
+}
 $DistBin = Join-Path $RootDir "dist\notemeld-backend.exe"
 $BackendStageDir = Join-Path $RootDir "desktop\src-tauri\bin\backend"
 $BackendStageBin = Join-Path $BackendStageDir "notemeld-backend.exe"

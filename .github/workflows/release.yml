@@ -57,7 +57,11 @@ jobs:
           .venv/bin/python -m pip install -r requirements.txt
 
       - name: Build backend sidecar
-        run: NOTEMELD_SKIP_PORTABILITY_CHECK=1 FFMPEG_BIN_PATH=$(dirname $(which ffmpeg)) ./packaging/scripts/build-backend-macos.sh
+        run: |
+          NOTEMELD_SKIP_PORTABILITY_CHECK=1 \
+          NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3 \
+          FFMPEG_BIN_PATH=$(dirname "$(which ffmpeg)") \
+          ./packaging/scripts/build-backend-macos.sh
 
       - name: Build desktop app
         working-directory: desktop
@@ -107,9 +111,13 @@ jobs:
         shell: pwsh
         run: |
           winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
-          $ffmpegBin = Get-ChildItem -Path "$env:ProgramFiles\ffmpeg\bin" -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($ffmpegBin) {
-            Write-Host "FFmpeg installed at: $($ffmpegBin.Directory.FullName)"
+          Write-Host "Searching for ffmpeg..."
+          $ffmpegExe = Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($ffmpegExe) {
+            $env:PATH = "$($ffmpegExe.Directory.FullName);$env:PATH"
+            Write-Host "ffmpeg found at: $($ffmpegExe.Directory.FullName)"
+          } else {
+            Write-Host "WARNING: ffmpeg not found after installation"
           }
 
       - name: Install frontend dependencies
@@ -129,14 +137,22 @@ jobs:
 
       - name: Build backend sidecar
         shell: pwsh
+        env:
+          NOTEMELD_PYTHON_BIN: backend\.venv\Scripts\python.exe
         run: |
-          $ffmpegDir = (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue).Source
-          if (-not $ffmpegDir) {
-            $ffmpegDir = Get-ChildItem -Path "$env:ProgramFiles\ffmpeg\bin" -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($ffmpegDir) { $ffmpegDir = $ffmpegDir.Directory.FullName }
-          }
-          if ($ffmpegDir) {
-            $env:FFMPEG_BIN_PATH = Split-Path $ffmpegDir -Parent
+          $ffmpegExe = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          if ($ffmpegExe) {
+            $env:FFMPEG_BIN_PATH = Split-Path $ffmpegExe.Source -Parent
+            Write-Host "ffmpeg found in PATH at: $($env:FFMPEG_BIN_PATH)"
+          } else {
+            $ffmpegExe = Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($ffmpegExe) {
+              $env:FFMPEG_BIN_PATH = $ffmpegExe.Directory.FullName
+              $env:PATH = "$($ffmpegExe.Directory.FullName);$env:PATH"
+              Write-Host "ffmpeg found at: $($env:FFMPEG_BIN_PATH)"
+            } else {
+              Write-Host "WARNING: ffmpeg not found"
+            }
           }
           powershell -ExecutionPolicy Bypass -File .\packaging\scripts\build-backend-windows.ps1
 
