@@ -8,6 +8,8 @@ import BackendInitDialog from '@/components/BackendInitDialog'
 import AppLayout from '@/layouts/AppLayout'
 import LandingPage from '@/pages/LandingPage'
 import { shouldUseDesktopRuntime } from '@/utils/runtime.ts'
+import { isDemoMode } from '@/demo/mode'
+import DemoControlBar from '@/demo/DemoControlBar'
 
 // 工作区页面使用 React.lazy 按需加载，避免 Markdown/Markmap 等重依赖阻塞 /new 首屏
 const HomePage = lazy(() => import('./pages/HomePage/Home.tsx'))
@@ -20,6 +22,8 @@ const Downloader = lazy(() => import('@/pages/SettingPage/Downloader.tsx'))
 const DownloaderForm = lazy(() => import('@/components/Form/DownloaderForm/Form.tsx'))
 const TranscriberPage = lazy(() => import('@/pages/SettingPage/transcriber.tsx'))
 const DataMigration = lazy(() => import('@/pages/SettingPage/DataMigration.tsx'))
+const McpServers = lazy(() => import('@/pages/SettingPage/McpServers.tsx'))
+const ResearchSearch = lazy(() => import('@/pages/SettingPage/ResearchSearch.tsx'))
 const WikiPage = lazy(() => import('@/pages/WikiPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const StylesPlaceholder = lazy(() => import('@/pages/StylesPage'))
@@ -68,6 +72,8 @@ const WorkspaceRoutes = () => {
             <Route path="data-migration" element={<DataMigration />} />
             <Route path="usage" element={<Usage />}></Route>
             <Route path="monitor" element={<Monitor />}></Route>
+            <Route path="mcp-servers" element={<McpServers />} />
+            <Route path="research-search" element={<ResearchSearch />} />
             <Route path="about" element={<Navigate to="/" replace />}></Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>
@@ -108,6 +114,7 @@ const WorkspaceApp = () => {
   return (
     <>
       <WorkspaceRoutes />
+      {isDemoMode() && <DemoControlBar />}
       <BackendInitDialog
         open={!!failureKind && !dialogDismissed}
         phase={phase}

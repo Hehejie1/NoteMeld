@@ -39,3 +39,41 @@ await assert.rejects(
   error => error instanceof DemoEndpointNotImplementedError && error.message.includes('GET /not-registered'),
   'unknown demo endpoints must fail closed with method and path',
 )
+
+const { startDemoNoteScenario } = await import('../src/demo/scenarios.ts').catch(() => ({}))
+assert.equal(typeof startDemoNoteScenario, 'function', 'scenario engine must expose startDemoNoteScenario')
+
+const scheduled = []
+const observed = []
+const scheduler = {
+  schedule(callback) {
+    scheduled.push(callback)
+    return callback
+  },
+  cancel(handle) {
+    const index = scheduled.indexOf(handle)
+    if (index >= 0) scheduled.splice(index, 1)
+  },
+}
+const scenario = startDemoNoteScenario('success', {
+  scheduler,
+  onStatus(status) { observed.push(status) },
+})
+while (scheduled.length) scheduled.shift()()
+assert.deepEqual(
+  observed,
+  ['PENDING', 'PARSING', 'DOWNLOADING', 'TRANSCRIBING', 'SUMMARIZING', 'FORMATTING', 'SAVING', 'SUCCESS'],
+  'success simulation must preserve production task order',
+)
+
+const disposedEvents = []
+const disposedQueue = []
+const disposable = startDemoNoteScenario('failed', {
+  scheduler: { schedule(callback) { disposedQueue.push(callback); return callback }, cancel() {} },
+  onStatus(status) { disposedEvents.push(status) },
+})
+disposable.dispose()
+while (disposedQueue.length) disposedQueue.shift()()
+assert.deepEqual(disposedEvents, ['PENDING'], 'dispose must prevent delayed status writes')
+
+scenario.dispose()
