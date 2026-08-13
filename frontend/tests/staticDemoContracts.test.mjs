@@ -5,7 +5,7 @@ import path from 'node:path'
 const root = path.resolve(import.meta.dirname, '..')
 const read = file => readFile(path.join(root, file), 'utf8')
 
-const [modeSource, contextSource, mainSource, requestSource, chatSource, desktopSource, updaterSource] = await Promise.all([
+const [modeSource, contextSource, mainSource, requestSource, chatSource, desktopSource, updaterSource, videoBannerSource] = await Promise.all([
   read('src/demo/mode.ts').catch(() => ''),
   read('src/contexts/BackendInitContext.tsx'),
   read('src/main.tsx'),
@@ -13,6 +13,7 @@ const [modeSource, contextSource, mainSource, requestSource, chatSource, desktop
   read('src/services/chat.ts'),
   read('src/services/desktopRuntime.ts'),
   read('src/services/desktopUpdater.ts'),
+  read('src/pages/HomePage/components/VideoBanner.tsx'),
 ])
 
 assert.match(
@@ -55,4 +56,9 @@ assert.match(
   mainSource,
   /if\s*\(!isDemoMode\(\)\)\s*\{[\s\S]*registerDesktopRuntimeOnPageLoad\(\)/,
   'demo mode must not register the desktop runtime',
+)
+assert.match(
+  videoBannerSource,
+  /isDemoMode\(\)[\s\S]*rawCover[\s\S]*image_proxy/,
+  'demo cover images must bypass the backend image proxy',
 )

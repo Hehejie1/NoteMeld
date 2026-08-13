@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react'
 import type { MouseEvent } from 'react'
 import type { AudioMeta } from '@/store/taskStore'
 import { getRuntimeApiBaseUrl, openExternalUrl } from '@/utils/runtime'
+import { isDemoMode } from '@/demo/mode'
 
 interface VideoBannerProps {
   audioMeta?: AudioMeta
@@ -30,7 +31,7 @@ export default function VideoBanner({ audioMeta, videoUrl }: VideoBannerProps) {
     ),
   )
   const coverUrl = rawCover
-    ? (isLocalStaticCover ? rawCover : `${apiBase}/image_proxy?url=${encodeURIComponent(rawCover)}`)
+    ? (isDemoMode() || isLocalStaticCover ? rawCover : `${apiBase}/image_proxy?url=${encodeURIComponent(rawCover)}`)
     : ''
   const title = audioMeta.title
   const uploader = audioMeta.raw_info?.uploader || ''
