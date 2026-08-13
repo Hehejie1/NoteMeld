@@ -6,6 +6,7 @@ import KnowledgeEmptyState from '@/components/KnowledgeEmptyState'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { FeatureGuideTarget } from '@/demo/FeatureGuideTarget'
 import { getWikiGraph, type WikiGraph, type WikiGraphNode } from '@/services/wiki'
 
 import SigmaWikiGraph, { type SigmaWikiGraphHandle } from './graph/SigmaWikiGraph'
@@ -165,6 +166,7 @@ const WikiPage: FC = () => {
           className="absolute left-3 top-3 z-10 flex flex-col gap-2 md:left-4 md:top-4"
         >
           <div className="flex rounded-lg border border-border-subtle bg-white p-1 text-[12px] shadow-sm">
+            <FeatureGuideTarget featureId="wiki-view-mode" onExecute={() => setViewMode('type')}>
             <button
               onClick={() => setViewMode('type')}
               className={cn(
@@ -176,6 +178,8 @@ const WikiPage: FC = () => {
             >
               类型视图
             </button>
+            </FeatureGuideTarget>
+            <FeatureGuideTarget featureId="wiki-view-mode" onExecute={() => setViewMode('community')}>
             <button
               onClick={() => setViewMode('community')}
               className={cn(
@@ -187,6 +191,7 @@ const WikiPage: FC = () => {
             >
               社群视图
             </button>
+            </FeatureGuideTarget>
           </div>
           <div className="flex w-fit flex-col gap-1 rounded-lg border border-border-subtle bg-white p-1 shadow-sm">
             <button

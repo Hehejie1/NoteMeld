@@ -10,6 +10,8 @@ import LandingPage from '@/pages/LandingPage'
 import { shouldUseDesktopRuntime } from '@/utils/runtime.ts'
 import { isDemoMode } from '@/demo/mode'
 import DemoControlBar from '@/demo/DemoControlBar'
+import { FeatureGuideProvider } from '@/demo/FeatureGuideContext'
+import { FeatureGuideDrawer } from '@/demo/FeatureGuideDrawer'
 
 // 工作区页面使用 React.lazy 按需加载，避免 Markdown/Markmap 等重依赖阻塞 /new 首屏
 const HomePage = lazy(() => import('./pages/HomePage/Home.tsx'))
@@ -115,6 +117,7 @@ const WorkspaceApp = () => {
     <>
       <WorkspaceRoutes />
       {isDemoMode() && <DemoControlBar />}
+      {isDemoMode() && <FeatureGuideDrawer />}
       <BackendInitDialog
         open={!!failureKind && !dialogDismissed}
         phase={phase}
@@ -143,7 +146,9 @@ function App() {
   return (
     <BackendInitProvider>
       <RouterComponent>
-        <AppRouter />
+        <FeatureGuideProvider>
+          <AppRouter />
+        </FeatureGuideProvider>
       </RouterComponent>
     </BackendInitProvider>
   )

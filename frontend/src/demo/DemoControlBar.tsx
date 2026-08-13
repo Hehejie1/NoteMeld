@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { FlaskConical, RotateCcw, X } from 'lucide-react'
+import { FlaskConical, Info, RotateCcw, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useTaskStore, type TaskStatus } from '@/store/taskStore'
 import { demoRuntime } from './runtime'
 import { startDemoNoteScenario, type DemoScenarioHandle, type DemoScenarioOutcome } from './scenarios'
+import { useFeatureGuide } from './FeatureGuideContext'
 
 const scenarioRoutes = [
   ['新建', '/new'],
@@ -17,6 +18,7 @@ const scenarioRoutes = [
 
 const DemoControlBar = () => {
   const navigate = useNavigate()
+  const { guideMode, setGuideMode } = useFeatureGuide()
   const [open, setOpen] = useState(false)
   const handleRef = useRef<DemoScenarioHandle | null>(null)
   const updateTaskContent = useTaskStore(state => state.updateTaskContent)
@@ -76,6 +78,9 @@ const DemoControlBar = () => {
         <Button size="sm" variant="outline" onClick={() => run('failed')}>模拟失败</Button>
         <Button size="sm" variant="outline" onClick={() => run('canceled')}>模拟取消</Button>
         <Button size="sm" variant="ghost" onClick={() => void reset()}><RotateCcw className="mr-1 h-3.5 w-3.5" />重置</Button>
+        <Button size="sm" variant={guideMode ? 'default' : 'outline'} onClick={() => setGuideMode(!guideMode)}>
+          <Info className="mr-1 h-3.5 w-3.5" />功能讲解 {guideMode ? '开' : '关'}
+        </Button>
       </div>
     </aside>
   )

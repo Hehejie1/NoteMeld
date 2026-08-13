@@ -9,6 +9,7 @@ import {
   installPendingDesktopUpdate,
 } from '@/services/desktopUpdater'
 import { isDesktopEmbedded } from '@/utils/runtime'
+import { FeatureGuideTarget } from '@/demo/FeatureGuideTarget'
 
 const fallbackVersion = '0.0.4'
 const defaultReleaseNotes = `每次升级的内容
@@ -128,6 +129,7 @@ export default function AboutPage() {
         </p>
 
         {!result && !checking && !installing && (
+          <FeatureGuideTarget featureId="about-update" onExecute={() => void handleCheck()}>
           <button
             type="button"
             onClick={handleCheck}
@@ -136,6 +138,7 @@ export default function AboutPage() {
             <RefreshCw className="h-5 w-5 text-on-surface-variant" />
             检查更新
           </button>
+          </FeatureGuideTarget>
         )}
 
         {checking && (

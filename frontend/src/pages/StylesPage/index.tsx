@@ -31,6 +31,7 @@ import {
 import { uploadFile } from '@/services/upload'
 import { cn } from '@/lib/utils'
 import { getRuntimeApiBaseUrl } from '@/utils/runtime'
+import { FeatureGuideTarget } from '@/demo/FeatureGuideTarget'
 import type {
   StyleImportConversationItem,
   StyleImportDraft,
@@ -436,6 +437,7 @@ const StylesPage: FC = () => {
             className="h-10 border-border-subtle bg-surface-container pl-9 focus-visible:ring-primary"
           />
         </div>
+        <FeatureGuideTarget featureId="styles-create" onExecute={openCreate}>
         <Button
           onClick={openCreate}
           className="h-10 w-full gap-1.5 rounded-md bg-primary px-4 text-white hover:bg-primary/90 md:w-auto"
@@ -443,6 +445,7 @@ const StylesPage: FC = () => {
           <Plus className="h-4 w-4" />
           新建模板
         </Button>
+        </FeatureGuideTarget>
       </div>
 
       {/* 模板列表 */}
