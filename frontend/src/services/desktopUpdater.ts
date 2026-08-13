@@ -1,4 +1,6 @@
 import { isDesktopEmbedded } from '@/utils/runtime'
+import { isDemoMode } from '@/demo/mode'
+import { demoCheckUpdate, demoInstallUpdate } from '@/demo/transport'
 
 export type DesktopUpdateCheckResult =
   | {
@@ -27,6 +29,7 @@ type ProgressListener = (progress: DesktopUpdateProgress) => void
 let pendingUpdate: Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>> | null = null
 
 export async function checkDesktopUpdate(): Promise<DesktopUpdateCheckResult> {
+  if (isDemoMode()) return demoCheckUpdate()
   if (!isDesktopEmbedded()) {
     pendingUpdate = null
     return {
@@ -63,10 +66,14 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateCheckResult> {
 }
 
 export async function installPendingDesktopUpdate(onProgress?: ProgressListener): Promise<void> {
+  if (isDemoMode()) {
+    await demoInstallUpdate(onProgress)
+    return
+  }
   if (!pendingUpdate?.available) {
     const result = await checkDesktopUpdate()
     if (result.status !== 'available' || !pendingUpdate?.available) {
-      throw new Error(result.message || '没有可安装的新版本。')
+      throw new Error('message' in result ? result.message : '没有可安装的新版本。')
     }
   }
 

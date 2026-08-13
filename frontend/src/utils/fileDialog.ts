@@ -1,5 +1,7 @@
 import { isDesktopEmbedded } from './runtime'
 import type * as DialogPlugin from '@tauri-apps/plugin-dialog'
+import { isDemoMode } from '@/demo/mode'
+import { demoDesktopAction } from '@/demo/transport'
 
 type DialogSelection = string | string[] | null
 type DialogModule = typeof DialogPlugin
@@ -39,6 +41,7 @@ export function canUseNativeFileDialog(): boolean {
 }
 
 export async function selectMigrationPackagePath(): Promise<string | null> {
+  if (isDemoMode()) return await demoDesktopAction('select_migration_package') as string
   return await openDesktopDialog({
     directory: false,
     multiple: false,
@@ -48,6 +51,7 @@ export async function selectMigrationPackagePath(): Promise<string | null> {
 }
 
 export async function selectExportPackagePath(defaultName?: string): Promise<string | null> {
+  if (isDemoMode()) return await demoDesktopAction('select_export_package', defaultName) as string
   if (!isDesktopEmbedded()) {
     return null
   }
