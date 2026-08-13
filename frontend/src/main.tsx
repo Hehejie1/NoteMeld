@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import RootLayout from './layouts/RootLayout.tsx'
 import { registerDesktopRuntimeOnPageLoad } from './utils/runtime.ts'
+import { isDemoMode } from './demo/mode.ts'
 
 const rootElement = document.getElementById('root')!
 
@@ -15,4 +16,6 @@ createRoot(rootElement).render(
   </StrictMode>
 )
 
-void registerDesktopRuntimeOnPageLoad()
+if (!isDemoMode()) {
+  void registerDesktopRuntimeOnPageLoad()
+}
