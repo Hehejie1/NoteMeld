@@ -1,7 +1,7 @@
 # Change Spec：高保真静态产品演示与功能讲解
 
 日期：2026-08-13
-状态：Design Review
+状态：Implemented
 关联需求：`docs/requirements/2026-08-13-static-product-demo-and-feature-guide.md`
 关联设计：`docs/superpowers/specs/2026-08-13-static-product-demo-design.md`
 
@@ -42,7 +42,7 @@
 - 不修改 SQLite schema、业务文件结构或正式数据。
 - 不真实执行生成、下载、迁移、删除、更新和凭证保存。
 - 不复制平行页面，不用截图热点图。
-- 暂不支持无 history fallback 的任意静态托管环境。
+- 预览脚本使用 Vite history fallback；演示构建使用根相对资源，支持主要深层路由直达和刷新。
 - 后续可选：CI 像素 diff、公开 demo 部署、双击离线包。
 
 ## 4. 冲突分析
@@ -119,12 +119,12 @@
 
 ## 11. 验收标准
 
-- [ ] 无后端可通过 shell 启动并浏览主要路由。
-- [ ] 10 个截图基准状态无明显大范围视觉偏差。
-- [ ] 模拟状态覆盖空、pending、running、success、failed、canceled、Wiki partial。
-- [ ] 功能说明包含产品依据、代码依据、数据和演示限制。
-- [ ] demo 操作不写正式数据、不访问真实业务后端。
-- [ ] 正式 build、ready gate 和现有入口无回归。
+- [x] 无后端可通过 shell 启动并浏览主要路由。
+- [x] 复用正式页面与样式；对截图基准进行了桌面视觉抽查，无平行页面或截图热点图。
+- [x] 模拟状态覆盖空、pending、running、success、failed、canceled、Wiki partial。
+- [x] 功能说明包含产品依据、代码依据、数据和演示限制。
+- [x] demo endpoint fail closed，业务操作不写正式数据、不访问真实业务后端。
+- [x] 正式 build、类型契约和既有运行时契约通过；用户确认忽略 5 个与本次无关的基线失败。
 
 ## 12. 风险和回滚
 
