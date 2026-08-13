@@ -121,6 +121,15 @@ pnpm install
 pnpm dev
 ```
 
+纯静态产品演示（不启动后端、不读取 SQLite 或业务文件）：
+
+```bash
+bash scripts/preview_static_demo.sh
+# 可选：--port 4175 --no-open
+```
+
+演示构建由 `VITE_NOTEMELD_DEMO=true` 显式启用。`frontend/src/demo/` 在浏览器内提供合成 fixture、fail-closed 请求适配器、模拟任务状态机、场景控制栏和功能讲解抽屉；未实现的演示 endpoint 直接报错，不回退到正式 API。默认生产构建仍使用正式 BackendInit、Axios/fetch、Tauri 和后端链路。Vite 的 demo mode 使用 `/` 作为资源基址，使 Vite preview history fallback 下的 `/notes/*` 与 `/settings/*` 可直接打开或刷新；正式构建继续保持 `./` 资源基址。
+
 后端单独运行通常由 `run_notemeld.sh` 管理；脚本会创建 `.venv`、安装依赖、准备转写器并启动后端。
 
 桌面开发：
