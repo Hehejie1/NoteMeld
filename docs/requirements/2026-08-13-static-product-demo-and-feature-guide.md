@@ -2,7 +2,7 @@
 
 日期：2026-08-13
 作者 / Agent：Codex
-状态：Ready for Plan
+状态：Planned
 关联对话 / 任务：当前 Codex 任务
 关联系统文档：`docs/system/current-architecture.md`、`docs/system/product-rules.md`、`docs/system/data-model.md`、`docs/system/api-inventory.md`、`docs/system/known-pitfalls.md`
 
@@ -151,6 +151,6 @@
   - [x] 状态改为 `Ready for Plan`
   - [ ] 使用 Superpowers 生成 `docs/superpowers/specs/2026-08-13-static-product-demo-design.md`
   - [ ] 用户复核并确认 design spec
-  - [ ] 使用 Superpowers 生成 `docs/superpowers/plans/2026-08-13-static-product-demo.md`
+  - [x] 使用 Superpowers 生成 `docs/superpowers/plans/2026-08-13-static-product-demo.md`
 - 计划必须覆盖的验收标准：路由/刷新、后端零依赖、状态矩阵、模拟生成、功能说明、视觉回归、隐私脱敏、shell 预览、正式模式零回归。
 - 计划必须补充的验证：fixture secret/path 扫描、浏览器 network 断言、关键路由截图对比、模拟时钟/状态测试、前端 contract/build、shell smoke test、正式入口 backend ready gate 回归。
