@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -53,8 +55,12 @@ def test_oracle_fixtures_are_gapless():
         assert [row["sequence"] for row in rows] == list(range(1, len(rows) + 1))
         assert {row["schema_version"] for row in rows} == {"1"}
         assert {row["session_id"] for row in rows} == {f"oracle-session-{path.stem}"}
-        assert {row["turn_id"] for row in rows} == {f"oracle-turn-{path.stem}"}
-        assert all(row["event_id"] == f"oracle-event-{path.stem}-{row['sequence']:03d}" for row in rows)
+        assert len({row["turn_id"] for row in rows}) == 1
+        assert all(str(UUID(row["turn_id"])) == row["turn_id"] for row in rows)
+        assert len({row["event_id"] for row in rows}) == len(rows)
+        assert all(str(UUID(row["event_id"])) == row["event_id"] for row in rows)
+        timestamps = [datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00")) for row in rows]
+        assert all(timestamp.tzinfo == timezone.utc for timestamp in timestamps)
 
 
 def test_oracle_fixtures_preserve_terminal_outcomes_and_tool_order():

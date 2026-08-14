@@ -1,15 +1,16 @@
 //! Stable, versioned wire contracts for the universal Agent SDK.
 
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
+use chrono::DateTime;
+use serde::{de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
+use uuid::Uuid;
 
 pub const SCHEMA_VERSION: &str = "1";
 pub const SDK_VERSION: &str = "0.1.0";
 
 macro_rules! string_id {
-    ($name:ident) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        #[serde(transparent)]
+    ($name:ident, $wire_name:literal) => {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         pub struct $name(pub String);
 
         impl From<String> for $name {
@@ -23,13 +24,75 @@ macro_rules! string_id {
                 Self(value.to_owned())
             }
         }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                validate_nonempty($wire_name, &self.0).map_err(S::Error::custom)?;
+                serializer.serialize_str(&self.0)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                validate_nonempty($wire_name, &value).map_err(D::Error::custom)?;
+                Ok(Self(value))
+            }
+        }
     };
 }
 
-string_id!(SessionId);
-string_id!(TurnId);
-string_id!(EventId);
-string_id!(RequestId);
+string_id!(SessionId, "session_id");
+
+macro_rules! uuid_id {
+    ($name:ident, $wire_name:literal) => {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        pub struct $name(pub String);
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                validate_uuid($wire_name, &self.0).map_err(S::Error::custom)?;
+                serializer.serialize_str(&self.0)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                validate_uuid($wire_name, &value).map_err(D::Error::custom)?;
+                Ok(Self(value))
+            }
+        }
+    };
+}
+
+uuid_id!(TurnId, "turn_id");
+uuid_id!(EventId, "event_id");
+uuid_id!(RequestId, "request_id");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,12 +117,25 @@ pub enum ApprovalMode {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct TurnInput {
-    #[serde(default)]
     pub text: String,
-    #[serde(default)]
     pub attachments: Vec<Value>,
-    #[serde(default)]
     pub context_refs: Vec<Value>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelOverride {
+    #[serde(
+        serialize_with = "serialize_nonempty_provider_id",
+        deserialize_with = "deserialize_nonempty_provider_id"
+    )]
+    pub provider_id: String,
+    #[serde(
+        serialize_with = "serialize_nonempty_model_name",
+        deserialize_with = "deserialize_nonempty_model_name"
+    )]
+    pub model_name: String,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -71,7 +147,8 @@ pub struct TurnRequest {
     pub request_id: RequestId,
     pub session_id: SessionId,
     pub input: TurnInput,
-    pub model_override: Option<Value>,
+    #[serde(deserialize_with = "deserialize_model_override")]
+    pub model_override: Option<ModelOverride>,
     pub approval_mode: ApprovalMode,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -103,8 +180,12 @@ pub enum AgentErrorCode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentError {
     pub code: AgentErrorCode,
+    #[serde(
+        serialize_with = "serialize_nonempty_message",
+        deserialize_with = "deserialize_nonempty_message"
+    )]
     pub message: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub details: Map<String, Value>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -123,7 +204,7 @@ impl AgentError {
 
 impl Default for AgentError {
     fn default() -> Self {
-        Self::new(AgentErrorCode::SdkInternalError, String::new())
+        Self::new(AgentErrorCode::SdkInternalError, "internal error")
     }
 }
 
@@ -288,6 +369,10 @@ impl Serialize for AgentEvent {
                 Some(KnownAgentEvent::TurnInterrupted(payload.clone()))
             }
             Self::Unknown(unknown) => {
+                validate_nonempty("type", &unknown.event_type).map_err(S::Error::custom)?;
+                if !unknown.payload.is_object() {
+                    return Err(S::Error::custom("payload must be a JSON object"));
+                }
                 let mut wire = Map::new();
                 wire.insert("type".to_owned(), Value::String(unknown.event_type.clone()));
                 wire.insert("payload".to_owned(), unknown.payload.clone());
@@ -310,10 +395,14 @@ impl<'de> Deserialize<'de> for AgentEvent {
             .get("type")
             .and_then(Value::as_str)
             .ok_or_else(|| D::Error::missing_field("type"))?;
+        validate_nonempty("type", event_type).map_err(D::Error::custom)?;
         let payload = wire
             .get("payload")
             .cloned()
             .ok_or_else(|| D::Error::missing_field("payload"))?;
+        if !payload.is_object() {
+            return Err(D::Error::custom("payload must be a JSON object"));
+        }
 
         let known = matches!(
             event_type,
@@ -364,12 +453,127 @@ pub struct AgentEventEnvelope {
     #[serde(deserialize_with = "deserialize_schema_version")]
     pub schema_version: String,
     pub event_id: EventId,
+    #[serde(
+        serialize_with = "serialize_sequence",
+        deserialize_with = "deserialize_sequence"
+    )]
     pub sequence: u64,
     pub session_id: SessionId,
     pub turn_id: TurnId,
+    #[serde(
+        serialize_with = "serialize_utc_timestamp",
+        deserialize_with = "deserialize_utc_timestamp"
+    )]
     pub timestamp: String,
     #[serde(flatten)]
     pub event: AgentEvent,
+}
+
+fn validate_uuid(field: &str, value: &str) -> Result<(), String> {
+    Uuid::parse_str(value)
+        .map(|_| ())
+        .map_err(|_| format!("{field} must be a UUID"))
+}
+
+fn validate_nonempty(field: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        Err(format!("{field} must be nonempty"))
+    } else {
+        Ok(())
+    }
+}
+
+macro_rules! nonempty_string_serde {
+    ($serialize:ident, $deserialize:ident, $field:literal) => {
+        fn $serialize<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            validate_nonempty($field, value).map_err(S::Error::custom)?;
+            serializer.serialize_str(value)
+        }
+
+        fn $deserialize<'de, D>(deserializer: D) -> Result<String, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let value = String::deserialize(deserializer)?;
+            validate_nonempty($field, &value).map_err(D::Error::custom)?;
+            Ok(value)
+        }
+    };
+}
+
+nonempty_string_serde!(
+    serialize_nonempty_provider_id,
+    deserialize_nonempty_provider_id,
+    "provider_id"
+);
+nonempty_string_serde!(
+    serialize_nonempty_model_name,
+    deserialize_nonempty_model_name,
+    "model_name"
+);
+nonempty_string_serde!(
+    serialize_nonempty_message,
+    deserialize_nonempty_message,
+    "message"
+);
+
+fn deserialize_model_override<'de, D>(deserializer: D) -> Result<Option<ModelOverride>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<ModelOverride>::deserialize(deserializer)
+}
+
+fn serialize_sequence<S>(sequence: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if *sequence == 0 {
+        return Err(S::Error::custom("sequence must be greater than zero"));
+    }
+    serializer.serialize_u64(*sequence)
+}
+
+fn deserialize_sequence<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let sequence = u64::deserialize(deserializer)?;
+    if sequence == 0 {
+        return Err(D::Error::custom("sequence must be greater than zero"));
+    }
+    Ok(sequence)
+}
+
+fn validate_utc_timestamp(timestamp: &str) -> Result<(), String> {
+    let parsed = DateTime::parse_from_rfc3339(timestamp)
+        .map_err(|_| "timestamp must be RFC3339".to_owned())?;
+    if parsed.offset().local_minus_utc() != 0
+        || !(timestamp.ends_with('Z') || timestamp.ends_with("+00:00"))
+    {
+        return Err("timestamp must use UTC".to_owned());
+    }
+    Ok(())
+}
+
+fn serialize_utc_timestamp<S>(timestamp: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    validate_utc_timestamp(timestamp).map_err(S::Error::custom)?;
+    serializer.serialize_str(timestamp)
+}
+
+fn deserialize_utc_timestamp<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let timestamp = String::deserialize(deserializer)?;
+    validate_utc_timestamp(&timestamp).map_err(D::Error::custom)?;
+    Ok(timestamp)
 }
 
 fn deserialize_schema_version<'de, D>(deserializer: D) -> Result<String, D::Error>

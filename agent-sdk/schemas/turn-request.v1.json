@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": { "const": "1" },
-    "request_id": { "type": "string", "minLength": 1 },
+    "request_id": { "type": "string", "format": "uuid" },
     "session_id": { "type": "string", "minLength": 1 },
     "input": {
       "type": "object",
@@ -25,7 +25,20 @@
       },
       "additionalProperties": true
     },
-    "model_override": { "type": ["object", "null"] },
+    "model_override": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["provider_id", "model_name"],
+          "properties": {
+            "provider_id": { "type": "string", "minLength": 1 },
+            "model_name": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
     "approval_mode": {
       "enum": ["interactive", "deny", "allow_safe"]
     }

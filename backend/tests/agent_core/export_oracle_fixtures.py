@@ -10,6 +10,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from tests.agent_core._base import EventRecorder, FakeModel, FakeModels, build_agent_tool, build_tool_call
 
@@ -84,12 +85,13 @@ def _payload(event: Any, agent: Any) -> dict[str, Any]:
 
 
 def _row(scenario: str, sequence: int, event: Any, agent: Any) -> dict[str, Any]:
+    identity_root = f"https://notemeld.wiki/oracle/{scenario}"
     return {
         "schema_version": SCHEMA_VERSION,
         "scenario": scenario,
         "session_id": f"oracle-session-{scenario}",
-        "turn_id": f"oracle-turn-{scenario}",
-        "event_id": f"oracle-event-{scenario}-{sequence:03d}",
+        "turn_id": str(uuid5(NAMESPACE_URL, f"{identity_root}/turn")),
+        "event_id": str(uuid5(NAMESPACE_URL, f"{identity_root}/event/{sequence}")),
         "sequence": sequence,
         "timestamp": f"2000-01-01T00:00:{sequence - 1:02d}Z",
         "type": event.type.value,

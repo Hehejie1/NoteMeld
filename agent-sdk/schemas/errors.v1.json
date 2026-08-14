@@ -3,7 +3,7 @@
   "$id": "https://notemeld.wiki/schemas/errors.v1.json",
   "title": "AgentError v1",
   "type": "object",
-  "required": ["code", "message", "details"],
+  "required": ["code", "message"],
   "properties": {
     "code": {
       "enum": [
