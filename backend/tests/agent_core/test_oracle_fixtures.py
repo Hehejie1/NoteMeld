@@ -1,8 +1,11 @@
 """Cross-language conformance fixtures emitted by the Python Agent oracle."""
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
+
+import pytest
 
 
 FIXTURE_DIR = Path(__file__).resolve().parents[3] / "agent-sdk" / "fixtures" / "conformance"
@@ -28,6 +31,14 @@ REQUIRED_FIELDS = {
 
 def _rows(name: str) -> list[dict]:
     return [json.loads(line) for line in (FIXTURE_DIR / f"{name}.jsonl").read_text().splitlines()]
+
+
+@pytest.mark.parametrize("scenario", ("simple_answer", "parallel_tools", "abort", "steer", "max_turns"))
+def test_checked_in_fixtures_match_fresh_python_oracle(scenario: str):
+    """A Python-core behavior change must make its committed oracle stale."""
+    from tests.agent_core.export_oracle_fixtures import collect_oracle_rows
+
+    assert _rows(scenario) == asyncio.run(collect_oracle_rows(scenario))
 
 
 def test_oracle_fixtures_are_gapless():
