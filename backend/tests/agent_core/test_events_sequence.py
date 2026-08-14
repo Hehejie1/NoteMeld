@@ -57,6 +57,22 @@ class TestEventsSequence(AgentCoreTestCase):
         self.assertIn("agent_end", good)
         self.assertIn("tool_execution_end", good)
 
+    def test_oracle_export_keeps_event_turns_and_tool_result_order(self):
+        """Changing core event data must change the cross-language oracle rows."""
+        from tests.agent_core.export_oracle_fixtures import collect_oracle_rows
+
+        rows = self._run(collect_oracle_rows("parallel_tools"))
+        self.assertEqual([row["sequence"] for row in rows], list(range(1, len(rows) + 1)))
+        self.assertEqual(
+            [row["payload"]["result"]["details"]["name"] for row in rows if row["type"] == "tool_execution_end"],
+            ["fast", "slow"],
+        )
+        turn_end = next(row for row in rows if row["type"] == "turn_end")
+        self.assertEqual(
+            [result["call_id"] for result in turn_end["payload"]["tool_results"]],
+            ["slow-call", "fast-call"],
+        )
+
 
 if __name__ == "__main__":
     import unittest
