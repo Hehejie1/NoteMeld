@@ -2,7 +2,7 @@
 
 日期：2026-08-14  
 作者 / Agent：Codex（doc-driven）  
-状态：Ready for Plan  
+状态：Planned（规格已确认，实施计划与执行规格已生成）
 关联对话 / 任务：Harbor Agent 测评前置改造、UI/CLI 统一 Agent、跨平台 Agent SDK  
 关联系统文档：`docs/system/current-architecture.md`、`docs/system/product-rules.md`、`docs/system/data-model.md`、`docs/system/api-inventory.md`、`docs/system/known-pitfalls.md`  
 关联历史需求：`docs/requirements/2026-08-01-notemeld-agent-core-runtime.md`、`docs/requirements/2026-08-01-notemeld-agent-research-assistant.md`、`docs/requirements/2026-08-11-progressive-capability-routing.md`
@@ -220,7 +220,8 @@ notemeld agent -p "删除这些重复草稿" --output jsonl --yes
 - 推荐下一步：
   - [x] 使用 doc-driven 生成 canonical requirement。
   - [x] 生成增量 Change Spec 和设计规格并交用户书面审阅。
-  - [ ] 用户批准设计规格后，使用 `superpowers:writing-plans` 生成分阶段实施 Plan。
-  - [ ] 依据 Plan 生成文件级执行 Spec，再进入实现。
+  - [x] 用户批准设计规格后，使用 `superpowers:writing-plans` 生成分阶段实施 Plan。
+  - [x] 依据 Plan 生成文件级执行 Spec。
+  - [ ] 按用户选择的执行方式进入实现。
 - 计划必须覆盖的验收标准：第 1–20 条，按 SDK foundation、binding/platform、Agent Host/API、UI/CLI、service/packaging、迁移验证拆分检查点。
 - 计划必须补充的验证：Rust conformance、FFI smoke、Python binding、API/SSE 重连、SQLite 幂等迁移、UI/CLI 同会话纵向、桌面退出后 CLI 续跑、PyInstaller/Tauri/CI 产物和全量回归。

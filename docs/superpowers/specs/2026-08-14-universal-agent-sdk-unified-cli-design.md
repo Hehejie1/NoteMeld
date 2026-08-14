@@ -2,7 +2,7 @@
 
 日期：2026-08-14  
 作者 / Agent：Codex（doc-driven + brainstorming）  
-状态：Awaiting User Review  
+状态：Approved（用户于 2026-08-14 确认“规格确认”）
 Canonical Requirement：`docs/requirements/2026-08-14-universal-agent-sdk-unified-cli.md`  
 Change Spec：`docs/system/change-spec-universal-agent-sdk-unified-cli.md`
 
