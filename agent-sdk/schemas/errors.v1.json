@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://notemeld.wiki/schemas/errors.v1.json",
+  "title": "AgentError v1",
+  "type": "object",
+  "required": ["code", "message", "details"],
+  "properties": {
+    "code": {
+      "enum": [
+        "invalid_input",
+        "agent_runtime_unavailable",
+        "agent_schema_mismatch",
+        "session_not_found",
+        "session_busy",
+        "turn_not_found",
+        "turn_terminal",
+        "duplicate_request",
+        "model_not_configured",
+        "model_unavailable",
+        "context_budget_exceeded",
+        "approval_required",
+        "approval_expired",
+        "tool_failed",
+        "cancelled",
+        "interrupted",
+        "invalid_session_token",
+        "sdk_internal_error"
+      ]
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "details": { "type": "object" }
+  },
+  "additionalProperties": true
+}

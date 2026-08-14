@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://notemeld.wiki/schemas/agent-event.v1.json",
+  "title": "AgentEventEnvelope v1",
+  "description": "Known event names are documented here; additive unknown v1 event names remain valid for forward-compatible clients.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "sequence",
+    "session_id",
+    "turn_id",
+    "timestamp",
+    "type",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "event_id": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "turn_id": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "minLength": 1 },
+    "type": { "type": "string", "minLength": 1 },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "approved_v1_event_type": {
+      "enum": [
+        "turn.started",
+        "message.started",
+        "message.delta",
+        "message.completed",
+        "tool.started",
+        "tool.progress",
+        "tool.completed",
+        "approval.required",
+        "approval.resolved",
+        "usage.updated",
+        "turn.succeeded",
+        "turn.failed",
+        "turn.cancelled",
+        "turn.interrupted"
+      ]
+    }
+  }
+}
