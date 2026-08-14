@@ -34,7 +34,28 @@ export const fetchEnableModelById = async (id: string) => {
   return await request.get('/model_enable/' + id)
 }
 
-export async function addModel(data: { provider_id: string; model_name: string }) {
+export interface ModelRuntimeConfigPayload {
+  provider_id: string
+  model_name: string
+  context_window_tokens: number
+  supports_vision: boolean
+  supports_stream: boolean
+}
+
+export interface ModelRuntimeDefaults {
+  model_name: string
+  context_window_tokens: number
+  supports_vision: boolean
+  supports_stream: boolean
+  source: string
+  matched_rule: string | null
+}
+
+export async function fetchModelDefaults(modelName: string): Promise<ModelRuntimeDefaults> {
+  return request.post('/models/defaults', { model_name: modelName })
+}
+
+export async function addModel(data: ModelRuntimeConfigPayload) {
   return request.post('/models', data)
 }
 

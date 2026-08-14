@@ -41,6 +41,14 @@ class TestNoteStylePackagingContracts(unittest.TestCase):
         self.assertIn('STYLE_PREVIEW_STANDARD = APP_RESOURCES_DIR / "style_preview_standard.md"', spec_text)
         self.assertIn('APP_RESOURCE_DATAS.append((str(STYLE_PREVIEW_STANDARD), "app/resources"))', spec_text)
 
+    def test_backend_spec_packages_model_runtime_catalog_resource(self):
+        spec_text = (
+            ROOT / "packaging" / "backend" / "pyinstaller" / "backend.spec"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('MODEL_RUNTIME_CATALOG = APP_RESOURCES_DIR / "model_runtime_catalog.json"', spec_text)
+        self.assertIn('APP_RESOURCE_DATAS.append((str(MODEL_RUNTIME_CATALOG), "app/resources"))', spec_text)
+
     def test_build_backend_macos_cleans_pyinstaller_outputs_before_rebuild(self):
         script_text = (
             ROOT / "packaging" / "scripts" / "build-backend-macos.sh"
@@ -62,10 +70,8 @@ class TestNoteStylePackagingContracts(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('TARGET_DIR="${ROOT_DIR}/desktop/src-tauri/target"', script_text)
-        self.assertIn('rm -rf "${TARGET_DIR}/release/bundle"', script_text)
-        self.assertIn('rm -rf "${TARGET_DIR}/aarch64-apple-darwin/release/bundle"', script_text)
-        self.assertIn('rm -rf "${TARGET_DIR}/x86_64-apple-darwin/release/bundle"', script_text)
-        self.assertIn('TARGET_ARCH="$("${ROOT_DIR}/.venv/bin/python3"', script_text)
+        self.assertIn('rm -rf "${TARGET_OUTPUT_DIR}/bundle"', script_text)
+        self.assertIn('TARGET_ARCH="${NOTEMELD_TARGET_ARCH:-$("${ROOT_DIR}/.venv/bin/python3"', script_text)
         self.assertIn('TAURI_TARGET_TRIPLE="aarch64-apple-darwin"', script_text)
         self.assertIn('TAURI_TARGET_TRIPLE="x86_64-apple-darwin"', script_text)
         self.assertIn('TARGET_OUTPUT_DIR="${TARGET_DIR}/${TAURI_TARGET_TRIPLE}/release"', script_text)

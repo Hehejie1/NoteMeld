@@ -5,10 +5,16 @@ from app.db.engine import Base
 
 class Model(Base):
     __tablename__ = "models"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "model_name", name="uq_model_provider_model"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     provider_id = Column(String, nullable=False)
     model_name = Column(String, nullable=False)
+    context_window_tokens = Column(Integer, nullable=False, server_default="4096")
+    supports_vision = Column(Boolean, nullable=False, server_default="0")
+    supports_stream = Column(Boolean, nullable=False, server_default="1")
     created_at = Column(DateTime, server_default=func.now())
 
 

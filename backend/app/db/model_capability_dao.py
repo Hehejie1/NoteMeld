@@ -35,6 +35,20 @@ def get_model_capability(provider_id: str, model_name: str) -> Optional[dict]:
         db.close()
 
 
+def delete_model_capability(provider_id: str, model_name: str) -> bool:
+    """Remove only the disposable capability-probe cache for a saved model."""
+    db = next(get_db())
+    try:
+        row = db.query(ModelCapability).filter_by(provider_id=provider_id, model_name=model_name).first()
+        if row is None:
+            return False
+        db.delete(row)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
 def upsert_model_capability(
     provider_id: str,
     model_name: str,

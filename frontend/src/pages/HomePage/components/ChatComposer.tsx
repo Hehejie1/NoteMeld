@@ -23,8 +23,10 @@ import {
 } from '@/components/ui/dialog'
 import { generateNote, type GenerateNotePayload } from '@/services/note'
 import { streamFreeChat } from '@/services/chat'
+import { createLearningCanvas } from '@/services/learning'
 import {
   appendConversationMessage,
+  patchConversationMessage,
   patchConversation,
   upsertConversation,
 } from '@/services/conversation'
@@ -48,7 +50,7 @@ import {
   shouldCollapseComposerTextInput,
 } from '@/pages/HomePage/chatComposerHelpers'
 
-export type ComposerMode = 'note' | 'chat'
+export type ComposerMode = 'note' | 'chat' | 'learn'
 
 interface ChatComposerProps {
   /** Hero 模式（中央放大）/ Bottom 模式（聊天底部固定） */
@@ -116,6 +118,8 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const styleRef = useRef<HTMLDivElement>(null)
   const modelRef = useRef<HTMLDivElement>(null)
+  const modeWasExplicitlySelectedRef = useRef(false)
+  const learningSubmissionLockRef = useRef(false)
 
   const {
     createConversation,
@@ -125,12 +129,31 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     loadConversation,
     selectNoteDocument,
     setNoteState,
+    learningRequestInFlight,
+    beginLearningRequest,
+    finishLearningRequest,
     tasks,
+    pendingContextRefs,
+    removeContextRef,
+    clearContextRefs,
   } = useTaskStore()
   const { modelList, loadEnabledModels } = useModelStore()
   const providerList = useProviderStore(state => state.provider)
   const fetchProviderList = useProviderStore(state => state.fetchProviderList)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const handlePrefillResearch = (event: Event) => {
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt
+      if (!prompt) return
+      setText(prompt)
+      setMode('learn')
+      modeWasExplicitlySelectedRef.current = true
+      requestAnimationFrame(() => inputRef.current?.focus())
+    }
+    window.addEventListener('notemeld:prefill-research', handlePrefillResearch)
+    return () => window.removeEventListener('notemeld:prefill-research', handlePrefillResearch)
+  }, [])
   const { taskId } = useParams<{ taskId?: string }>()
   const [modelName, setModelName] = useState<string>('')
   const { backendReady } = useBackendInitContext()
@@ -162,6 +185,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
   }, [modelList, modelName])
 
   useEffect(() => {
+    if (modeWasExplicitlySelectedRef.current) return
     if (urlCard) {
       setMode('note')
       return
@@ -183,9 +207,16 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
 
   const urlChip = urlCard
   const plainText = text.trim()
-  const canSubmit = (!!plainText || !!urlChip || !!pendingUploadedFile) && !uploading && !submitting
+  const hasLearningGoal = mode === 'learn' && !!plainText
+  const canSubmit = (
+    mode === 'learn'
+      ? hasLearningGoal && !learningRequestInFlight
+      : !!plainText || !!urlChip || !!pendingUploadedFile
+  ) && !uploading && !submitting
   const currentConversation = taskId ? tasks.find(t => t.id === taskId) : null
-  const collapseTextInput = shouldCollapseComposerTextInput({ text, urlCard }) && !showLinkNoteInput
+  const collapseTextInput = mode !== 'learn'
+    && shouldCollapseComposerTextInput({ text, urlCard })
+    && !showLinkNoteInput
 
   /** 关闭 popover when click outside */
   useEffect(() => {
@@ -210,7 +241,24 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     setPendingUploadedFile(null)
   }
 
+  const selectMode = (nextMode: ComposerMode) => {
+    modeWasExplicitlySelectedRef.current = true
+    if (mode === 'learn' && nextMode !== 'learn') {
+      const match = text.match(URL_REGEX)
+      if (match) {
+        setUrlCard(match[0])
+        setText(text.replace(match[0], '').trimStart())
+        setShowLinkNoteInput(false)
+      }
+    }
+    setMode(nextMode)
+  }
+
   const handleTextChange = (value: string) => {
+    if (mode === 'learn') {
+      setText(value)
+      return
+    }
     const match = value.match(URL_REGEX)
     if (match) {
       setUrlCard(match[0])
@@ -225,16 +273,17 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
 
   const ensureConversation = async (nextMode: ComposerMode, fallbackTitle: string) => {
     if (currentConversation?.id) return currentConversation.id
+    const persistedMode = nextMode === 'learn' ? 'chat' : nextMode
     const conversationId = createConversation({
-      mode: nextMode,
+      mode: persistedMode,
       title: fallbackTitle,
     })
     await upsertConversation(conversationId, {
       id: conversationId,
-      mode: nextMode,
+      mode: persistedMode,
       title: fallbackTitle,
       status: 'SUCCESS',
-      noteState: nextMode === 'chat' ? 'none' : 'ready',
+      noteState: persistedMode === 'chat' ? 'none' : 'ready',
     })
     return conversationId
   }
@@ -384,7 +433,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       file_url: uploaded.url,
       file_name: uploaded.file_name,
       content_type: uploaded.content_type,
-      mode,
+      mode: mode === 'learn' ? 'chat' : mode,
       conversation_id: conversationId,
       model_name: documentModel ? modelName : undefined,
       provider_id: documentModel?.provider_id,
@@ -501,6 +550,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     setShowLinkNoteInput(false)
     setUrlCookieStatus(null)
     setCookieFallbackPromptOpen(false)
+    modeWasExplicitlySelectedRef.current = false
   }
 
   const runChatRequest = async ({
@@ -509,12 +559,14 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     history,
     linkedTaskId,
     assetContent,
+    contextRefs = pendingContextRefs,
   }: {
     conversationId: string
     question: string
     history: Array<{ role: 'user' | 'assistant'; content: string }>
     linkedTaskId?: string
     assetContent?: string
+    contextRefs?: typeof pendingContextRefs
   }) => {
     const matchedModel = ensureModel()
     if (!matchedModel) return
@@ -547,6 +599,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         linked_task_id: linkedTaskId,
         use_wiki: true,
         asset_content: assetContent,
+        context_refs: contextRefs,
       },
       {
         onDelta: chunk => {
@@ -563,6 +616,55 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         },
         onError: message => {
           streamError = message
+        },
+        onTaskCard: event => {
+          const cardMessageId = `task-card-${event.card_id}`
+          const now = new Date().toISOString()
+          const existing = useTaskStore.getState().tasks
+            .find(t => t.id === conversationId)
+            ?.messages?.find(m => m.id === cardMessageId)
+          const cardMeta = {
+            card_id: event.card_id,
+            task_id: event.task_id,
+            kind: event.kind,
+            title: event.title,
+            status: event.status,
+            progress: event.progress,
+          }
+          if (existing) {
+            updateMessage(conversationId, cardMessageId, {
+              content: event.title,
+              meta: { ...(existing.meta || {}), ...cardMeta },
+              updatedAt: now,
+            })
+          } else {
+            appendMessage(conversationId, {
+              id: cardMessageId,
+              role: 'assistant',
+              message_type: 'task_card',
+              content: event.title,
+              meta: cardMeta,
+              createdAt: now,
+              updatedAt: now,
+            })
+          }
+        },
+        onTaskCardProgress: event => {
+          const cardMessageId = `task-card-${event.card_id}`
+          const existing = useTaskStore.getState().tasks
+            .find(t => t.id === conversationId)
+            ?.messages?.find(m => m.id === cardMessageId)
+          if (!existing) return
+          updateMessage(conversationId, cardMessageId, {
+            meta: {
+              ...(existing.meta || {}),
+              card_id: event.card_id,
+              status: event.status,
+              progress: event.progress,
+              details: event.details,
+            },
+            updatedAt: new Date().toISOString(),
+          })
         },
       },
     )
@@ -618,6 +720,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         url: urlChip,
         uploaded_file_name: uploaded?.file_name || '',
         uploaded_file_url: uploaded?.url || '',
+        context_refs: pendingContextRefs,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -678,8 +781,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           }
         }
       }
-      resetInput()
-      navigate(`/notes/${conversationId}`)
+
       const history = (currentConversation?.messages || [])
         .filter(
           (m): m is typeof m & { role: 'user' | 'assistant' } =>
@@ -689,16 +791,153 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           role: m.role,
           content: m.content,
         }))
+      const linkedTaskId =
+        currentConversation?.linkedNoteTaskId || currentConversation?.id
+
+      resetInput()
       await runChatRequest({
         conversationId,
         question,
         history,
-        linkedTaskId: currentConversation?.linkedNoteTaskId || currentConversation?.id,
+        linkedTaskId,
         assetContent,
+        contextRefs: pendingContextRefs,
       })
+      clearContextRefs()
+      navigate(`/notes/${conversationId}`)
     } catch (err: any) {
       toast.error(err?.detail || err?.message || '聊天失败，请重试')
     } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const submitLearning = async () => {
+    if (learningSubmissionLockRef.current || !ensureBackendReady()) return
+    if (!beginLearningRequest()) {
+      toast('已有学习空间正在生成，可稍后从侧栏打开')
+      return
+    }
+    learningSubmissionLockRef.current = true
+    setSubmitting(true)
+    let learningConversationId = ''
+    let learningProgressMessageId = ''
+    let learningCanvasCreated = false
+    const learningOriginPath = window.location.pathname
+
+    try {
+      const goal = plainText
+      if (!goal) {
+        toast.error('请描述你想真正学会的主题')
+        return
+      }
+      const fallbackTitle = goal.slice(0, 24) || '未命名学习主题'
+      const conversationId = await ensureConversation('learn', fallbackTitle)
+      learningConversationId = conversationId
+      const userMessage = {
+        id: uuidv4(),
+        role: 'user' as const,
+        message_type: 'user_input' as const,
+        content: goal,
+        meta: {
+          intent: 'learn',
+          extras: plainText,
+          context_refs: pendingContextRefs,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      const progressMessage = {
+        id: uuidv4(),
+        role: 'assistant' as const,
+        message_type: 'assistant_text' as const,
+        content: '正在结合 NoteMeld、本地知识、学术论文和 GitHub 构建学习空间…',
+        status: 'running' as const,
+        meta: { intent: 'learn', kind: 'learning_build_progress' },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      learningProgressMessageId = progressMessage.id
+
+      appendMessage(conversationId, userMessage)
+      appendMessage(conversationId, progressMessage)
+      await appendConversationMessage(conversationId, userMessage)
+      await appendConversationMessage(conversationId, progressMessage)
+      const matchedModel = ensureModel()
+      const learningCanvas = await createLearningCanvas(conversationId, {
+        goal,
+        provider_id: matchedModel?.provider_id,
+        model_name: modelName,
+        context_refs: pendingContextRefs,
+      })
+      learningCanvasCreated = true
+      const needsClarification = learningCanvas.status === 'clarifying'
+      const projectionUnavailable = learningCanvas.external_errors?.some(
+        error => error.code === 'projection_save_failed',
+      )
+      const completionContent = needsClarification
+        ? '需要先确认研究对象。'
+        : projectionUnavailable
+          ? '研究笔记已保存，白板暂时不可用。'
+          : '研究笔记与白板已生成。'
+      updateMessage(conversationId, progressMessage.id, {
+        content: completionContent,
+        status: 'success',
+        error: false,
+        updatedAt: new Date().toISOString(),
+      })
+      await patchConversationMessage(conversationId, progressMessage.id, {
+        content: completionContent,
+        status: 'success',
+        error: false,
+      }).catch(error => {
+        console.warn('学习空间已生成，但构建状态消息更新失败', error)
+      })
+      resetInput()
+      clearContextRefs()
+      setMode('chat')
+      await loadConversation(conversationId).catch(error => {
+        console.warn('学习空间已生成，但会话刷新失败', error)
+      })
+      const shouldAutoNavigate = window.location.pathname === learningOriginPath
+      if (shouldAutoNavigate) {
+        try {
+          navigate(`/notes/${conversationId}`)
+        } catch (error) {
+          console.warn('学习空间已生成，但自动打开会话失败', error)
+        }
+      }
+      toast.success(
+        needsClarification
+          ? '请先在对话中确认研究对象'
+          : projectionUnavailable
+            ? '研究笔记已保存，白板暂时不可用'
+          : shouldAutoNavigate
+            ? '研究笔记与白板已生成'
+            : '研究结果已生成，可从侧栏打开',
+      )
+    } catch (err: any) {
+      if (learningCanvasCreated) {
+        toast.success('学习空间已生成，可从侧栏打开')
+      } else if (learningConversationId && learningProgressMessageId) {
+        const failureContent = err?.detail || err?.msg || err?.message || '学习空间生成失败，请重试'
+        updateMessage(learningConversationId, learningProgressMessageId, {
+          content: failureContent,
+          status: 'failed',
+          error: true,
+        })
+        await patchConversationMessage(learningConversationId, learningProgressMessageId, {
+          content: failureContent,
+          status: 'failed',
+          error: true,
+        }).catch(() => undefined)
+      }
+      if (!learningCanvasCreated) {
+        toast.error(err?.detail || err?.msg || err?.message || '学习空间生成失败，请重试')
+      }
+    } finally {
+      learningSubmissionLockRef.current = false
+      finishLearningRequest()
       setSubmitting(false)
     }
   }
@@ -834,6 +1073,10 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       await submitChat(pendingUploadedFile)
       return
     }
+    if (mode === 'learn') {
+      await submitLearning()
+      return
+    }
     await submitNote()
   }
 
@@ -872,13 +1115,23 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       )}
     >
       {/* URL 卡片 + 文本 */}
+      {pendingContextRefs.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-b border-border-subtle/60 px-4 py-2">
+          {pendingContextRefs.map(reference => (
+            <div key={reference.id} className="flex max-w-[280px] items-center gap-2 rounded-md bg-primary-light/60 px-2.5 py-1.5 text-[11px] text-primary">
+              <span className="truncate">引用：{reference.label}</span>
+              <button type="button" onClick={() => removeContextRef(reference.id)} aria-label="移除引用"><X className="h-3 w-3" /></button>
+            </div>
+          ))}
+        </div>
+      )}
       <div
         className={cn(
           'flex gap-2 px-4 pt-3',
           collapseTextInput ? 'items-center pb-1' : 'items-start',
         )}
       >
-        {pendingUploadedFile && (
+        {pendingUploadedFile && mode !== 'learn' && (
           <div className="flex max-w-[320px] items-center gap-2 rounded-lg border border-border-subtle bg-surface-container-low px-3 py-2 text-[12px] text-on-surface">
             <Paperclip className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
             <span className="truncate">{pendingUploadedFile.file_name}</span>
@@ -892,7 +1145,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
             </button>
           </div>
         )}
-        {urlChip && (
+        {urlChip && mode !== 'learn' && (
           <PlatformLinkCard
             url={urlChip}
             onRemove={removeUrl}
@@ -916,7 +1169,11 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
             ref={inputRef}
             value={text}
             rows={1}
-            placeholder="粘一条链接，上传一个文件，或描述你想沉淀的主题..."
+            placeholder={
+              mode === 'learn'
+                ? '描述你想真正学会的主题，例如：理解并能实现 AI Agent…'
+                : '粘一条链接，上传一个文件，或描述你想沉淀的主题...'
+            }
             className="min-h-8 flex-1 resize-none border-0 bg-transparent py-1 text-[14px] leading-6 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none"
             onChange={e => {
               handleTextChange(e.target.value)
@@ -935,7 +1192,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           {/* 上传 */}
           <button
             onClick={onPickFile}
-            disabled={uploading}
+            disabled={uploading || mode === 'learn'}
             className="flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:opacity-50 md:h-8"
           >
             {uploading ? (
@@ -946,8 +1203,8 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
             <span className={cn(hideToolText && 'hidden')}>上传文件</span>
           </button>
 
-          {/* Note / Chat 模式切换 */}
-          <ModeSwitch mode={mode} onChange={setMode} />
+          {/* Chat / Note / Learn 模式切换 */}
+          <ModeSwitch mode={mode} onChange={selectMode} />
 
           {/* 仅 Note 模式显示风格 + 截图总结 */}
           {mode === 'note' && (
@@ -1162,6 +1419,15 @@ const ModeSwitch: FC<{ mode: ComposerMode; onChange: (m: ComposerMode) => void }
         )}
       >
         笔记
+      </button>
+      <button
+        onClick={() => onChange('learn')}
+        className={cn(
+          'h-6 rounded px-2 text-[12px] font-medium transition-colors',
+          mode === 'learn' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant',
+        )}
+      >
+        学习
       </button>
     </div>
   )

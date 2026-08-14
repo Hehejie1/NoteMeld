@@ -48,6 +48,11 @@ def transcriber_config_path() -> Path:
     return Path(configured).resolve() if configured else data_root() / "config" / "transcriber.json"
 
 
+def research_search_config_path() -> Path:
+    configured = os.getenv("NOTEMELD_RESEARCH_SEARCH_CONFIG")
+    return Path(configured).resolve() if configured else data_root() / "config" / "research_search.json"
+
+
 def database_path() -> Path:
     configured = os.getenv("NOTEMELD_DATABASE_PATH")
     return Path(configured).resolve() if configured else data_root() / "notemeld.db"

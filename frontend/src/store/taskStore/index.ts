@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { extractNoteTitleFromMarkdown } from '@/store/taskTitle'
 import { mergeConversationMessages } from '@/store/taskStore/mergeConversationMessages'
 import type { CollectorTimings, ProgressTiming } from '@/types/progress'
+import type { ConversationContextRef } from '@/services/chat'
 
 
 export type TaskStatus =
@@ -66,6 +67,11 @@ export type ConversationMessageType =
   | 'note_progress'
   | 'note_result'
   | 'system_error'
+  | 'task_card'
+  | 'task_card_progress'
+  | 'parameter_request'
+  | 'parameter_response'
+  | 'learning_canvas'
 export type ConversationMessageStatus = 'pending' | 'running' | 'success' | 'failed'
 
 export interface ConversationSource {
@@ -141,6 +147,13 @@ interface TaskStore {
   tasks: Task[]
   currentTaskId: string | null
   hasLoadedConversations: boolean
+  learningRequestInFlight: boolean
+  pendingContextRefs: ConversationContextRef[]
+  addContextRef: (reference: ConversationContextRef) => void
+  removeContextRef: (referenceId: string) => void
+  clearContextRefs: () => void
+  beginLearningRequest: () => boolean
+  finishLearningRequest: () => void
   addPendingTask: (taskId: string, platform: string, formData: any) => void
   createConversation: (data: {
     id?: string
@@ -511,6 +524,26 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
   tasks: [],
   currentTaskId: null,
   hasLoadedConversations: false,
+  learningRequestInFlight: false,
+  pendingContextRefs: [],
+  addContextRef: reference => set(state => ({
+    pendingContextRefs: [
+      ...state.pendingContextRefs.filter(item => item.id !== reference.id),
+      { ...reference, snapshot: reference.snapshot.slice(0, 2000) },
+    ].slice(-8),
+  })),
+  removeContextRef: referenceId => set(state => ({
+    pendingContextRefs: state.pendingContextRefs.filter(item => item.id !== referenceId),
+  })),
+  clearContextRefs: () => set({ pendingContextRefs: [] }),
+
+  beginLearningRequest: () => {
+    if (get().learningRequestInFlight) return false
+    set({ learningRequestInFlight: true })
+    return true
+  },
+
+  finishLearningRequest: () => set({ learningRequestInFlight: false }),
 
   addPendingTask: (taskId: string, platform: string, formData: any) =>
 
@@ -786,7 +819,10 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
 
   clearTasks: () => set({ tasks: [], currentTaskId: null, hasLoadedConversations: true }),
 
-  setCurrentTask: taskId => set({ currentTaskId: taskId }),
+  setCurrentTask: taskId => set(state => ({
+    currentTaskId: taskId,
+    pendingContextRefs: state.currentTaskId === taskId ? state.pendingContextRefs : [],
+  })),
 
   loadConversations: async () => {
     const data = await fetchConversations()

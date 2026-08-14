@@ -15,3 +15,6 @@ class ModelConfig:
     model_name: str             # 实际请求用的模型名称，如 "gpt-4-turbo"
     usage_context: dict = field(default_factory=dict)
     created_at: Optional[datetime] = None  # 可选：创建时间（从 SQLite 自动生成）
+    context_window_tokens: int = 4096
+    supports_vision: bool = False
+    supports_stream: bool = True

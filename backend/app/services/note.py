@@ -26,21 +26,21 @@ from app.enmus.note_enums import DownloadQuality
 from app.exceptions.note import NoteError
 from app.exceptions.provider import ProviderError
 from app.gpt.base import GPT
-from app.gpt.gpt_factory import GPTFactory
+from app.gpt.gpt_factory import GPTFactory  # 保留 import 以便回滚（T12 加 DeprecationWarning）
+from app.gpt.notemeld_gpt import NotemeldGPT
 from app.gpt.provider_runtime import normalize_model_error
 from app.models.audio_model import AudioDownloadResult
 from app.models.gpt_model import GPTSource
-from app.models.model_config import ModelConfig
 from app.models.notes_model import AudioDownloadResult, NoteResult
 from app.models.summary_plan import SummaryPlan, build_default_render_contract
 from app.models.transcriber_model import TranscriptResult, TranscriptSegment
 from app.renderers.export_outline_renderer import ExportOutlineRenderer
 from app.renderers.note_renderer import NoteRenderer
 from app.services.context_normalizer import ContextNormalizer
-from app.services.html_to_markdown import html_to_markdown
+from app.services.note_output_normalizer import normalize_note_output
 from app.services.ingestion.transcript_adapter import TranscriptIngestionAdapter
 from app.services.constant import SUPPORT_PLATFORM_MAP
-from app.services.model import ModelService
+from app.services.model import ModelNotFoundError, ModelService
 from app.services.multisource_video_collector import MultiSourceVideoCollector
 from app.services.note_document_store import update_note_document_wiki_status
 from app.services.provider import ProviderService
@@ -166,10 +166,6 @@ class NoteGenerator:
 
     # ---------------- 公有方法 ----------------
 
-    def _looks_like_html(self, content: str) -> bool:
-        lowered = (content or "").lower()
-        return any(tag in lowered for tag in ("<article", "<section", "<div", "<p", "<h1", "<h2"))
-
     def _apply_style_output_formats(self, content: str, style: Optional[str]) -> str:
         if not style:
             return content
@@ -177,21 +173,7 @@ class NoteGenerator:
         if not template:
             return content
         output_formats = template.get("output_formats") or ["markdown"]
-        if output_formats == ["html"]:
-            return content
-        markdown = html_to_markdown(content) if self._looks_like_html(content) else content
-        if output_formats == ["markdown"]:
-            return markdown
-        if "html" in output_formats and "markdown" in output_formats:
-            return (
-                "<!-- HTML_OUTPUT_START -->\n"
-                f"{content}\n"
-                "<!-- HTML_OUTPUT_END -->\n\n"
-                "<!-- MARKDOWN_OUTPUT_START -->\n"
-                f"{markdown}"
-                "<!-- MARKDOWN_OUTPUT_END -->"
-            )
-        return content
+        return normalize_note_output(content, output_formats)
 
     def _merge_multisource_extras(self, extras: Optional[str], bundle) -> Optional[str]:
         blocks = []
@@ -287,6 +269,7 @@ class NoteGenerator:
             )
 
             try:
+                allow_vision = bool(getattr(gpt, "supports_vision", False))
                 bundle = MultiSourceVideoCollector().collect(
                     task_id=task_id or "video-task",
                     video_url=str(video_url),
@@ -299,10 +282,13 @@ class NoteGenerator:
                     screenshot=screenshot_enabled or video_understanding,
                     grid_size=grid_size,
                     frame_timestamps=frame_timestamps,
+                    allow_vision=allow_vision,
                 )
                 audio_meta = bundle.audio_meta
                 transcript = bundle.transcript
-                extras = self._merge_multisource_extras(extras, bundle)
+                web_search_context = str(getattr(bundle.web_search, "content", "") or "").strip()
+                frame_context = str(getattr(bundle.frame_context, "content", "") or "").strip()
+                self.video_img_urls = list(bundle.frame_context.grid_images or []) if allow_vision else []
                 self._apply_multisource_video_path(bundle)
             except Exception as exc:
                 return self._generate_web_fallback(
@@ -370,6 +356,8 @@ class NoteGenerator:
                 enable_refine_engine=enable_refine_engine,
                 output_type=output_type,
                 video_img_urls=self.video_img_urls,
+                web_search_context=web_search_context,
+                frame_context=frame_context,
             )
 
             markdown = self._apply_style_output_formats(markdown, style)
@@ -428,6 +416,8 @@ class NoteGenerator:
                     max_sampling_points=max_sampling_points,
                     enable_refine_engine=enable_refine_engine,
                     video_img_urls=self.video_img_urls,
+                    web_search_context=web_search_context,
+                    frame_context=frame_context,
                     model_name=getattr(gpt, "model", None),
                     provider_id=provider_id,
                 ),
@@ -552,15 +542,23 @@ class NoteGenerator:
         if not provider:
             logger.error(f"[get_gpt] 未找到模型供应商: provider_id={provider_id}")
             raise ProviderError(code=ProviderErrorEnum.NOT_FOUND,message=ProviderErrorEnum.NOT_FOUND.message)
+        try:
+            config = ModelService.build_saved_model_config(provider, str(model_name))
+        except ModelNotFoundError:
+            logger.error(
+                "[get_gpt] 模型未添加: provider_id=%s model_name=%s",
+                provider_id,
+                model_name,
+            )
+            raise ProviderError(
+                code=ProviderErrorEnum.NOT_FOUND.code,
+                message=ProviderErrorEnum.NOT_FOUND.message,
+            )
         logger.info(f"创建 GPT 实例 {provider_id}")
-        config = ModelConfig(
-            api_key=ModelService._resolve_api_key(provider),
-            base_url=provider["base_url"],
-            model_name=model_name,
-            provider=provider["id"],
-            name=provider["name"],
-        )
-        return GPTFactory().from_config(config)
+        # T10: 走 notemeld-ai 适配器（NotemeldGPT），复用 UniversalGPT 编排逻辑，
+        # create_chat_completion 内部调 notemeld-ai Models.complete()。回滚时换回
+        # GPTFactory().from_config(config) 即可。
+        return NotemeldGPT.from_config(config)
 
     def _get_downloader(self, platform: str) -> Downloader:
         """
@@ -852,6 +850,8 @@ class NoteGenerator:
         max_sampling_points: Optional[int],
         enable_refine_engine: bool,
         video_img_urls: List[str],
+        web_search_context: Optional[str],
+        frame_context: Optional[str],
         model_name: Optional[str],
         provider_id: str,
     ) -> dict:
@@ -865,6 +865,8 @@ class NoteGenerator:
             "max_sampling_points": max_sampling_points,
             "enable_refine_engine": enable_refine_engine,
             "video_img_urls": video_img_urls,
+            "web_search_context": web_search_context,
+            "frame_context": frame_context,
             "model_name": model_name,
             "provider_id": provider_id,
             "enable_wiki": True,
@@ -1003,6 +1005,8 @@ class NoteGenerator:
         max_sampling_points: Optional[int],
         enable_refine_engine: bool,
         video_img_urls: List[str],
+        web_search_context: Optional[str] = None,
+        frame_context: Optional[str] = None,
         output_type: str = "note_markdown",
     ) -> str | None:
         """
@@ -1053,7 +1057,10 @@ class NoteGenerator:
             "model_name": getattr(gpt, "model", None),
             "provider_id": provider_id,
             "enable_wiki": True,
+            "web_search_context": web_search_context,
+            "frame_context": frame_context,
         }
+        original_user_extras = extras
         try:
             video_url = audio_meta.raw_info.get("webpage_url") or ""
             inspection = SourceInspector().inspect(video_url)
@@ -1069,11 +1076,12 @@ class NoteGenerator:
             )
             pack = normalizer.build_weighted_pack(summary_input)
             plan = SummaryPlanner().plan(summary_input, pack)
-            extras = NoteRenderer().build_extras_with_context(extras, pack, plan)
+            rendered_extras = NoteRenderer().build_extras_with_context(original_user_extras, pack, plan)
         except Exception as exc:
             logger.warning(f"构建统一总结上下文失败，继续使用原始总结链路: {exc}")
             pack = None
             plan = None
+            rendered_extras = original_user_extras
 
         source = GPTSource(
             title=audio_meta.title,
@@ -1084,7 +1092,7 @@ class NoteGenerator:
             link=link,
             _format=formats,
             style=style,
-            extras=extras,
+            extras=rendered_extras,
             checkpoint_key=task_id,
         )
 
@@ -1098,7 +1106,7 @@ class NoteGenerator:
                     plan=plan,
                     pack=pack,
                     style=style,
-                    extras=extras,
+                    extras=original_user_extras,
                     video_img_urls=video_img_urls,
                 )
             else:
@@ -1125,7 +1133,7 @@ class NoteGenerator:
                         plan=fallback_plan,
                         pack=pack,
                         style=style,
-                        extras=extras,
+                        extras=original_user_extras,
                         video_img_urls=video_img_urls,
                     )
             markdown_cache_file.write_text(markdown, encoding="utf-8")

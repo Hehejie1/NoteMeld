@@ -18,7 +18,7 @@ from app.models.notes_model import NoteResult
 from app.models.transcriber_model import TranscriptResult, TranscriptSegment
 from app.renderers.export_outline_renderer import ExportOutlineRenderer
 from app.renderers.note_renderer import NoteRenderer
-from app.services.html_to_markdown import html_to_markdown
+from app.services.note_output_normalizer import normalize_note_output
 from app.services.ingestion.web_adapter import WebIngestionAdapter
 from app.services.context_normalizer import ContextNormalizer
 from app.services.note_document_store import update_note_document_wiki_status
@@ -40,11 +40,6 @@ DYNAMIC_WEB_PAGE_MESSAGE = "该页面为动态渲染/反爬页面，无法直接
 NON_HTML_PAGE_MESSAGE = "当前无法获取该页面内容，请稍后重试或更换链接。"
 
 
-def _looks_like_html(content: str) -> bool:
-    lowered = (content or "").lower()
-    return any(tag in lowered for tag in ("<article", "<section", "<div", "<p", "<h1", "<h2"))
-
-
 def _apply_style_output_formats(content: str, style: Optional[str]) -> str:
     if not style:
         return content
@@ -52,9 +47,7 @@ def _apply_style_output_formats(content: str, style: Optional[str]) -> str:
     if not template:
         return content
     output_formats = template.get("output_formats") or ["markdown"]
-    if output_formats == ["html"]:
-        return content
-    return html_to_markdown(content) if _looks_like_html(content) else content
+    return normalize_note_output(content, output_formats)
 
 
 def _page_context_to_ingestion_dict(summary_input, fallback_url: str) -> dict:
@@ -520,22 +513,16 @@ class WebNoteGenerator:
             update_note_document_wiki_status(task_id, "failed")
 
     def _get_gpt(self, model_name: str, provider_id: str):
-        from app.gpt.gpt_factory import GPTFactory
-        from app.models.model_config import ModelConfig
+        from app.gpt.notemeld_gpt import NotemeldGPT
         from app.services.model import ModelService
         from app.services.provider import ProviderService
 
         provider = ProviderService.get_provider_by_id(provider_id)
         if not provider:
             raise ValueError(f"未找到模型供应商: {provider_id}")
-        config = ModelConfig(
-            api_key=ModelService._resolve_api_key(provider),
-            base_url=provider["base_url"],
-            model_name=model_name,
-            provider=provider["id"],
-            name=provider["name"],
-        )
-        return GPTFactory().from_config(config)
+        config = ModelService.build_saved_model_config(provider, model_name)
+        # T11: 走 notemeld-ai 适配器（NotemeldGPT），回滚时换回 GPTFactory().from_config(config)
+        return NotemeldGPT.from_config(config)
 
     def _provider_name(self, provider_id: str) -> str:
         try:

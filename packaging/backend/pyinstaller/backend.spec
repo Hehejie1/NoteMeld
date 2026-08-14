@@ -14,6 +14,9 @@ APP_RESOURCE_DATAS = []
 STYLE_PREVIEW_STANDARD = APP_RESOURCES_DIR / "style_preview_standard.md"
 if STYLE_PREVIEW_STANDARD.exists():
     APP_RESOURCE_DATAS.append((str(STYLE_PREVIEW_STANDARD), "app/resources"))
+MODEL_RUNTIME_CATALOG = APP_RESOURCES_DIR / "model_runtime_catalog.json"
+if MODEL_RUNTIME_CATALOG.exists():
+    APP_RESOURCE_DATAS.append((str(MODEL_RUNTIME_CATALOG), "app/resources"))
 
 hiddenimports = collect_submodules("app")
 

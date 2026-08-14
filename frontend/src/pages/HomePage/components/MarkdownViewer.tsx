@@ -357,6 +357,8 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
   const isMultiVersion = false
   const [showTranscribe, setShowTranscribe] = useState(false)
   const [viewMode, setViewMode] = useState<'map' | 'preview' | 'wiki'>(initialViewMode)
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
+  const addContextRef = useTaskStore(state => state.addContextRef)
   const markdownContainerRef = useRef<HTMLDivElement>(null)
 
   // 缓存 ReactMarkdown components，仅在 baseURL 变化时重建
@@ -390,6 +392,28 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
   const handleSelectDocument = (taskId: string) => {
     if (!currentTask?.id || !taskId) return
     selectNoteDocument(currentTask.id, taskId)
+  }
+
+  const handleMarkdownContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    const selection = window.getSelection()
+    const text = selection?.toString().trim().slice(0, 2000) || ''
+    if (!text || !markdownContainerRef.current?.contains(selection?.anchorNode || null)) return
+    event.preventDefault()
+    setSelectionMenu({ x: event.clientX, y: event.clientY, text })
+  }
+
+  const addSelectionToConversation = () => {
+    if (!selectionMenu) return
+    addContextRef({
+      id: `note:${currentDocumentTaskId}:${selectionMenu.text.slice(0, 40)}`,
+      type: 'note_selection',
+      document_task_id: currentDocumentTaskId,
+      label: currentDocumentTitle,
+      snapshot: selectionMenu.text,
+      source_ids: [],
+    })
+    setSelectionMenu(null)
+    toast.success('已添加到对话')
   }
 
   const activeDocument = (currentTask?.documents || []).find(
@@ -580,7 +604,7 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
                     videoUrl={currentTask?.formData?.video_url}
                   />
                 </div>
-                <div ref={markdownContainerRef} className="markdown-body min-w-0 w-full px-1 pb-10">
+                <div ref={markdownContainerRef} onContextMenu={handleMarkdownContextMenu} className="markdown-body min-w-0 w-full px-1 pb-10">
                   <ReactMarkdown
                     remarkPlugins={remarkPlugins}
                     rehypePlugins={rehypePlugins}
@@ -608,6 +632,16 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
             </div>
           )}
         </div>
+      )}
+      {selectionMenu && (
+        <button
+          type="button"
+          onClick={addSelectionToConversation}
+          className="fixed z-50 rounded-md border border-border-subtle bg-white px-3 py-2 text-xs font-medium text-primary shadow-lg"
+          style={{ left: selectionMenu.x, top: selectionMenu.y }}
+        >
+          添加到对话
+        </button>
       )}
     </div>
   )

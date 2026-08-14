@@ -1,14 +1,14 @@
 # Current Architecture
 
-更新时间：2026-06-19
+更新时间：2026-08-13
 
 本文只记录当前仓库真实系统事实，不描述理想化重构方案。新需求、方案、Bug 修复和代码改动前必须先阅读本文。
 
 ## 系统定位
 
-NoteMeld 是本地优先的 AI 知识工作台。它把网页、本地文件、多平台视频、音频和 AI 对话加工为结构化 Markdown 笔记，并把每篇笔记继续抽取为 Wiki 知识包，供图谱、检索、问答和 MCP 工具复用。
+NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译知识，人验证和消费。它把网页、本地文件、多平台视频、音频和 AI 对话加工为结构化 Markdown 笔记，并把每篇笔记继续抽取为 Wiki 知识包，供图谱、检索、问答和 MCP 工具复用。
 
-产品路线不是传统“先堆原文再临时检索”的 RAG，而是 Wiki-First Retrieval：先沉淀结构化知识层，再检索和引用。
+产品路线不是传统"先堆原文再临时检索"的 RAG，也不是"人手动整理"的传统 PKM，而是 Wiki-First Retrieval：AI 先编译结构化知识层，人再验证、检索和引用。
 
 ## 主要模块
 
@@ -98,6 +98,85 @@ Wiki 文件位于 `note_results/wiki/`：
 - MCP 是 FastAPI 路由，不是独立 daemon。NoteMeld 退出时 MCP 随后端停止。
 - 本地请求默认免 token；远程或强制配置时使用 `NOTEMELD_MCP_TOKEN` Bearer Token。
 - MCP 工具包括 `generate_note`、`get_task`、`get_note`、`list_models`、导入/搜索/读取笔记和 Wiki 页面。
+
+### Agent free-chat 渐进式能力路由
+
+- `AGENT_CHAT_ENABLED=true` 时，free-chat 首轮不再预执行完整 `WikiSearch`；只读取并缓存 `wiki/graph.json` 的节点、社区和名称元数据，形成最多 1200 字符的 L0 能力地图。
+- Agent 初始只注册 `capability_discover`、`capability_describe`、`capability_invoke` 三个固定元工具。Wiki、builtin、memory、workspace、Skill 和第三方 MCP 都以带命名空间的 capability id 进入请求级 `CapabilityRegistry`。
+- L1 只返回候选名称与摘要；L2 只展开选中能力的 schema；L3 才执行 Wiki 搜索/页面读取、Skill 或 MCP 工具。L3 Wiki 结果动态写回原有 `sources` 列表。
+- 第三方 MCP 只读取 `enabled=true` 的 server 配置；L0/L1 不连接 server，L2/L3 才执行单 server 工具发现，请求完成、异常或 SSE 断开时关闭 adapter。
+- 同一请求内对同一 MCP server 的并行 L2/L3 发现通过 server 级异步锁合并为一次；设置 API 统一移除 auth 并把 headers/env 值替换为 `***`，编辑时由后端恢复已有凭证。
+- `use_wiki=false` 同时禁止注册和执行 Wiki capability。`AGENT_CHAT_ENABLED=false` 的 legacy free-chat 仍按原行为预取 Wiki，用于兼容和回滚。
+
+### 主动学习空间链路
+
+- 主动学习空间是会话工作区中的持久化知识产物，不修改全局 `wiki/graph.json`。领域对象由 `models/learning_canvas.py` 定义，完整状态写入 `workspaces/{conversation_id}/canvases/{canvas_id}.json`，会话消息只保存 `canvas_id`、目标、状态和节点数等轻量索引。
+- `LearningCanvasService` 固定先检索本地 Wiki；arXiv 与 GitHub 是每次学习构建都启用的基线来源，不由 Settings 开关。只有 Tavily 已配置 key，或 SearXNG 已配置 endpoint 时才自动追加普通 Web。外部 provider 独立失败时保留成功结果；只要本地内容可用，画布会以 `blocked_external` 显示外部缺口而不清空已有内容。
+- 学术与 GitHub 搜索结果在 V1 中是带类型和来源 URL 的候选证据，不自动写入 Wiki，也不自动采集全文。后续采集/编译必须经过用户确认并复用现有长任务能力。
+- `LearningSessionService` 管理 `unknown → exposed → learning → provisional → mastered`。展示学习单元只产生 `exposed`；通过 recall/explain 与 apply/transfer 后进入 `provisional`，至少 48 小时后的 review 再次通过才进入 `mastered`。
+- Canvas 的 PATCH、start unit 和 evidence 提交均由 `LearningCanvasStore.update()` 在同一路径锁内完成完整 load→mutate→原子 replace，避免并发证据或用户覆盖字段互相丢失。
+- free-chat 的请求级 `CapabilityRegistry` 仍以 `learning:*` 命名空间渐进披露四个能力：构建、读取/恢复最近画布、开始学习单元、提交学习证据。首页“学习”标签则是确定性入口：它不等待模型选择工具，直接调用 canvas API。`learn` 只是前端提交意图，持久会话继续使用 `mode=chat`，不新增 SQLite 枚举。
+- 画布创建后写入一条 compact `learning_canvas` 消息，包含目标、节点数、来源类型、推荐起点和引导，不包含完整 nodes。对话流渲染该摘要；HomePage 从最新消息恢复 `canvas_id`，把完整 Sigma 图、路径、当前单元和复习队列放到右侧学习面板。若同会话已有笔记，右侧可以在“学习 / 笔记”间切换。
+- 前端同步等待多来源研究完成时不设置比 provider 总预算更短的固定超时；学习构建互斥保存在共享 task store，跨 composer 挂载仍生效。canvas API 返回成功是事务成功边界，后续消息 patch、会话 reload 或导航失败不得回写成构建失败；只有用户仍停留在发起路径时才自动打开结果会话。
+- 搜索凭证写入本机 `config/research_search.json`。GET 只返回 `*_key_set` 布尔值，画布、日志和 API 响应都不得包含原始密钥。学习卡与设置页都等待 BackendInit ready 后才发请求。
+
+#### 研究笔记白板（2026-08-13 主交互）
+
+- 首页“学习”现在以主动研究而不是课程式教学为主。`ResearchNoteCompiler` 先过滤本地 Wiki 和外部候选，再由所选 LLM 判断是否存在会改变研究对象的重大歧义；有效歧义只返回一个 `clarifying` 问题，不创建 Note。模型不可用、输出非法或证据不足时使用可追溯的确定性研究框架降级。
+- 外部论文、GitHub 仓库和网页是 evidence candidate，不能直接转换为白板节点。compiler 只允许生成 `topic/concept/claim/evidence/conflict/case/question` 节点，并删除不存在于输入证据中的 `source_ids`。
+- 明确目标通过 `NoteImportService` 创建标准研究 Note，复用 `note_results/{task_id}.json`、`note_documents`、向量索引和异步 Wiki contribution；`LearningCanvas.version=2` 通过 `document_task_id` 绑定该 Note。Note Markdown 是正文权威，canvas 的 label/summary/edges 是可重建白板投影缓存。
+- HomePage 继续复用中间对话/右侧内容分栏，右侧在“笔记 / 白板”之间切换。白板首屏只显示图和当前焦点，不再同时倾倒学习路径、掌握度、复习队列和来源墙；version=1 历史画布仍可读取。
+- 白板视图占满右侧切换栏以下的剩余空间，不再套页面级滚动容器。节点默认以紧凑图形和短标签呈现，只有选中节点在画布内出现一张可关闭的摘要浮层；浮层继续复用 `whiteboard_node` 引用进入对话。
+- Markdown 选文与 Sigma 节点都可“添加到对话”。前端 Zustand 最多保存 8 条待发送引用，单条快照最多 2000 字；引用同时写入 user message meta，并通过 free-chat 或 learning create 的 `context_refs` 传入后端。后端重新校验、截断并把它们隔离为“资料而非指令”。
+- `suggested_actions` 分为 `focus` 和 `research`：focus 只派发前端节点聚焦事件，不调用模型；research 只预填研究问题，由用户提交后才触发新研究。
+- NoteImportService 返回成功是研究事务成功边界。之后 canvas 保存或 compact message 写入失败只追加安全的 `projection_save_failed/guide_message_failed`，不得让 API 报研究失败或诱导重复创建 Note；Wiki 状态继续独立演进。
+
+### 模型运行配置链路
+
+- Provider 编辑页的模型区只保留“添加模型”入口和已添加模型列表。居中弹窗一次提交模型名、上下文长度、图像支持和流式支持；不提供已添加模型的编辑弹窗。
+- `model_runtime_catalog.json` 随源码和 PyInstaller sidecar 发布。解析时先做规范化后的精确匹配，再按目录顺序做家族通配；未命中、目录缺失、损坏或 schema 非法时回退 `4096 / false / true`。目录值只是离线建议，不是端点探测结果。
+- `ensure_model_runtime_schema()` 在初始化建表后运行。只有旧 `models` 缺少任一运行字段时，才在同一事务补列并清空 `models` / `model_capabilities`；字段完整时重复启动不清空。补建 `(provider_id, model_name)` 唯一索引也不清空完整 schema 的现有行。
+- 旧 SQLite 合并继续导入 Provider、Note、Conversation、Usage 和任务等数据，但一律跳过 legacy `models` 行，即使旧表已含三个运行字段也不例外；旧模型配置必须由用户在当前弹窗中重新确认并添加。
+- `POST /api/models/defaults` 只返回目录/fallback 建议；`POST /api/models` 必须显式保存三项运行字段。列表和运行时后续读取用户保存行，不用目录理论值或探测缓存覆盖。
+- 模型选择后的 defaults 请求 pending 期间，弹窗同时禁用保存按钮并在保存 handler 内防御；只有当前 request version 能结束 loading。快速切换或关闭会使迟到响应失效，defaults 失败后解除 loading 并允许用户确认 fallback。
+
+## LLM 调用层（notemeld-ai 抽象）
+
+后端 LLM 调用分两层：
+
+- `backend/app/ai/`：notemeld-ai 统一 LLM 抽象层。对外暴露 `Models` 集合（`create_models()`）、`Provider` 抽象、`LLMContext`、`Tool`/`Type` schema、`StreamEvent` 流式事件、`Usage` 收集器和标准化异常。内部通过 `ModelService` 读取 providers/models/model_capabilities 表，按 `provider_id` + `model_name` 解析到具体 Provider（OpenAI 兼容），统一写 usage 记录。
+- `backend/app/gpt/`：旧 GPT 编排层。`UniversalGPT` 负责摘要/合并/checkpoint/retry 等编排逻辑，`GPTFactory.from_config` 是旧工厂入口。
+
+运行时模型解析规则：
+
+- `Models.get_model(provider_id, model_name)` 只能解析 `models` 表中已保存的模型；仅 Provider 存在但模型未添加时返回 `None`。
+- `models.context_window_tokens` / `supports_vision` / `supports_stream` 会装载到运行时 `Model`，并经 `ModelConfig` 透传到 `NotemeldGPT` / `UniversalGPT`。用户保存值是权威；`model_capabilities` 的 vision 探测值不得把保存的 `false` 覆盖为 `true`。
+- `Models.stream()` 对 `supports_stream=false` 的模型只调用一次 Provider `complete()`，再把文本、thinking 和 tool calls 转换为现有 `StreamEvent` 协议；调用方无需分支，且每次 Provider 请求仍只写一条 usage。
+- `Models.stream()` / `Models.complete()` 在 Provider 调用前按已保存的 `context_window_tokens` 构造上下文副本并统一裁剪；估算使用 UTF-8 字节数除以 3 向上取整、每消息固定 overhead 和每图 1200 token reserve。system 与最新 user 必留，tool call/result 成组保留或删除，原会话消息不被改写；必留输入仍超限时抛出可分类的 `ContextBudgetExceededError`。
+- Note/Web/Wiki retry/Research 等 `NotemeldGPT` 编排入口统一通过 `ModelService.build_saved_model_config()` 从保存行构造 `ModelConfig`，避免非主入口落入 `4096/false/true` 兼容默认。
+- `NotemeldGPT.create_chat_completion()` 是含 `image_url` 请求的最终 vision 硬闸门；保存的 `supports_vision=false` 在创建 notemeld-ai Provider 请求前抛出可分类的 `ProviderCapabilityError(capability="vision")`。`model_capabilities` 的探测值不能授权或否决已保存的 vision 运行值。
+
+迁移现状（P0，过渡期）：
+
+- 适配器 `backend/app/gpt/notemeld_gpt.py::NotemeldGPT` 继承 `UniversalGPT`，只 override `create_chat_completion`，内部走 notemeld-ai `Models.complete()`（asyncio.run 包同步调用），保留 retry + phase 3 级回退，返回 OpenAI 形状 response 兼容 `_extract_message_content` 和外部 caller。
+- `LLMContext.timeout` 会进入 OpenAI SDK 请求；Wiki 页面合并沿用 `NOTEMELD_WIKI_MERGE_TIMEOUT_SECONDS`（默认 20 秒），避免迁移后退回 SDK 默认长超时。
+- 所有 chat-completion 调用点已切到 `NotemeldGPT`：`services/chat_service`、`services/note._get_gpt`、`services/web_note._get_gpt`、`services/wiki_page_merger`、`services/summary_refine_engine`、`services/note_style`（模板提取 + image_vlm_analyzer）、`routers/note.retry_wiki_extraction`。
+- `GPTFactory` + `UniversalGPT` 过渡期保留供回滚；`GPTFactory.from_config` 已加 `DeprecationWarning`，至少保留 1 个 Beta 版本不删除。
+- `services/model.py` 的 `list_models` 仍走 `GPTFactory`（非 chat-completion 路径，刻意不迁移）。
+- usage 双写对齐由 `backend/tests/ai/test_provider_compat.py` 覆盖（GPTFactory/UniversalGPT vs notemeld-ai 逐字段断言）；迁移点由 `test_chat_service_migration`、`test_note_generator_migration`、`test_t11_migration` 覆盖。
+- 非流式 `CompleteResult` 除 final `content` 外还保留可选 `thinking` 与真实 `finish_reason`；`NotemeldGPT` 在 OpenAI 形状兼容响应中透传为 `message.reasoning_content` 和 choice `finish_reason`。Wiki 抽取仍优先 final content，仅在 reasoning 中存在可完整解析的 JSON object 时恢复，不向日志或 UI 暴露推理原文。
+
+## 笔记输出格式边界
+
+- 笔记风格的 `output_formats` 是生成与持久化的共同契约：Markdown-only 风格要求模型直接返回裸 Markdown；HTML-only 与 HTML+Markdown 风格才以 HTML skeleton 为一等结构。
+- 视频和网页笔记在写入 `note_results`、`note_documents` 与 Wiki 前共同经过 `services/note_output_normalizer.py`。归一化只剥离“整个文档恰好由单一 html/markdown fence 包裹”的确定性错误（允许前置标准来源引用），正文内部代码块保持原样；真实 HTML 到 Markdown 继续复用 `html_to_markdown`。
+- Wiki 分块提取默认输出预算为 3200 token（可由 `WIKI_ANALYSIS_MAX_TOKENS` 覆盖），同时限制每块实体/概念/论点/证据/关系数量。推理模型没有 final JSON 时区分截断、仅推理、真正空响应和 Provider 网络错误，继续沿用 source-only partial 降级与重试入口。
+- `UniversalGPT` 的笔记与合并分块同时满足 Provider 的 `max_request_bytes`（默认上限仍为 45MB）和模型 token 输入预算；移除超预算图片回退纯文本时会按无图预算重新分块。
+- 视频多源采集保留用户原始 `extras`，网页搜索和有效画面/OCR 文本以 `SummaryInput.user_options.web_search_context/frame_context` 独立进入 weighted pack。map 阶段只发送当前字幕块、用户原始要求和 map 指令；final 阶段才渲染 search/vision 辅助块。
+- `VideoFrameCollector.collect(..., allow_vision=False)` 通过显式 `include_grid_images=False` 抽帧契约直接逐帧走现有 OCR provider，不调用视觉 analyzer，也不分组、拼图或编码 grid/base64 payload；不支持该显式契约的旧 extractor 不会被隐式调用。空 OCR 文本不生成占位行或 vision context。
+- 非视觉直达 OCR 使用稳定 `_frames_ocr` cache；视觉 analyzer 临时失败后的 OCR fallback 不写入视觉稳定 cache，下次视觉收集仍会重试 analyzer。
+- Provider 若仍返回上下文超限，`UniversalGPT` 统一识别结构化 context code、`request (... tokens) exceeds ...`、成对且 `n_prompt_tokens > n_ctx` 的数值、`available/maximum context length|size|window` 等明确形态，以原输入预算 70% 重新分块一次。上下文错误优先于 500/timeout 通用重试分类；重试使用独立 checkpoint key，不删除第一次 checkpoint。第二次同类失败转为 `ContextLimitExceededError(code="context_limit_exceeded")`，日志和用户错误均不记录 Provider 原始 payload。
+- 模型配置 schema 升级和删除模型只处理模型配置；历史 `note_documents`、conversation 和 `note_results` 不依赖模型外键。新 NoteResult 仍由统一 result writer 同步写入任务 JSON、conversation message 和 `note_documents`。
 
 ## 本地运行方式
 

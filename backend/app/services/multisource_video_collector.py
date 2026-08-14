@@ -73,6 +73,7 @@ class MultiSourceVideoCollector:
         frame_timestamps: list[float] | None,
         title: str = "",
         description: str | None = None,
+        allow_vision: bool = True,
     ) -> MultiSourceSummaryBundle:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             web_future = executor.submit(
@@ -101,6 +102,7 @@ class MultiSourceVideoCollector:
                 screenshot=screenshot,
                 grid_size=grid_size,
                 frame_timestamps=frame_timestamps,
+                allow_vision=allow_vision,
             )
 
             web_search = web_future.result()
@@ -179,6 +181,7 @@ class MultiSourceVideoCollector:
         screenshot: bool,
         grid_size: list[int],
         frame_timestamps: list[float] | None,
+        allow_vision: bool,
     ) -> FrameContextResult:
         return self._run_collector(
             task_id=task_id,
@@ -192,6 +195,7 @@ class MultiSourceVideoCollector:
                 screenshot=screenshot,
                 grid_size=grid_size,
                 frame_timestamps=frame_timestamps,
+                allow_vision=allow_vision,
             ),
             fallback=lambda error: FrameContextResult(source="frames", status="failed", mode="disabled", error=error),
         )

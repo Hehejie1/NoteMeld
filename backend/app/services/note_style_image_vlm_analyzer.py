@@ -78,15 +78,6 @@ def _strip_json_fence(raw: str) -> str:
     return text.strip()
 
 
-def _supports_vision_capability(provider_id: str, model_name: str) -> bool | None:
-    from app.db.model_capability_dao import get_model_capability
-
-    row = get_model_capability(provider_id, model_name)
-    if not row:
-        return None
-    return row.get("supports_vision")
-
-
 def _build_structure_prompt(user_instruction: str) -> str:
     extra_instruction = f"\n补充要求：{user_instruction.strip()}" if user_instruction.strip() else ""
     return (
@@ -271,10 +262,6 @@ def analyze_image_with_vlm(
 ) -> dict[str, Any]:
     if not provider_id or not model_name:
         raise ValueError("图片导入需要选择支持图片理解的模型")
-    vision_support = _supports_vision_capability(provider_id, model_name)
-    if vision_support is False:
-        raise ValueError("当前模型不支持图片理解，请更换视觉模型")
-
     from app.services.note import NoteGenerator
 
     gpt = NoteGenerator()._get_gpt(model_name, provider_id)

@@ -39,6 +39,13 @@ from app.models.summary_plan import SummaryPlan  # noqa: E402
 from app.models.transcriber_model import TranscriptResult, TranscriptSegment  # noqa: E402
 from app.renderers.note_renderer import NoteRenderer  # noqa: E402
 from app.services.context_normalizer import ContextNormalizer  # noqa: E402
+from app.services.summary_refine_engine import SummaryRefineEngine  # noqa: E402
+
+# 其他测试文件（如 test_core_note_task_status_api.py）会用 sys.modules.setdefault
+# 注册一个仅含 NoteGenerator/logger 的 app.services.note stub。若不弹出，下面的
+# import 会拿到 stub（无 NOTE_OUTPUT_DIR，NoteGenerator 为空类），导致本测试无法
+# 执行真实的 generate() 逻辑。这里强制弹出 stub，确保加载真实模块。
+sys.modules.pop("app.services.note", None)
 from app.services import note as note_service  # noqa: E402
 
 
@@ -158,6 +165,98 @@ class TestMultiSourceContextContracts(unittest.TestCase):
         self.assertIn("视觉上下文是画面证据", extras)
         self.assertIn("网页搜索只作为外部背景和事实校验", extras)
 
+    def test_refine_map_uses_only_original_user_extras_and_final_gets_auxiliary_context(self):
+        audio_meta = AudioDownloadResult(
+            file_path="/tmp/audio.mp3",
+            title="视频标题",
+            duration=60,
+            cover_url=None,
+            platform="youtube",
+            video_id="v1",
+            raw_info={},
+        )
+        transcript = TranscriptResult(
+            language="zh",
+            full_text="字幕一 字幕二",
+            segments=[
+                TranscriptSegment(start=0, end=1, text="字幕一"),
+                TranscriptSegment(start=1, end=2, text="字幕二"),
+            ],
+        )
+        summary_input = ContextNormalizer().from_video_task(
+            task_id="task-map-final",
+            video_url="https://example.com/video",
+            platform="youtube",
+            audio_meta=audio_meta,
+            transcript=transcript,
+            user_options={
+                "extras": "用户原始要求",
+                "web_search_context": "搜索大上下文" * 500,
+                "frame_context": "画面大上下文" * 500,
+            },
+        )
+        pack = ContextNormalizer().build_weighted_pack(summary_input)
+        plan = SummaryPlan(
+            input_id="task-map-final",
+            output_type="note_markdown",
+            strategy="map_reduce",
+            chunk_policy={"max_segments_per_chunk": 1},
+            context_policy={"final": ["search", "vision"]},
+        )
+
+        captured = []
+
+        class FakeGpt:
+            def summarize(self, source):
+                captured.append(source)
+                return "map result" if source.segment else "# final"
+
+        result = SummaryRefineEngine().run(
+            task_id="task-map-final",
+            title="视频标题",
+            segments=transcript.segments,
+            gpt=FakeGpt(),
+            plan=plan,
+            pack=pack,
+            extras="用户原始要求",
+            video_img_urls=[],
+        )
+
+        self.assertEqual(result.markdown, "# final")
+        map_sources = [source for source in captured if source.segment]
+        final_source = next(source for source in captured if not source.segment)
+        self.assertEqual(len(map_sources), 2)
+        for source in map_sources:
+            self.assertIn("用户原始要求", source.extras)
+            self.assertIn("长内容分块摘要阶段", source.extras)
+            self.assertNotIn("搜索大上下文", source.extras)
+            self.assertNotIn("画面大上下文", source.extras)
+        self.assertIn("搜索大上下文", final_source.extras)
+        self.assertIn("画面大上下文", final_source.extras)
+
+    def test_empty_frame_context_does_not_create_vision_extra(self):
+        generator = note_service.NoteGenerator.__new__(note_service.NoteGenerator)
+        bundle = MultiSourceSummaryBundle(
+            task_id="task-empty-frame",
+            source_url="https://example.com/video",
+            platform="youtube",
+            title="视频标题",
+            audio_meta=None,
+            transcript=None,
+            web_search=WebSearchResult(source="web_search", status="skipped"),
+            frame_context=FrameContextResult(
+                source="frames",
+                status="done",
+                content="",
+                mode="ocr",
+            ),
+        )
+
+        extras = generator._merge_multisource_extras("用户要求", bundle)
+
+        self.assertEqual(extras, "用户要求")
+        self.assertNotIn("视频画面补充上下文", extras)
+
 
 class TestNoteGeneratorMultiSourceIntegration(unittest.TestCase):
     def test_generate_uses_multisource_collector_and_injects_auxiliary_context(self):
@@ -254,8 +353,10 @@ class TestNoteGeneratorMultiSourceIntegration(unittest.TestCase):
         summarize_kwargs = captured["summarize_kwargs"]
         self.assertIs(summarize_kwargs["transcript"], transcript)
         self.assertIn("用户补充", summarize_kwargs["extras"])
-        self.assertIn("搜索资料", summarize_kwargs["extras"])
-        self.assertIn("画面资料", summarize_kwargs["extras"])
+        self.assertEqual(summarize_kwargs["extras"], "用户补充")
+        self.assertEqual(summarize_kwargs["web_search_context"], "搜索资料")
+        self.assertEqual(summarize_kwargs["frame_context"], "画面资料")
+        self.assertFalse(captured["collector_kwargs"]["allow_vision"])
 
         post_process_kwargs = captured["post_process_kwargs"]
         self.assertEqual(post_process_kwargs["video_path"], pathlib.Path("/tmp/video.mp4"))

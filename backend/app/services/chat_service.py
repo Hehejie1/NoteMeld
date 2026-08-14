@@ -1,22 +1,28 @@
 import json
-from datetime import datetime, timezone
-from typing import Optional
-from typing import Generator
+import os
+from typing import AsyncIterator, Optional
 
-from app.gpt.gpt_factory import GPTFactory
-from app.models.model_config import ModelConfig
-from app.services.model import ModelService
-from app.services.provider import ProviderService
+from app.ai import create_models
+from app.ai.provider import LLMContext
+from app.ai.stream import StreamEventType
 from app.services.vector_store import VectorStoreManager
 from app.services.chat_tools import TOOLS, execute_tool
 from app.services.wiki_search import WikiSearch
 from app.services.context_builder import QueryContext, build_query_context
 from app.services.query_intent import build_vector_quotas, classify_query_intent
-from app.services.usage_tracker import record_usage
 from app.utils.logger import get_logger
 from app.utils.storage_paths import note_output_dir
 
 logger = get_logger(__name__)
+
+# P2 feature flag：true 时三函数内部 redirect 到 agent_service。
+# 默认 false（保留旧实现路径，确保现有测试 0 影响）；生产环境通过
+# 环境变量 AGENT_CHAT_ENABLED=true 启用 Agent 路径。
+_AGENT_CHAT_ENABLED = os.getenv("AGENT_CHAT_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 SYSTEM_PROMPT = """你是一个视频笔记问答助手。你拥有以下能力：
 
@@ -108,7 +114,18 @@ def _build_wiki_context(sources: list[dict]) -> str:
     )
 
 
-def _prepare_free_chat_context(question: str, linked_task_id: Optional[str], use_wiki: bool) -> QueryContext:
+def _prepare_free_chat_context(
+    question: str,
+    linked_task_id: Optional[str],
+    use_wiki: bool,
+    *,
+    prefetch_wiki: bool = True,
+) -> QueryContext:
+    """构建 free-chat 上下文。
+
+    ``prefetch_wiki`` 默认保持旧调用方语义；Agent 路径关闭预取，由 L0-L3
+    能力目录决定是否在 L3 执行 Wiki 搜索。
+    """
     intent = classify_query_intent(question)
     note_chunks: list[dict] = []
     if linked_task_id and intent.scope in ("current_note", "mixed"):
@@ -123,7 +140,11 @@ def _prepare_free_chat_context(question: str, linked_task_id: Optional[str], use
             logger.warning(f"关联笔记检索失败，降级为 Wiki/普通聊天: {exc}")
 
     wiki_sources: list[dict] = []
-    if use_wiki and intent.scope in ("global_wiki", "mixed", "current_note"):
+    if (
+        use_wiki
+        and prefetch_wiki
+        and intent.scope in ("global_wiki", "mixed", "current_note")
+    ):
         try:
             wiki_sources = WikiSearch(note_output_dir() / "wiki").search(
                 question,
@@ -138,13 +159,15 @@ def _prepare_free_chat_context(question: str, linked_task_id: Optional[str], use
 
 
 def _resolve_asset_context(conversation_id: Optional[str], asset_content: Optional[str]) -> str:
-    normalized_content = (asset_content or "").strip()
+    from app.services.conversation_context_refs import split_asset_and_context_refs
+
+    normalized_content, rendered_refs = split_asset_and_context_refs(asset_content)
     if normalized_content:
-        return normalized_content
+        return "\n\n".join(part for part in (normalized_content, rendered_refs) if part)
 
     normalized_conversation_id = (conversation_id or "").strip()
     if not normalized_conversation_id:
-        return ""
+        return rendered_refs
 
     try:
         from app.services.conversation_asset_store import ConversationAssetStore
@@ -152,10 +175,10 @@ def _resolve_asset_context(conversation_id: Optional[str], asset_content: Option
         assets = ConversationAssetStore().list_assets(normalized_conversation_id)
     except Exception as exc:
         logger.warning(f"读取会话资产失败，降级为空上下文: {exc}")
-        return ""
+        return rendered_refs
 
     if not assets:
-        return ""
+        return rendered_refs
 
     rendered_assets: list[str] = []
     for item in assets[-3:]:
@@ -164,10 +187,10 @@ def _resolve_asset_context(conversation_id: Optional[str], asset_content: Option
         if not content:
             continue
         rendered_assets.append(f"# {title}\n{content}")
-    return "\n\n".join(rendered_assets)
+    return "\n\n".join([*rendered_assets, *([rendered_refs] if rendered_refs else [])])
 
 
-def free_chat(
+async def free_chat(
     question: str,
     history: list[dict],
     provider_id: str,
@@ -177,6 +200,19 @@ def free_chat(
     use_wiki: bool = True,
     asset_content: Optional[str] = None,
 ) -> dict:
+    if _AGENT_CHAT_ENABLED:
+        from app.agent.agent_service import run_free_chat
+
+        return await run_free_chat(
+            question=question,
+            history=history,
+            provider_id=provider_id,
+            model_name=model_name,
+            conversation_id=conversation_id,
+            linked_task_id=linked_task_id,
+            use_wiki=use_wiki,
+            asset_content=asset_content,
+        )
     query_context = _prepare_free_chat_context(question, linked_task_id, use_wiki)
     resolved_asset_content = _resolve_asset_context(conversation_id, asset_content)
 
@@ -194,55 +230,25 @@ def free_chat(
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": question})
 
-    provider = ProviderService.get_provider_by_id(provider_id)
-    if not provider:
+    models = create_models()
+    model = models.get_model(provider_id, model_name)
+    if model is None:
         raise ValueError(f"未找到模型供应商: {provider_id}")
 
-    config = ModelConfig(
-        api_key=ModelService._resolve_api_key(provider),
-        base_url=provider["base_url"],
-        model_name=model_name,
-        provider=provider["id"],
-        name=provider["name"],
+    ctx = LLMContext(messages=messages, temperature=0.7)
+    # usage 由 Models.complete() 自动写入（phase=free_chat, task_id=linked_task_id）
+    result = await models.complete(
+        model,
+        ctx,
+        options={"usage_context": {
+            "phase": "free_chat",
+            "task_id": linked_task_id,
+        }},
     )
-    gpt = GPTFactory.from_config(config)
-    started_at = datetime.now(timezone.utc)
-    try:
-        response = gpt.client.chat.completions.create(
-            model=gpt.model,
-            messages=messages,
-            temperature=0.7,
-        )
-        finished_at = datetime.now(timezone.utc)
-        record_usage(
-            provider_id=provider["id"],
-            provider_name=provider["name"],
-            model_name=model_name,
-            phase="free_chat",
-            task_id=linked_task_id,
-            response=response,
-            status="success",
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-        return {"answer": response.choices[0].message.content or "", "sources": query_context.sources}
-    except Exception as exc:
-        finished_at = datetime.now(timezone.utc)
-        record_usage(
-            provider_id=provider["id"],
-            provider_name=provider["name"],
-            model_name=model_name,
-            phase="free_chat",
-            task_id=linked_task_id,
-            status="failed",
-            error_message=str(exc)[:1000],
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-        raise
+    return {"answer": result.content, "sources": query_context.sources}
 
 
-def free_chat_stream(
+async def free_chat_stream(
     question: str,
     history: list[dict],
     provider_id: str,
@@ -251,7 +257,22 @@ def free_chat_stream(
     linked_task_id: Optional[str] = None,
     use_wiki: bool = True,
     asset_content: Optional[str] = None,
-) -> Generator[dict, None, None]:
+) -> AsyncIterator[dict]:
+    if _AGENT_CHAT_ENABLED:
+        from app.agent.agent_service import run_free_chat_stream
+
+        async for event in run_free_chat_stream(
+            question=question,
+            history=history,
+            provider_id=provider_id,
+            model_name=model_name,
+            conversation_id=conversation_id,
+            linked_task_id=linked_task_id,
+            use_wiki=use_wiki,
+            asset_content=asset_content,
+        ):
+            yield event
+        return
     query_context = _prepare_free_chat_context(question, linked_task_id, use_wiki)
     resolved_asset_content = _resolve_asset_context(conversation_id, asset_content)
 
@@ -269,73 +290,36 @@ def free_chat_stream(
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": question})
 
-    provider = ProviderService.get_provider_by_id(provider_id)
-    if not provider:
+    models = create_models()
+    model = models.get_model(provider_id, model_name)
+    if model is None:
         raise ValueError(f"未找到模型供应商: {provider_id}")
 
-    config = ModelConfig(
-        api_key=ModelService._resolve_api_key(provider),
-        base_url=provider["base_url"],
-        model_name=model_name,
-        provider=provider["id"],
-        name=provider["name"],
-    )
-    gpt = GPTFactory.from_config(config)
-    started_at = datetime.now(timezone.utc)
+    ctx = LLMContext(messages=messages, temperature=0.7)
+    # usage 由 Models.stream() 自动写入（成功写一条，失败写一条 status=failed）
     full_answer = ""
-    last_chunk = None
-    stream = gpt.client.chat.completions.create(
-        model=gpt.model,
-        messages=messages,
-        temperature=0.7,
-        stream=True,
-    )
-
-    try:
-        for chunk in stream:
-            last_chunk = chunk
-            try:
-                delta = chunk.choices[0].delta.content or ""
-            except Exception:
-                delta = ""
+    async for event in models.stream(
+        model,
+        ctx,
+        options={"usage_context": {
+            "phase": "free_chat_stream",
+            "task_id": linked_task_id,
+        }},
+    ):
+        if event.type == StreamEventType.TEXT_DELTA:
+            delta = event.delta or ""
             if not delta:
                 continue
             full_answer += delta
             yield {"type": "delta", "content": delta}
-
-        finished_at = datetime.now(timezone.utc)
-        stream_usage = getattr(stream, "usage", None)
-        if stream_usage is None and last_chunk is not None:
-            stream_usage = getattr(last_chunk, "usage", None)
-        record_usage(
-            provider_id=provider["id"],
-            provider_name=provider["name"],
-            model_name=model_name,
-            phase="free_chat_stream",
-            task_id=linked_task_id,
-            response_usage=stream_usage,
-            status="success",
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-        yield {"type": "done", "answer": full_answer, "sources": query_context.sources}
-    except Exception as exc:
-        finished_at = datetime.now(timezone.utc)
-        record_usage(
-            provider_id=provider["id"],
-            provider_name=provider["name"],
-            model_name=model_name,
-            phase="free_chat_stream",
-            task_id=linked_task_id,
-            status="failed",
-            error_message=str(exc)[:1000],
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-        raise
+        elif event.type == StreamEventType.DONE:
+            yield {"type": "done", "answer": full_answer, "sources": query_context.sources}
+        elif event.type == StreamEventType.ERROR:
+            # usage 已由 Models.stream() 写为 status=failed
+            raise event.error
 
 
-def chat(
+async def chat(
     task_id: str,
     question: str,
     history: list[dict],
@@ -349,6 +333,16 @@ def chat(
     3. 如果 LLM 调用了工具，执行工具并将结果返回给 LLM
     4. 循环直到 LLM 给出最终回答
     """
+    if _AGENT_CHAT_ENABLED:
+        from app.agent.agent_service import run_chat
+
+        return await run_chat(
+            task_id=task_id,
+            question=question,
+            history=history,
+            provider_id=provider_id,
+            model_name=model_name,
+        )
     vector_store = VectorStoreManager()
 
     # 1. 检索初始上下文
@@ -365,121 +359,73 @@ def chat(
 
     messages.append({"role": "user", "content": question})
 
-    # 3. 获取 LLM client
-    provider = ProviderService.get_provider_by_id(provider_id)
-    if not provider:
+    # 3. 获取 Model 对象
+    models = create_models()
+    model = models.get_model(provider_id, model_name)
+    if model is None:
         raise ValueError(f"未找到模型供应商: {provider_id}")
-
-    config = ModelConfig(
-        api_key=ModelService._resolve_api_key(provider),
-        base_url=provider["base_url"],
-        model_name=model_name,
-        provider=provider["id"],
-        name=provider["name"],
-    )
-    gpt = GPTFactory.from_config(config)
 
     logger.info(f"Chat: task_id={task_id}, model={model_name}")
 
     # 4. Tool calling 循环（最多 3 轮）
     max_rounds = 3
     for round_i in range(max_rounds):
-        started_at = datetime.now(timezone.utc)
-        try:
-            response = gpt.client.chat.completions.create(
-                model=gpt.model,
-                messages=messages,
-                tools=TOOLS,
-                temperature=0.7,
-            )
-            finished_at = datetime.now(timezone.utc)
-            record_usage(
-                provider_id=provider["id"],
-                provider_name=provider["name"],
-                model_name=model_name,
-                phase="chat_tool_call",
-                task_id=task_id,
-                response=response,
-                status="success",
-                started_at=started_at,
-                finished_at=finished_at,
-                request_meta={"round": round_i + 1, "has_tools": True},
-            )
-        except Exception as exc:
-            finished_at = datetime.now(timezone.utc)
-            record_usage(
-                provider_id=provider["id"],
-                provider_name=provider["name"],
-                model_name=model_name,
-                phase="chat_tool_call",
-                task_id=task_id,
-                status="failed",
-                error_message=str(exc)[:1000],
-                started_at=started_at,
-                finished_at=finished_at,
-                request_meta={"round": round_i + 1, "has_tools": True},
-            )
-            raise
-
-        msg = response.choices[0].message
+        # usage 由 Models.complete() 自动写入（phase=chat_tool_call）
+        ctx = LLMContext(messages=messages, tools=TOOLS, temperature=0.7)
+        result = await models.complete(
+            model,
+            ctx,
+            options={"usage_context": {
+                "phase": "chat_tool_call",
+                "task_id": task_id,
+                "request_meta": {"round": round_i + 1, "has_tools": True},
+            }},
+        )
 
         # 没有工具调用，直接返回
-        if not msg.tool_calls:
-            return {"answer": msg.content or "", "sources": sources}
+        if not result.tool_calls:
+            return {"answer": result.content, "sources": sources}
 
-        # 处理工具调用
-        messages.append(msg)
+        # 处理工具调用：将 assistant 消息（含 tool_calls）追加到 messages
+        messages.append({
+            "role": "assistant",
+            "content": result.content or None,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                }
+                for tc in result.tool_calls
+            ],
+        })
 
-        for tool_call in msg.tool_calls:
-            fn_name = tool_call.function.name
+        for tc in result.tool_calls:
+            fn_name = tc["name"]
             try:
-                fn_args = json.loads(tool_call.function.arguments)
+                fn_args = json.loads(tc["arguments"])
             except json.JSONDecodeError:
                 fn_args = {}
 
             logger.info(f"Tool call [{round_i+1}/{max_rounds}]: {fn_name}({fn_args})")
 
-            result = execute_tool(task_id, fn_name, fn_args)
+            tool_result = execute_tool(task_id, fn_name, fn_args)
 
             messages.append({
                 "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
+                "tool_call_id": tc["id"],
+                "content": tool_result,
             })
 
     # 超过最大轮次，做最后一次不带 tools 的调用
-    started_at = datetime.now(timezone.utc)
-    try:
-        response = gpt.client.chat.completions.create(
-            model=gpt.model,
-            messages=messages,
-            temperature=0.7,
-        )
-        finished_at = datetime.now(timezone.utc)
-        record_usage(
-            provider_id=provider["id"],
-            provider_name=provider["name"],
-            model_name=model_name,
-            phase="chat_final",
-            task_id=task_id,
-            response=response,
-            status="success",
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-    except Exception as exc:
-        finished_at = datetime.now(timezone.utc)
-        record_usage(
-            provider_id=provider["id"],
-            provider_name=provider["name"],
-            model_name=model_name,
-            phase="chat_final",
-            task_id=task_id,
-            status="failed",
-            error_message=str(exc)[:1000],
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-        raise
-
-    return {"answer": response.choices[0].message.content or "", "sources": sources}
+    # usage 由 Models.complete() 自动写入（phase=chat_final）
+    ctx = LLMContext(messages=messages, temperature=0.7)
+    result = await models.complete(
+        model,
+        ctx,
+        options={"usage_context": {
+            "phase": "chat_final",
+            "task_id": task_id,
+        }},
+    )
+    return {"answer": result.content, "sources": sources}

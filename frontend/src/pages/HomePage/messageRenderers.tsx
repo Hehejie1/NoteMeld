@@ -1,7 +1,8 @@
 import { type FC } from 'react'
-import { AlertCircle, Bot, CheckCircle2, Copy, Loader2, RotateCcw, User } from 'lucide-react'
+import { AlertCircle, BookOpen, Bot, CheckCircle2, Copy, Loader2, RotateCcw, User } from 'lucide-react'
 import { toast } from 'sonner'
 import ChatMarkdown from '@/pages/HomePage/components/ChatMarkdown'
+import TaskCard, { type TaskCardState, type TaskCardStatus } from '@/pages/HomePage/components/TaskCard'
 import { parseMessageContent } from '@/pages/HomePage/conversationHelpers'
 import { getCollectorSubStatuses, getProgressSteps, getStepIndex, type CollectorTimings } from '@/pages/HomePage/progressSteps'
 import PlatformLinkCard from '@/pages/HomePage/components/PlatformLinkCard'
@@ -10,11 +11,13 @@ import type { ConversationMessage, ConversationSource, TaskStatus } from '@/stor
 
 interface ConversationMessageRendererProps {
   message: ConversationMessage
+  conversationId?: string
   compact?: boolean
   taskPlatform?: string
   onRetry?: (taskId?: string) => void
   onRetryChat?: () => void
   onSelectNoteResult?: (taskId: string) => void
+  onCancelTask?: (cardId: string) => void
 }
 
 const getUserInputParts = (message: ConversationMessage) => {
@@ -153,7 +156,11 @@ const AssistantTextBubble: FC<ConversationMessageRendererProps> = ({
             <ChatMarkdown content={assistantStreamingText} />
           )
         )}
-        {!isUser && message.error && onRetryChat && (
+        {!isUser
+          && message.error
+          && onRetryChat
+          && message.meta?.kind !== 'learning_build_progress'
+          && (
           <button
             onClick={onRetryChat}
             type="button"
@@ -179,6 +186,93 @@ const AssistantTextBubble: FC<ConversationMessageRendererProps> = ({
           <User className="h-4 w-4" />
         </div>
       )}
+    </div>
+  )
+}
+
+const learningSourceLabels: Record<string, string> = {
+  local_wiki: '本地知识',
+  local_note: '本地笔记',
+  academic: '学术论文',
+  github: 'GitHub',
+  web: '普通网页',
+}
+
+const LearningCanvasSummaryBubble: FC<ConversationMessageRendererProps> = ({ message }) => {
+  const goal = typeof message.meta?.goal === 'string' ? message.meta.goal : '学习主题'
+  const nodeCount = typeof message.meta?.node_count === 'number' ? message.meta.node_count : null
+  const sourceTypes = Array.isArray(message.meta?.source_types)
+    ? message.meta.source_types.map(item => String(item))
+    : []
+  const sourceSummary = sourceTypes
+    .map(sourceType => learningSourceLabels[sourceType] || sourceType)
+    .join('、')
+  const clarification = message.meta?.clarification && typeof message.meta.clarification === 'object'
+    ? message.meta.clarification as { question?: string; options?: Array<{ id?: string; label?: string; description?: string }> }
+    : null
+  const suggestedActions = Array.isArray(message.meta?.suggested_actions)
+    ? message.meta.suggested_actions as Array<{ id?: string; kind?: string; label?: string; node_id?: string; prompt?: string }>
+    : []
+  const canvasId = typeof message.meta?.canvas_id === 'string' ? message.meta.canvas_id : ''
+
+  const handleAction = (action: { kind?: string; node_id?: string; prompt?: string }) => {
+    if (action.kind === 'focus' && action.node_id) {
+      window.dispatchEvent(new CustomEvent('notemeld:focus-research-node', {
+        detail: { canvasId, nodeId: action.node_id },
+      }))
+      return
+    }
+    if (action.kind === 'research' && action.prompt) {
+      window.dispatchEvent(new CustomEvent('notemeld:prefill-research', {
+        detail: { prompt: action.prompt },
+      }))
+    }
+  }
+
+  return (
+    <div className="flex w-full min-w-0 items-start gap-2 md:gap-3">
+      <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary md:flex">
+        <BookOpen className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 max-w-[620px] rounded-xl rounded-tl-sm border border-primary/15 bg-white px-4 py-3 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-semibold text-on-surface">{clarification ? '请先确认研究对象' : '研究空间已生成'}</span>
+          {nodeCount !== null && (
+            <span className="rounded-full bg-primary-light px-2 py-0.5 text-[11px] text-primary">
+              {nodeCount} 个节点
+            </span>
+          )}
+        </div>
+        <div className="mt-1 text-[12px] font-medium text-on-surface">{goal}</div>
+        <div className="mt-2 text-[13px] leading-6 text-on-surface-variant">{clarification?.question || message.content || '研究概览已准备好，可在右侧切换笔记和白板。'}</div>
+        {clarification?.options?.length ? (
+          <div className="mt-3 grid gap-2">
+            {clarification.options.map(option => (
+              <button
+                key={option.id || option.label}
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('notemeld:prefill-research', { detail: { prompt: `${goal}，具体指${option.label}` } }))}
+                className="rounded-lg border border-border-subtle px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-primary-light/40"
+              >
+                <div className="text-xs font-medium text-on-surface">{option.label}</div>
+                {option.description && <div className="mt-0.5 text-[11px] text-on-surface-variant">{option.description}</div>}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {suggestedActions.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {suggestedActions.slice(0, 4).map(action => (
+              <button key={action.id || action.label} type="button" onClick={() => handleAction(action)} className="rounded-full border border-primary/20 bg-primary-light/40 px-3 py-1 text-[11px] font-medium text-primary hover:bg-primary-light">
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {sourceSummary && (
+          <div className="mt-2 text-[11px] text-on-surface-variant/80">资料来源：{sourceSummary}</div>
+        )}
+      </div>
     </div>
   )
 }
@@ -446,5 +540,32 @@ export const ConversationMessageRenderer: FC<ConversationMessageRendererProps> =
     return <NoteResultBubble {...props} />
   }
 
+  if (message.message_type === 'task_card') {
+    return <TaskCardBubble {...props} />
+  }
+
+  if (message.message_type === 'learning_canvas') {
+    return <LearningCanvasSummaryBubble {...props} />
+  }
+
   return <AssistantTextBubble {...props} />
+}
+
+const TaskCardBubble: FC<ConversationMessageRendererProps> = ({ message, onCancelTask }) => {
+  const meta = message.meta || {}
+  const validStatuses: TaskCardStatus[] = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'CANCELED']
+  const rawStatus = typeof meta.status === 'string' ? meta.status : 'PENDING'
+  const status: TaskCardStatus = validStatuses.includes(rawStatus as TaskCardStatus)
+    ? (rawStatus as TaskCardStatus)
+    : 'PENDING'
+  const card: TaskCardState = {
+    card_id: typeof meta.card_id === 'string' ? meta.card_id : message.id,
+    kind: typeof meta.kind === 'string' ? meta.kind : '',
+    task_id: typeof meta.task_id === 'string' ? meta.task_id : undefined,
+    status,
+    title: typeof meta.title === 'string' ? meta.title : message.content || '长任务',
+    progress: typeof meta.progress === 'number' ? meta.progress : null,
+    details: typeof meta.details === 'string' ? meta.details : undefined,
+  }
+  return <TaskCard card={card} onCancel={onCancelTask} />
 }

@@ -1,0 +1,156 @@
+{
+  "version": "1.0",
+  "description": "NoteMeld 回归测试集 — 沉淀线上真实 Bug，形成不可清除的回归用例。字段规范见 spec/test_set_spec.json，机制说明见 regression/README.md。",
+  "cases": [
+    {
+      "id": "reg_20260729_001",
+      "source_ticket": "用户反馈 2026-07-29：Mac 系统 API Key 配置总结出现 Windows 图形界面幻觉",
+      "bug_type": "hallucination",
+      "category": "hallucination",
+      "input": {
+        "text": "本节讲解在 macOS 中申请并配置大模型 API Key 的方法，重点是通过终端识别 Shell 类型，并将 DASHSCOPE_API_KEY 写入对应的环境变量配置文件。Mac 配置 API Key 的核心流程：1) 打开阿里云百炼 API 文档；2) 定位到配置 API Key 部分；3) 切换到 macOS 标签；4) 运行 echo $SHELL 确认 Shell 类型（zsh 或 bash）；5) 按类型执行对应命令将 API Key 追加写入 ~/.zshrc 或 ~/.bash_profile；6) 执行 source 让配置立即生效。视频中讲师的 Mac 使用 zsh，配置文件为 ~/.zshrc。",
+        "source_type": "transcript",
+        "evidence": "vector_db/note_results/bc0977f7-c472-4511-917c-19c9cfdf8a79_transcript.json",
+        "duration_seconds": 180
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "required_sections": ["视频主旨", "关键片段"],
+        "forbidden_claims": [
+          "视频讲解了 Windows 环境变量的图形界面配置步骤",
+          "讲师同时演示了 macOS 和 Windows 的图形界面配置",
+          "可以通过系统属性窗口配置 macOS 的环境变量"
+        ],
+        "required_citations": ["*Content-[00:15]", "*Content-[00:38]"],
+        "required_screenshot_slots": ["00:15", "00:38"]
+      },
+      "evaluation": {
+        "metrics": ["hallucination_rate", "section_recall", "citation_precision"]
+      },
+      "source": {
+        "origin": "user_reported_bug",
+        "collected_by": "product",
+        "collected_at": "2026-07-29T10:00:00Z",
+        "annotator_count": 2,
+        "annotation_agreement": 0.85
+      }
+    },
+    {
+      "id": "reg_20260729_002",
+      "source_ticket": "产品复盘 2026-07-29：video_analysis 模板下「关键片段」章节偶发缺失（3 段变 2 段）",
+      "bug_type": "missing_section",
+      "category": "template_adherence",
+      "input": {
+        "text": "本视频讲解如何通过 LangChain V1.2 最新版课程中的 API Key 配置方法。内容包括：1) 阿里云百炼文档的 macOS 配置说明；2) 使用 echo $SHELL 检查 Shell 类型；3) Zsh 环境下写入 ~/.zshrc；4) Bash 环境下写入 ~/.bash_profile；5) 执行 source 生效。",
+        "source_type": "transcript",
+        "evidence": "vector_db/note_results/a85a1e55-7090-4755-a5d6-aec3b6800379_transcript.json",
+        "duration_seconds": 240
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "required_sections": ["视频主旨", "关键片段", "AI 总结"],
+        "forbidden_claims": [],
+        "required_citations": ["*Content-[00:00]", "*Content-[00:15]"],
+        "required_screenshot_slots": ["00:15"]
+      },
+      "evaluation": {
+        "metrics": ["section_recall", "template_adherence"]
+      },
+      "source": {
+        "origin": "user_reported_bug",
+        "collected_by": "product",
+        "collected_at": "2026-07-29T10:30:00Z",
+        "annotator_count": 2,
+        "annotation_agreement": 0.90
+      }
+    },
+    {
+      "id": "reg_20260729_003",
+      "source_ticket": "产品复盘 2026-07-29：章节要求必须带截图时，模型经常漏掉 screenshot",
+      "bug_type": "screenshot_missing",
+      "category": "template_adherence",
+      "input": {
+        "text": "视频讲解了阿里云百炼 API Key 配置的完整流程，包括 macOS 环境下的 Zsh 与 Bash 两种 Shell 类型的判断与配置方法。",
+        "source_type": "transcript",
+        "evidence": "vector_db/note_results/a85a1e55-7090-4755-a5d6-aec3b6800379_markdown.md",
+        "duration_seconds": 180
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "required_sections": ["视频主旨", "关键片段"],
+        "forbidden_claims": [],
+        "required_citations": [],
+        "required_screenshot_slots": ["00:15", "00:38", "01:28"]
+      },
+      "evaluation": {
+        "metrics": ["template_adherence"]
+      },
+      "source": {
+        "origin": "user_reported_bug",
+        "collected_by": "product",
+        "collected_at": "2026-07-29T11:00:00Z",
+        "annotator_count": 2,
+        "annotation_agreement": 0.80
+      }
+    },
+    {
+      "id": "reg_20260729_004",
+      "source_ticket": "产品复盘 2026-07-29：行动清单模板把教程写成了资讯摘要（wrong_template）",
+      "bug_type": "wrong_template",
+      "category": "template_adherence",
+      "input": {
+        "text": "教程讲解如何使用 Python 进行数据分析。包括：安装 Python 和 NumPy/Pandas/Matplotlib；读取 CSV 文件；数据清洗；统计分析；可视化；销售数据分析案例。",
+        "source_type": "raw_text",
+        "evidence": "",
+        "duration_seconds": 600
+      },
+      "expected": {
+        "template_id": "action_list",
+        "required_sections": ["行动项", "验收标准"],
+        "forbidden_claims": [],
+        "required_citations": [],
+        "required_screenshot_slots": []
+      },
+      "evaluation": {
+        "metrics": ["template_adherence", "section_recall"]
+      },
+      "source": {
+        "origin": "user_reported_bug",
+        "collected_by": "product",
+        "collected_at": "2026-07-29T11:30:00Z",
+        "annotator_count": 2,
+        "annotation_agreement": 0.88
+      }
+    },
+    {
+      "id": "reg_20260729_005",
+      "source_ticket": "产品复盘 2026-07-29：总结删除了原视频的关键步骤（content_deletion）",
+      "bug_type": "content_deletion",
+      "category": "subtitle_recall",
+      "input": {
+        "text": "Mac 配置 API Key 需要：1) 打开阿里云百炼文档；2) 切换到 macOS 标签；3) 运行 echo $SHELL 确认 Shell；4) 追加写入 ~/.zshrc；5) 执行 source 生效。",
+        "source_type": "transcript",
+        "evidence": "vector_db/note_results/bc0977f7-c472-4511-917c-19c9cfdf8a79_transcript.json",
+        "duration_seconds": 180
+      },
+      "expected": {
+        "template_id": "knowledge_card",
+        "required_sections": ["核心结论", "关键发现"],
+        "keywords_required": ["echo $SHELL", "zshrc", "source", "DASHSCOPE_API_KEY", "bash_profile"],
+        "forbidden_claims": [],
+        "required_citations": [],
+        "required_screenshot_slots": []
+      },
+      "evaluation": {
+        "metrics": ["subtitle_recall"]
+      },
+      "source": {
+        "origin": "user_reported_bug",
+        "collected_by": "product",
+        "collected_at": "2026-07-29T12:00:00Z",
+        "annotator_count": 2,
+        "annotation_agreement": 0.82
+      }
+    }
+  ]
+}

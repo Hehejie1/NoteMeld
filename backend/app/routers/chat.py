@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Any, Optional
 import json
 
 from fastapi import APIRouter, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
 from app.services.chat_service import chat as chat_service
@@ -11,6 +11,7 @@ from app.services.chat_service import free_chat_stream as free_chat_stream_servi
 from app.services.vector_store import VectorStoreManager
 from app.utils.logger import get_logger
 from app.utils.response import ResponseWrapper as R
+from app.services.conversation_context_refs import merge_context_refs_with_asset
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,11 @@ class FreeAskRequest(BaseModel):
     linked_task_id: Optional[str] = None
     use_wiki: bool = True
     asset_content: Optional[str] = None
+    context_refs: list[dict[str, Any]] = Field(default_factory=list)
+
+
+def _merge_context_refs(asset_content: Optional[str], context_refs: list[dict[str, Any]]) -> Optional[str]:
+    return merge_context_refs_with_asset(asset_content, context_refs)
 
 
 def _do_index(task_id: str):
@@ -99,11 +105,11 @@ def chat_status(task_id: str):
 
 
 @router.post("/chat/ask")
-def ask_question(data: AskRequest):
+async def ask_question(data: AskRequest):
     """基于笔记内容的 RAG 问答。"""
     try:
         history = [{"role": m.role, "content": m.content} for m in data.history]
-        result = chat_service(
+        result = await chat_service(
             task_id=data.task_id,
             question=data.question,
             history=history,
@@ -119,11 +125,11 @@ def ask_question(data: AskRequest):
 
 
 @router.post("/chat/free")
-def ask_free_question(data: FreeAskRequest):
+async def ask_free_question(data: FreeAskRequest):
     """普通聊天，可选关联笔记 RAG 和 llm wiki 上下文。"""
     try:
         history = [{"role": m.role, "content": m.content} for m in data.history]
-        result = free_chat_service(
+        result = await free_chat_service(
             question=data.question,
             history=history,
             provider_id=data.provider_id,
@@ -131,7 +137,7 @@ def ask_free_question(data: FreeAskRequest):
             conversation_id=data.conversation_id,
             linked_task_id=data.linked_task_id,
             use_wiki=data.use_wiki,
-            asset_content=data.asset_content,
+            asset_content=_merge_context_refs(data.asset_content, data.context_refs),
         )
         return R.success(data=result)
     except ValueError as e:
@@ -142,13 +148,13 @@ def ask_free_question(data: FreeAskRequest):
 
 
 @router.post("/chat/free/stream")
-def ask_free_question_stream(data: FreeAskRequest):
+async def ask_free_question_stream(data: FreeAskRequest):
     """普通聊天流式返回。"""
 
-    def event_generator():
+    async def event_generator():
         try:
             history = [{"role": m.role, "content": m.content} for m in data.history]
-            for event in free_chat_stream_service(
+            async for event in free_chat_stream_service(
                 question=data.question,
                 history=history,
                 provider_id=data.provider_id,
@@ -156,7 +162,7 @@ def ask_free_question_stream(data: FreeAskRequest):
                 conversation_id=data.conversation_id,
                 linked_task_id=data.linked_task_id,
                 use_wiki=data.use_wiki,
-                asset_content=data.asset_content,
+                asset_content=_merge_context_refs(data.asset_content, data.context_refs),
             ):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except ValueError as e:

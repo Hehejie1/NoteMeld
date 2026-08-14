@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-06-19
+更新时间：2026-08-13
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -54,9 +54,9 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/chat/index` | JSON: task/note 等 | 索引结果 | 聊天检索 | 本地 | 索引失败 | Chroma 持久化兼容 |
 | GET | `/api/chat/status` | query | 索引/聊天状态 | 聊天 UI | 本地 | 返回状态错误 | 不阻塞页面加载 |
-| POST | `/api/chat/ask` | JSON: question/context | 回答 | 聊天 UI | 本地+LLM | LLM 错误返回失败 | 需保留来源引用 |
-| POST | `/api/chat/free` | JSON: messages/model | 非索引自由聊天 | 聊天 UI | 本地+LLM | LLM 错误 | 不依赖 note task |
-| POST | `/api/chat/free/stream` | JSON: messages/model | 流式响应 | 聊天 UI fetch | 本地+LLM | 流中错误事件 | 前端裸 fetch 需兼容 |
+| POST | `/api/chat/ask` | JSON: question/context | 回答 | 聊天 UI | 本地+LLM | LLM 错误返回失败 | 需保留来源引用；P2 内部实现已迁移到 Agent（feature flag `AGENT_CHAT_ENABLED`） |
+| POST | `/api/chat/free` | JSON: messages/model，含 `use_wiki`；可选 `context_refs[]` | 非索引自由聊天 `{answer,sources}` | 聊天 UI | 本地+LLM | LLM/能力错误 | `context_refs` 最多 8 条、单条快照 2000 字，后端重新校验并作为资料上下文隔离；Agent/Wiki 语义保持兼容 |
+| POST | `/api/chat/free/stream` | JSON: messages/model，含 `use_wiki`；可选 `context_refs[]` | 流式响应 | 聊天 UI fetch | 本地+LLM | 流中错误事件 | SSE 事件不变；引用规则同 `/chat/free`。Agent 路径只初始暴露 3 个元工具，L3 结果进入 `done.sources` |
 | GET | `/api/conversations` | query | 会话列表 | 侧边栏/工作区 | 本地 | 空列表 | 软删除过滤 |
 | GET | `/api/conversations/{conversation_id}` | path | 会话详情 | 工作区 | 本地 | 不存在 404 | 消息和文档结构兼容 |
 | PUT/PATCH | `/api/conversations/{conversation_id}` | JSON patch | 更新会话 | 工作区 | 本地 | 更新失败 | 不能破坏 linked task |
@@ -64,6 +64,7 @@
 | PATCH | `/api/conversations/{conversation_id}/messages/{message_id}` | JSON patch | 更新消息 | 聊天/编辑 | 本地 | 不存在 404 | 保留 meta_json/sources_json |
 | DELETE | `/api/conversations/{conversation_id}` | path | 删除结果 | 会话删除 | 本地 | 删除失败 | 应软删并清理关联 artifacts |
 | DELETE | `/api/conversations/{conversation_id}/documents/{task_id}` | path | 删除文档 | 文档删除 | 本地 | 删除失败 | 不误删其他 conversation |
+| POST | `/api/conversations/{conversation_id}/workspace/cancel_task` | `card_id` | 取消结果 | 长任务卡 | 本地 | 不存在/跨会话 code=404；已结束 code=400 | 必须按卡片自身 `conversation_id` 校验归属 |
 
 ## Provider / Model / Config 接口
 
@@ -76,12 +77,13 @@
 | GET | `/api/get_provider_by_id/{id}` | path | Provider | 设置页 | 本地 | 不存在 404/错误 | 不泄露 API Key |
 | POST | `/api/update_provider` | JSON provider | 更新结果 | 设置页 | 本地 | 更新失败 | enabled/base_url 语义兼容 |
 | POST | `/api/connect_test` | JSON provider/model | 测试结果 | 设置页 | 本地+远端 | 远端失败返回错误 | 不记录敏感 payload |
-| GET | `/api/model_list` | query | 模型列表 | 设置页 | 本地 | 空列表 | 保留 provider 关联 |
+| GET | `/api/model_list` | query | wrapper `data` 为已启用 Provider 的模型列表；每项含 `id/provider_id/model_name/context_window_tokens/supports_vision/supports_stream/created_at/capabilities` | 设置页 | 本地 | 空列表 | 保留 provider 关联；后三项是用户保存的运行配置，`capabilities` 仍仅为探测缓存 |
 | GET | `/api/model_list/{provider_id}` | path | 模型列表 | 设置页 | 本地 | 空列表 | provider_id 语义不能改 |
-| POST | `/api/models` | JSON model | 创建模型 | 设置页 | 本地 | 重复/失败 | 模型名兼容 |
-| GET | `/api/models/delete/{model_id}` | path | 删除结果 | 设置页 | 本地 | 删除失败 | 旧接口用 GET 删除，前端兼容 |
+| POST | `/api/models/defaults` | JSON: `model_name` | wrapper `data` 包含规范化 `model_name`、`context_window_tokens`、`supports_vision`、`supports_stream`、`source`、`matched_rule` | 模型添加弹窗 | 本地 | 空名称返回 wrapper `code=400`；目录缺失或损坏降级安全 fallback | 保持 `{code,msg,data}`；建议值不替代用户保存的运行配置 |
+| POST | `/api/models` | JSON：`provider_id`、`model_name`、`context_window_tokens`（512–4,000,000）、严格布尔 `supports_vision`、严格布尔 `supports_stream` | wrapper `data` 为完整已保存模型行 | 设置页 | 本地 | 请求字段不合法由 FastAPI 返回 422；Provider 不存在 wrapper `code=404`；同 Provider+模型名重复（含并发插入的数据库约束冲突）wrapper `code=409` | 保持 `{code,msg,data}`；运行配置由调用方显式提交，不使用服务端写死默认值 |
+| GET | `/api/models/delete/{model_id}` | path | wrapper 删除结果 | 设置页 | 本地 | 不存在 wrapper `code=404`；事务失败 `code=500` | 旧接口用 GET 删除，前端兼容；模型与对应 `model_capabilities` 探测缓存同一事务删除，失败整体回滚；不删除 Provider、笔记或 usage |
 | POST | `/api/models/probe` | JSON provider/model | 能力探测 | 设置页/模型能力 | 本地+远端 | 探测失败写错误 | 支持 null=未知 |
-| GET | `/api/model_enable/{provider_id}` | path | 可用模型 | 任务表单 | 本地 | 空列表 | 不改返回层级 |
+| GET | `/api/model_enable/{provider_id}` | path | wrapper `data` 为该 Provider 已添加模型，每项含 `id/provider_id/model_name/context_window_tokens/supports_vision/supports_stream/created_at/capabilities` | 任务表单 | 本地 | 空列表 | 不改返回层级；三项运行字段为用户保存值，`capabilities` 仅为探测缓存且不得覆盖保存运行字段 |
 | GET | `/api/sys_health` | 无 | 健康状态 | 后端初始化 | 本地 | 不健康 | 桌面 ready 门禁依赖 |
 | GET | `/api/sys_check` | 无 | runtime/data_dir/ffmpeg/transcriber 等 | 设置/诊断 | 本地 | 返回检查失败项 | 字段用于诊断 |
 | GET | `/api/deploy_status` | 无 | backend/cuda/whisper/ffmpeg/mcp | 设置/诊断 | 本地 | 返回检查失败项 | 契约测试覆盖 |
@@ -92,8 +94,29 @@
 | GET | `/api/get_downloader_cookie/{platform}` | path | cookie 状态 | 设置页 | 本地 | 不存在为空 | 不泄露敏感细节 |
 | POST | `/api/update_downloader_cookie` | JSON | 更新结果 | 设置页 | 本地 | 写入失败 | cookie 不入日志 |
 | POST | `/api/mcp/recheck` | 无/JSON | MCP 检查 | 设置页 | 本地 | 检查失败 | endpoint 保持 `/mcp` |
+| GET | `/api/mcp_servers` | 无 | MCP server 配置列表 | MCP 设置页 | 本地 | 损坏配置降级为空 | 不返回 auth；headers/env 只返回 `***` 占位符 |
+| PUT | `/api/mcp_servers/{server_id}` | server 配置 | 脱敏后的配置 | MCP 设置页 | 本地 | 校验 code=400；保存 code=500 | 编辑时省略凭证或回传 `***` 必须保留旧值，不能把占位符落盘 |
+| GET | `/api/mcp_servers/enabled` | 无 | 已启用 server 的脱敏配置与 count | 设置/诊断 | 本地 | 空列表 | 与列表接口共用脱敏边界，不返回 auth/header/env 原值 |
+| DELETE | `/api/mcp_servers/{server_id}` | path | 删除结果 | MCP 设置页 | 本地 | 不存在 code=404；保存 code=500 | 错误响应不得回显本地路径或敏感 payload |
+
+## Learning Space / Research Search 接口
+
+以下普通接口均使用 `{code,msg,data}`。学术与 GitHub 由后端默认查询；普通 Web 只在 Tavily/SearXNG 配置可用时查询；密钥不进入响应。
+
+| 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/research-search/config` | 无 | Web 配置、超时和脱敏 `*_key_set` | 研究搜索设置页 | 本地 | 损坏配置降级默认值 | 不返回 Tavily/GitHub 原始密钥或旧 enabled scopes |
+| PUT | `/api/research-search/config` | provider/endpoint/timeout，可选新密钥或 `clear_*`；旧 scopes 仍兼容 | 脱敏后的新配置 | 研究搜索设置页 | 本地 | 写入失败 | 空密钥保持旧值；显式 clear 才删除；scopes 不能关闭 academic/GitHub |
+| POST | `/api/conversations/{cid}/learning-canvases` | 必填 `goal`；可选 `external_scopes/external_limit/research_space_id/provider_id/model_name/context_refs[]` | 完整 `LearningCanvas` v2 | 学习标签/Agent | 本地+可选远端+LLM | 非法输入 code=400；Note 失败为请求失败，投影/消息失败降级成功 | 先过滤证据并编译；`clarifying` 不写 Note，`ready` 通过 NoteImportService 入库并绑定 `document_task_id`；academic/GitHub 基线保持 |
+| GET | `/api/conversations/{cid}/learning-canvases/{canvas_id}` | path | 完整 `LearningCanvas` | 学习卡 | 本地 | 不存在 code=404；越界 code=403 | cid/canvas_id 路径安全；刷新和重启可恢复 |
+| PATCH | `/api/conversations/{cid}/learning-canvases/{canvas_id}` | `node_id`，可选 `user_label/user_summary` | 更新后的 `LearningCanvas` | 学习卡 | 本地 | 节点/画布不存在 code=404 | 只改用户覆盖字段，不覆盖 AI 原始 label/summary |
+| POST | `/api/conversations/{cid}/learning-canvases/{canvas_id}/units/{node_id}/start` | path | `unit + canvas` | 学习卡/Agent | 本地 | 节点不存在 code=404 | 只能产生 exposed，不得直接 mastered |
+| POST | `/api/conversations/{cid}/learning-canvases/{canvas_id}/units/{node_id}/evidence` | `kind/answer/rubric_result/provider_id/model_name` | `evidence + canvas` | Agent | 本地+已有 LLM 评测结果 | 无效证据 code=409/400 | 非空答案和完整 rubric；状态由后端计算 |
+| GET | `/api/conversations/{cid}/learning-canvases/{canvas_id}/reviews/due` | path | 已到期复习项 | 学习卡/Agent | 本地 | 不存在 code=404 | 未到期 review 不得进入 mastered |
 
 ## Ingestion / Migration / Usage / Style 接口
+
+Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response schema。错误详情现在保留 Provider 网络/超时错误，并将兼容模型的空 final response 区分为 `output truncated before final JSON`、`produced reasoning but no final JSON` 或 `returned empty content`；错误不得包含模型 reasoning 原文。
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -150,6 +173,6 @@
 
 ## 远端接口边界
 
-- LLM Provider 请求通过后端 gpt/provider 封装发起，不由前端直接调用。
+- LLM Provider 请求由后端发起，不由前端直接调用。当前主路径走 `backend/app/ai/`（notemeld-ai 抽象层）：通过 `NotemeldGPT` 适配器在 `create_chat_completion` 内调 `Models.complete()`，由 notemeld-ai 统一写 usage。旧 `backend/app/gpt/` 的 `GPTFactory`/`UniversalGPT` 过渡期保留供回滚（`from_config` 已加 `DeprecationWarning`）；`services/model.py` 的 `list_models` 仍走 `GPTFactory`（非 chat-completion 路径）。详见 `docs/system/current-architecture.md` 的 LLM 调用层章节。
 - 视频平台、网页和转写服务由后端下载器/转写器调用。
 - 前端唯一允许直接访问后端之外的场景应经过明确设计，例如外链打开或图片代理；新增远端调用必须说明安全边界。

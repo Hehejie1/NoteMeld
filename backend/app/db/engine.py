@@ -102,10 +102,6 @@ def merge_legacy_sqlite_data(current_db_path: str | Path, legacy_db_path: str | 
             "insert_columns": ["id", "name", "logo", "api_key", "base_url", "enabled", "created_at"],
             "unique_columns": ["id"],
         },
-        "models": {
-            "insert_columns": ["provider_id", "model_name", "created_at"],
-            "unique_columns": ["provider_id", "model_name"],
-        },
         "video_tasks": {
             "insert_columns": ["video_id", "platform", "task_id", "created_at"],
             "unique_columns": ["task_id"],

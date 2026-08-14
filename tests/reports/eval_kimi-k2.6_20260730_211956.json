@@ -1,0 +1,408 @@
+{
+  "model": "kimi-k2.6",
+  "timestamp": "2026-07-30T21:19:56.645840",
+  "hardware": "云端推理 (Provider: https://ark.cn-beijing.volces.com/api/plan/v3)",
+  "results": {
+    "regression": {
+      "dataset": "NoteMeld Regression",
+      "total": 5,
+      "success": 5,
+      "failed": 0,
+      "passed": 0,
+      "failed_cases": [
+        {
+          "id": "reg_20260729_001",
+          "bug_type": "hallucination",
+          "source_ticket": "用户反馈 2026-07-29：Mac 系统 API Key 配置总结出现 Windows 图形界面幻觉",
+          "fails": [
+            "missing_sections=['视频主旨', '关键片段']",
+            "screenshot_missing(cov=0.0)",
+            "citation_screenshot_recall=0.0",
+            "citation_content_recall=0.0"
+          ]
+        },
+        {
+          "id": "reg_20260729_002",
+          "bug_type": "missing_section",
+          "source_ticket": "产品复盘 2026-07-29：video_analysis 模板下「关键片段」章节偶发缺失（3 段变 2 段）",
+          "fails": [
+            "missing_sections=['视频主旨', '关键片段', 'AI 总结']",
+            "screenshot_missing(cov=0.0)",
+            "citation_screenshot_recall=0.0",
+            "citation_content_recall=0.0"
+          ]
+        },
+        {
+          "id": "reg_20260729_003",
+          "bug_type": "screenshot_missing",
+          "source_ticket": "产品复盘 2026-07-29：章节要求必须带截图时，模型经常漏掉 screenshot",
+          "fails": [
+            "missing_sections=['视频主旨', '关键片段']",
+            "screenshot_missing(cov=0.0)",
+            "citation_screenshot_recall=0.0"
+          ]
+        },
+        {
+          "id": "reg_20260729_004",
+          "bug_type": "wrong_template",
+          "source_ticket": "产品复盘 2026-07-29：行动清单模板把教程写成了资讯摘要（wrong_template）",
+          "fails": [
+            "missing_sections=['行动项', '验收标准']"
+          ]
+        },
+        {
+          "id": "reg_20260729_005",
+          "bug_type": "content_deletion",
+          "source_ticket": "产品复盘 2026-07-29：总结删除了原视频的关键步骤（content_deletion）",
+          "fails": [
+            "missing_sections=['核心结论', '关键发现']",
+            "keywords_missing(cov=0.0)"
+          ]
+        }
+      ],
+      "pass_rate": 0.0,
+      "details": [
+        {
+          "id": "reg_20260729_001",
+          "bug_type": "hallucination",
+          "source_ticket": "用户反馈 2026-07-29：Mac 系统 API Key 配置总结出现 Windows 图形界面幻觉",
+          "status": "success",
+          "pass": false,
+          "fails": [
+            "missing_sections=['视频主旨', '关键片段']",
+            "screenshot_missing(cov=0.0)",
+            "citation_screenshot_recall=0.0",
+            "citation_content_recall=0.0"
+          ],
+          "metrics": {
+            "hallucination": {
+              "is_hallucinated": false,
+              "hit_forbidden": [],
+              "missing_required": [],
+              "hallucination_rate": 0.0,
+              "faithful": true
+            },
+            "section_recall": {
+              "sections_found": [],
+              "sections_missing": [
+                "视频主旨",
+                "关键片段"
+              ],
+              "recall": 0.0
+            },
+            "template_adherence": {
+              "must_sections_found": [],
+              "must_sections_missing": [
+                "视频主旨",
+                "关键片段"
+              ],
+              "forbidden_hit": [],
+              "must_coverage": 0.0,
+              "forbidden_violation": 0.0,
+              "screenshot_coverage": {
+                "required_slots": [
+                  "00:15",
+                  "00:38"
+                ],
+                "found_time_slots": [],
+                "has_any_image": false,
+                "matched": 0,
+                "coverage": 0.0
+              },
+              "screenshot_cov": 0.0,
+              "adherence": 0.0
+            },
+            "citation_precision": {
+              "content": {
+                "precision": 1.0,
+                "recall": 0.0,
+                "matched": 0,
+                "total_expected": 2,
+                "found": []
+              },
+              "screenshot": {
+                "precision": 1.0,
+                "recall": 0.0,
+                "matched": 0,
+                "total_expected": 2,
+                "found": []
+              },
+              "overall_precision": 1.0
+            },
+            "keyword_coverage": 1.0,
+            "elapsed": 22.102479934692383
+          }
+        },
+        {
+          "id": "reg_20260729_002",
+          "bug_type": "missing_section",
+          "source_ticket": "产品复盘 2026-07-29：video_analysis 模板下「关键片段」章节偶发缺失（3 段变 2 段）",
+          "status": "success",
+          "pass": false,
+          "fails": [
+            "missing_sections=['视频主旨', '关键片段', 'AI 总结']",
+            "screenshot_missing(cov=0.0)",
+            "citation_screenshot_recall=0.0",
+            "citation_content_recall=0.0"
+          ],
+          "metrics": {
+            "hallucination": {
+              "is_hallucinated": false,
+              "hit_forbidden": [],
+              "missing_required": [],
+              "hallucination_rate": 0.0,
+              "faithful": true
+            },
+            "section_recall": {
+              "sections_found": [],
+              "sections_missing": [
+                "视频主旨",
+                "关键片段",
+                "AI 总结"
+              ],
+              "recall": 0.0
+            },
+            "template_adherence": {
+              "must_sections_found": [],
+              "must_sections_missing": [
+                "视频主旨",
+                "关键片段",
+                "AI 总结"
+              ],
+              "forbidden_hit": [],
+              "must_coverage": 0.0,
+              "forbidden_violation": 0.0,
+              "screenshot_coverage": {
+                "required_slots": [
+                  "00:15"
+                ],
+                "found_time_slots": [],
+                "has_any_image": false,
+                "matched": 0,
+                "coverage": 0.0
+              },
+              "screenshot_cov": 0.0,
+              "adherence": 0.0
+            },
+            "citation_precision": {
+              "content": {
+                "precision": 1.0,
+                "recall": 0.0,
+                "matched": 0,
+                "total_expected": 2,
+                "found": []
+              },
+              "screenshot": {
+                "precision": 1.0,
+                "recall": 0.0,
+                "matched": 0,
+                "total_expected": 1,
+                "found": []
+              },
+              "overall_precision": 1.0
+            },
+            "keyword_coverage": 1.0,
+            "elapsed": 47.43273591995239
+          }
+        },
+        {
+          "id": "reg_20260729_003",
+          "bug_type": "screenshot_missing",
+          "source_ticket": "产品复盘 2026-07-29：章节要求必须带截图时，模型经常漏掉 screenshot",
+          "status": "success",
+          "pass": false,
+          "fails": [
+            "missing_sections=['视频主旨', '关键片段']",
+            "screenshot_missing(cov=0.0)",
+            "citation_screenshot_recall=0.0"
+          ],
+          "metrics": {
+            "hallucination": {
+              "is_hallucinated": false,
+              "hit_forbidden": [],
+              "missing_required": [],
+              "hallucination_rate": 0.0,
+              "faithful": true
+            },
+            "section_recall": {
+              "sections_found": [],
+              "sections_missing": [
+                "视频主旨",
+                "关键片段"
+              ],
+              "recall": 0.0
+            },
+            "template_adherence": {
+              "must_sections_found": [],
+              "must_sections_missing": [
+                "视频主旨",
+                "关键片段"
+              ],
+              "forbidden_hit": [],
+              "must_coverage": 0.0,
+              "forbidden_violation": 0.0,
+              "screenshot_coverage": {
+                "required_slots": [
+                  "00:15",
+                  "00:38",
+                  "01:28"
+                ],
+                "found_time_slots": [],
+                "has_any_image": false,
+                "matched": 0,
+                "coverage": 0.0
+              },
+              "screenshot_cov": 0.0,
+              "adherence": 0.0
+            },
+            "citation_precision": {
+              "content": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "matched": 0,
+                "total_expected": 0
+              },
+              "screenshot": {
+                "precision": 1.0,
+                "recall": 0.0,
+                "matched": 0,
+                "total_expected": 3,
+                "found": []
+              },
+              "overall_precision": 1.0
+            },
+            "keyword_coverage": 1.0,
+            "elapsed": 21.3303382396698
+          }
+        },
+        {
+          "id": "reg_20260729_004",
+          "bug_type": "wrong_template",
+          "source_ticket": "产品复盘 2026-07-29：行动清单模板把教程写成了资讯摘要（wrong_template）",
+          "status": "success",
+          "pass": false,
+          "fails": [
+            "missing_sections=['行动项', '验收标准']"
+          ],
+          "metrics": {
+            "hallucination": {
+              "is_hallucinated": false,
+              "hit_forbidden": [],
+              "missing_required": [],
+              "hallucination_rate": 0.0,
+              "faithful": true
+            },
+            "section_recall": {
+              "sections_found": [],
+              "sections_missing": [
+                "行动项",
+                "验收标准"
+              ],
+              "recall": 0.0
+            },
+            "template_adherence": {
+              "must_sections_found": [],
+              "must_sections_missing": [
+                "行动项",
+                "验收标准"
+              ],
+              "forbidden_hit": [],
+              "must_coverage": 0.0,
+              "forbidden_violation": 0.0,
+              "screenshot_coverage": {
+                "required_slots": [],
+                "found_time_slots": [],
+                "has_any_image": false,
+                "matched": 0,
+                "coverage": 1.0
+              },
+              "screenshot_cov": 1.0,
+              "adherence": 0.0
+            },
+            "citation_precision": {
+              "content": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "matched": 0,
+                "total_expected": 0
+              },
+              "screenshot": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "matched": 0,
+                "total_expected": 0
+              },
+              "overall_precision": 1.0
+            },
+            "keyword_coverage": 1.0,
+            "elapsed": 54.32998204231262
+          }
+        },
+        {
+          "id": "reg_20260729_005",
+          "bug_type": "content_deletion",
+          "source_ticket": "产品复盘 2026-07-29：总结删除了原视频的关键步骤（content_deletion）",
+          "status": "success",
+          "pass": false,
+          "fails": [
+            "missing_sections=['核心结论', '关键发现']",
+            "keywords_missing(cov=0.0)"
+          ],
+          "metrics": {
+            "hallucination": {
+              "is_hallucinated": false,
+              "hit_forbidden": [],
+              "missing_required": [],
+              "hallucination_rate": 0.0,
+              "faithful": true
+            },
+            "section_recall": {
+              "sections_found": [],
+              "sections_missing": [
+                "核心结论",
+                "关键发现"
+              ],
+              "recall": 0.0
+            },
+            "template_adherence": {
+              "must_sections_found": [],
+              "must_sections_missing": [
+                "核心结论",
+                "关键发现"
+              ],
+              "forbidden_hit": [],
+              "must_coverage": 0.0,
+              "forbidden_violation": 0.0,
+              "screenshot_coverage": {
+                "required_slots": [],
+                "found_time_slots": [],
+                "has_any_image": false,
+                "matched": 0,
+                "coverage": 1.0
+              },
+              "screenshot_cov": 1.0,
+              "adherence": 0.0
+            },
+            "citation_precision": {
+              "content": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "matched": 0,
+                "total_expected": 0
+              },
+              "screenshot": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "matched": 0,
+                "total_expected": 0
+              },
+              "overall_precision": 1.0
+            },
+            "keyword_coverage": 0.0,
+            "elapsed": 48.525408029556274
+          }
+        }
+      ]
+    }
+  }
+}

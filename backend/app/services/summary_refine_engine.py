@@ -9,6 +9,7 @@ from app.models.summary_input import WeightedContextPack
 from app.models.summary_plan import SummaryPlan
 from app.models.transcriber_model import TranscriptSegment
 from app.renderers.note_renderer import NoteRenderer
+from app.gpt.provider_runtime import is_context_limit_error
 
 logger = logging.getLogger(__name__)
 
@@ -270,4 +271,8 @@ class SummaryRefineEngine:
 
     @classmethod
     def _is_final_retryable_error(cls, exc: BaseException) -> bool:
-        return cls._is_gateway_timeout_error(exc) or cls._is_payload_too_large_error(exc)
+        return (
+            cls._is_gateway_timeout_error(exc)
+            or cls._is_payload_too_large_error(exc)
+            or is_context_limit_error(exc)
+        )

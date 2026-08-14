@@ -14,6 +14,17 @@ const LAYOUT_SETTINGS = {
 export const runInitialLayout = (graph: WikiGraphologyGraph): WikiGraphologyGraph => {
   if (graph.order <= 1) return graph
 
+  if (graph.size === 0) {
+    const radius = Math.max(6, Math.min(16, graph.order * 1.4))
+    const nodeIds = graph.nodes()
+    nodeIds.forEach((nodeId, index) => {
+      const angle = (index / nodeIds.length) * Math.PI * 2 - Math.PI / 2
+      graph.setNodeAttribute(nodeId, 'x', Math.cos(angle) * radius)
+      graph.setNodeAttribute(nodeId, 'y', Math.sin(angle) * radius)
+    })
+    return graph
+  }
+
   forceAtlas2.assign(graph, {
     iterations: 180,
     settings: LAYOUT_SETTINGS,

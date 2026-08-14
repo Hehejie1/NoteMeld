@@ -18,6 +18,8 @@ class Conversation(Base):
     transcript_json = Column(Text, nullable=False, default="{}")
     audio_meta_json = Column(Text, nullable=False, default="{}")
     markdown_json = Column(Text, nullable=False, default='""')
+    # P3 阶段二：会话绑定的研究空间 id（cid→rs_id 映射），nullable 兼容历史行
+    research_space_id = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     deleted_at = Column(DateTime, nullable=True)

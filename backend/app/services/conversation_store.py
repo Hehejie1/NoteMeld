@@ -64,6 +64,7 @@ def _hydrate_conversation_payload(conversation: Conversation) -> dict:
         "transcript": _json_loads(conversation.transcript_json, {}),
         "audioMeta": _json_loads(conversation.audio_meta_json, {}),
         "markdown": _json_loads(conversation.markdown_json, ""),
+        "researchSpaceId": getattr(conversation, "research_space_id", None) or None,
         "createdAt": conversation.created_at.isoformat() if conversation.created_at else _now_iso(),
         "updatedAt": conversation.updated_at.isoformat() if conversation.updated_at else _now_iso(),
         "messages": [],
@@ -323,6 +324,30 @@ def get_latest_message(
         db.close()
 
 
+def get_conversation_research_space_id(conversation_id: str) -> str | None:
+    """读取会话绑定的 research_space_id；容错返回 None。
+
+    P3 阶段二：cid→rs_id 映射查询。任何异常（会话不存在 / 列缺失 / DB 错误）
+    都返回 None，由调用方降级处理（不注入 rs 记忆前缀）。
+    """
+    if not conversation_id:
+        return None
+    db = _db()
+    try:
+        row = (
+            db.query(Conversation)
+            .filter(Conversation.id == conversation_id, Conversation.deleted_at.is_(None))
+            .first()
+        )
+        if row is None:
+            return None
+        return getattr(row, "research_space_id", None) or None
+    except Exception:  # noqa: BLE001 - 容错降级，避免影响主流程
+        return None
+    finally:
+        db.close()
+
+
 def get_latest_user_message(conversation_id: str) -> dict | None:
     return get_latest_message(conversation_id, role="user", message_type="user_input")
 
@@ -453,6 +478,9 @@ def upsert_conversation(data: dict) -> dict:
             row.transcript_json = "{}"
             row.audio_meta_json = "{}"
             row.markdown_json = '""'
+            # P3 阶段二：恢复时清空 research_space_id（与字段重置策略一致）
+            if hasattr(row, "research_space_id"):
+                row.research_space_id = None
             (
                 db.query(ConversationMessage)
                 .filter(ConversationMessage.conversation_id == row.id)
@@ -476,6 +504,11 @@ def upsert_conversation(data: dict) -> dict:
         row.transcript_json = _json_dumps(data.get("transcript", _json_loads(row.transcript_json, {})))
         row.audio_meta_json = _json_dumps(data.get("audioMeta", _json_loads(row.audio_meta_json, {})))
         row.markdown_json = _json_dumps(data.get("markdown", _json_loads(row.markdown_json, "")))
+        # P3 阶段二：research_space_id（cid→rs_id 映射）。data 可不传，保持原值。
+        if "researchSpaceId" in data:
+            rs_val = data.get("researchSpaceId")
+            if hasattr(row, "research_space_id"):
+                row.research_space_id = rs_val or None
         row.deleted_at = None
 
         db.commit()
