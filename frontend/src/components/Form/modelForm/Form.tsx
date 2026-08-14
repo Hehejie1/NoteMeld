@@ -21,7 +21,6 @@ import {
   fetchProviderTemplates,
   saveProviderTemplate,
 } from '@/services/model.ts'
-import { ModelSelector } from '@/components/Form/modelForm/ModelSelector.tsx'
 import { X } from 'lucide-react'
 import { useModelStore } from '@/store/modelStore'
 import {
@@ -30,6 +29,7 @@ import {
   providerTemplates,
 } from '@/components/Form/modelForm/providerTemplates'
 import ProviderNameCombobox from '@/components/Form/modelForm/ProviderNameCombobox'
+import { AddModelDialog } from '@/components/Form/modelForm/AddModelDialog'
 
 // ✅ Provider表单schema
 const ProviderSchema = z.object({
@@ -58,6 +58,7 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
   const [testing, setTesting] = useState(false)
   const loadModelsById= useModelStore(state => state.loadModelsById)
   const [models, setModels]= useState<EnabledModel[]>([])
+  const [addModelOpen, setAddModelOpen] = useState(false)
   const [savedTemplates, setSavedTemplates] = useState<ProviderTemplate[]>([])
   const allProviderTemplates = useMemo(
     () => mergeProviderTemplates(providerTemplates, savedTemplates),
@@ -80,8 +81,6 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
       baseUrl: '',
     },
   })
-
-  const watchedValues = providerForm.watch()
 
   useEffect(() => {
 
@@ -323,28 +322,12 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
       {/* 模型信息表单 */}
       <div className="flex w-full max-w-2xl flex-col gap-4 rounded-2xl border border-border-subtle/70 bg-white p-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)] md:rounded-none md:border-0 md:p-0 md:shadow-none">
         <div className="flex flex-col gap-2">
-          <ModelSelector
-            providerId={id}
-            config={
-              !id
-                ? {
-                    apiKey: watchedValues.apiKey,
-                    baseUrl: watchedValues.baseUrl,
-                    name: watchedValues.name,
-                  }
-                : undefined
-            }
-            onSaved={refreshEnabledModels}
-          />
-
-          {/*<datalist id="model-options">*/}
-          {/*  {modelOptions.map(model => (*/}
-          {/*    <option key={model.id + '1'} value={model.id} />*/}
-          {/*  ))}*/}
-          {/*</datalist>*/}
-        </div>
-        <div className="flex flex-col gap-2">
-          <span className="font-bold">已启用模型</span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-bold">模型列表</span>
+            <Button type="button" onClick={() => setAddModelOpen(true)} disabled={!id}>
+              添加模型
+            </Button>
+          </div>
           <div className="flex min-w-0 flex-wrap gap-2 rounded p-0 md:p-2.5">
             {
               models && models.map(model => {
@@ -361,14 +344,8 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
             }
 
           </div>
-          {/*<ModelSelector providerId={id!} />*/}
-
-          {/*<datalist id="model-options">*/}
-          {/*  {modelOptions.map(model => (*/}
-          {/*    <option key={model.id + '1'} value={model.id} />*/}
-          {/*  ))}*/}
-          {/*</datalist>*/}
         </div>
+        {id && <AddModelDialog providerId={id} open={addModelOpen} onOpenChange={setAddModelOpen} onSaved={refreshEnabledModels} />}
       </div>
     </div>
   )

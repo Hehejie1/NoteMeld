@@ -1,0 +1,58 @@
+# Requirements Index
+
+更新时间：2026-08-14
+
+本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
+
+## 使用方式
+
+- 新需求写入 `docs/requirements/YYYY-MM-DD-<topic>.md`。
+- 已有需求修改时更新对应文件和本索引。
+- 需求状态达到 `Ready for Plan` 后，可交给 Superpowers 生成 `docs/superpowers/plans/` 或 `docs/superpowers/specs/`。
+- 用户说"执行 / 开始做 / 实现"时，优先从本文定位目标需求。
+
+## 状态定义
+
+- `Draft`：已记录，但还没有完成澄清。
+- `Clarifying`：存在阻塞 plan/spec 的开放问题。
+- `Ready for Plan`：需求已清楚，可以进入 Superpowers plan/spec。
+- `Planned`：已经存在对应 plan/spec。
+- `Implemented`：已经实现并完成验证。
+- `Superseded`：被新需求替代。
+
+## 需求列表
+
+| 阶段 | 状态 | 需求 | 文件 | 关联 plan/spec | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| P0 | Implemented | notemeld-ai：统一 LLM Provider 抽象与 Token 统计 | [`2026-08-01-notemeld-ai-llm-abstraction.md`](2026-08-01-notemeld-ai-llm-abstraction.md) | [`specs/2026-08-01-notemeld-ai-llm-abstraction.md`](../superpowers/specs/2026-08-01-notemeld-ai-llm-abstraction.md) + [验收](../superpowers/tests/2026-08-01-notemeld-ai-llm-abstraction.md) | 已验收通过：抹平 30+ Provider；替换 GPTFactory；用量口径兼容 |
+| P1 | Implemented | notemeld-agent-core：Agent 运行时（工具循环、状态机、事件流） | [`2026-08-01-notemeld-agent-core-runtime.md`](2026-08-01-notemeld-agent-core-runtime.md) | [`specs/2026-08-01-notemeld-agent-core-runtime.md`](../superpowers/specs/2026-08-01-notemeld-agent-core-runtime.md) + [验收](../superpowers/tests/2026-08-01-notemeld-agent-core-runtime.md) | 已验收通过：10 类事件 + 并行工具 + abort/steer；19 单测 |
+| P2-P3 | Implemented (P3 阶段一) | notemeld-agent：研究助手（技能强化、长任务、工作空间、三层记忆、接管现有 Chat） | [`2026-08-01-notemeld-agent-research-assistant.md`](2026-08-01-notemeld-agent-research-assistant.md) | [`specs/2026-08-01-notemeld-agent-research-assistant.md`](../superpowers/specs/2026-08-01-notemeld-agent-research-assistant.md) + [P3 验收](../superpowers/tests/2026-08-01-notemeld-agent-research-assistant.md) | P2 已验收（Agent 接管 Chat + 7 工具 + SSE 兼容）；P3 阶段一验收（workspace/memory/skill_loader/long_task/mcp_client 五模块 + 111 单测）；Agent 运行时全量集成（workspace/skill/mcp 工具注册 + research_space 注入 + long_task SSE）待阶段二 |
+| P4-P5 | Planned | 主动学习空间（本地知识、互联网研究、学习画布与掌握验证） | [`2026-08-01-notemeld-agent-deep-learning-canvas.md`](2026-08-01-notemeld-agent-deep-learning-canvas.md) | [`plan`](../superpowers/plans/2026-08-11-notemeld-active-learning-space.md) + [`spec`](../superpowers/specs/2026-08-11-notemeld-active-learning-space.md) + [`阶段验证`](../superpowers/tests/2026-08-11-notemeld-active-learning-space.md) | 核心纵向闭环已实现；诊断、选择性编译、增量合并等完整验收仍待推进；多 Agent 后续演进 |
+| P3.1 | Implemented | L0–L3 渐进式能力路由与按需 Wiki 检索 | [`2026-08-11-progressive-capability-routing.md`](2026-08-11-progressive-capability-routing.md) | [`plan`](../superpowers/plans/2026-08-11-progressive-capability-routing.md) + [`spec`](../superpowers/specs/2026-08-11-progressive-capability-routing.md) + [`验收`](../superpowers/tests/2026-08-11-progressive-capability-routing.md) | 首轮固定 3 个元工具；Wiki/Skill/MCP 渐进披露；Agent free-chat 取消默认重型 Wiki 预搜；定向回归通过 |
+| P6 | Ready for Plan | 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话 | [`2026-08-14-universal-agent-sdk-unified-cli.md`](2026-08-14-universal-agent-sdk-unified-cli.md) | [`设计规格`](../superpowers/specs/2026-08-14-universal-agent-sdk-unified-cli-design.md) | Rust 为唯一 Agent 核心；UI/CLI 共享 Agent Host、Conversation 和数据；移动端/Harmony 交付 SDK 产物，远程互调与 Harbor 后置 |
+| - | Planned | 模型上下文与能力感知分块 | [`2026-08-13-model-context-capability-aware-chunking.md`](2026-08-13-model-context-capability-aware-chunking.md) | [`plan`](../superpowers/plans/2026-08-13-model-context-capability-aware-chunking.md) + [`spec`](../superpowers/specs/2026-08-13-model-context-capability-aware-chunking-design.md) + [`验证`](../superpowers/tests/2026-08-13-model-context-capability-aware-chunking.md) | Tasks 1–8 自动化 gate 已通过；真实 UI/Ollama/7.5 分钟视频/历史笔记手动验收待完成，保持 Planned |
+| - | Planned | 多源视频增强总结 | 待补充 | `docs/superpowers/plans/2026-06-11-multisource-video-summary-implementation.md` | 三路并行采集融合总结 |
+| - | Superseded | Agent Reach 集成 | `docs/requirements/notemeld-agent-reach-integration-prd.md` | - | 多平台搜索与爬取 → 合并到 [P4 search_web](2026-08-01-notemeld-agent-deep-learning-canvas.md) |
+| - | Draft | 架构与迁移方案 | `docs/requirements/notemeld-architecture-and-migration.md` | 待生成 | 架构演进与数据迁移（参考 P0-P4 分层架构方案） |
+
+## 开放问题汇总
+
+| 需求 | 问题 | 阻塞原因 | 需要谁确认 |
+| --- | --- | --- | --- |
+| Agent Reach 集成 | 集成范围和优先级待确认 | 需求边界不清；大部分能力被 P4 search_web + P2 内建工具覆盖，是否保留此需求或合并 | 用户 |
+| 架构与迁移方案 | 当前架构现状与迁移目标待对齐 | 新分层方案 P0-P4 已确定架构方向，此文档需升级为 P0-P4 迁移/落地顺序说明或 Superseded | 用户 |
+|（其余 4 份新需求） | 无开放问题 | 所有阻塞项已在对话逐条确认：记忆存储、follow-up 开关、自主编译先询问、画布编辑范围、搜索 Provider | - |
+
+## 最近变更
+
+- 2026-08-14：新增 P6 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话需求；确认 Rust 单一核心、版本化 Turn/Event、Python Host binding、`notemeld agent` 和移动端/OpenHarmony SDK 产物
+- 2026-08-13：模型上下文与能力感知分块完成 Tasks 1–8 自动化 gate 与证据收口；手动纵向验收未执行，状态保持 Planned
+- 2026-08-13：新增模型上下文与能力感知分块需求，覆盖本地模型目录、4096 fallback、用户覆盖、图像/流式能力和 token 预算分块
+- 2026-08-11：完成主动学习空间核心纵向闭环与阶段验证；保留 Planned，未把尚缺的诊断/选择性编译/增量合并虚报为已交付
+- 2026-08-12：完成显式“学习”提交入口、默认学术/GitHub 研究源、对话摘要与右侧学习面板增量；真实浏览器纵向验收通过，完整 P4-P5 仍保持 Planned
+- 2026-08-11：将 P4-P5 升级为“主动学习空间”，补充诊断、学习单元、掌握证据、间隔复习、学术/GitHub 来源；生成 Plan/Spec 并进入执行
+- 2026-08-11：新增 L0–L3 渐进式能力路由需求，覆盖按需 Wiki 检索、Skill/MCP 延迟发现和固定元工具入口
+- 2026-08-11：完成 L0–L3 渐进式能力路由实现与验证；同步架构、产品规则、API、坑点和验收证据
+- 2026-08-02：P3 notemeld-agent 阶段一验收通过（workspace/memory/skill_loader/long_task/mcp_client 五模块 + 111 单测 + memory hook/工具最小接入）；同步更新 P0/P1/P2-P3 状态为 Implemented
+- 2026-08-01：基于 Pi 框架分析对话产出 4 份新需求（P0-P5），状态均 Ready for Plan；新增"阶段"列和依赖关系说明
+- 2026-07-27：doc-driven 初始化，创建需求索引，录入现有 2 份需求文档

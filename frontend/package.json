@@ -7,9 +7,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:demo": "VITE_NOTEMELD_DEMO=true vite build --mode demo",
     "lint": "eslint .",
     "test:contracts": "tsc -p tsconfig.contract.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:demo": "vite preview"
   },
   "dependencies": {
     "@ant-design/x": "^2.4.0",

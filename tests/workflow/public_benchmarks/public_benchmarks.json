@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "description": "公开基准数据集说明。列出 NoteMeld 对齐的行业标准评测集，便于外部评审核对。",
+  "benchmarks": [
+    {
+      "id": "vectara_hhem_2_3",
+      "name": "Vectara Hallucination Leaderboard (HHEM-2.3)",
+      "source": "https://github.com/vectara/hallucination-leaderboard",
+      "maintained_by": "Vectara + 20 industry researchers",
+      "last_updated": "2026-05-11",
+      "size": "200+ models, 1280 source documents",
+      "metric": "Hallucination Rate / Factual Consistency Rate",
+      "why_credible": [
+        "业界唯一持续更新的公开幻觉榜单",
+        "覆盖 200+ 模型、来自 20 家不同机构",
+        "指标定义已被 FaithBench / RAGTruth 等学术工作引用"
+      ],
+      "how_note_meld_uses": "作为基线参考；NoteMeld 自测时沿用 HHEM 的幻觉率定义（见 evaluate_model.compute_hallucination）"
+    },
+    {
+      "id": "faithbench",
+      "name": "FaithBench",
+      "source": "https://arxiv.org/abs/2410.13210",
+      "maintained_by": "Vectara + ISU + UW (10 authors)",
+      "published_at": "2024-10",
+      "size": "10 modern LLMs from 8 families, expert ground truth",
+      "metric": "Hallucination F1 / Balanced Accuracy",
+      "why_credible": [
+        "首个覆盖 10 现代 LLM + 8 家族 + 专家逐 span 标注的幻觉基准",
+        "即使 GPT-4o-as-judge 在该集上也只有 ~55% F1，说明集本身够难",
+        "研究人员半数在幻觉检测方向有顶会论文"
+      ],
+      "how_note_meld_uses": "对模型进行压力测试，评估在强对抗场景下的幻觉率上限"
+    },
+    {
+      "id": "halluqa",
+      "name": "HalluQA",
+      "source": "https://arxiv.org/abs/2311.05232",
+      "maintained_by": "上海 AI Lab",
+      "published_at": "2023-11",
+      "size": "20k 中文样本",
+      "metric": "多角度幻觉率（生成/问答/对话）",
+      "why_credible": [
+        "中文首个多角度幻觉基准",
+        "覆盖生成、问答、对话三类真实应用场景",
+        "被国内多家大模型厂商作为内部评测参考"
+      ],
+      "how_note_meld_uses": "tests/evaluation_data/halluqa_dataset.json 中已内置部分样本"
+    },
+    {
+      "id": "lcsts",
+      "name": "LCSTS (Large-scale Chinese Short Text Summarization)",
+      "source": "http://icrc.hitsz.edu.cn/Article/show/171.html",
+      "maintained_by": "哈工大 + 微软亚洲研究院",
+      "published_at": "ACL 2015",
+      "size": "200 万 + 10k 人工精标",
+      "metric": "ROUGE-1 / ROUGE-2 / ROUGE-L",
+      "why_credible": [
+        "中文摘要领域引用最高的数据集",
+        "200 万自动标注 + 1 万人工精标，规模与精度兼顾",
+        "多家中文大模型厂商以此作为 baseline"
+      ],
+      "how_note_meld_uses": "tests/evaluation_data/lcsts_dataset.json 中已内置一个代表性子集"
+    },
+    {
+      "id": "longbench",
+      "name": "LongBench",
+      "source": "https://arxiv.org/abs/2311.10861",
+      "maintained_by": "清华 / CMU / 人大",
+      "published_at": "2023-11",
+      "size": "12 子任务 / 10k–100k tokens",
+      "metric": "Long-context QA / summarization accuracy",
+      "why_credible": [
+        "首个系统评估 LLM 长上下文（10k–100k tokens）的基准",
+        "覆盖 4 大类 12 子任务，包括跨段推理、多文档总结",
+        "NoteMeld 长视频总结属于其长上下文场景"
+      ],
+      "how_note_meld_uses": "作为长视频总结能力的参考基准"
+    },
+    {
+      "id": "video_chatgpt",
+      "name": "Video-ChatGPT / TempCompass",
+      "source": "https://arxiv.org/abs/2405.01075",
+      "maintained_by": "多高校联合",
+      "published_at": "2024-05",
+      "size": "上千小时视频",
+      "metric": "Video QA / summarization accuracy",
+      "why_credible": [
+        "覆盖真实视频的字幕+画面+音频多模态总结",
+        "NoteMeld 场景（视频+字幕+关键帧）完全匹配该基准的任务定义"
+      ],
+      "how_note_meld_uses": "作为视频总结专项 benchmark"
+    }
+  ],
+  "evaluation_weights": {
+    "hallucination_rate": 0.35,
+    "template_adherence": 0.25,
+    "citation_precision": 0.15,
+    "rouge_1": 0.10,
+    "subtitle_recall": 0.10,
+    "bert_score": 0.05
+  },
+  "evaluation_definitions": {
+    "hallucination_rate": "Vectara HHEM 标准：summary 中出现的、在 source 中找不到直接证据的事实片段比例。以 HHEM 模型做判定。",
+    "template_adherence": "min(章节召回率, 截图覆盖率, Schema 合规率)。其中任一项为 0 都视为失败（硬约束）。",
+    "section_recall": "找到的 must_include 章节数 / must_include 总数。",
+    "screenshot_coverage": "有截图的 screenshot_slot / 要求的 screenshot_slot。",
+    "citation_precision": "时间戳引用 *Content-[mm:ss] 与字幕时间段偏差 ≤ 5s 的数量 / 总引用数。",
+    "rouge_1": "标准 ROUGE-1 F1（unigram overlap）。",
+    "bert_score": "基于中文 BERT 的语义相似度 F1，缓解 ROUGE 对同义改写的惩罚。"
+  }
+}

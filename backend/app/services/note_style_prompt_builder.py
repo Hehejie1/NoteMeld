@@ -17,9 +17,25 @@ def build_note_style_instruction(template: dict[str, Any]) -> str:
     if needs_html and needs_markdown:
         strategy += "；后端会由 HTML 转 Markdown，同时保存两份结果。模型只返回 HTML"
     elif needs_markdown:
-        strategy += "；后端会由 HTML 转 Markdown。模型只返回 HTML"
+        strategy = "直接生成裸 Markdown；模型只返回 Markdown，不要使用包裹整篇内容的代码围栏"
     else:
         strategy += "，只返回 HTML"
+
+    structure_requirement = (
+        "- 骨架模板是 HTML 一等格式，必须优先保留主要 DOM 结构、class 和 data 属性。"
+        if needs_html
+        else "- skeleton_html 只提供内容层级参考；请用 Markdown 标题、列表和引用表达同等语义结构。"
+    )
+    markdown_requirement = (
+        "- 如果需要 Markdown，必须先形成稳定 HTML 结构；模型仍只返回 HTML，后端负责转换为 Markdown。"
+        if needs_html and needs_markdown
+        else "- Markdown 输出不得包裹在 ```html、```markdown 或其他整篇代码围栏中。"
+    )
+    selector_requirement = (
+        "- CSS selector 对应的局部约束必须作用到对应节点。"
+        if needs_html
+        else "- style_constraints 中的视觉约束应转换为清晰的 Markdown 信息层级，不输出 CSS 或 DOM 属性。"
+    )
 
     return f"""
 ## 笔记风格模板协议
@@ -51,10 +67,10 @@ def build_note_style_instruction(template: dict[str, Any]) -> str:
 ```
 
 ### 强制要求
-- 骨架模板是 HTML 一等格式，必须优先保留主要 DOM 结构、class 和 data 属性。
-- CSS selector 对应的局部约束必须作用到对应节点。
+{structure_requirement}
+{selector_requirement}
 - 标题必须根据内容生成，禁止把模板名、风格名或通用词直接当成最终标题。
 - 如果 skeleton 里出现 `<h1>`，它只代表结构占位；最终标题必须替换成内容摘要标题，不要直接使用模板名。
 - 禁止输出 script、内联事件和危险链接。
-- 如果需要 Markdown，必须先形成稳定 HTML 结构；模型仍只返回 HTML，后端负责转换为 Markdown。
+{markdown_requirement}
 """.strip()

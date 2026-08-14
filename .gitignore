@@ -270,13 +270,28 @@ frontend/tmp-*.png
 /wiki.png
 
 # Superpowers (local only)
-superpowers/
+/superpowers/
 
 # Local dev
 .NoteMeld-dev/*
 
 # --- Docs ---
-# 忽略 docs 下所有内容，只保留 system,images 目录
+# 忽略 docs 下其他内容，保留长期系统文档和本需求的可交付闭环文档
 /docs/*
 !/docs/system/
 !/docs/images/
+!/docs/requirements/
+/docs/requirements/*
+!/docs/requirements/index.md
+!/docs/requirements/2026-08-13-model-context-capability-aware-chunking.md
+!/docs/superpowers/
+/docs/superpowers/*
+!/docs/superpowers/plans/
+/docs/superpowers/plans/*
+!/docs/superpowers/plans/2026-08-13-model-context-capability-aware-chunking.md
+!/docs/superpowers/specs/
+/docs/superpowers/specs/*
+!/docs/superpowers/specs/2026-08-13-model-context-capability-aware-chunking-design.md
+!/docs/superpowers/tests/
+/docs/superpowers/tests/*
+!/docs/superpowers/tests/2026-08-13-model-context-capability-aware-chunking.md

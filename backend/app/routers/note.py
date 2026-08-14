@@ -1012,23 +1012,17 @@ def retry_wiki_extraction(task_id: str, background_tasks: BackgroundTasks):
             model_name = user_options.get("model_name")
             provider_id = user_options.get("provider_id")
             
-            from app.gpt.gpt_factory import GPTFactory
-            from app.models.model_config import ModelConfig
+            from app.gpt.notemeld_gpt import NotemeldGPT
             from app.services.model import ModelService
             from app.services.provider import ProviderService
-            
+
             provider = ProviderService.get_provider_by_id(provider_id)
             if not provider:
                 raise ValueError("Provider not found")
-                
-            config = ModelConfig(
-                api_key=ModelService._resolve_api_key(provider),
-                base_url=provider["base_url"],
-                model_name=model_name,
-                provider=provider["id"],
-                name=provider["name"],
-            )
-            gpt = GPTFactory().from_config(config)
+
+            config = ModelService.build_saved_model_config(provider, model_name)
+            # T11: 走 notemeld-ai 适配器（NotemeldGPT），回滚时换回 GPTFactory().from_config(config)
+            gpt = NotemeldGPT.from_config(config)
             if hasattr(gpt, "set_usage_context"):
                 gpt.set_usage_context(
                     {

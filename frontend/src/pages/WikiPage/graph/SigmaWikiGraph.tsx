@@ -35,6 +35,7 @@ interface SigmaWikiGraphProps {
   hoveredNodeId: string | null
   onSelectNode: (nodeId: string | null) => void
   onHoverNode: (nodeId: string | null) => void
+  onContextMenuNode?: (nodeId: string, event: MouseEvent | TouchEvent) => void
 }
 
 const DIM_NODE_COLOR = '#cbd5e1'
@@ -43,7 +44,7 @@ const ACTIVE_EDGE_COLOR = 'rgba(79, 70, 229, 0.52)'
 const RELATED_EDGE_COLOR = 'rgba(148, 163, 184, 0.2)'
 
 const SigmaWikiGraph = forwardRef<SigmaWikiGraphHandle, SigmaWikiGraphProps>(function SigmaWikiGraph(
-  { graph, viewMode, selectedNodeId, hoveredNodeId, onSelectNode, onHoverNode },
+  { graph, viewMode, selectedNodeId, hoveredNodeId, onSelectNode, onHoverNode, onContextMenuNode },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -51,6 +52,7 @@ const SigmaWikiGraph = forwardRef<SigmaWikiGraphHandle, SigmaWikiGraphProps>(fun
   const graphRef = useRef<WikiGraphologyGraph | null>(null)
   const hoverCallbackRef = useRef(onHoverNode)
   const selectCallbackRef = useRef(onSelectNode)
+  const contextMenuCallbackRef = useRef(onContextMenuNode)
 
   useEffect(() => {
     hoverCallbackRef.current = onHoverNode
@@ -59,6 +61,10 @@ const SigmaWikiGraph = forwardRef<SigmaWikiGraphHandle, SigmaWikiGraphProps>(fun
   useEffect(() => {
     selectCallbackRef.current = onSelectNode
   }, [onSelectNode])
+
+  useEffect(() => {
+    contextMenuCallbackRef.current = onContextMenuNode
+  }, [onContextMenuNode])
 
   const selectedRelatedNodeIds = useMemo(() => {
     const next = new Set<string>()
@@ -148,12 +154,28 @@ const SigmaWikiGraph = forwardRef<SigmaWikiGraphHandle, SigmaWikiGraphProps>(fun
     renderer.on('leaveNode', () => hoverCallbackRef.current(null))
     renderer.on('clickNode', ({ node }) => selectCallbackRef.current(String(node)))
     renderer.on('clickStage', () => selectCallbackRef.current(null))
+    renderer.on('rightClickNode', ({ node, event }) => {
+      event.preventSigmaDefault()
+      contextMenuCallbackRef.current?.(String(node), event.original)
+    })
 
     rendererRef.current = renderer
     graphRef.current = sigmaGraph
     renderer.refresh()
 
+    let resizeFrame = 0
+    const resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(() => {
+        renderer.resize(true)
+        renderer.refresh()
+      })
+    })
+    resizeObserver.observe(container)
+
     return () => {
+      resizeObserver.disconnect()
+      cancelAnimationFrame(resizeFrame)
       renderer.kill()
       rendererRef.current = null
       graphRef.current = null
@@ -180,18 +202,20 @@ const SigmaWikiGraph = forwardRef<SigmaWikiGraphHandle, SigmaWikiGraphProps>(fun
     resetView: () => {
       const camera = rendererRef.current?.getCamera()
       if (camera == null) return
-      camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 240 })
+      void camera.animatedReset({ duration: 240 })
     },
     focusNode: (nodeId: string) => {
       const camera = rendererRef.current?.getCamera()
+      const renderer = rendererRef.current
       const sigmaGraph = graphRef.current
-      if (camera == null || sigmaGraph == null || sigmaGraph.hasNode(nodeId) === false) return
-      const attrs = sigmaGraph.getNodeAttributes(nodeId)
+      if (camera == null || renderer == null || sigmaGraph == null || sigmaGraph.hasNode(nodeId) === false) return
+      const displayData = renderer.getNodeDisplayData(nodeId)
+      if (displayData == null) return
       const currentRatio = camera.getState().ratio
       camera.animate(
         {
-          x: attrs.x,
-          y: attrs.y,
+          x: displayData.x,
+          y: displayData.y,
           ratio: Math.min(currentRatio, 0.35),
         },
         { duration: 260 },

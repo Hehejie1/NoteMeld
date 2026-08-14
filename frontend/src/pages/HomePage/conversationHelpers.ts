@@ -8,7 +8,17 @@ export interface ParsedMessageContent {
 export interface TimelineMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
-  message_type: 'user_input' | 'assistant_text' | 'note_progress' | 'note_result' | 'system_error'
+  message_type:
+    | 'user_input'
+    | 'assistant_text'
+    | 'note_progress'
+    | 'note_result'
+    | 'system_error'
+    | 'task_card'
+    | 'task_card_progress'
+    | 'parameter_request'
+    | 'parameter_response'
+    | 'learning_canvas'
   content: string
   status?: 'pending' | 'running' | 'success' | 'failed'
   meta?: Record<string, unknown>

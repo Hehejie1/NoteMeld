@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "description": "NoteMeld 总结任务幻觉评测集。每个 case 给出 source_text（原文）+ candidate_summary（模型总结）+ 预期判定，用于计算 Factual Hallucination Rate。参考 TruthfulQA / Vectara HHEM 方法论，从「总结任务」视角标注。",
+  "annotation_protocol": "每条 case 至少 2 名标注者独立判断 candidate_summary 是否包含 source_text 中不存在的事实。Kappa 一致性系数 ≥ 0.75 方可纳入。",
+  "cases": [
+    {
+      "id": "hallu_summary_001",
+      "category": "summary_hallucination",
+      "source_text": "NoteMeld 是一款本地优先的 AI 知识工作台，由中国团队开发，基于 MIT 协议开源，主要支持 macOS、Windows 和 Linux 桌面端。",
+      "candidate_summary": "NoteMeld 是一款由美国团队开发的云端 AI 知识管理工具，采用闭源商业模式，只支持 Windows 平台。",
+      "hallucinated_claims": ["美国团队", "闭源商业模式", "只支持 Windows 平台"],
+      "ground_truth": "hallucinated",
+      "non_hallucinated_claims": ["AI 知识"]
+    },
+    {
+      "id": "hallu_summary_002",
+      "category": "summary_hallucination",
+      "source_text": "产品发布于 2024 年 6 月，截至 2025 年 3 月累计用户 12 万，其中付费用户占比 8.3%。",
+      "candidate_summary": "产品发布于 2023 年 9 月，目前累计用户超过 50 万，付费比例约 20%。",
+      "hallucinated_claims": ["2023 年 9 月", "50 万", "20%"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_003",
+      "category": "summary_hallucination",
+      "source_text": "NoteMeld 支持 B 站、YouTube、抖音、快手、视频号的视频采集。",
+      "candidate_summary": "NoteMeld 支持 B 站、YouTube、抖音、快手、视频号的视频采集，并支持 Twitter、Instagram 和 TikTok 的自动发布。",
+      "hallucinated_claims": ["Twitter", "Instagram", "TikTok 自动发布"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_004",
+      "category": "factual_consistency",
+      "source_text": "系统要求转录模型必须为 Whisper-large-v3 或同级模型，平均转录准确率需达到 95% 以上。",
+      "candidate_summary": "系统使用 Whisper-large-v3 作为转录引擎，准确率可达 95% 以上。",
+      "hallucinated_claims": [],
+      "ground_truth": "faithful"
+    },
+    {
+      "id": "hallu_summary_005",
+      "category": "factual_consistency",
+      "source_text": "系统要求转录模型必须为 Whisper-large-v3 或同级模型，平均转录准确率需达到 95% 以上。",
+      "candidate_summary": "系统默认使用 GPT-4o 进行语音转录，准确率约为 80%。",
+      "hallucinated_claims": ["GPT-4o 进行语音转录", "80%"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_006",
+      "category": "template_hallucination",
+      "source_text": "会议时间 2024-10-15，地点北京，参会人张三、李四、王五。",
+      "candidate_summary": "2024 年 10 月 15 日于上海召开会议，由赵六、孙七、周八出席。",
+      "hallucinated_claims": ["上海", "赵六", "孙七", "周八"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_007",
+      "category": "template_hallucination",
+      "source_text": "需求评审结论：Q4 聚焦 AI 推荐功能上线，支付模块超时问题需在 11 月 15 日前修复。",
+      "candidate_summary": "本次评审决定 Q4 重点是视频剪辑功能和支付系统重构，截止日期为 12 月 30 日。",
+      "hallucinated_claims": ["视频剪辑功能", "支付系统重构", "12 月 30 日"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_008",
+      "category": "summary_hallucination",
+      "source_text": "我们在测试中发现，使用 qwen3:8b 模型做本地总结时，平均响应时间为 11.17 秒，ROUGE-1 指标为 0.2295。",
+      "candidate_summary": "qwen3:8b 模型本地测试显示平均响应 5 秒，ROUGE-1 达到 0.8，远超 GPT-4o。",
+      "hallucinated_claims": ["5 秒", "0.8", "远超 GPT-4o"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_009",
+      "category": "citation_hallucination",
+      "source_text": "视频 02:30 处展示了系统架构图，05:45 处演示了核心工作流，08:20 处给出了性能对比数据。",
+      "candidate_summary": "系统架构图出现在 01:00，核心工作流演示在 03:15，性能对比在 10:00。",
+      "hallucinated_claims": ["01:00", "03:15", "10:00"],
+      "ground_truth": "hallucinated"
+    },
+    {
+      "id": "hallu_summary_010",
+      "category": "edge_case_no_source",
+      "source_text": "",
+      "candidate_summary": "根据 NoteMeld 产品分析，它是行业领先的 AI 办公工具，用户数已突破百万。",
+      "hallucinated_claims": ["行业领先", "用户数突破百万"],
+      "ground_truth": "hallucinated",
+      "note": "空输入场景下模型不得编造信息"
+    }
+  ],
+  "scoring": {
+    "hallucination_rate_formula": "hallucinated_cases / total_cases",
+    "target_threshold": "≤ 5% for production, ≤ 10% for beta",
+    "non_hallucination_rate_formula": "faithful_cases / total_cases"
+  }
+}

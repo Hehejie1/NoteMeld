@@ -7,13 +7,25 @@ import os
 import hashlib
 import json
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.gpt.prompt import BASE_PROMPT, AI_SUM, SCREENSHOT, LINK, MERGE_PROMPT
-from app.gpt.provider_runtime import normalize_model_error, resolve_provider_runtime_config
+from app.gpt.provider_runtime import (
+    ContextLimitExceededError,
+    context_limit_error,
+    is_context_limit_error,
+    normalize_model_error,
+    resolve_provider_runtime_config,
+)
 from app.gpt.utils import fix_markdown
 from app.gpt.request_chunker import RequestChunker
+from app.gpt.token_budget import (
+    build_token_budget,
+    count_message_images,
+    estimate_messages_tokens,
+)
 from app.db.usage_dao import insert_usage_record
 from app.models.transcriber_model import TranscriptSegment
 from app.utils.logger import get_logger
@@ -35,6 +47,9 @@ class UniversalGPT(GPT):
         provider_id: str | None = None,
         provider_name: str | None = None,
         base_url: str | None = None,
+        context_window_tokens: int = 4096,
+        supports_vision: bool = False,
+        supports_stream: bool = True,
     ):
         self.client = client
         self.model = model
@@ -42,9 +57,14 @@ class UniversalGPT(GPT):
         self.usage_context = usage_context or {}
         self.screenshot = False
         self.link = False
+        self.context_window_tokens = context_window_tokens
+        self.supports_vision = supports_vision
+        self.supports_stream = supports_stream
+        self.provider_id = provider_id or self.usage_context.get("provider_id") or "unknown"
+        self.provider_name = provider_name or self.usage_context.get("provider_name") or "unknown"
         runtime_config = resolve_provider_runtime_config(
-            provider_id=provider_id or self.usage_context.get("provider_id"),
-            provider_name=provider_name or self.usage_context.get("provider_name"),
+            provider_id=self.provider_id,
+            provider_name=self.provider_name,
             base_url=base_url,
         )
         self.max_request_bytes = runtime_config.max_request_bytes
@@ -54,6 +74,18 @@ class UniversalGPT(GPT):
         # 初始化时缓存重试配置，避免每次请求重复读取环境变量
         self._max_retry_attempts = max(1, int(os.getenv("OPENAI_RETRY_ATTEMPTS", "3")))
         self._retry_base_backoff = float(os.getenv("OPENAI_RETRY_BACKOFF_SECONDS", "1.5"))
+
+    def _input_token_budget(self, image_count: int = 0) -> int:
+        return build_token_budget(
+            self.context_window_tokens,
+            image_count=image_count,
+        ).max_input_tokens
+
+    def _estimate_messages_budget_tokens(self, messages: list) -> int:
+        """Normalize a candidate's image reserve against the no-image ceiling."""
+        base_max = self._input_token_budget()
+        candidate_max = self._input_token_budget(count_message_images(messages))
+        return estimate_messages_tokens(messages) + (base_max - candidate_max)
 
     def _format_time(self, seconds: float) -> str:
         return str(timedelta(seconds=int(seconds)))[2:]
@@ -226,6 +258,8 @@ class UniversalGPT(GPT):
 
     @staticmethod
     def _is_retryable_error(exc: Exception) -> bool:
+        if is_context_limit_error(exc):
+            return False
         raw = str(exc).lower()
         retryable_tokens = (
             "返回了空",
@@ -326,6 +360,11 @@ class UniversalGPT(GPT):
                 )
                 return response
             except Exception as exc:
+                safe_context_exc = context_limit_error(
+                    exc,
+                    model_name=self.model,
+                    context_window_tokens=self.context_window_tokens,
+                )
                 finished_at = datetime.now(timezone.utc)
                 elapsed_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
                 self.usage_context = request_usage_context
@@ -336,13 +375,14 @@ class UniversalGPT(GPT):
                             finished_at,
                             usage=None,
                             status="failed",
-                            error_message=normalize_model_error(exc),
+                            error_message=normalize_model_error(safe_context_exc or exc),
                         )
                     )
                 finally:
                     self.usage_context = original_usage_context
-                last_exc = exc
-                if attempt == self._max_retry_attempts - 1 or not self._is_retryable_error(exc):
+                effective_exc = safe_context_exc or exc
+                last_exc = effective_exc
+                if attempt == self._max_retry_attempts - 1 or not self._is_retryable_error(effective_exc):
                     logger.error(
                         "LLM 请求失败: provider=%s/%s model=%s stage=%s response_format=%s timeout=%s max_tokens=%s duration_ms=%s error=%s",
                         provider_id,
@@ -353,8 +393,10 @@ class UniversalGPT(GPT):
                         timeout,
                         max_tokens,
                         elapsed_ms,
-                        exc,
+                        normalize_model_error(effective_exc),
                     )
+                    if safe_context_exc:
+                        raise safe_context_exc from None
                     raise
                 sleep_seconds = self._retry_base_backoff * (2 ** attempt)
                 logger.warning(
@@ -368,7 +410,7 @@ class UniversalGPT(GPT):
                     timeout,
                     max_tokens,
                     elapsed_ms,
-                    exc,
+                    normalize_model_error(effective_exc),
                 )
                 time.sleep(sleep_seconds)
 
@@ -396,7 +438,13 @@ class UniversalGPT(GPT):
 
         return content.strip()
 
-    def _merge_partials(self, partials: list, checkpoint_key: str | None, source_signature: str | None) -> str:
+    def _merge_partials(
+        self,
+        partials: list,
+        checkpoint_key: str | None,
+        source_signature: str | None,
+        max_input_tokens: int | None = None,
+    ) -> str:
         if not partials:
             raise RuntimeError("没有可用于生成摘要的文本片段")
 
@@ -406,7 +454,9 @@ class UniversalGPT(GPT):
         merge_chunker = RequestChunker(
             lambda *_args, **_kwargs: [],
             self.max_request_bytes,
-            self._estimate_messages_bytes
+            self._estimate_messages_bytes,
+            max_tokens=max_input_tokens or self._input_token_budget(),
+            token_estimator=estimate_messages_tokens,
         )
 
         current_partials = list(partials)
@@ -436,6 +486,42 @@ class UniversalGPT(GPT):
         return current_partials[0]
 
     def summarize(self, source: GPTSource) -> str:
+        original_budget = self._input_token_budget()
+        try:
+            return self._summarize_with_input_budget(source, original_budget)
+        except Exception as exc:
+            if not is_context_limit_error(exc):
+                raise
+
+        retry_budget = max(1, int(original_budget * 0.7))
+        logger.warning(
+            "模型端返回上下文超限，按原输入预算 70%% 重分块一次: "
+            "provider=%s/%s model=%s original_budget=%s retry_budget=%s",
+            self.provider_id,
+            self.provider_name,
+            self.model,
+            original_budget,
+            retry_budget,
+        )
+        try:
+            retry_source = replace(
+                source,
+                checkpoint_key=(
+                    f"{source.checkpoint_key}:context-retry"
+                    if source.checkpoint_key
+                    else None
+                ),
+            )
+            return self._summarize_with_input_budget(retry_source, retry_budget)
+        except Exception as retry_exc:
+            if is_context_limit_error(retry_exc):
+                raise ContextLimitExceededError(
+                    model_name=self.model,
+                    context_window_tokens=self.context_window_tokens,
+                ) from None
+            raise
+
+    def _summarize_with_input_budget(self, source: GPTSource, max_input_tokens: int) -> str:
         self.screenshot = source.screenshot
         self.link = source.link
         source.segment = self.ensure_segments_type(source.segment)
@@ -445,7 +531,13 @@ class UniversalGPT(GPT):
         def message_builder(segments, image_urls, **kwargs):
             return self.create_messages(segments, video_img_urls=image_urls, **kwargs)
 
-        chunker = RequestChunker(message_builder, self.max_request_bytes, self._estimate_messages_bytes)
+        chunker = RequestChunker(
+            message_builder,
+            self.max_request_bytes,
+            self._estimate_messages_bytes,
+            max_tokens=max_input_tokens,
+            token_estimator=self._estimate_messages_budget_tokens,
+        )
 
         try:
             chunks = chunker.chunk(
@@ -458,7 +550,14 @@ class UniversalGPT(GPT):
                 extras=source.extras
             )
         except ValueError:
-            chunks = chunker.chunk(
+            text_chunker = RequestChunker(
+                message_builder,
+                self.max_request_bytes,
+                self._estimate_messages_bytes,
+                max_tokens=max_input_tokens,
+                token_estimator=estimate_messages_tokens,
+            )
+            chunks = text_chunker.chunk(
                 source.segment,
                 [],
                 title=source.title,
@@ -504,7 +603,12 @@ class UniversalGPT(GPT):
             return partials[0]
         if not partials:
             raise RuntimeError("没有可用于生成摘要的文本片段")
-        merged = self._merge_partials(partials, checkpoint_key, source_signature)
+        merged = self._merge_partials(
+            partials,
+            checkpoint_key,
+            source_signature,
+            max_input_tokens=max_input_tokens,
+        )
         if checkpoint_key:
             self._clear_checkpoint(checkpoint_key)
         return merged

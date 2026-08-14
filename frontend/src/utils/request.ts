@@ -1,6 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import toast from 'react-hot-toast'
 import { getRuntimeApiBaseUrl, getRuntimeSessionToken } from './runtime';
+import { isDemoMode } from '@/demo/mode'
+import { createDemoAxiosAdapter } from '@/demo/transport'
 
 // 统一响应类型
 export interface IResponse<T = any> {
@@ -49,6 +51,7 @@ export function formatErrorMessage(payload: Partial<IResponse> | undefined, fall
 // 创建实例
  const request: AxiosInstance = axios.create({
   timeout: 10000,
+  ...(isDemoMode() ? { adapter: createDemoAxiosAdapter() } : {}),
 });
 
 request.interceptors.request.use(config => {

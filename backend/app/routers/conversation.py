@@ -1,8 +1,14 @@
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.agent.long_task import find_manager_by_card
+from app.agent.workspace import (
+    WorkspaceError,
+    list_directory,
+    read_file,
+)
 from app.services.conversation_store import (
     append_message,
     delete_conversation_note_document,
@@ -15,9 +21,19 @@ from app.services.conversation_store import (
 )
 from app.services.note_document_store import delete_note_task_artifacts
 from app.services.note_task_store import cancel_note_task
+from app.services.conversation_context_refs import sanitize_context_refs
 from app.utils.response import ResponseWrapper as R
 
 router = APIRouter()
+
+
+def _sanitize_message_meta(role: str | None, meta: dict[str, Any] | None) -> dict[str, Any] | None:
+    if meta is None:
+        return None
+    result = dict(meta)
+    if role == "user" and "context_refs" in result:
+        result["context_refs"] = sanitize_context_refs(result["context_refs"])
+    return result
 
 
 class ConversationPayload(BaseModel):
@@ -127,7 +143,9 @@ def patch_conversation(conversation_id: str, data: ConversationPatchPayload):
 @router.post("/conversations/{conversation_id}/messages")
 def post_conversation_message(conversation_id: str, data: ConversationMessagePayload):
     try:
-        return R.success(append_message(conversation_id, data.model_dump()))
+        payload = data.model_dump()
+        payload["meta"] = _sanitize_message_meta(data.role, payload.get("meta")) or {}
+        return R.success(append_message(conversation_id, payload))
     except ValueError as exc:
         message = str(exc)
         if message == "conversation not found":
@@ -138,6 +156,14 @@ def post_conversation_message(conversation_id: str, data: ConversationMessagePay
 @router.patch("/conversations/{conversation_id}/messages/{message_id}")
 def patch_conversation_message(conversation_id: str, message_id: str, data: ConversationMessagePatchPayload):
     payload = data.model_dump(exclude_unset=True)
+    if "meta" in payload:
+        current = get_conversation(conversation_id) or {}
+        current_message = next(
+            (message for message in current.get("messages", []) if message.get("id") == message_id),
+            {},
+        )
+        role = payload.get("role") or current_message.get("role")
+        payload["meta"] = _sanitize_message_meta(role, payload.get("meta"))
     payload["id"] = message_id
     try:
         return R.success(update_message(conversation_id, message_id, payload))
@@ -167,3 +193,63 @@ def delete_conversation_document(conversation_id: str, task_id: str):
     if item is None:
         return R.error("文档不存在或会话不存在", code=404)
     return R.success(item)
+
+
+# ---------------------------------------------------------------------------
+# P3-T1: Workspace 只读接口
+# ---------------------------------------------------------------------------
+
+@router.get("/conversations/{conversation_id}/workspace/list")
+def workspace_list(conversation_id: str, path: Optional[str] = None):
+    """列出会话工作空间目录内容（只读）。"""
+    try:
+        return R.success(list_directory(conversation_id, path or ""))
+    except WorkspaceError as exc:
+        return R.error(str(exc), code=403)
+    except FileNotFoundError as exc:
+        return R.error(f"路径不存在: {exc}", code=404)
+
+
+@router.get("/conversations/{conversation_id}/workspace/read")
+def workspace_read(conversation_id: str, path: str):
+    """读取会话工作空间内某文件（只读）。"""
+    if not path:
+        return R.error("path 参数不能为空", code=400)
+    try:
+        return R.success(read_file(conversation_id, path))
+    except WorkspaceError as exc:
+        return R.error(str(exc), code=403)
+    except FileNotFoundError:
+        return R.error(f"文件不存在: {path}", code=404)
+
+
+# ---------------------------------------------------------------------------
+# P3-T4: 长任务取消接口
+# ---------------------------------------------------------------------------
+
+
+class CancelTaskPayload(BaseModel):
+    card_id: str
+
+
+@router.post("/conversations/{conversation_id}/workspace/cancel_task")
+async def cancel_long_task(conversation_id: str, data: CancelTaskPayload):
+    """取消长任务卡片。
+
+    根据 ``card_id`` 反查 LongTaskManager，并校验卡片属于路径中的会话后触发取消。
+    """
+    if not data.card_id:
+        return R.error("card_id 不能为空", code=400)
+    manager = find_manager_by_card(data.card_id)
+    if manager is None:
+        return R.error("卡片不存在或服务已重启", code=404)
+    card = manager.get_card(data.card_id)
+    if not isinstance(card, dict) or card.get("conversation_id") != conversation_id:
+        return R.error("卡片不存在或服务已重启", code=404)
+    try:
+        ok = await manager.cancel_task(data.card_id)
+    except Exception as exc:  # noqa: BLE001
+        return R.error(f"取消失败: {exc}", code=500)
+    if not ok:
+        return R.error("卡片已结束，无法取消", code=400)
+    return R.success({"card_id": data.card_id, "conversation_id": conversation_id, "canceled": True})

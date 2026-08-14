@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 import { shouldHighlightTaskInSidebar } from './appLayoutNavigation'
 import { openExternalUrl } from '@/utils/runtime'
 import { useBackendInitContext } from '@/contexts/BackendInitContext.tsx'
+import { FeatureGuideTarget } from '@/demo/FeatureGuideTarget'
 
 const logo = '/notemeld-logo.png'
 const githubUrl = 'https://github.com/Hehejie1/NoteMeld'
@@ -41,6 +42,7 @@ interface NavItem {
   label: string
   icon: ReactNode
   exact?: boolean
+  guideId: string
 }
 
 const AboutIcon = (props: SVGProps<SVGSVGElement>) => (
@@ -53,11 +55,11 @@ const AboutIcon = (props: SVGProps<SVGSVGElement>) => (
 )
 
 const navItems: NavItem[] = [
-  { to: '/new', label: '新建笔记', icon: <FilePlus2 className="h-[18px] w-[18px]" />, exact: true },
-  { to: '/styles', label: '风格模板', icon: <LayoutTemplate className="h-[18px] w-[18px]" /> },
-  { to: '/wiki', label: '知识库', icon: <Network className="h-[18px] w-[18px]" /> },
-  { to: '/settings', label: '设置', icon: <Settings className="h-[18px] w-[18px]" /> },
-  { to: '/about', label: '关于', icon: <AboutIcon className="h-[18px] w-[18px]" /> },
+  { to: '/new', label: '新建笔记', icon: <FilePlus2 className="h-[18px] w-[18px]" />, exact: true, guideId: 'nav-new-note' },
+  { to: '/styles', label: '风格模板', icon: <LayoutTemplate className="h-[18px] w-[18px]" />, guideId: 'nav-styles' },
+  { to: '/wiki', label: '知识库', icon: <Network className="h-[18px] w-[18px]" />, guideId: 'nav-wiki' },
+  { to: '/settings', label: '设置', icon: <Settings className="h-[18px] w-[18px]" />, guideId: 'nav-settings' },
+  { to: '/about', label: '关于', icon: <AboutIcon className="h-[18px] w-[18px]" />, guideId: 'nav-about' },
 ]
 
 const hasMarkdown = (markdown: any): boolean => {
@@ -159,10 +161,10 @@ const AppLayout: FC<IProps> = ({ children }) => {
 
   if (isMobile) {
     const mobileNavItems = [
-      { to: '/new', label: '新建', icon: <FilePlus2 className="h-5 w-5" /> },
-      { to: '/wiki', label: '知识库', icon: <Network className="h-5 w-5" /> },
-      { to: '/styles', label: '风格', icon: <LayoutTemplate className="h-5 w-5" /> },
-      { to: '/settings', label: '设置', icon: <Settings className="h-5 w-5" /> },
+      { to: '/new', label: '新建', icon: <FilePlus2 className="h-5 w-5" />, guideId: 'nav-new-note' },
+      { to: '/wiki', label: '知识库', icon: <Network className="h-5 w-5" />, guideId: 'nav-wiki' },
+      { to: '/styles', label: '风格', icon: <LayoutTemplate className="h-5 w-5" />, guideId: 'nav-styles' },
+      { to: '/settings', label: '设置', icon: <Settings className="h-5 w-5" />, guideId: 'nav-settings' },
     ]
 
     return (
@@ -207,8 +209,8 @@ const AppLayout: FC<IProps> = ({ children }) => {
         <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle/70 bg-white/95 px-2 pt-1 backdrop-blur-xl">
           <div className="grid h-[var(--mobile-bottom-nav-height)] grid-cols-4">
             {mobileNavItems.map(item => (
+              <FeatureGuideTarget key={item.to} featureId={item.guideId} onExecute={() => navigate(item.to)}>
               <NavLink
-                key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
                   cn(
@@ -220,6 +222,7 @@ const AppLayout: FC<IProps> = ({ children }) => {
                 {item.icon}
                 <span>{item.label}</span>
               </NavLink>
+              </FeatureGuideTarget>
             ))}
           </div>
         </nav>
@@ -425,11 +428,13 @@ const AppLayout: FC<IProps> = ({ children }) => {
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
+                      <FeatureGuideTarget featureId={item.guideId} onExecute={handleNewNote}>
                       <button onClick={handleNewNote} className={baseCls}>
                         <span className="flex h-9 w-9 items-center justify-center">
                           {item.icon}
                         </span>
                       </button>
+                      </FeatureGuideTarget>
                     </TooltipTrigger>
                     <TooltipContent side="right">{item.label}</TooltipContent>
                   </Tooltip>
@@ -437,16 +442,18 @@ const AppLayout: FC<IProps> = ({ children }) => {
               )
             }
             return (
+              <FeatureGuideTarget featureId={item.guideId} onExecute={handleNewNote}>
               <button onClick={handleNewNote} className={baseCls}>
                 {item.icon}
                 <span>{item.label}</span>
               </button>
+              </FeatureGuideTarget>
             )
           })()}
 
           {navItems.slice(1).map(item => (
+            <FeatureGuideTarget key={item.to} featureId={item.guideId} onExecute={() => navigate(item.to)}>
             <NavLink
-              key={item.to}
               to={item.to}
               end={item.exact}
               className={({ isActive }) =>
@@ -477,6 +484,7 @@ const AppLayout: FC<IProps> = ({ children }) => {
                 </>
               )}
             </NavLink>
+            </FeatureGuideTarget>
           ))}
         </nav>
 

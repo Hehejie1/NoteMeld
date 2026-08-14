@@ -27,7 +27,7 @@ from app.services.model_capability import ModelCapabilityService
 class KnowledgeExtractor:
     ANALYSIS_TIMEOUT_SECONDS = float(os.getenv("WIKI_ANALYSIS_TIMEOUT_SECONDS", "45"))
     FALLBACK_TIMEOUT_SECONDS = float(os.getenv("WIKI_FALLBACK_TIMEOUT_SECONDS", "90"))
-    ANALYSIS_MAX_TOKENS = int(os.getenv("WIKI_ANALYSIS_MAX_TOKENS", "1600"))
+    ANALYSIS_MAX_TOKENS = int(os.getenv("WIKI_ANALYSIS_MAX_TOKENS", "3200"))
     CHUNK_MIN_MARKDOWN_LENGTH = int(os.getenv("WIKI_ANALYSIS_CHUNK_MIN_LENGTH", "6000"))
     CHUNK_MAX_CHARS = int(os.getenv("WIKI_ANALYSIS_CHUNK_MAX_CHARS", "3000"))
     FULLTEXT_MAX_TOKENS = int(os.getenv("WIKI_FULLTEXT_MAX_TOKENS", "900"))
@@ -169,9 +169,10 @@ class KnowledgeExtractor:
                 },
             ],
         )
-        content = ((response.choices or [None])[0].message.content or "").strip()
-        if not content:
-            raise ValueError("Wiki analysis returned empty content")
+        content = self._response_content_or_verified_reasoning_json(
+            response,
+            label="Wiki analysis",
+        )
         try:
             payload = json.loads(content)
         except json.JSONDecodeError as exc:
@@ -220,10 +221,64 @@ class KnowledgeExtractor:
                 },
             ],
         )
-        content = ((response.choices or [None])[0].message.content or "").strip()
-        if not content:
-            raise ValueError("Wiki fallback analysis returned empty content")
+        content = self._response_content_or_verified_reasoning_json(
+            response,
+            label="Wiki fallback analysis",
+        )
         return self._normalize_analysis_payload(summary_input, self._parse_prompt_json_payload(content))
+
+    def _response_content_or_verified_reasoning_json(self, response, *, label: str) -> str:
+        choices = getattr(response, "choices", None) or []
+        choice = choices[0] if choices else None
+        message = getattr(choice, "message", None) if choice else None
+        content = str(getattr(message, "content", "") or "").strip()
+        if content:
+            return content
+
+        reasoning = getattr(message, "reasoning_content", None) if message else None
+        if reasoning is None and message is not None:
+            reasoning = getattr(message, "reasoning", None)
+        reasoning = str(reasoning or "").strip()
+        recovered = self._extract_verified_json_from_reasoning(reasoning)
+        if recovered is not None:
+            return json.dumps(recovered, ensure_ascii=False)
+
+        finish_reason = str(getattr(choice, "finish_reason", "") or "").strip().lower()
+        if finish_reason in {"length", "max_tokens"}:
+            raise ValueError(f"{label} output truncated before final JSON")
+        if reasoning:
+            raise ValueError(f"{label} produced reasoning but no final JSON")
+        raise ValueError(f"{label} returned empty content")
+
+    def _extract_verified_json_from_reasoning(self, reasoning: str) -> Optional[dict]:
+        if not reasoning:
+            return None
+        candidates = []
+        marker_match = re.search(
+            r"BEGIN_JSON\s*(\{[\s\S]*?\})\s*END_JSON",
+            reasoning,
+        )
+        if marker_match:
+            candidates.append(marker_match.group(1))
+        fence_match = re.fullmatch(
+            r"\s*```json\s*\n?(\{[\s\S]*?\})\s*\n?```\s*",
+            reasoning,
+            flags=re.IGNORECASE,
+        )
+        if fence_match:
+            candidates.append(fence_match.group(1))
+        stripped = reasoning.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            candidates.append(stripped)
+
+        for candidate in candidates:
+            try:
+                payload = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                return payload
+        return None
 
     def _parse_prompt_json_payload(self, content: str) -> dict:
         match = re.search(r"BEGIN_JSON\s*(\{[\s\S]*?\})\s*END_JSON", content)
@@ -384,7 +439,7 @@ class KnowledgeExtractor:
         seen_evidence_ids = set()
         for index, item in enumerate(self._ensure_list(payload.get("evidence")), start=1):
             item = item if isinstance(item, dict) else {}
-            text = str(item.get("text") or "").strip()
+            text = str(item.get("text") or "").strip()[:120]
             if not text:
                 continue
             evidence_id = str(item.get("evidence_id") or f"{summary_input.input_id}:evidence:{index}").strip()
@@ -392,6 +447,8 @@ class KnowledgeExtractor:
                 continue
             seen_evidence_ids.add(evidence_id)
             evidence.append({**item, "evidence_id": evidence_id, "text": text})
+            if len(evidence) >= 8:
+                break
 
         evidence_ids = {item["evidence_id"] for item in evidence}
         claims = []
@@ -409,18 +466,27 @@ class KnowledgeExtractor:
                 if evidence_id in evidence_ids
             ]
             claims.append({**item, "claim": claim, "target_type": target_type, "evidence_ids": claim_evidence_ids})
+            if len(claims) >= 8:
+                break
+
+        def bounded_named_items(field: str) -> list[dict]:
+            result = []
+            for raw_item in self._ensure_list(payload.get(field)):
+                if not isinstance(raw_item, dict) or not str(raw_item.get("name") or "").strip():
+                    continue
+                item = dict(raw_item)
+                if "description" in item:
+                    item["description"] = str(item.get("description") or "").strip()[:120]
+                result.append(item)
+                if len(result) >= 6:
+                    break
+            return result
 
         return {
             "title": str(payload.get("title") or summary_input.title or summary_input.input_id).strip(),
-            "summary": str(payload.get("summary") or summary_input.title or summary_input.input_id).strip(),
-            "entities": [
-                item for item in self._ensure_list(payload.get("entities"))
-                if isinstance(item, dict) and str(item.get("name") or "").strip()
-            ],
-            "concepts": [
-                item for item in self._ensure_list(payload.get("concepts"))
-                if isinstance(item, dict) and str(item.get("name") or "").strip()
-            ],
+            "summary": str(payload.get("summary") or summary_input.title or summary_input.input_id).strip()[:240],
+            "entities": bounded_named_items("entities"),
+            "concepts": bounded_named_items("concepts"),
             "claims": claims,
             "evidence": evidence,
             "relations": [
@@ -428,7 +494,7 @@ class KnowledgeExtractor:
                 if isinstance(item, dict)
                 and str(item.get("source") or "").strip()
                 and str(item.get("target") or "").strip()
-            ],
+            ][:8],
             "topics": [item for item in self._ensure_string_list(payload.get("topics")) if item],
         }
 
@@ -449,8 +515,9 @@ class KnowledgeExtractor:
             "2. 不要输出 source_id/source_type，它们由系统注入。\n"
             "3. 如果没有足够依据，数组返回空数组，不要猜测。\n"
             "4. claims.target_type 只允许 entity、concept、source。\n\n"
-            "5. 输出必须克制：entities 最多 8 个，concepts 最多 8 个，claims 最多 12 条，evidence 最多 12 条，relations 最多 12 条。\n"
-            "6. evidence.text 必须引用原文中的短句或压缩后的关键证据，不要整段复制。\n\n"
+            "5. 输出必须克制：entities 最多 6 个，concepts 最多 6 个，claims 最多 8 条，evidence 最多 8 条，relations 最多 8 条。\n"
+            "6. summary 不超过 240 字；description 和 evidence.text 单项不超过 120 字。\n"
+            "7. evidence.text 必须引用原文中的短句或压缩后的关键证据，不要整段复制。\n\n"
             f"source_id: {summary_input.input_id}\n"
             f"source_type: {summary_input.input_type}\n"
             f"source_url: {summary_input.source_url or ''}\n"

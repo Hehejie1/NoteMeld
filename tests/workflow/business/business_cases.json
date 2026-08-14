@@ -1,0 +1,921 @@
+{
+  "schema_version": "1.0",
+  "description": "NoteMeld 业务场景分层测试集 v1.0。基于 vector_db/note_results 真实素材（be80a454 转写稿 + data/ 下的帧序列）构建，覆盖 6 大评测维度。",
+  "source": {
+    "primary_transcript": "vector_db/note_results/be80a454-1448-4b5f-b2b2-7a76dd360b06_transcript.json",
+    "primary_video": "vector_db/data/BV1BiGe6fE6e_p1.mp4",
+    "primary_audio": "vector_db/data/BV1BiGe6fE6e_p1.mp3",
+    "primary_frames_dir": "vector_db/data/output_frames/BV1BiGe6fE6e_p1_e46dd65135aa/",
+    "primary_grid_dir": "vector_db/data/grid_output/BV1BiGe6fE6e_p1_e46dd65135aa/",
+    "style_definitions": "tests/spec/template_definitions.json",
+    "total_cases": 65,
+    "stratification": {
+      "template_adherence": 27,
+      "hallucination": 15,
+      "citation_precision": 10,
+      "section_recall": 8,
+      "edge_case": 5
+    }
+  },
+  "cases": [
+    {
+      "id": "biz_tpl_meeting_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "跨部门协作会议：议题包含产品、技术、设计三个方面。"
+      },
+      "expected": {
+        "template_id": "meeting_minutes",
+        "must_include": ["议题", "决议", "行动项"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_video_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "产品讲解视频，包含多个关键片段。"
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "must_include": ["视频主旨", "关键片段"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_web_digest_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "行业资讯文章。"
+      },
+      "expected": {
+        "template_id": "web_digest",
+        "must_include": ["页面摘要", "核心观点"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_tool_website_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "开源工具文档。"
+      },
+      "expected": {
+        "template_id": "tool_website",
+        "must_include": ["原始链接", "它能做什么", "适合什么时候用", "推荐触发词"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_ai_conv_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "一段AI与用户关于代码重构的对话。"
+      },
+      "expected": {
+        "template_id": "ai_conversation",
+        "must_include": ["问题背景", "关键决策", "方案沉淀"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_knowledge_card_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "evidence": "vector_db/note_results/be80a454-1448-4b5f-b2b2-7a76dd360b06_transcript.json",
+        "duration_seconds": 680,
+        "text_excerpt": "AI产品经历岗位 薪资35-45K Base在北京 岗位职责：流程化Workflow、多肤色问题、AI配音嘴形同步、数据BI 能力要求：国际化审美、AI工具精通、出海产品逻辑 结论：非常值得冲的岗位"
+      },
+      "expected": {
+        "template_id": "knowledge_card",
+        "must_include": ["核心结论", "关键发现"],
+        "optional_include": ["知识整理", "可执行建议", "待追问"],
+        "keywords": ["AI产品经理", "35-45K", "北京", "Workflow", "多肤色", "嘴形同步", "出海"],
+        "forbidden_claims": ["薪资高于45K", "远程岗位", "上海Base"]
+      },
+      "evaluation": {
+        "metrics": ["template_adherence", "section_recall", "rouge_1", "hallucination_rate"]
+      }
+    },
+    {
+      "id": "biz_tpl_deep_research_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "duration_seconds": 680,
+        "text_excerpt": "完整转录（AI产品经理岗位分析）"
+      },
+      "expected": {
+        "template_id": "deep_research",
+        "must_include": [],
+        "keywords": ["AI产品经理", "短剧", "海外", "Workflow", "角色Agent"],
+        "length_range": {"min": 400, "max": 2000}
+      },
+      "evaluation": {"metrics": ["template_adherence", "rouge_1"]}
+    },
+    {
+      "id": "biz_tpl_quick_summary_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "AI产品经理岗位分析，薪资35-45K，Base北京，核心职责包括流程化Workflow、多肤色、嘴形同步、数据BI。"
+      },
+      "expected": {
+        "template_id": "quick_summary",
+        "must_include": [],
+        "keywords": ["AI产品经理", "35-45K"],
+        "max_items": 5
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_action_list_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "岗位要求：1) 流程化Workflow拆解；2) 多肤色效果边界；3) 嘴形同步API选型；4) BI指标设计。"
+      },
+      "expected": {
+        "template_id": "action_list",
+        "must_include": ["行动项", "验收标准"],
+        "keywords": ["Workflow", "肤色", "嘴形", "BI"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_meeting_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "产品评审会议：议题1 AI推荐功能上线时间 议题2 支付超时问题 决议 Q4聚焦推荐 行动项 11月15日中期评审"
+      },
+      "expected": {
+        "template_id": "meeting_minutes",
+        "must_include": ["议题", "决议", "行动项"],
+        "keywords": ["AI推荐", "支付", "Q4", "11月15日"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_video_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "duration_seconds": 680,
+        "evidence": "vector_db/note_results/be80a454-1448-4b5f-b2b2-7a76dd360b06_transcript.json",
+        "text_excerpt": "AI产品经理岗位视频解析（含岗位介绍、职责拆解、能力要求、面试建议）"
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "must_include": ["视频主旨", "关键片段"],
+        "keywords": ["AI产品经理", "短剧", "海外", "Workflow"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "citation_precision"]}
+    },
+    {
+      "id": "biz_tpl_web_digest_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "NoteMeld官网内容：本地优先AI知识工作台，支持网页/文件/视频/音频/AI对话转结构化Markdown笔记。"
+      },
+      "expected": {
+        "template_id": "web_digest",
+        "must_include": ["页面摘要", "核心观点"],
+        "keywords": ["NoteMeld", "AI知识工作台", "Markdown"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_tool_website_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "工具网站：www.notemeld.wiki 可以把网页、视频、音频转成Markdown笔记，支持MCP协议，本地部署。"
+      },
+      "expected": {
+        "template_id": "tool_website",
+        "must_include": ["原始链接", "它能做什么", "适合什么时候用", "推荐触发词"],
+        "forbidden_claims": ["夸大工具能力"],
+        "keywords": ["notemeld.wiki", "Markdown", "MCP", "本地部署"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_knowledge_card_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "产品复盘会议：DAU从120万增至185万，API响应从800ms降到200ms，Q4聚焦AI推荐。"
+      },
+      "expected": {
+        "template_id": "knowledge_card",
+        "must_include": ["核心结论", "关键发现"],
+        "keywords": ["DAU", "185万", "800ms", "200ms", "AI推荐"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_knowledge_card_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "客服反馈：30家门店收银系统故障，要求1小时解决。"
+      },
+      "expected": {
+        "template_id": "knowledge_card",
+        "must_include": ["核心结论", "关键发现"],
+        "keywords": ["30家门店", "1小时", "收银系统"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_deep_research_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "关于NoteMeld产品的深度研究：背景、问题、观点、证据、案例。"
+      },
+      "expected": {
+        "template_id": "deep_research",
+        "keywords": ["NoteMeld"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_quick_summary_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "产品介绍：本地优先、支持多平台、MIT开源。"
+      },
+      "expected": {
+        "template_id": "quick_summary",
+        "keywords": ["本地优先", "MIT"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_action_list_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "修复计划：1) 定位问题 2) 修复 3) 测试 4) 发布"
+      },
+      "expected": {
+        "template_id": "action_list",
+        "must_include": ["行动项", "验收标准"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_meeting_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "会议：讨论Q4规划、支付问题、推荐功能。"
+      },
+      "expected": {
+        "template_id": "meeting_minutes",
+        "must_include": ["议题", "决议", "行动项"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_video_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "视频核心片段介绍。"
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "must_include": ["视频主旨", "关键片段"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_web_digest_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "官网介绍NoteMeld的核心功能。"
+      },
+      "expected": {
+        "template_id": "web_digest",
+        "must_include": ["页面摘要", "核心观点"]
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_tpl_tool_website_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "MCP 协议工具。"
+      },
+      "expected": {
+        "template_id": "tool_website",
+        "must_include": ["原始链接", "它能做什么", "适合什么时候用", "推荐触发词"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_ai_conv_002",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "用户与AI关于产品的对话。"
+      },
+      "expected": {
+        "template_id": "ai_conversation",
+        "must_include": ["问题背景", "关键决策", "方案沉淀"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_knowledge_card_004",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "关于AI发展历程的介绍。"
+      },
+      "expected": {
+        "template_id": "knowledge_card",
+        "must_include": ["核心结论", "关键发现"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_action_list_003",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "测试计划：单元测试、集成测试、回归测试。"
+      },
+      "expected": {
+        "template_id": "action_list",
+        "must_include": ["行动项", "验收标准"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+    {
+      "id": "biz_tpl_ai_conv_001",
+      "dataset": "business",
+      "category": "template_adherence",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "用户：我想把一个视频转成结构化笔记。AI：可以，你需要提供视频链接或上传文件。用户：还要提取关键截图。AI：已完成。"
+      },
+      "expected": {
+        "template_id": "ai_conversation",
+        "must_include": ["问题背景", "关键决策", "方案沉淀"],
+        "keywords": ["视频", "结构化笔记", "关键截图"]
+      },
+      "evaluation": {"metrics": ["template_adherence", "section_recall"]}
+    },
+
+    {
+      "id": "biz_hallu_001",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "AI产品经理岗位薪资35-45K，Base北京。"
+      },
+      "expected": {
+        "forbidden_claims": ["薪资60K", "上海Base", "远程岗位"],
+        "must_not_hallucinate": ["35-45K", "北京"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_002",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "NoteMeld 使用 Whisper-large-v3 作为默认转录引擎。"
+      },
+      "expected": {
+        "forbidden_claims": ["GPT-4o 做转录", "本地讯飞语音", "腾讯云 ASR"],
+        "must_not_hallucinate": ["Whisper-large-v3"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_003",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "视频时长 11 分 20 秒。"
+      },
+      "expected": {
+        "forbidden_claims": ["时长 30 分钟", "时长 1 小时", "时长 5 分钟"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_004",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "产品支持 macOS、Windows、Linux 三端。"
+      },
+      "expected": {
+        "forbidden_claims": ["只支持 Windows", "不支持 Linux", "iOS 支持"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_005",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "系统为本地优先，数据不上传服务器。"
+      },
+      "expected": {
+        "forbidden_claims": ["数据存在云端", "使用第三方存储", "需要联网"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_006",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "岗位核心职责包括 Workflow 拆解、多肤色、嘴形同步、BI 指标。"
+      },
+      "expected": {
+        "forbidden_claims": ["包括前端开发", "包括销售", "包括财务"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_007",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "用户增长 DAU 从 120 万增长至 185 万。"
+      },
+      "expected": {
+        "forbidden_claims": ["DAU 降到 100 万", "DAU 突破 500 万", "环比下降"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_008",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "API 响应时间从 800ms 降到 200ms。"
+      },
+      "expected": {
+        "forbidden_claims": ["800ms 降到 50ms", "200ms 升到 800ms", "响应时间未变"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_009",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "AI 推荐功能预计 12 月上线。"
+      },
+      "expected": {
+        "forbidden_claims": ["9 月上线", "已上线", "推荐功能取消"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_010",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "支付超时问题需在 11 月 15 日前修复。"
+      },
+      "expected": {
+        "forbidden_claims": ["12 月 30 日修复", "问题已解决", "问题不需要修复"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_011",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "NoteMeld 使用 MIT 开源协议。"
+      },
+      "expected": {
+        "forbidden_claims": ["GPL 协议", "Apache 2.0", "闭源"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_012",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "支持视频格式：MP4、MOV、AVI、MKV。"
+      },
+      "expected": {
+        "forbidden_claims": ["支持 8K", "只支持 MP4", "支持实时直播"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_013",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "最大视频时长 4 小时。"
+      },
+      "expected": {
+        "forbidden_claims": ["8 小时", "1 小时", "无限制"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_014",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "支持音频格式：MP3、WAV、AAC、FLAC。"
+      },
+      "expected": {
+        "forbidden_claims": ["只支持 MP3", "不支持 WAV", "支持 MIDI"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_hallu_015",
+      "dataset": "business",
+      "category": "hallucination",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "NoteMeld 支持 MCP 协议。"
+      },
+      "expected": {
+        "forbidden_claims": ["不支持 MCP", "支持 HTTP 协议", "支持 FTP"]
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+
+    {
+      "id": "biz_cite_001",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "transcript",
+        "evidence": "vector_db/note_results/be80a454-1448-4b5f-b2b2-7a76dd360b06_transcript.json",
+        "text_excerpt": "岗位介绍（00:00-02:30）、职责拆解（02:30-05:45）、能力要求（05:45-09:30）、面试建议（09:30-11:20）"
+      },
+      "expected": {
+        "required_citations": ["*Content-[00:15]", "*Content-[02:45]", "*Content-[06:00]", "*Content-[09:45]"],
+        "required_screenshot_slots": ["00:45", "03:30", "07:00"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_002",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "产品功能演示在 01:00，数据对比在 03:30，架构图在 05:15。"
+      },
+      "expected": {
+        "required_citations": ["*Content-[01:00]", "*Content-[03:30]", "*Content-[05:15]"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_003",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "开场（00:00-01:00）、核心功能（01:00-04:00）、性能演示（04:00-06:00）、总结（06:00-07:00）"
+      },
+      "expected": {
+        "required_citations": ["*Content-[00:30]", "*Content-[02:00]", "*Content-[05:00]", "*Content-[06:30]"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_004",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "会议时长 1 小时，4 个议题分别在 0-15min、15-30min、30-45min、45-60min。"
+      },
+      "expected": {
+        "required_citations": ["*Content-[00:00]", "*Content-[00:15]", "*Content-[00:30]", "*Content-[00:45]"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_005",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "教程分 5 步：安装（00:00）、配置（01:30）、使用（03:00）、示例（05:00）、总结（08:00）。"
+      },
+      "expected": {
+        "required_citations": ["*Content-[00:00]", "*Content-[01:30]", "*Content-[03:00]", "*Content-[05:00]", "*Content-[08:00]"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_006",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "系统架构图出现在 02:30，核心工作流在 05:45，性能对比在 08:20。"
+      },
+      "expected": {
+        "required_screenshot_slots": ["02:30", "05:45", "08:20"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_007",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "产品界面介绍在 01:00，功能截图在 02:30，数据可视化在 04:00。"
+      },
+      "expected": {
+        "required_screenshot_slots": ["01:00", "02:30", "04:00"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_008",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "4 个关键截图位置：00:00、02:00、04:00、06:00。"
+      },
+      "expected": {
+        "required_screenshot_slots": ["00:00", "02:00", "04:00", "06:00"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_009",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "演示视频 3 分钟，包含 3 个主要步骤。"
+      },
+      "expected": {
+        "required_citations": ["*Content-[00:00]", "*Content-[01:00]", "*Content-[02:00]"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+    {
+      "id": "biz_cite_010",
+      "dataset": "business",
+      "category": "citation_precision",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "面试经验分享：开场（00:00-00:30）、岗位分析（00:30-04:00）、面试建议（04:00-06:00）"
+      },
+      "expected": {
+        "required_citations": ["*Content-[00:15]", "*Content-[02:00]", "*Content-[05:00]"]
+      },
+      "evaluation": {"metrics": ["citation_precision"]}
+    },
+
+    {
+      "id": "biz_section_001",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "会议纪要，包含议题、决议、行动项三个部分。"
+      },
+      "expected": {
+        "template_id": "meeting_minutes",
+        "required_sections": ["议题", "决议", "行动项"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_002",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "transcript",
+        "text_excerpt": "知识卡片模板，核心结论、关键发现、知识整理、可执行建议、待追问 5 段。"
+      },
+      "expected": {
+        "template_id": "knowledge_card",
+        "required_sections": ["核心结论", "关键发现"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_003",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "视频解析模板：视频主旨、关键片段、画面与语境、评论线索、知识沉淀。"
+      },
+      "expected": {
+        "template_id": "video_analysis",
+        "required_sections": ["视频主旨", "关键片段"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_004",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "行动清单：目标、行动项、验收标准、风险。"
+      },
+      "expected": {
+        "template_id": "action_list",
+        "required_sections": ["行动项", "验收标准"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_005",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "工具网站模板 7 段：链接、能做什么、适用场景、不适用、限制、触发词、使用方式。"
+      },
+      "expected": {
+        "template_id": "tool_website",
+        "required_sections": ["原始链接", "它能做什么", "适合什么时候用", "推荐触发词"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_006",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "AI 对话沉淀 5 段：问题背景、关键决策、方案沉淀、待执行任务、可复用提示。"
+      },
+      "expected": {
+        "template_id": "ai_conversation",
+        "required_sections": ["问题背景", "关键决策", "方案沉淀"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_007",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "深度研究：研究摘要、背景、核心观点、证据案例、延伸问题。"
+      },
+      "expected": {
+        "template_id": "deep_research",
+        "required_sections": []
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+    {
+      "id": "biz_section_008",
+      "dataset": "business",
+      "category": "section_recall",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "网页提炼：页面摘要、核心观点、引用线索、知识点。"
+      },
+      "expected": {
+        "template_id": "web_digest",
+        "required_sections": ["页面摘要", "核心观点"]
+      },
+      "evaluation": {"metrics": ["section_recall"]}
+    },
+
+    {
+      "id": "biz_edge_001",
+      "dataset": "business",
+      "category": "edge_case",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": ""
+      },
+      "expected": {
+        "must_not_hallucinate": true,
+        "description": "空输入测试，模型不得编造"
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_edge_002",
+      "dataset": "business",
+      "category": "edge_case",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "只有一句话。"
+      },
+      "expected": {
+        "description": "极短输入下仍需遵循模板"
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    },
+    {
+      "id": "biz_edge_003",
+      "dataset": "business",
+      "category": "edge_case",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "这段内容不适合总结，包含大量噪声。"
+      },
+      "expected": {
+        "must_not_hallucinate": true,
+        "description": "噪声文本下不得编造"
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_edge_004",
+      "dataset": "business",
+      "category": "edge_case",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "。。。。。。"
+      },
+      "expected": {
+        "description": "全是标点的异常输入"
+      },
+      "evaluation": {"metrics": ["hallucination_rate"]}
+    },
+    {
+      "id": "biz_edge_005",
+      "dataset": "business",
+      "category": "edge_case",
+      "input": {
+        "source_type": "raw_text",
+        "text_excerpt": "只有英文内容：NoteMeld is a local-first AI knowledge workbench."
+      },
+      "expected": {
+        "description": "英文输入下仍需中文输出"
+      },
+      "evaluation": {"metrics": ["template_adherence"]}
+    }
+  ]
+}

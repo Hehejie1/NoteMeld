@@ -11,7 +11,12 @@ from app.utils.storage_paths import note_output_dir
 
 
 class FrameExtractor(Protocol):
-    def extract(self, video_path: str, timestamps: list[float] | None = None) -> dict[str, Any]:
+    def extract(
+        self,
+        video_path: str,
+        timestamps: list[float] | None = None,
+        include_grid_images: bool = True,
+    ) -> dict[str, Any]:
         ...
 
 
@@ -37,7 +42,12 @@ class VideoReaderFrameExtractor:
         self.frame_interval = frame_interval
         self.dedupe_enabled = dedupe_enabled
 
-    def extract(self, video_path: str, timestamps: list[float] | None = None) -> dict[str, Any]:
+    def extract(
+        self,
+        video_path: str,
+        timestamps: list[float] | None = None,
+        include_grid_images: bool = True,
+    ) -> dict[str, Any]:
         from app.utils.video_reader import VideoReader
 
         reader = VideoReader(
@@ -49,10 +59,13 @@ class VideoReaderFrameExtractor:
         )
         frame_paths = reader.extract_frames()
         grid_paths = []
-        for index, group in enumerate(reader.group_images(), start=1):
-            if len(group) < reader.grid_size[0] * reader.grid_size[1]:
-                continue
-            grid_paths.append(reader.concat_images(group, f"grid_{index}"))
+        grid_images = []
+        if include_grid_images:
+            for index, group in enumerate(reader.group_images(), start=1):
+                if len(group) < reader.grid_size[0] * reader.grid_size[1]:
+                    continue
+                grid_paths.append(reader.concat_images(group, f"grid_{index}"))
+            grid_images = reader.encode_images_to_base64(grid_paths)
         return {
             "frames": [
                 {
@@ -61,7 +74,7 @@ class VideoReaderFrameExtractor:
                 }
                 for path in frame_paths
             ],
-            "grid_images": reader.encode_images_to_base64(grid_paths),
+            "grid_images": grid_images,
         }
 
 
@@ -91,6 +104,7 @@ class VideoFrameCollector:
         grid_size: list[int] | None = None,
         frame_timestamps: list[float] | None = None,
         timestamps: list[float] | None = None,
+        allow_vision: bool = True,
     ) -> FrameContextResult:
         if not screenshot:
             return FrameContextResult(
@@ -100,7 +114,8 @@ class VideoFrameCollector:
                 error="screenshot disabled",
             )
 
-        cache_path = self.output_dir / f"{task_id}_frames.json"
+        cache_suffix = "frames_vision" if allow_vision else "frames_ocr"
+        cache_path = self.output_dir / f"{task_id}_{cache_suffix}.json"
         cached = self._read_cache(cache_path)
         if cached:
             return cached
@@ -108,14 +123,18 @@ class VideoFrameCollector:
         resolved_timestamps = frame_timestamps if frame_timestamps is not None else timestamps
         try:
             resolved_video_path = self._resolve_video_path(video_path=video_path, video_url=video_url, downloader=downloader)
-            extracted = self.frame_extractor.extract(resolved_video_path, timestamps=resolved_timestamps)
+            extracted = self.frame_extractor.extract(
+                resolved_video_path,
+                timestamps=resolved_timestamps,
+                include_grid_images=allow_vision,
+            )
         except Exception as exc:
             return FrameContextResult(source="frames", status="failed", mode="disabled", error=str(exc))
 
         frame_records = []
         modes: set[str] = set()
         for raw_frame in extracted.get("frames") or []:
-            frame = self._analyze_frame(raw_frame)
+            frame = self._analyze_frame(raw_frame, allow_vision=allow_vision)
             frame_records.append(frame)
             modes.add(str(frame.get("mode") or "unknown"))
 
@@ -128,21 +147,26 @@ class VideoFrameCollector:
             confidence=self._average_confidence(frame_records),
             mode=mode,
             frames=frame_records,
-            grid_images=list(extracted.get("grid_images") or []),
+            grid_images=list(extracted.get("grid_images") or []) if allow_vision else [],
             artifacts={"frame_count": len(frame_records), "video_path": resolved_video_path},
         )
-        self._write_cache(cache_path, result)
+        # Direct OCR and successful vision are stable cache modes. A temporary
+        # vision failure that fell back to OCR must not suppress the next
+        # analyzer attempt.
+        if not allow_vision or mode == "vision":
+            self._write_cache(cache_path, result)
         return result
 
-    def _analyze_frame(self, raw_frame: dict[str, Any]) -> dict[str, Any]:
+    def _analyze_frame(self, raw_frame: dict[str, Any], *, allow_vision: bool) -> dict[str, Any]:
         image_path = str(raw_frame.get("image_path") or "")
         timestamp = float(raw_frame.get("timestamp") or 0.0)
-        if self.vision_analyzer is not None:
+        if allow_vision and self.vision_analyzer is not None:
             try:
                 return self._normalize_vision_result(timestamp, image_path, self.vision_analyzer.analyze(image_path))
             except Exception as exc:
                 return self._analyze_frame_with_ocr(timestamp, image_path, vision_error=str(exc))
-        return self._analyze_frame_with_ocr(timestamp, image_path, vision_error="vision analyzer not configured")
+        vision_error = "vision analyzer not configured" if allow_vision else "vision disabled by model capability"
+        return self._analyze_frame_with_ocr(timestamp, image_path, vision_error=vision_error)
 
     def _normalize_vision_result(self, timestamp: float, image_path: str, result: dict[str, Any]) -> dict[str, Any]:
         text = str(result.get("detected_text") or result.get("text") or "").strip()
@@ -168,7 +192,7 @@ class VideoFrameCollector:
             "image_path": image_path,
             "mode": "ocr",
             "fallback": "ocr",
-            "summary": text or "OCR 未识别到文本",
+            "summary": text,
             "text": text,
             "detected_text": text,
             "visual_type": "ocr_text",
@@ -202,7 +226,8 @@ class VideoFrameCollector:
             mm = int(timestamp // 60)
             ss = int(timestamp % 60)
             summary = str(frame.get("summary") or frame.get("text") or "").strip()
-            lines.append(f"{mm:02d}:{ss:02d} [{frame.get('mode')}] {summary}")
+            if summary:
+                lines.append(f"{mm:02d}:{ss:02d} [{frame.get('mode')}] {summary}")
         return "\n".join(lines)
 
     def _average_confidence(self, frames: list[dict[str, Any]]) -> float:

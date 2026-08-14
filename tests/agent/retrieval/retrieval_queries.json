@@ -1,0 +1,434 @@
+{
+  "dataset_name": "NoteMeld Retrieval Benchmark v1.0",
+  "description": "基于真实 wiki concepts 的离线检索评测集，覆盖 60 条用户真实问题，评估 Recall@k / MRR / 引用准确率",
+  "total_queries": 60,
+  "categories": {
+    "concept_definition": "概念定义：什么是X",
+    "how_to": "方法类：怎么做X",
+    "comparison": "对比类：X和Y区别",
+    "detail": "细节类：X具体是什么意思",
+    "entity_lookup": "实体查询：X是什么/关于X"
+  },
+  "queries": [
+    {
+      "id": "q001",
+      "query": "什么是RAG",
+      "category": "concept_definition",
+      "expected_pages": ["RAG"],
+      "hard_negative": []
+    },
+    {
+      "id": "q002",
+      "query": "RAG的全称是什么",
+      "category": "detail",
+      "expected_pages": ["RAG"],
+      "hard_negative": []
+    },
+    {
+      "id": "q003",
+      "query": "RAG擅长什么不擅长什么",
+      "category": "detail",
+      "expected_pages": ["RAG", "RAG_的局限"],
+      "hard_negative": []
+    },
+    {
+      "id": "q004",
+      "query": "什么是Agent",
+      "category": "concept_definition",
+      "expected_pages": ["Agent", "Agents"],
+      "hard_negative": []
+    },
+    {
+      "id": "q005",
+      "query": "AI Agent的底层逻辑是什么",
+      "category": "concept_definition",
+      "expected_pages": ["AI_Agent底层逻辑"],
+      "hard_negative": []
+    },
+    {
+      "id": "q006",
+      "query": "如何构建AI Agent",
+      "category": "how_to",
+      "expected_pages": ["AI_Agent构建"],
+      "hard_negative": []
+    },
+    {
+      "id": "q007",
+      "query": "Workflow和Agent有什么区别",
+      "category": "comparison",
+      "expected_pages": ["workflow", "Chains_与_Agents_边界", "AI_Workflow"],
+      "hard_negative": []
+    },
+    {
+      "id": "q008",
+      "query": "什么是workflow-first",
+      "category": "concept_definition",
+      "expected_pages": ["workflow", "AI_Workflow", "Agentic_workflow"],
+      "hard_negative": []
+    },
+    {
+      "id": "q009",
+      "query": "如何减少幻觉",
+      "category": "how_to",
+      "expected_pages": ["Faithfulness", "事实性保障", "Citation_核验"],
+      "hard_negative": []
+    },
+    {
+      "id": "q010",
+      "query": "幻觉是什么",
+      "category": "concept_definition",
+      "expected_pages": ["Faithfulness", "事实性保障"],
+      "hard_negative": []
+    },
+    {
+      "id": "q011",
+      "query": "RAG评测怎么做",
+      "category": "how_to",
+      "expected_pages": ["RAG评测", "三层_RAG_评测体系", "RAG评测三层框架"],
+      "hard_negative": []
+    },
+    {
+      "id": "q012",
+      "query": "Chunking怎么切分文档",
+      "category": "detail",
+      "expected_pages": ["Chunking"],
+      "hard_negative": []
+    },
+    {
+      "id": "q013",
+      "query": "什么是Embedding",
+      "category": "concept_definition",
+      "expected_pages": ["Embedding", "embedding向量"],
+      "hard_negative": []
+    },
+    {
+      "id": "q014",
+      "query": "向量检索的原理是什么",
+      "category": "concept_definition",
+      "expected_pages": ["Embedding", "embedding向量"],
+      "hard_negative": []
+    },
+    {
+      "id": "q015",
+      "query": "什么是Prompt Engineering",
+      "category": "concept_definition",
+      "expected_pages": ["Prompt_Engineering", "Prompt工程"],
+      "hard_negative": []
+    },
+    {
+      "id": "q016",
+      "query": "JSON Schema有什么用",
+      "category": "detail",
+      "expected_pages": ["JSON_Schema", "JSON_稳定性"],
+      "hard_negative": []
+    },
+    {
+      "id": "q017",
+      "query": "什么是MCP",
+      "category": "concept_definition",
+      "expected_pages": ["MCP"],
+      "hard_negative": []
+    },
+    {
+      "id": "q018",
+      "query": "LangChain V1.2有什么变化",
+      "category": "detail",
+      "expected_pages": ["LangChain_V1_2_版本变化", "LangChain_项目组织"],
+      "hard_negative": []
+    },
+    {
+      "id": "q019",
+      "query": "什么是MVP",
+      "category": "concept_definition",
+      "expected_pages": ["MVP", "低成本_MVP", "AI_coding_降低_MVP_成本"],
+      "hard_negative": []
+    },
+    {
+      "id": "q020",
+      "query": "AI产品创业从0到1怎么做",
+      "category": "how_to",
+      "expected_pages": ["AI_产品创业", "AI_创业", "从_0_到_1", "AI_产品_MVP_拆解"],
+      "hard_negative": []
+    },
+    {
+      "id": "q021",
+      "query": "AI产品经理需要什么能力",
+      "category": "detail",
+      "expected_pages": ["AI_产品经理能力框架", "传统产品经理基本功"],
+      "hard_negative": []
+    },
+    {
+      "id": "q022",
+      "query": "产品经理必须懂算法吗",
+      "category": "detail",
+      "expected_pages": ["AI_产品经理是否必须懂算法链路"],
+      "hard_negative": []
+    },
+    {
+      "id": "q023",
+      "query": "AI应用开发框架有哪些",
+      "category": "entity_lookup",
+      "expected_pages": ["LLM_应用开发框架", "AI_应用开发"],
+      "hard_negative": []
+    },
+    {
+      "id": "q024",
+      "query": "什么是ReAct",
+      "category": "concept_definition",
+      "expected_pages": ["ReAct_框架"],
+      "hard_negative": []
+    },
+    {
+      "id": "q025",
+      "query": "什么是思维链CoT",
+      "category": "concept_definition",
+      "expected_pages": ["Chain_of_Thought"],
+      "hard_negative": []
+    },
+    {
+      "id": "q026",
+      "query": "什么是Tree of Thoughts",
+      "category": "concept_definition",
+      "expected_pages": ["Tree_of_Thoughts"],
+      "hard_negative": []
+    },
+    {
+      "id": "q027",
+      "query": "Reflection是什么",
+      "category": "concept_definition",
+      "expected_pages": ["Reflection", "Replan___Reflection"],
+      "hard_negative": []
+    },
+    {
+      "id": "q028",
+      "query": "如何做SOP",
+      "category": "how_to",
+      "expected_pages": ["SOP", "SOP_化自动化"],
+      "hard_negative": []
+    },
+    {
+      "id": "q029",
+      "query": "个人知识库怎么搭建",
+      "category": "how_to",
+      "expected_pages": ["个人知识库", "个人知识库架构"],
+      "hard_negative": []
+    },
+    {
+      "id": "q030",
+      "query": "企业文档问答的难点是什么",
+      "category": "detail",
+      "expected_pages": ["企业文档问答", "RAG_的局限"],
+      "hard_negative": []
+    },
+    {
+      "id": "q031",
+      "query": "什么是Golden Dataset",
+      "category": "concept_definition",
+      "expected_pages": ["Golden_Dataset"],
+      "hard_negative": []
+    },
+    {
+      "id": "q032",
+      "query": "Context Recall和Context Precision是什么",
+      "category": "detail",
+      "expected_pages": ["Context_Recall", "Context_Precision", "Answer_Relevancy"],
+      "hard_negative": []
+    },
+    {
+      "id": "q033",
+      "query": "Bad Case怎么分析",
+      "category": "how_to",
+      "expected_pages": ["Bad_Case_分析机制", "bad_case_分析", "bad_case_闭环"],
+      "hard_negative": []
+    },
+    {
+      "id": "q034",
+      "query": "什么是Human in the loop",
+      "category": "concept_definition",
+      "expected_pages": ["Human_in_the_loop"],
+      "hard_negative": []
+    },
+    {
+      "id": "q035",
+      "query": "subagent怎么设计",
+      "category": "how_to",
+      "expected_pages": ["subagent", "Claude_Code_subagent_设计"],
+      "hard_negative": []
+    },
+    {
+      "id": "q036",
+      "query": "AI编程的正确流程是什么",
+      "category": "detail",
+      "expected_pages": ["AI_编程的正确流程", "AI_coding"],
+      "hard_negative": []
+    },
+    {
+      "id": "q037",
+      "query": "Claude Code怎么极限使用",
+      "category": "how_to",
+      "expected_pages": ["Claude_Code_极限使用", "Claude_Code_极限使用事件"],
+      "hard_negative": []
+    },
+    {
+      "id": "q038",
+      "query": "模型temperature参数怎么设",
+      "category": "detail",
+      "expected_pages": ["temperature"],
+      "hard_negative": []
+    },
+    {
+      "id": "q039",
+      "query": "batch批量调用怎么做",
+      "category": "how_to",
+      "expected_pages": ["batch_调用"],
+      "hard_negative": []
+    },
+    {
+      "id": "q040",
+      "query": "stream流式调用有什么好处",
+      "category": "detail",
+      "expected_pages": ["stream_调用"],
+      "hard_negative": []
+    },
+    {
+      "id": "q041",
+      "query": "RAG pipeline完整流程是什么",
+      "category": "detail",
+      "expected_pages": ["RAG_pipeline", "RAG_的完整流程", "RAG_链路", "RAG_链路设计"],
+      "hard_negative": []
+    },
+    {
+      "id": "q042",
+      "query": "什么是混合检索",
+      "category": "concept_definition",
+      "expected_pages": ["RAG"],
+      "hard_negative": []
+    },
+    {
+      "id": "q043",
+      "query": "引用怎么核验",
+      "category": "how_to",
+      "expected_pages": ["Citation_核验"],
+      "hard_negative": []
+    },
+    {
+      "id": "q044",
+      "query": "RAG知识库怎么治理",
+      "category": "how_to",
+      "expected_pages": ["RAG_知识库治理"],
+      "hard_negative": []
+    },
+    {
+      "id": "q045",
+      "query": "Scaling Law是什么",
+      "category": "concept_definition",
+      "expected_pages": ["Scaling_Law"],
+      "hard_negative": []
+    },
+    {
+      "id": "q046",
+      "query": "RLHF三阶段训练是什么",
+      "category": "detail",
+      "expected_pages": ["RLHF_三阶段训练"],
+      "hard_negative": []
+    },
+    {
+      "id": "q047",
+      "query": "Self-Consistency是什么",
+      "category": "concept_definition",
+      "expected_pages": ["Self-Consistency"],
+      "hard_negative": []
+    },
+    {
+      "id": "q048",
+      "query": "Synthetic Data合成数据怎么用",
+      "category": "detail",
+      "expected_pages": ["Synthetic_Data"],
+      "hard_negative": []
+    },
+    {
+      "id": "q049",
+      "query": "什么是Zero-Shot泛化",
+      "category": "concept_definition",
+      "expected_pages": ["Zero-Shot_泛化"],
+      "hard_negative": []
+    },
+    {
+      "id": "q050",
+      "query": "Transformer架构是什么",
+      "category": "concept_definition",
+      "expected_pages": ["Transformer架构"],
+      "hard_negative": []
+    },
+    {
+      "id": "q051",
+      "query": "个人AI工作流怎么搭建",
+      "category": "how_to",
+      "expected_pages": ["个人_AI_工作流", "专业工作流"],
+      "hard_negative": []
+    },
+    {
+      "id": "q052",
+      "query": "AI场景怎么判断要不要做",
+      "category": "how_to",
+      "expected_pages": ["AI_场景判断", "AI_化场景判断", "AI_化场景拆解", "AI_场景落地选择"],
+      "hard_negative": []
+    },
+    {
+      "id": "q053",
+      "query": "AI自动化的边界在哪里",
+      "category": "detail",
+      "expected_pages": ["AI_自动化边界", "SOP_化自动化"],
+      "hard_negative": []
+    },
+    {
+      "id": "q054",
+      "query": "业务指标怎么优化",
+      "category": "how_to",
+      "expected_pages": ["业务指标", "业务指标优化"],
+      "hard_negative": []
+    },
+    {
+      "id": "q055",
+      "query": "RAG项目怎么体现产品价值",
+      "category": "detail",
+      "expected_pages": ["RAG_项目如何体现产品价值"],
+      "hard_negative": []
+    },
+    {
+      "id": "q056",
+      "query": "AI SaaS怎么试错",
+      "category": "how_to",
+      "expected_pages": ["AI_SaaS_试错"],
+      "hard_negative": []
+    },
+    {
+      "id": "q057",
+      "query": "AI原生产品体系是什么",
+      "category": "concept_definition",
+      "expected_pages": ["AI_原生产品体系"],
+      "hard_negative": []
+    },
+    {
+      "id": "q058",
+      "query": "付费意愿怎么验证",
+      "category": "how_to",
+      "expected_pages": ["付费意愿验证"],
+      "hard_negative": []
+    },
+    {
+      "id": "q059",
+      "query": "什么是Agent路由",
+      "category": "concept_definition",
+      "expected_pages": ["Agent_路由"],
+      "hard_negative": []
+    },
+    {
+      "id": "q060",
+      "query": "Agent集群怎么统筹治理",
+      "category": "how_to",
+      "expected_pages": ["Agent_集群统筹", "Agent_集群与系统治理"],
+      "hard_negative": []
+    }
+  ]
+}

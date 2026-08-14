@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
   const port = parseInt(env.VITE_FRONTEND_PORT || '3015', 10)
 
   return {
-    base: './',
+    base: mode === 'demo' ? '/' : './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

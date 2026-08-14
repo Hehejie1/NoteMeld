@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, type PropsWithChildren } from 'react'
 import { useCheckBackend, type BackendCheckPhase, type UseCheckBackendResult } from '@/hooks/useCheckBackend.ts'
 import { useCheckRuntime } from '@/hooks/useCheckRuntime.ts'
+import { isDemoMode } from '@/demo/mode'
 
 export type RuntimeInitStatus = 'checking' | 'ready' | 'failed'
 export type BackendInitStatus = 'checking' | 'ready' | 'retrying' | 'failed'
@@ -18,7 +19,30 @@ export type BackendInitContextValue = UseCheckBackendResult & {
 
 const BackendInitContext = createContext<BackendInitContextValue | null>(null)
 
-export const BackendInitProvider = ({ children }: PropsWithChildren) => {
+const DemoBackendInitProvider = ({ children }: PropsWithChildren) => {
+  const checkNow = useCallback(async () => {}, [])
+  const value = useMemo<BackendInitContextValue>(
+    () => ({
+      status: 'ready',
+      blocking: false,
+      loading: false,
+      initialized: true,
+      phase: 'ready',
+      retryCount: 0,
+      checkNow,
+      runtimeStatus: 'ready',
+      runtimeReady: true,
+      backendStatus: 'ready',
+      backendReady: true,
+      failureKind: null,
+    }),
+    [checkNow],
+  )
+
+  return <BackendInitContext.Provider value={value}>{children}</BackendInitContext.Provider>
+}
+
+const ProductionBackendInitProvider = ({ children }: PropsWithChildren) => {
   const runtimeInit = useCheckRuntime()
   const runtimeStatus = runtimeInit.status
   const runtimeReady = runtimeInit.ready
@@ -48,6 +72,14 @@ export const BackendInitProvider = ({ children }: PropsWithChildren) => {
   )
 
   return <BackendInitContext.Provider value={value}>{children}</BackendInitContext.Provider>
+}
+
+export const BackendInitProvider = ({ children }: PropsWithChildren) => {
+  if (isDemoMode()) {
+    return <DemoBackendInitProvider>{children}</DemoBackendInitProvider>
+  }
+
+  return <ProductionBackendInitProvider>{children}</ProductionBackendInitProvider>
 }
 
 export const useBackendInitContext = () => {

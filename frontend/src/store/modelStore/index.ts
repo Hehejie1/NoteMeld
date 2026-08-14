@@ -5,7 +5,8 @@ import {
   addModel,
   fetchEnableModels,
   fetchEnableModelById,
-  deleteModelById
+  deleteModelById,
+  type ModelRuntimeConfigPayload,
 } from '@/services/model'
 
 interface IModel {
@@ -17,10 +18,13 @@ interface IModel {
   root: string
 }
 
-interface IModelListItem {
-  id: string
+export interface IModelListItem {
+  id: number
   provider_id: string
   model_name: string
+  context_window_tokens: number
+  supports_vision: boolean
+  supports_stream: boolean
   created_at?: string
 }
 
@@ -33,7 +37,7 @@ interface ModelStore {
   loadModels: (providerId: string) => Promise<void>
   loadModelsById: (providerId: string) => Promise<IModelListItem[]>
   loadEnabledModels: () => Promise<void>
-  addNewModel: (providerId: string, modelId: string) => Promise<void>
+  addNewModel: (payload: ModelRuntimeConfigPayload) => Promise<IModelListItem>
   deleteModel: (modelId: number) => Promise<void>
   setSelectedModel: (modelId: string) => void
   clearModels: () => void
@@ -96,31 +100,7 @@ export const useModelStore = create<ModelStore>()(
     },
 
     //  新增模型逻辑
-    addNewModel: async (providerId: string, modelId: string) => {
-      try {
-        const res = await addModel({ provider_id: providerId, model_name: modelId })
-
-        if (res.code === 0) {
-          set((state) => ({
-            models: [
-              ...state.models,
-              {
-                id: modelId,
-                created: Date.now(),
-                object: 'model',
-                owned_by: '',
-                permission: '',
-                root: '',
-              },
-            ],
-          }))
-        } else {
-          console.error('新增模型失败', res.msg)
-        }
-      } catch (error) {
-        console.error('添加模型出错', error)
-      }
-    },
+    addNewModel: async (payload) => (await addModel(payload)) as unknown as IModelListItem,
 
     //  删除模型
     deleteModel: async (modelId: number) => {

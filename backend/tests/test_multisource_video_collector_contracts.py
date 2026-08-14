@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 from dataclasses import asdict
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -25,6 +26,7 @@ from app.services.multisource_video_collector import MultiSourceVideoCollector  
 from app.services import web_search  # noqa: E402
 from app.services.transcript_collector import TranscriptCollector  # noqa: E402
 from app.services.video_frame_collector import VideoFrameCollector  # noqa: E402
+from app.services.video_frame_collector import VideoReaderFrameExtractor  # noqa: E402
 
 
 class _FakeProvider:
@@ -43,9 +45,11 @@ class _FakeProvider:
 class _FakeFrameExtractor:
     def __init__(self):
         self.calls = 0
+        self.include_grid_images = []
 
-    def extract(self, video_path: str, timestamps=None):
+    def extract(self, video_path: str, timestamps=None, include_grid_images=True):
         self.calls += 1
+        self.include_grid_images.append(include_grid_images)
         return {
             "frames": [
                 {"timestamp": 3.0, "image_path": "/tmp/frame_00_03.jpg"},
@@ -53,6 +57,15 @@ class _FakeFrameExtractor:
             ],
             "grid_images": ["data:image/jpeg;base64,grid"],
         }
+
+
+class _LegacyFrameExtractor:
+    def __init__(self):
+        self.calls = 0
+
+    def extract(self, video_path: str, timestamps=None):
+        self.calls += 1
+        return {"frames": [], "grid_images": ["legacy-grid"]}
 
 
 class _FakeVideoDownloader:
@@ -107,7 +120,11 @@ class _FakeTranscriber:
 
 
 class _FailingVisionAnalyzer:
+    def __init__(self):
+        self.calls = []
+
     def analyze(self, image_path: str):
+        self.calls.append(image_path)
         raise RuntimeError(f"vision failed for {image_path}")
 
 
@@ -125,6 +142,18 @@ class _FakeOcrProvider:
             "confidence": 0.82,
             "pages": [],
             "lines": [{"text": "OCR text", "confidence": 0.82}],
+        }
+
+
+class _EmptyOcrProvider(_FakeOcrProvider):
+    def extract_text(self, file_path):
+        self.calls.append(str(file_path))
+        return {
+            "text": "",
+            "engine": self.engine,
+            "confidence": 0.0,
+            "pages": [],
+            "lines": [],
         }
 
 
@@ -370,6 +399,62 @@ class TestTranscriptCollectorContracts(unittest.TestCase):
 
 
 class TestVideoFrameCollectorContracts(unittest.TestCase):
+    def test_video_reader_extractor_controls_grid_construction_for_true_and_false(self):
+        calls = {"group": 0, "concat": 0, "encode": 0}
+
+        class FakeVideoReader:
+            def __init__(self, **kwargs):
+                self.grid_size = kwargs["grid_size"]
+
+            def extract_frames(self):
+                return ["/tmp/frame_00_03.jpg"]
+
+            def group_images(self):
+                calls["group"] += 1
+                return [["a", "b", "c", "d"]]
+
+            def concat_images(self, group, name):
+                calls["concat"] += 1
+                return "/tmp/grid.jpg"
+
+            def encode_images_to_base64(self, paths):
+                calls["encode"] += 1
+                return ["data:image/jpeg;base64,grid"] if paths else []
+
+            def extract_time_from_filename(self, filename):
+                return 3.0
+
+        extractor = VideoReaderFrameExtractor(grid_size=(2, 2))
+        with mock.patch("app.utils.video_reader.VideoReader", FakeVideoReader):
+            without_grid = extractor.extract("/tmp/video.mp4", include_grid_images=False)
+            self.assertEqual(calls, {"group": 0, "concat": 0, "encode": 0})
+            self.assertEqual(without_grid["grid_images"], [])
+
+            with_grid = extractor.extract("/tmp/video.mp4", include_grid_images=True)
+
+        self.assertEqual(calls, {"group": 1, "concat": 1, "encode": 1})
+        self.assertEqual(with_grid["grid_images"], ["data:image/jpeg;base64,grid"])
+
+    def test_non_vision_rejects_legacy_extractor_without_calling_grid_path(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            extractor = _LegacyFrameExtractor()
+            collector = VideoFrameCollector(
+                frame_extractor=extractor,
+                ocr_provider=_FakeOcrProvider(),
+                output_dir=pathlib.Path(tmp_dir),
+            )
+
+            result = collector.collect(
+                task_id="task-legacy",
+                video_path="/tmp/demo.mp4",
+                screenshot=True,
+                allow_vision=False,
+            )
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("include_grid_images", result.error)
+        self.assertEqual(extractor.calls, 0)
+
     def test_video_frame_collector_skips_when_screenshot_disabled(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             extractor = _FakeFrameExtractor()
@@ -410,7 +495,51 @@ class TestVideoFrameCollectorContracts(unittest.TestCase):
         self.assertEqual(result.grid_images, ["data:image/jpeg;base64,grid"])
         self.assertEqual(ocr_provider.calls, ["/tmp/frame_00_03.jpg", "/tmp/frame_00_08.jpg"])
 
-    def test_video_frame_collector_returns_cached_result_without_reprocessing(self):
+    def test_non_vision_model_goes_directly_to_ocr_without_grid_payload(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            vision_analyzer = _FailingVisionAnalyzer()
+            ocr_provider = _FakeOcrProvider()
+            collector = VideoFrameCollector(
+                frame_extractor=_FakeFrameExtractor(),
+                vision_analyzer=vision_analyzer,
+                ocr_provider=ocr_provider,
+                output_dir=pathlib.Path(tmp_dir),
+            )
+
+            result = collector.collect(
+                task_id="task-non-vision",
+                video_path="/tmp/demo.mp4",
+                screenshot=True,
+                allow_vision=False,
+            )
+
+        self.assertEqual(vision_analyzer.calls, [])
+        self.assertEqual(ocr_provider.calls, ["/tmp/frame_00_03.jpg", "/tmp/frame_00_08.jpg"])
+        self.assertEqual(result.mode, "ocr")
+        self.assertEqual(result.grid_images, [])
+        self.assertEqual(collector.frame_extractor.include_grid_images, [False])
+
+    def test_empty_ocr_produces_no_frame_content_or_placeholder(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            collector = VideoFrameCollector(
+                frame_extractor=_FakeFrameExtractor(),
+                vision_analyzer=_FailingVisionAnalyzer(),
+                ocr_provider=_EmptyOcrProvider(),
+                output_dir=pathlib.Path(tmp_dir),
+            )
+
+            result = collector.collect(
+                task_id="task-empty-ocr",
+                video_path="/tmp/demo.mp4",
+                screenshot=True,
+                allow_vision=False,
+            )
+
+        self.assertEqual(result.content, "")
+        self.assertNotIn("OCR 未识别到文本", json.dumps(asdict(result), ensure_ascii=False))
+        self.assertEqual(result.grid_images, [])
+
+    def test_direct_ocr_returns_cached_result_without_reprocessing(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_dir = pathlib.Path(tmp_dir)
             extractor = _FakeFrameExtractor()
@@ -421,13 +550,36 @@ class TestVideoFrameCollectorContracts(unittest.TestCase):
                 output_dir=output_dir,
             )
 
-            first = collector.collect(task_id="task-1", video_path="/tmp/demo.mp4", screenshot=True)
-            second = collector.collect(task_id="task-1", video_path="/tmp/demo.mp4", screenshot=True)
+            first = collector.collect(
+                task_id="task-1", video_path="/tmp/demo.mp4", screenshot=True, allow_vision=False
+            )
+            second = collector.collect(
+                task_id="task-1", video_path="/tmp/demo.mp4", screenshot=True, allow_vision=False
+            )
 
         self.assertEqual(first.status, "done")
         self.assertEqual(second.status, "done")
         self.assertEqual(second.frames, first.frames)
         self.assertEqual(extractor.calls, 1)
+
+    def test_vision_ocr_fallback_does_not_prevent_next_vision_attempt(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            analyzer = _FailingVisionAnalyzer()
+            extractor = _FakeFrameExtractor()
+            collector = VideoFrameCollector(
+                frame_extractor=extractor,
+                vision_analyzer=analyzer,
+                ocr_provider=_FakeOcrProvider(),
+                output_dir=pathlib.Path(tmp_dir),
+            )
+
+            first = collector.collect(task_id="task-vision-retry", video_path="/tmp/demo.mp4", screenshot=True)
+            second = collector.collect(task_id="task-vision-retry", video_path="/tmp/demo.mp4", screenshot=True)
+
+        self.assertEqual(first.mode, "ocr")
+        self.assertEqual(second.mode, "ocr")
+        self.assertEqual(len(analyzer.calls), 4)
+        self.assertEqual(extractor.calls, 2)
 
     def test_video_frame_collector_accepts_downloader_video_url_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -483,6 +635,7 @@ class TestMultiSourceVideoCollectorContracts(unittest.TestCase):
             screenshot=True,
             grid_size=[2, 2],
             frame_timestamps=[3, 8],
+            allow_vision=False,
         )
 
         self.assertIsInstance(bundle, MultiSourceSummaryBundle)
@@ -501,6 +654,7 @@ class TestMultiSourceVideoCollectorContracts(unittest.TestCase):
         self.assertTrue(frame_collector.calls[0]["screenshot"])
         self.assertEqual(frame_collector.calls[0]["grid_size"], [2, 2])
         self.assertEqual(frame_collector.calls[0]["frame_timestamps"], [3, 8])
+        self.assertFalse(frame_collector.calls[0]["allow_vision"])
 
     def test_status_reporter_failure_does_not_fail_collection(self):
         barrier = threading.Barrier(3)

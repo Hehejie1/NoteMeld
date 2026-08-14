@@ -2,6 +2,7 @@ import { FC, useMemo, useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import ChatComposer from '@/pages/HomePage/components/ChatComposer'
+import LearningCanvasCard from '@/pages/HomePage/components/LearningCanvasCard'
 import MarkdownViewer from '@/pages/HomePage/components/MarkdownViewer'
 import { useTaskStore, type ConversationMessage, type Task } from '@/store/taskStore'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -14,6 +15,7 @@ import {
 } from '@/pages/HomePage/chatScrollHelpers'
 import { ConversationMessageRenderer } from '@/pages/HomePage/messageRenderers'
 import { get_task_status } from '@/services/note'
+import { cancelWorkspaceTask } from '@/services/workspace'
 
 type ViewStatus = 'idle' | 'loading' | 'success' | 'failed'
 
@@ -62,7 +64,8 @@ export const HomePage: FC = () => {
   const [viewerCollapsed, setViewerCollapsed] = useState(false)
   /** 对话栏宽度比例（0-1），默认 0.5 即各占一半 */
   const [chatRatio, setChatRatio] = useState(0.5)
-  const [mobileView, setMobileView] = useState<'chat' | 'note' | 'wiki'>('chat')
+  const [mobileView, setMobileView] = useState<'chat' | 'learning' | 'note' | 'wiki'>('chat')
+  const [rightContentView, setRightContentView] = useState<'learning' | 'note'>('learning')
   const [isMobile, setIsMobile] = useState(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
@@ -77,6 +80,25 @@ export const HomePage: FC = () => {
       String(Boolean((lastMessage as ConversationMessage & { isStreaming?: boolean }).isStreaming)),
     ].join('|')
   }, [currentTask?.messages])
+  const latestLearningCanvas = useMemo(() => {
+    const messages = currentTask?.messages || []
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.message_type !== 'learning_canvas') continue
+      const canvasId = message.meta?.canvas_id
+      if (typeof canvasId === 'string' && canvasId) {
+        return {
+          id: canvasId,
+          status: typeof message.meta?.status === 'string' ? message.meta.status : '',
+        }
+      }
+    }
+    return null
+  }, [currentTask?.messages])
+  const latestLearningCanvasId = latestLearningCanvas?.id || ''
+  const hasLearningCanvas = Boolean(
+    latestLearningCanvasId && latestLearningCanvas?.status !== 'clarifying',
+  )
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)')
@@ -140,16 +162,46 @@ export const HomePage: FC = () => {
   const hasSelectedDocument = Boolean(currentTask?.activeDocumentTaskId)
     && (currentTask?.documents || []).some(document => document.taskId === currentTask?.activeDocumentTaskId && document.content)
   const viewerStatus: ViewStatus = hasSelectedDocument ? 'success' : 'idle'
-  const shouldShowSplitLayout = status === 'success' || hasSelectedDocument
+  const shouldShowSplitLayout = status === 'success' || hasSelectedDocument || hasLearningCanvas
+
+  useEffect(() => {
+    if (hasLearningCanvas) {
+      setRightContentView(hasSelectedDocument ? 'note' : 'learning')
+      setViewerCollapsed(false)
+      return
+    }
+    setRightContentView('note')
+  }, [currentTask?.id, latestLearningCanvasId, hasLearningCanvas, hasSelectedDocument])
+
+  useEffect(() => {
+    if (hasLearningCanvas && !hasSelectedDocument) {
+      setRightContentView('learning')
+    }
+  }, [hasLearningCanvas, hasSelectedDocument])
+
+  useEffect(() => {
+    const focusWhiteboard = () => {
+      if (!hasLearningCanvas) return
+      setViewerCollapsed(false)
+      setRightContentView('learning')
+      if (isMobile) setMobileView('learning')
+    }
+    window.addEventListener('notemeld:focus-research-node', focusWhiteboard)
+    return () => window.removeEventListener('notemeld:focus-research-node', focusWhiteboard)
+  }, [hasLearningCanvas, isMobile])
 
   useEffect(() => {
     if (!isMobile) return
+    if (hasLearningCanvas) {
+      setMobileView('learning')
+      return
+    }
     if (status === 'success' || hasSelectedDocument) {
       setMobileView('note')
       return
     }
     setMobileView('chat')
-  }, [isMobile, status, hasSelectedDocument, currentTask?.id])
+  }, [isMobile, status, hasSelectedDocument, hasLearningCanvas, currentTask?.id])
 
   const handleRetry = (noteTaskId?: string) => {
     if (currentTask?.id) {
@@ -183,6 +235,15 @@ export const HomePage: FC = () => {
         documentTaskId: res.task_id || noteTaskId,
       })
       selectNoteDocument(currentTask.id, noteTaskId)
+    }
+  }
+
+  const handleCancelTask = async (cardId: string) => {
+    if (!currentTask?.id || !cardId) return
+    try {
+      await cancelWorkspaceTask(currentTask.id, cardId)
+    } catch {
+      /* 错误已由 request 拦截器 toast */
     }
   }
 
@@ -270,7 +331,7 @@ export const HomePage: FC = () => {
     )
   }
 
-  if (currentTask?.mode === 'chat' && currentTask.noteState !== 'ready') {
+  if (currentTask?.mode === 'chat' && currentTask.noteState !== 'ready' && !hasLearningCanvas && !hasSelectedDocument) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col">
         <div ref={scrollAreaRootRef} className="min-h-0 flex-1">
@@ -299,7 +360,7 @@ export const HomePage: FC = () => {
         <div ref={scrollAreaRootRef} className="min-h-0 flex-1">
           <ScrollArea className="h-full">
             <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
-              <ConversationMessages task={currentTask!} compact={isMobile} onRetry={handleRetry} onRetryChat={handleRetryChat} onSelectNoteResult={handleSelectNoteResult} />
+              <ConversationMessages task={currentTask!} compact={isMobile} onRetry={handleRetry} onRetryChat={handleRetryChat} onSelectNoteResult={handleSelectNoteResult} onCancelTask={handleCancelTask} />
             </div>
           </ScrollArea>
         </div>
@@ -317,15 +378,26 @@ export const HomePage: FC = () => {
 
   /** 成功态：左聊天历史 + 右笔记看板（默认各占 50%，支持拖拽） */
   if (isMobile && shouldShowSplitLayout) {
-    const mobileTabs: Array<{ key: 'chat' | 'note' | 'wiki'; label: string }> = [
+    const mobileTabs: Array<{
+      key: 'chat' | 'learning' | 'note' | 'wiki'
+      label: string
+    }> = [
       { key: 'chat', label: '对话' },
-      { key: 'note', label: '笔记' },
-      { key: 'wiki', label: 'Wiki' },
+      ...(hasLearningCanvas ? [{ key: 'learning' as const, label: '白板' }] : []),
+      ...(hasSelectedDocument
+        ? [
+            { key: 'note' as const, label: '笔记' },
+            { key: 'wiki' as const, label: 'Wiki' },
+          ]
+        : []),
     ]
 
     return (
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface">
-        <div className="grid h-11 shrink-0 grid-cols-3 border-b border-border-subtle/70 bg-white px-2 py-1">
+        <div
+          className="grid h-11 shrink-0 border-b border-border-subtle/70 bg-white px-2 py-1"
+          style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}
+        >
           {mobileTabs.map(item => (
             <button
               key={item.key}
@@ -354,6 +426,7 @@ export const HomePage: FC = () => {
                     onRetry={handleRetry}
                     onRetryChat={handleRetryChat}
                     onSelectNoteResult={handleSelectNoteResult}
+                    onCancelTask={handleCancelTask}
                   />
                 </div>
               </ScrollArea>
@@ -363,6 +436,17 @@ export const HomePage: FC = () => {
                 <ChatComposer layout="bottom" />
               </div>
             </div>
+          </div>
+        ) : mobileView === 'learning' && latestLearningCanvasId ? (
+          <div className="min-h-0 flex-1 overflow-hidden bg-surface-container-low">
+            <ScrollArea className="h-full">
+              <div className="p-3">
+                <LearningCanvasCard
+                  conversationId={currentTask!.id}
+                  canvasId={latestLearningCanvasId}
+                />
+              </div>
+            </ScrollArea>
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden bg-white">
@@ -398,7 +482,7 @@ export const HomePage: FC = () => {
           <button
             onClick={() => setViewerCollapsed(v => !v)}
             className="rounded p-1.5 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary"
-            title={viewerCollapsed ? '展开笔记' : '隐藏笔记'}
+            title={viewerCollapsed ? '展开右侧面板' : '隐藏右侧面板'}
           >
             {viewerCollapsed ? (
               <PanelRightOpen className="h-4 w-4" />
@@ -416,6 +500,7 @@ export const HomePage: FC = () => {
                 onRetry={handleRetry}
                 onRetryChat={handleRetryChat}
                 onSelectNoteResult={handleSelectNoteResult}
+                onCancelTask={handleCancelTask}
               />
             </div>
           </ScrollArea>
@@ -433,21 +518,67 @@ export const HomePage: FC = () => {
         <div
           onMouseDown={startSplitDrag}
           className="group/resizer relative w-1 shrink-0 cursor-col-resize"
-          aria-label="拖拽调整对话/笔记宽度"
+          aria-label="拖拽调整对话/右侧面板宽度"
         >
           <div className="absolute inset-y-0 left-0 w-1 transition-colors group-hover/resizer:bg-primary/40" />
         </div>
       )}
 
-      {/* 右侧：笔记看板 */}
+      {/* 右侧：学习面板 / 笔记看板 */}
       {!viewerCollapsed && (
-        <div className="min-w-0 flex-1 bg-white">
-          <MarkdownViewer
-            status={viewerStatus}
-            content={currentTask?.markdown || ''}
-            onDeleteDocument={handleDeleteCurrentDocument}
-            onWikiRetrySuccess={handleWikiRetrySuccess}
-          />
+        <div className="flex min-w-0 flex-1 flex-col bg-white">
+          {hasLearningCanvas && hasSelectedDocument && (
+            <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border-subtle/60 px-4">
+              <button
+                type="button"
+                onClick={() => setRightContentView('learning')}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
+                  rightContentView === 'learning'
+                    ? 'bg-primary-light text-primary'
+                    : 'text-on-surface-variant hover:bg-surface-container-low',
+                )}
+              >
+                白板
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightContentView('note')}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
+                  rightContentView === 'note'
+                    ? 'bg-primary-light text-primary'
+                    : 'text-on-surface-variant hover:bg-surface-container-low',
+                )}
+              >
+                笔记
+              </button>
+            </div>
+          )}
+          {hasLearningCanvas && rightContentView === 'learning' ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-container-low">
+              {!hasSelectedDocument && (
+                <div className="flex h-12 items-center border-b border-border-subtle/60 bg-white px-4 text-[13px] font-medium text-on-surface-variant">
+                  研究白板
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <LearningCanvasCard
+                  conversationId={currentTask!.id}
+                  canvasId={latestLearningCanvasId}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1">
+              <MarkdownViewer
+                status={viewerStatus}
+                content={currentTask?.markdown || ''}
+                onDeleteDocument={handleDeleteCurrentDocument}
+                onWikiRetrySuccess={handleWikiRetrySuccess}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -460,12 +591,14 @@ const ConversationMessages: FC<{
   onRetry?: (taskId?: string) => void
   onRetryChat?: () => void
   onSelectNoteResult?: (taskId: string) => void
+  onCancelTask?: (cardId: string) => void
 }> = ({
   task,
   compact,
   onRetry,
   onRetryChat,
   onSelectNoteResult,
+  onCancelTask,
 }) => {
   const items = buildConversationTimeline(task)
   if (!items.length) return null
@@ -479,11 +612,13 @@ const ConversationMessages: FC<{
           <ConversationMessageRenderer
             key={item.id}
             message={message}
+            conversationId={task.id}
             compact={compact}
             taskPlatform={task.platform || task.formData?.platform}
             onRetry={onRetry}
             onRetryChat={onRetryChat}
             onSelectNoteResult={onSelectNoteResult}
+            onCancelTask={onCancelTask}
           />
         )
       })}

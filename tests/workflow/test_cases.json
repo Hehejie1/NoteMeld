@@ -1,0 +1,95 @@
+{
+  "version": "1.0",
+  "description": "NoteMeld本地模型评测数据集",
+  "test_cases": [
+    {
+      "id": "text_summary_001",
+      "type": "text_summarization",
+      "name": "技术文章摘要",
+      "input": "人工智能（Artificial Intelligence，简称AI）是计算机科学的一个分支，致力于研究、开发用于模拟、延伸和扩展人的智能的理论、方法、技术及应用系统。人工智能是一门极富挑战性的科学，从事这项工作的人必须懂得计算机知识、心理学和哲学。人工智能领域的研究包括机器人、语言识别、图像识别、自然语言处理和专家系统等。人工智能从诞生以来，理论和技术日益成熟，应用领域也不断扩大，可以设想，未来人工智能带来的科技产品，将会是人类智慧的\"容器\"。人工智能可以对人的意识、思维的信息过程进行模拟。人工智能不是人的智能，但能像人那样思考、也可能超过人的智能。",
+      "expected_summary": "人工智能是计算机科学分支，研究开发模拟人类智能的技术和系统，包括机器人、语言识别、图像识别、自然语言处理等领域，理论和技术日益成熟，应用领域不断扩大。",
+      "expected_keywords": ["人工智能", "计算机科学", "机器人", "语言识别", "图像识别", "自然语言处理"]
+    },
+    {
+      "id": "text_summary_002",
+      "type": "text_summarization",
+      "name": "产品介绍摘要",
+      "input": "NoteMeld是一款本地优先的AI知识工作台，它能够将网页、本地文件、多平台视频、音频和AI对话转化为结构化的Markdown笔记。NoteMeld支持B站、YouTube、抖音、快手、视频号等多个平台的视频采集，具备强大的OCR文字识别能力，可以从截图中提取文本内容。同时，NoteMeld还支持Wiki知识图谱构建，将每篇笔记转化为可追溯、可复用的知识节点，实现知识的持续增长和高效检索。",
+      "expected_summary": "NoteMeld是本地优先的AI知识工作台，支持网页、文件、多平台视频、音频和AI对话的采集，具备OCR识别能力，支持Wiki知识图谱构建，实现知识的结构化沉淀和高效检索。",
+      "expected_keywords": ["NoteMeld", "AI知识工作台", "视频采集", "OCR", "Wiki", "知识图谱"]
+    },
+    {
+      "id": "text_summary_003",
+      "type": "text_summarization",
+      "name": "会议记录摘要",
+      "input": "本次会议主要讨论了Q3季度的产品规划。首先，产品经理介绍了新功能的开发进度，预计在9月底前完成核心功能的开发。技术负责人表示，团队正在进行性能优化工作，目标是将页面加载时间缩短30%。运营负责人提出了用户增长策略，计划通过社交媒体和内容营销提升产品曝光度。最后，CEO强调了用户体验的重要性，要求所有团队在开发过程中始终保持用户视角。",
+      "expected_summary": "Q3季度产品规划会议讨论了新功能开发进度（9月底前完成核心功能）、性能优化目标（页面加载时间缩短30%）、用户增长策略（社交媒体和内容营销），CEO强调用户体验的重要性。",
+      "expected_keywords": ["Q3", "产品规划", "性能优化", "用户增长", "用户体验"]
+    },
+    {
+      "id": "text_summary_004",
+      "type": "text_summarization",
+      "name": "新闻报道摘要",
+      "input": "据新华社报道，我国自主研发的新一代人工智能大模型\"文心一言\"近日正式发布。该模型具备多模态理解能力，能够处理文本、图像、音频和视频等多种形式的信息。文心一言在多项国际评测中表现优异，在语言理解、常识推理和创造性写作等方面达到了国际领先水平。专家表示，文心一言的发布标志着我国在人工智能领域取得了重大突破，将为各行各业带来深远的影响。",
+      "expected_summary": "我国自主研发的新一代AI大模型\"文心一言\"正式发布，具备多模态理解能力，在多项国际评测中表现优异，标志着我国在人工智能领域取得重大突破。",
+      "expected_keywords": ["文心一言", "人工智能", "多模态", "国际评测", "重大突破"]
+    },
+    {
+      "id": "text_summary_005",
+      "type": "text_summarization",
+      "name": "教程说明摘要",
+      "input": "本教程将教你如何使用Python进行数据分析。首先，你需要安装Python环境和必要的库，包括NumPy、Pandas和Matplotlib。然后，我们将学习如何读取CSV文件、进行数据清洗、执行基本统计分析，以及如何创建可视化图表。最后，我们将通过一个实际案例来巩固所学知识，分析一份销售数据报告并生成可视化图表。",
+      "expected_summary": "本教程介绍如何使用Python进行数据分析，包括安装环境和库（NumPy、Pandas、Matplotlib）、数据读取与清洗、统计分析和可视化，最后通过销售数据分析案例巩固知识。",
+      "expected_keywords": ["Python", "数据分析", "NumPy", "Pandas", "Matplotlib", "可视化"]
+    },
+    {
+      "id": "image_ocr_001",
+      "type": "image_understanding",
+      "name": "简单文本截图",
+      "description": "包含一段中文文本的截图",
+      "expected_text": ["人工智能", "机器学习", "深度学习"],
+      "expected_structure": "paragraph"
+    },
+    {
+      "id": "image_ocr_002",
+      "type": "image_understanding",
+      "name": "表格截图",
+      "description": "包含数据表格的截图",
+      "expected_text": ["产品名称", "价格", "销量"],
+      "expected_structure": "table"
+    },
+    {
+      "id": "image_ocr_003",
+      "type": "image_understanding",
+      "name": "PPT截图",
+      "description": "包含标题和要点的PPT截图",
+      "expected_text": ["项目目标", "关键步骤", "时间节点"],
+      "expected_structure": "slide"
+    },
+    {
+      "id": "template_format_001",
+      "type": "template_format",
+      "name": "结构化笔记格式",
+      "description": "测试模型能否按照指定模板输出结构化内容",
+      "template": {
+        "title": "笔记标题",
+        "summary": "内容摘要",
+        "sections": ["核心要点", "详细内容"],
+        "tags": ["标签1", "标签2"]
+      },
+      "input": "本文介绍了人工智能的基本概念和应用领域，包括机器学习、深度学习、自然语言处理等技术方向，以及在医疗、金融、教育等行业的应用案例。"
+    },
+    {
+      "id": "hallucination_001",
+      "type": "hallucination_test",
+      "name": "事实一致性测试",
+      "description": "测试模型是否会编造不存在的信息",
+      "input": "NoteMeld是一款AI知识管理工具，由中国团队开发，于2024年发布。",
+      "expected_facts": {
+        "developer": "中国团队",
+        "release_year": "2024"
+      },
+      "forbidden_facts": ["美国", "2023", "Google"]
+    }
+  ]
+}

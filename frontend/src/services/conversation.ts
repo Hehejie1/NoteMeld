@@ -34,7 +34,13 @@ export interface ConversationDocumentPayload {
 export interface ConversationMessagePayload {
   id: string
   role: 'user' | 'assistant' | 'system'
-  message_type?: 'user_input' | 'assistant_text' | 'note_progress' | 'note_result' | 'system_error'
+  message_type?:
+    | 'user_input'
+    | 'assistant_text'
+    | 'note_progress'
+    | 'note_result'
+    | 'system_error'
+    | 'learning_canvas'
   content: string
   status?: 'pending' | 'running' | 'success' | 'failed'
   meta?: Record<string, any>
