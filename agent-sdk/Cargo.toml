@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/agent-events", "crates/agent-model", "crates/agent-tools"]
+members = [
+    "crates/agent-core",
+    "crates/agent-events",
+    "crates/agent-model",
+    "crates/agent-tools",
+]
 resolver = "2"
 
 [workspace.package]
