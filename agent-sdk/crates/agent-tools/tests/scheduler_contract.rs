@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    future,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -24,6 +25,14 @@ fn context() -> ToolContext {
 
 fn call(id: &str, serial: bool) -> ToolCall {
     ToolCall::try_new(id, format!("tool-{id}"), json!({"id": id}), serial).unwrap()
+}
+
+struct DropSignal(mpsc::UnboundedSender<()>);
+
+impl Drop for DropSignal {
+    fn drop(&mut self) {
+        let _ = self.0.send(());
+    }
 }
 
 #[test]
@@ -127,6 +136,7 @@ async fn any_serial_call_makes_the_entire_model_round_serial() {
 struct ParallelDriver {
     started: mpsc::UnboundedSender<String>,
     releases: Arc<HashMap<String, Arc<Notify>>>,
+    progress_returned: mpsc::UnboundedSender<String>,
 }
 
 #[async_trait]
@@ -150,6 +160,7 @@ impl ToolDriver for ParallelDriver {
             data: Value::Null,
         })
         .await?;
+        self.progress_returned.send(call.id().to_owned()).unwrap();
         Ok(ToolResult::new(call.id(), json!(call.id())))
     }
 }
@@ -163,16 +174,24 @@ async fn parallel_results_stay_in_call_order_while_progress_arrives_as_it_happen
     ]));
     let progress = Arc::new(Mutex::new(Vec::new()));
     let progress_observer = Arc::clone(&progress);
+    let (observer_ack_tx, mut observer_ack_rx) = mpsc::unbounded_channel();
     let sink = ToolProgressSink::new(move |event| {
         let progress_observer = Arc::clone(&progress_observer);
+        let observer_ack_tx = observer_ack_tx.clone();
         async move {
-            progress_observer.lock().unwrap().push(event.call_id);
+            progress_observer
+                .lock()
+                .unwrap()
+                .push(event.call_id.clone());
+            observer_ack_tx.send(event.call_id).unwrap();
             Ok(())
         }
     });
+    let (progress_returned_tx, mut progress_returned_rx) = mpsc::unbounded_channel();
     let driver = Arc::new(ParallelDriver {
         started: started_tx,
         releases: Arc::clone(&releases),
+        progress_returned: progress_returned_tx,
     });
 
     let task = tokio::spawn({
@@ -196,11 +215,12 @@ async fn parallel_results_stay_in_call_order_while_progress_arrives_as_it_happen
     assert_eq!(started, ["first", "second"]);
 
     releases["second"].notify_one();
-    while progress.lock().unwrap().is_empty() {
-        tokio::task::yield_now().await;
-    }
+    assert_eq!(progress_returned_rx.recv().await.as_deref(), Some("second"));
+    assert_eq!(observer_ack_rx.try_recv().as_deref(), Ok("second"));
     assert_eq!(*progress.lock().unwrap(), ["second"]);
     releases["first"].notify_one();
+    assert_eq!(progress_returned_rx.recv().await.as_deref(), Some("first"));
+    assert_eq!(observer_ack_rx.try_recv().as_deref(), Ok("first"));
 
     let results = task.await.unwrap().unwrap();
     assert_eq!(
@@ -208,6 +228,75 @@ async fn parallel_results_stay_in_call_order_while_progress_arrives_as_it_happen
         ["first", "second"]
     );
     assert_eq!(*progress.lock().unwrap(), ["second", "first"]);
+}
+
+struct ShutdownDriver {
+    progress_started: Arc<Notify>,
+}
+
+#[async_trait]
+impl ToolDriver for ShutdownDriver {
+    async fn describe(&self, _names: &[String]) -> Result<Vec<ToolDescriptor>, AgentError> {
+        Ok(Vec::new())
+    }
+
+    async fn invoke(
+        &self,
+        call: ToolCall,
+        _context: ToolContext,
+        sink: ToolProgressSink,
+    ) -> Result<ToolResult, AgentError> {
+        if call.id() == "sibling" {
+            sink.emit(ToolProgress {
+                call_id: call.id().to_owned(),
+                message: "in flight".to_owned(),
+                progress: None,
+                data: Value::Null,
+            })
+            .await?;
+            unreachable!("the sibling progress observer stays pending")
+        }
+
+        self.progress_started.notified().await;
+        Err(AgentError::new(
+            AgentErrorCode::ToolFailed,
+            "tool invocation failed",
+        ))
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn parallel_error_waits_for_sibling_progress_callback_to_unwind() {
+    let progress_started = Arc::new(Notify::new());
+    let observer_started = Arc::clone(&progress_started);
+    let (dropped_tx, mut dropped_rx) = mpsc::unbounded_channel();
+    let sink = ToolProgressSink::new(move |_event| {
+        let observer_started = Arc::clone(&observer_started);
+        let dropped_tx = dropped_tx.clone();
+        async move {
+            let _drop_signal = DropSignal(dropped_tx);
+            observer_started.notify_one();
+            future::pending().await
+        }
+    });
+    let driver = Arc::new(ShutdownDriver { progress_started });
+
+    let error = execute_tool_round(
+        driver,
+        vec![call("sibling", false), call("failure", false)],
+        context(),
+        sink,
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.code, AgentErrorCode::ToolFailed);
+    assert_eq!(error.message, "tool invocation failed");
+    assert_eq!(
+        dropped_rx.try_recv(),
+        Ok(()),
+        "the scheduler must await sibling shutdown before returning"
+    );
 }
 
 struct CancellationDriver {

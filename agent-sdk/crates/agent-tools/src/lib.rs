@@ -218,13 +218,24 @@ where
 
         let mut results = vec![None; result_count];
         while let Some(joined) = tasks.join_next().await {
-            let (index, result) = joined.map_err(|_| {
-                AgentError::new(
-                    AgentErrorCode::SdkInternalError,
-                    "tool invocation task failed",
-                )
-            })?;
-            results[index] = Some(result?);
+            let (index, result) = match joined {
+                Ok(joined) => joined,
+                Err(_) => {
+                    let error = AgentError::new(
+                        AgentErrorCode::SdkInternalError,
+                        "tool invocation task failed",
+                    );
+                    tasks.shutdown().await;
+                    return Err(error);
+                }
+            };
+            match result {
+                Ok(result) => results[index] = Some(result),
+                Err(error) => {
+                    tasks.shutdown().await;
+                    return Err(error);
+                }
+            }
         }
 
         results

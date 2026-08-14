@@ -124,3 +124,18 @@ pub trait ModelDriver: Send + Sync {
         sink: ModelChunkSink,
     ) -> Result<ModelCompletion, AgentError>;
 }
+
+pub async fn invoke_model<D>(
+    driver: &D,
+    request: ModelRequest,
+    sink: ModelChunkSink,
+) -> Result<ModelCompletion, AgentError>
+where
+    D: ModelDriver + ?Sized,
+{
+    let result = driver.stream(request, sink.clone()).await;
+    if let Some(error) = sink.first_failure() {
+        return Err(error);
+    }
+    result
+}

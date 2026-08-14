@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use agent_events::{AgentError, AgentErrorCode};
 use agent_model::{
-    ModelChunk, ModelChunkSink, ModelCompletion, ModelDriver, ModelRequest, ModelUsage,
+    invoke_model, ModelChunk, ModelChunkSink, ModelCompletion, ModelDriver, ModelRequest,
+    ModelUsage,
 };
 use async_trait::async_trait;
 use serde_json::json;
@@ -162,4 +163,48 @@ async fn model_request_propagates_explicit_cancellation() {
     let error = task.await.unwrap().unwrap_err();
     assert_eq!(error.code, AgentErrorCode::Cancelled);
     assert_eq!(error.message, "model request cancelled");
+}
+
+struct IgnoredSinkFailureDriver;
+
+#[async_trait]
+impl ModelDriver for IgnoredSinkFailureDriver {
+    async fn stream(
+        &self,
+        _request: ModelRequest,
+        sink: ModelChunkSink,
+    ) -> Result<ModelCompletion, AgentError> {
+        let _ignored = sink
+            .emit(ModelChunk::ContentDelta {
+                delta: "ignored".to_owned(),
+            })
+            .await;
+        Ok(ModelCompletion {
+            content: "driver returned success".to_owned(),
+            tool_calls: Vec::new(),
+            finish_reason: "stop".to_owned(),
+            usage: ModelUsage::default(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn invocation_boundary_surfaces_sink_failure_even_if_driver_ignores_it() {
+    let sink = ModelChunkSink::new(|_chunk| async {
+        Err(AgentError::new(
+            AgentErrorCode::SdkInternalError,
+            "model chunk observer failed",
+        ))
+    });
+
+    let error = invoke_model(
+        &IgnoredSinkFailureDriver,
+        ModelRequest::new(Vec::new()),
+        sink,
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.code, AgentErrorCode::SdkInternalError);
+    assert_eq!(error.message, "model chunk observer failed");
 }
