@@ -14,7 +14,7 @@ from typing import Any
 from tests.agent_core._base import EventRecorder, FakeModel, FakeModels, build_agent_tool, build_tool_call
 
 
-SCHEMA_VERSION = "notemeld.agent.conformance.v1"
+SCHEMA_VERSION = "1"
 SCENARIOS = ("simple_answer", "parallel_tools", "abort", "steer", "max_turns")
 FIXTURE_DIR = Path(__file__).resolve().parents[3] / "agent-sdk" / "fixtures" / "conformance"
 
@@ -84,12 +84,11 @@ def _payload(event: Any, agent: Any) -> dict[str, Any]:
 
 
 def _row(scenario: str, sequence: int, event: Any, agent: Any) -> dict[str, Any]:
-    turn_key = f"{event.turn:03d}" if event.turn is not None else "root"
     return {
         "schema_version": SCHEMA_VERSION,
         "scenario": scenario,
         "session_id": f"oracle-session-{scenario}",
-        "turn_id": f"oracle-turn-{scenario}-{turn_key}",
+        "turn_id": f"oracle-turn-{scenario}",
         "event_id": f"oracle-event-{scenario}-{sequence:03d}",
         "sequence": sequence,
         "timestamp": f"2000-01-01T00:00:{sequence - 1:02d}Z",

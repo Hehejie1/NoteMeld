@@ -51,8 +51,9 @@ def test_oracle_fixtures_are_gapless():
         assert all(REQUIRED_FIELDS <= row.keys() for row in rows)
         assert {row["scenario"] for row in rows} == {path.stem}
         assert [row["sequence"] for row in rows] == list(range(1, len(rows) + 1))
-        assert {row["schema_version"] for row in rows} == {"notemeld.agent.conformance.v1"}
+        assert {row["schema_version"] for row in rows} == {"1"}
         assert {row["session_id"] for row in rows} == {f"oracle-session-{path.stem}"}
+        assert {row["turn_id"] for row in rows} == {f"oracle-turn-{path.stem}"}
         assert all(row["event_id"] == f"oracle-event-{path.stem}-{row['sequence']:03d}" for row in rows)
 
 
