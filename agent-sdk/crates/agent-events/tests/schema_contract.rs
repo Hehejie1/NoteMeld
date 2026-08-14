@@ -468,7 +468,7 @@ fn json_schemas_accept_valid_and_reject_invalid_wire_examples() {
 
     assert_schema_cases(
         "turn-request.v1.json",
-        &[turn_request.clone()],
+        std::slice::from_ref(&turn_request),
         &[
             with_field(turn_request.clone(), "schema_version", json!("2")),
             with_field(turn_request.clone(), "request_id", json!("x")),
@@ -495,7 +495,7 @@ fn json_schemas_accept_valid_and_reject_invalid_wire_examples() {
                 json!({"text": "user input", "context_refs": []}),
             ),
             with_field(
-                turn_request,
+                turn_request.clone(),
                 "input",
                 json!({"text": "user input", "attachments": []}),
             ),
@@ -529,11 +529,11 @@ fn json_schemas_accept_valid_and_reject_invalid_wire_examples() {
     );
     assert_schema_cases(
         "errors.v1.json",
-        &[error.clone()],
+        std::slice::from_ref(&error),
         &[
             with_field(error.clone(), "code", json!("raw_provider_exception")),
             with_field(error.clone(), "message", json!("")),
-            with_field(error, "details", json!([])),
+            with_field(error.clone(), "details", json!([])),
         ],
     );
 }
