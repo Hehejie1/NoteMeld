@@ -180,3 +180,18 @@ No new Rust dependency or lockfile entry was added. MSRV and license inventory a
 - Swift: package build and real native harness GREEN with terminal `turn.succeeded`.
 - Android UTF converter: host C++ emoji/invalid-surrogate/NUL test GREEN under `-Wall -Wextra -Werror`; no connected instrumentation result is claimed.
 - Native symbol inventory: all **12** manifest functions exported by the dylib.
+
+## Fix Round 4 (2026-08-15)
+
+### Harmony ordering mutation RED → GREEN
+
+- **RED:** three test-source mutations independently moved the active-turn match, terminal success resolve, and terminal failure reject after the user observer. The previous source-wide gate only checked parse-before-user plus marker presence and falsely accepted all three malformed orderings. The first TDD run failed because the new structural validator did not yet exist.
+- **GREEN:** the gate now removes both line and block comments while preserving strings/newlines, locates the single structurally complete `receiveEvent` function body, and requires unique in-handler markers in strict `parse < active match < terminal settlement < userEvent` order. Both resolve and reject calls must occur inside the settlement slice before the user callback; declarations for the active token, turn id, and terminal Promise remain unique.
+- Comment-only marker decoys cannot satisfy the gate. The original source is GREEN and all three mutations are RED without compiling or simulating copied production logic.
+
+### Round 4 verification
+
+- Focused original-source and three-mutation Harmony contract: GREEN.
+- Native `agent-ffi`: **5 unit + 14 ABI** tests GREEN.
+- Rust workspace: **87 tests** GREEN; clippy with warnings denied, rustfmt, and Task 6 diff checks GREEN.
+- No production runtime or binding source changed in this round, so the existing Round 3 Python native and Swift native evidence remains applicable.

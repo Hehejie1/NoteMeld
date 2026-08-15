@@ -675,6 +675,242 @@ fn concurrent_completion_has_one_atomic_winner_and_wait_timeout_is_typed() {
     notemeld_agent_runtime_free(handle);
 }
 
+fn strip_typescript_comments(source: &str) -> String {
+    #[derive(Clone, Copy)]
+    enum State {
+        Code,
+        LineComment,
+        BlockComment,
+        Quoted(u8),
+    }
+
+    let bytes = source.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut state = State::Code;
+    let mut index = 0;
+    while index < bytes.len() {
+        let current = bytes[index];
+        match state {
+            State::Code if current == b'/' && bytes.get(index + 1) == Some(&b'/') => {
+                output.extend_from_slice(b"  ");
+                index += 2;
+                state = State::LineComment;
+            }
+            State::Code if current == b'/' && bytes.get(index + 1) == Some(&b'*') => {
+                output.extend_from_slice(b"  ");
+                index += 2;
+                state = State::BlockComment;
+            }
+            State::Code if matches!(current, b'\'' | b'"' | b'`') => {
+                output.push(current);
+                index += 1;
+                state = State::Quoted(current);
+            }
+            State::Code => {
+                output.push(current);
+                index += 1;
+            }
+            State::LineComment if current == b'\n' => {
+                output.push(current);
+                index += 1;
+                state = State::Code;
+            }
+            State::LineComment => {
+                output.push(b' ');
+                index += 1;
+            }
+            State::BlockComment if current == b'*' && bytes.get(index + 1) == Some(&b'/') => {
+                output.extend_from_slice(b"  ");
+                index += 2;
+                state = State::Code;
+            }
+            State::BlockComment => {
+                output.push(if current == b'\n' { b'\n' } else { b' ' });
+                index += 1;
+            }
+            State::Quoted(_quote) if current == b'\\' => {
+                output.push(current);
+                index += 1;
+                if let Some(escaped) = bytes.get(index) {
+                    output.push(*escaped);
+                    index += 1;
+                }
+            }
+            State::Quoted(quote) if current == quote => {
+                output.push(current);
+                index += 1;
+                state = State::Code;
+            }
+            State::Quoted(_) => {
+                output.push(current);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8(output).unwrap()
+}
+
+fn extract_typescript_method_body<'a>(source: &'a str, signature: &str) -> Option<&'a str> {
+    if source.matches(signature).count() != 1 {
+        return None;
+    }
+    let signature_start = source.find(signature)?;
+    let open = signature_start + source[signature_start..].find('{')?;
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, current) in bytes.iter().copied().enumerate().skip(open) {
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if current == b'\\' {
+                escaped = true;
+            } else if current == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        if matches!(current, b'\'' | b'"' | b'`') {
+            quote = Some(current);
+        } else if current == b'{' {
+            depth += 1;
+        } else if current == b'}' {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return source.get(open + 1..index);
+            }
+        }
+    }
+    None
+}
+
+fn harmony_terminal_ordering_errors(source: &str) -> Vec<String> {
+    let code = strip_typescript_comments(source);
+    let signature = "private receiveEvent(eventJson: string): void";
+    let Some(body) = extract_typescript_method_body(&code, signature) else {
+        return vec!["receiveEvent must have one structurally complete function body".into()];
+    };
+    let mut errors = Vec::new();
+    let markers = [
+        ("parse", "const event = JSON.parse(eventJson)"),
+        (
+            "active match",
+            "const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId",
+        ),
+        ("settle", "if (type === 'turn.succeeded') {"),
+        ("user callback", "try { this.userEvent(eventJson) }"),
+    ];
+    let mut positions = Vec::new();
+    for (label, marker) in markers {
+        if code.matches(marker).count() != 1 || body.matches(marker).count() != 1 {
+            errors.push(format!(
+                "{label} marker must occur once inside receiveEvent"
+            ));
+            continue;
+        }
+        positions.push((label, body.find(marker).unwrap()));
+    }
+    if positions.len() == 4
+        && !(positions[0].1 < positions[1].1
+            && positions[1].1 < positions[2].1
+            && positions[2].1 < positions[3].1)
+    {
+        errors.push("receiveEvent must parse, match, settle, then notify the user".into());
+    }
+    if positions.len() == 4 {
+        let settlement = &body[positions[2].1..positions[3].1];
+        for (label, marker) in [
+            ("terminal resolve", "if (resolve !== null) resolve(type)"),
+            (
+                "terminal reject",
+                "reject(new AgentRuntimeError(type, `agent turn terminated: ${type}`))",
+            ),
+        ] {
+            if code.matches(marker).count() != 1 || settlement.matches(marker).count() != 1 {
+                errors.push(format!("{label} must occur once before the user callback"));
+            }
+        }
+    }
+    for field in [
+        "private activeToken: bigint",
+        "private activeTurnId: string",
+        "private terminalPromise: Promise<string>",
+    ] {
+        if code.matches(field).count() != 1 {
+            errors.push(format!("{field} must have one declaration"));
+        }
+    }
+    errors
+}
+
+fn move_receive_event_fragment_after_user_callback(source: &str, fragment: &str) -> String {
+    assert_eq!(source.matches(fragment).count(), 1);
+    let without_fragment = source.replacen(fragment, "", 1);
+    let handler_end = "\n  }\n\n  private ensureOpen";
+    assert_eq!(without_fragment.matches(handler_end).count(), 1);
+    without_fragment.replacen(handler_end, &format!("\n{fragment}{handler_end}"), 1)
+}
+
+fn legacy_harmony_ordering_gate(source: &str) -> bool {
+    let code = source
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let Some(parse) = code.find("JSON.parse(eventJson)") else {
+        return false;
+    };
+    let Some(user) = code.find("this.userEvent(eventJson)") else {
+        return false;
+    };
+    parse < user
+        && code.contains("event['turn_id'] === this.activeTurnId")
+        && code.contains(
+            "this.resolveTerminal = null\n        this.rejectTerminal = null\n        this.activeToken = 0n",
+        )
+}
+
+#[test]
+fn harmony_terminal_ordering_rejects_control_plane_mutations() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source =
+        std::fs::read_to_string(root.join("bindings/harmony/src/main/ets/index.ets")).unwrap();
+    let mutations = [
+        move_receive_event_fragment_after_user_callback(
+            &source,
+            "      const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId\n",
+        ),
+        move_receive_event_fragment_after_user_callback(
+            &source,
+            "          if (resolve !== null) resolve(type)\n",
+        ),
+        move_receive_event_fragment_after_user_callback(
+            &source,
+            "          reject(new AgentRuntimeError(type, `agent turn terminated: ${type}`))\n",
+        ),
+    ];
+
+    assert_eq!(
+        mutations
+            .iter()
+            .filter(|mutation| legacy_harmony_ordering_gate(mutation))
+            .count(),
+        3,
+        "the legacy source-wide presence gate falsely accepts every ordering mutation"
+    );
+    assert!(harmony_terminal_ordering_errors(&source).is_empty());
+    let comment_decoys = format!(
+        "// const event = JSON.parse(eventJson); this.userEvent(eventJson)\n\
+         /* const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId;\
+         if (type === 'turn.succeeded') {{ if (resolve !== null) resolve(type) }} */\n{source}"
+    );
+    assert!(harmony_terminal_ordering_errors(&comment_decoys).is_empty());
+    for mutation in mutations {
+        assert!(!harmony_terminal_ordering_errors(&mutation).is_empty());
+    }
+}
+
 #[test]
 fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
@@ -726,11 +962,7 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(android_test.contains("turn.succeeded"));
     let harmony =
         std::fs::read_to_string(root.join("bindings/harmony/src/main/ets/index.ets")).unwrap();
-    let harmony_code = harmony
-        .lines()
-        .map(|line| line.split("//").next().unwrap_or_default())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let harmony_code = strip_typescript_comments(&harmony);
     assert!(harmony_code.contains("waitForTerminal(timeoutMs: number = 30000): Promise<string>"));
     assert!(!harmony_code.contains("agentNative.waitTurn"));
     let harmony_native =
@@ -742,13 +974,10 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(!harmony_native.contains("retired_bridges"));
     assert!(!harmony_native.contains("napi_tsfn_abort"));
 
-    let parse = harmony_code.find("JSON.parse(eventJson)").unwrap();
-    let user = harmony_code.find("this.userEvent(eventJson)").unwrap();
-    assert!(
-        parse < user,
-        "terminal state must settle before user callback"
+    assert_eq!(
+        harmony_terminal_ordering_errors(&harmony),
+        Vec::<String>::new()
     );
-    assert!(harmony_code.contains("event['turn_id'] === this.activeTurnId"));
     assert!(harmony_code.contains(
         "this.resolveTerminal = null\n        this.rejectTerminal = null\n        this.activeToken = 0n"
     ));
@@ -756,20 +985,6 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(harmony_code.contains("callback registration failed"));
     assert!(harmony_code.contains("terminal wait timed out"));
     assert!(harmony_code.contains("const pendingReject = this.rejectTerminal"));
-    assert_eq!(
-        harmony_code.matches("private activeToken: bigint").count(),
-        1
-    );
-    assert_eq!(
-        harmony_code.matches("private activeTurnId: string").count(),
-        1
-    );
-    assert_eq!(
-        harmony_code
-            .matches("private terminalPromise: Promise<string>")
-            .count(),
-        1
-    );
 
     let kotlin = std::fs::read_to_string(
         root.join("bindings/kotlin/src/main/kotlin/wiki/notemeld/agent/Runtime.kt"),
