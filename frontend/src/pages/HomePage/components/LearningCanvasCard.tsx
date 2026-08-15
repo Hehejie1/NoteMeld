@@ -10,9 +10,11 @@ import LearningCanvasGraph from './LearningCanvasGraph'
 interface LearningCanvasCardProps {
   conversationId: string
   canvasId: string
+  conversionError?: string
+  onRetryConversion?: () => void
 }
 
-export default function LearningCanvasCard({ conversationId, canvasId }: LearningCanvasCardProps) {
+export default function LearningCanvasCard({ conversationId, canvasId, conversionError, onRetryConversion }: LearningCanvasCardProps) {
   const { backendReady } = useBackendInitContext()
   const addContextRef = useTaskStore(state => state.addContextRef)
   const [canvas, setCanvas] = useState<LearningCanvas | null>(null)
@@ -75,6 +77,12 @@ export default function LearningCanvasCard({ conversationId, canvasId }: Learnin
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
+      {conversionError ? (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800" role="alert">
+          <span>{conversionError}</span>
+          {onRetryConversion ? <Button size="sm" variant="outline" className="h-7" onClick={onRetryConversion}>重试转换</Button> : null}
+        </div>
+      ) : null}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border-subtle px-3">
         <div>
           <div className="text-[13px] font-semibold text-on-surface">研究白板</div>

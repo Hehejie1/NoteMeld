@@ -1,4 +1,6 @@
 import request from '@/utils/request'
+import { seedWhiteboardFromLearningCanvas } from '@/services/whiteboard'
+import type { WhiteboardSnapshot } from '@/pages/HomePage/whiteboard/types'
 
 export type MasteryStatus = 'unknown' | 'exposed' | 'learning' | 'provisional' | 'mastered'
 export type LearningSourceType = 'local_wiki' | 'local_note' | 'web' | 'academic' | 'github'
@@ -119,6 +121,11 @@ export const getLearningCanvas = async (
   request.get(
     `/conversations/${encodeURIComponent(conversationId)}/learning-canvases/${encodeURIComponent(canvasId)}`,
   ) as unknown as Promise<LearningCanvas>
+
+export const seedLearningCanvasWhiteboard = async (
+  conversationId: string,
+  canvasId: string,
+): Promise<WhiteboardSnapshot> => seedWhiteboardFromLearningCanvas(conversationId, canvasId)
 
 export const updateLearningNode = async (
   conversationId: string,

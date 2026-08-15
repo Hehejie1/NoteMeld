@@ -38,6 +38,14 @@ const graphLayout = await readFile(
   'utf8',
 )
 const chatService = await readFile(path.join(root, 'src/services/chat.ts'), 'utf8')
+const whiteboardPanel = await readFile(
+  path.join(root, 'src/pages/HomePage/whiteboard/WhiteboardPanel.tsx'),
+  'utf8',
+)
+const whiteboardPanelState = await readFile(
+  path.join(root, 'src/pages/HomePage/whiteboard/whiteboardPanelState.ts'),
+  'utf8',
+)
 
 assert.match(
   taskStore,
@@ -53,15 +61,19 @@ assert.match(
 )
 assert.doesNotMatch(renderers, /<LearningCanvasCard/, '完整学习画布不得继续内嵌在对话流')
 
-assert.match(home, /LearningCanvasCard/, 'Home 右侧内容区必须渲染完整学习画布')
+assert.match(home, /WhiteboardPanel/, 'Home 右侧内容区必须优先渲染语义白板')
+assert.match(home, /LearningCanvasCard/, 'Home 必须保留 legacy Sigma fallback')
 assert.match(home, /latestLearningCanvasId/, 'Home 必须从会话恢复最近的学习画布')
 assert.match(home, /白板/, '右侧内容区必须提供白板视图')
 assert.match(home, /笔记/, '研究产物必须保留笔记视图')
 assert.match(home, /hasLearningCanvas && !hasSelectedDocument/, '笔记被删除后必须恢复仍存在的学习面板')
 assert.match(home, /notemeld:focus-research-node/, '从对话聚焦研究节点时必须自动打开白板')
-assert.match(home, /status !== 'clarifying'/, '澄清阶段不得展示空白板')
+assert.match(whiteboardPanelState, /status === 'clarifying'/, '澄清阶段不得展示空白板')
 assert.match(home, /label: '白板'/, '移动端必须使用白板而不是学习课程命名')
 assert.match(home, /!hasLearningCanvas && !hasSelectedDocument/, '只有笔记成功时不得被聊天单栏早退隐藏')
+assert.match(whiteboardPanel, /白板/, '语义工作区必须提供白板 tab')
+assert.match(whiteboardPanel, /笔记/, '语义工作区即使无 document 也必须提供笔记 tab')
+assert.match(whiteboardPanel, /尚未发布/, '无 Note 时必须显示明确发布状态')
 
 assert.match(composer, /ComposerMode = 'note' \| 'chat' \| 'learn'/, '输入区必须支持 learn intent')
 assert.match(composer, />\s*学习\s*</, '模式切换必须展示“学习”')

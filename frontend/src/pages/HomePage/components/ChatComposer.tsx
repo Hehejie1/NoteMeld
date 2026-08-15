@@ -1119,7 +1119,12 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         <div className="flex flex-wrap gap-2 border-b border-border-subtle/60 px-4 py-2">
           {pendingContextRefs.map(reference => (
             <div key={reference.id} className="flex max-w-[280px] items-center gap-2 rounded-md bg-primary-light/60 px-2.5 py-1.5 text-[11px] text-primary">
-              <span className="truncate">引用：{reference.label}</span>
+              <span className="truncate">
+                引用：{reference.label}
+                {reference.type === 'whiteboard_selection'
+                  ? ` · ${reference.card_ids.length} 张卡片 · ${reference.relation_ids.length} 条关系`
+                  : ''}
+              </span>
               <button type="button" onClick={() => removeContextRef(reference.id)} aria-label="移除引用"><X className="h-3 w-3" /></button>
             </div>
           ))}

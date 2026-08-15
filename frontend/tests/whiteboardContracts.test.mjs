@@ -23,6 +23,10 @@ const [
   cardDialog,
   relationDialog,
   interactions,
+  panel,
+  panelState,
+  home,
+  composer,
 ] = await Promise.all([
   read('src/services/chat.ts'),
   read('src/store/taskStore/index.ts'),
@@ -40,6 +44,10 @@ const [
   read('src/pages/HomePage/whiteboard/WhiteboardCardDialog.tsx'),
   read('src/pages/HomePage/whiteboard/WhiteboardRelationDialog.tsx'),
   read('src/pages/HomePage/whiteboard/whiteboardInteractions.ts'),
+  read('src/pages/HomePage/whiteboard/WhiteboardPanel.tsx'),
+  read('src/pages/HomePage/whiteboard/whiteboardPanelState.ts'),
+  read('src/pages/HomePage/Home.tsx'),
+  read('src/pages/HomePage/components/ChatComposer.tsx'),
 ])
 
 assert.match(chatService, /type:\s*'whiteboard_selection'/)
@@ -204,6 +212,31 @@ assert.match(interactions, /createViewportCommitter/)
 assert.match(interactions, /uploadFileForWhiteboardCard/)
 assert.match(interactions, /resolveContextForCurrentTask/)
 
+assert.match(home, /WhiteboardPanel/, 'Home 必须优先挂载语义白板工作区')
+assert.match(home, /resolveLatestLearningWorkspace/, 'Home 必须按最新 compact message 恢复白板')
+assert.match(home, /seedLearningCanvasWhiteboard/, 'legacy canvas 必须幂等转换为语义白板')
+assert.match(home, /LearningCanvasCard/, 'seed 或 feature flag 失败时必须保留 Sigma fallback')
+const automaticSeedSection = home.slice(
+  home.indexOf('const workspace = latestLearningCanvas'),
+  home.indexOf('const retryWhiteboardSeed'),
+)
+assert.doesNotMatch(automaticSeedSection, /navigate\(/, 'legacy seed 不得通过导航重挂载 composer')
+assert.match(panel, /useBackendInitContext/, '白板请求必须服从 backend ready gate')
+assert.match(panel, /h-full[\s\S]*min-h-0/, 'WhiteboardPanel 必须占满右栏剩余高度')
+assert.match(`${panel}\n${panelState}`, /尚未发布/)
+assert.match(panelState, /有未发布变更/)
+assert.match(panelState, /已同步到笔记/)
+assert.match(panel, /发布为笔记/)
+assert.match(panelState, /更新笔记/)
+assert.match(panel, /publishWhiteboard/)
+assert.match(panelState, /published_revision/)
+assert.match(panel, /breadcrumb|面包屑/i, '子白板必须在同一个 panel 中保留 breadcrumb')
+assert.match(panel, /重新加载/)
+assert.match(panel, /重新应用/)
+assert.match(panel, /LearningCanvasCard/, 'fatal load 必须能回退 legacy Sigma')
+assert.match(composer, /card_ids\.length/)
+assert.match(composer, /relation_ids\.length/)
+
 assert.match(taskStore, /\.slice\(-8\)/, '引用 chip 数量必须继续限制为 8')
 assert.match(taskStore, /reference\.type === 'whiteboard_selection' \? 12000 : 2000/)
 assert.match(taskStore, /state\.currentTaskId === taskId \? state\.pendingContextRefs : \[\]/)
@@ -229,6 +262,65 @@ const interactionsModule = await import(
       },
     }).outputText,
   ).toString('base64')}`
+)
+
+const panelStateModule = await import(
+  `data:text/javascript;base64,${Buffer.from(
+    ts.transpileModule(panelState, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText,
+  ).toString('base64')}`
+)
+
+const latestWorkspace = panelStateModule.resolveLatestLearningWorkspace([
+  { id: 'legacy', message_type: 'learning_canvas', meta: { canvas_id: 'canvas_old', status: 'ready' } },
+  { id: 'current', message_type: 'learning_canvas', meta: { canvas_id: 'canvas_new', whiteboard_id: 'wb_new', status: 'ready' } },
+])
+assert.deepEqual(latestWorkspace, {
+  messageId: 'current',
+  canvasId: 'canvas_new',
+  whiteboardId: 'wb_new',
+  status: 'ready',
+})
+assert.equal(
+  panelStateModule.resolveLatestLearningWorkspace([
+    { id: 'clarify', message_type: 'learning_canvas', meta: { canvas_id: 'canvas_clarify', status: 'clarifying' } },
+  ]),
+  null,
+  '澄清消息不得生成空白板工作区',
+)
+assert.deepEqual(
+  panelStateModule.getWhiteboardPublishPresentation({ revision: 3, noteLink: null }),
+  { state: 'unpublished', label: '尚未发布', actionLabel: '发布为笔记' },
+)
+assert.deepEqual(
+  panelStateModule.getWhiteboardPublishPresentation({ revision: 4, noteLink: { published_revision: 3 } }),
+  { state: 'stale', label: '有未发布变更', actionLabel: '更新笔记' },
+)
+assert.deepEqual(
+  panelStateModule.getWhiteboardPublishPresentation({ revision: 4, noteLink: { published_revision: 4 } }),
+  { state: 'synced', label: '已同步到笔记', actionLabel: '更新笔记' },
+)
+const seedAttempts = panelStateModule.createSeedAttemptRegistry()
+assert.equal(seedAttempts.claim('conv_1', 'message_1'), true)
+assert.equal(seedAttempts.claim('conv_1', 'message_1'), false, '同一 compact message 自动 seed 只能执行一次')
+seedAttempts.release('conv_1', 'message_1')
+assert.equal(seedAttempts.claim('conv_1', 'message_1'), true, '用户重试必须能重新执行 seed')
+const activeSeedKey = panelStateModule.createLearningSeedKey('conv_1', 'message_1', 'canvas_1')
+assert.equal(
+  panelStateModule.resolveWhiteboardId('', activeSeedKey, { key: activeSeedKey, id: 'seeded_board' }),
+  'seeded_board',
+)
+assert.equal(
+  panelStateModule.resolveWhiteboardId('', activeSeedKey, { key: 'previous_conversation', id: 'stale_board' }),
+  '',
+)
+assert.equal(
+  panelStateModule.resolveWhiteboardId('compact_board', activeSeedKey, { key: activeSeedKey, id: 'seeded_board' }),
+  'compact_board',
 )
 
 const scheduled = new Map()

@@ -4,6 +4,13 @@ import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import ChatComposer from '@/pages/HomePage/components/ChatComposer'
 import LearningCanvasCard from '@/pages/HomePage/components/LearningCanvasCard'
 import MarkdownViewer from '@/pages/HomePage/components/MarkdownViewer'
+import WhiteboardPanel, { type WhiteboardPanelView } from '@/pages/HomePage/whiteboard/WhiteboardPanel'
+import {
+  createLearningSeedKey,
+  createSeedAttemptRegistry,
+  resolveLatestLearningWorkspace,
+  resolveWhiteboardId,
+} from '@/pages/HomePage/whiteboard/whiteboardPanelState'
 import { useTaskStore, type ConversationMessage, type Task } from '@/store/taskStore'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
@@ -16,8 +23,12 @@ import {
 import { ConversationMessageRenderer } from '@/pages/HomePage/messageRenderers'
 import { get_task_status } from '@/services/note'
 import { cancelWorkspaceTask } from '@/services/workspace'
+import { seedLearningCanvasWhiteboard } from '@/services/learning'
+import type { WhiteboardPublishResult } from '@/pages/HomePage/whiteboard/types'
 
 type ViewStatus = 'idle' | 'loading' | 'success' | 'failed'
+
+const SEMANTIC_WHITEBOARD_ENABLED = import.meta.env.VITE_SEMANTIC_WHITEBOARD_ENABLED !== 'false'
 
 export const HomePage: FC = () => {
   const { taskId } = useParams<{ taskId?: string }>()
@@ -66,6 +77,10 @@ export const HomePage: FC = () => {
   const [chatRatio, setChatRatio] = useState(0.5)
   const [mobileView, setMobileView] = useState<'chat' | 'learning' | 'note' | 'wiki'>('chat')
   const [rightContentView, setRightContentView] = useState<'learning' | 'note'>('learning')
+  const [seededWhiteboard, setSeededWhiteboard] = useState({ key: '', id: '' })
+  const [whiteboardSeedError, setWhiteboardSeedError] = useState('')
+  const seedAttemptsRef = useRef(createSeedAttemptRegistry())
+  const activeSeedKeyRef = useRef('')
   const [isMobile, setIsMobile] = useState(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
@@ -80,25 +95,87 @@ export const HomePage: FC = () => {
       String(Boolean((lastMessage as ConversationMessage & { isStreaming?: boolean }).isStreaming)),
     ].join('|')
   }, [currentTask?.messages])
-  const latestLearningCanvas = useMemo(() => {
-    const messages = currentTask?.messages || []
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index]
-      if (message.message_type !== 'learning_canvas') continue
-      const canvasId = message.meta?.canvas_id
-      if (typeof canvasId === 'string' && canvasId) {
-        return {
-          id: canvasId,
-          status: typeof message.meta?.status === 'string' ? message.meta.status : '',
-        }
-      }
-    }
-    return null
-  }, [currentTask?.messages])
-  const latestLearningCanvasId = latestLearningCanvas?.id || ''
-  const hasLearningCanvas = Boolean(
-    latestLearningCanvasId && latestLearningCanvas?.status !== 'clarifying',
+  const latestLearningCanvas = useMemo(
+    () => resolveLatestLearningWorkspace(currentTask?.messages || []),
+    [currentTask?.messages],
   )
+  const conversationId = currentTask?.id || ''
+  const latestLearningMessageId = latestLearningCanvas?.messageId || ''
+  const latestLearningCanvasId = latestLearningCanvas?.canvasId || ''
+  const compactWhiteboardId = latestLearningCanvas?.whiteboardId || ''
+  const seedRequestKey = createLearningSeedKey(
+    conversationId,
+    latestLearningMessageId,
+    latestLearningCanvasId,
+  )
+  activeSeedKeyRef.current = seedRequestKey
+  const latestWhiteboardId = resolveWhiteboardId(
+    compactWhiteboardId,
+    seedRequestKey,
+    seededWhiteboard,
+  )
+  const hasLearningCanvas = Boolean(
+    latestLearningCanvas && (latestLearningCanvas.canvasId || latestWhiteboardId),
+  )
+  const useLegacyLearningCanvas = Boolean(
+    latestLearningCanvasId
+    && (!SEMANTIC_WHITEBOARD_ENABLED || whiteboardSeedError),
+  )
+  const whiteboardSeedPending = Boolean(
+    SEMANTIC_WHITEBOARD_ENABLED
+    && latestLearningCanvasId
+    && !compactWhiteboardId
+    && !latestWhiteboardId
+    && !whiteboardSeedError,
+  )
+
+  useEffect(() => {
+    setWhiteboardSeedError('')
+    setSeededWhiteboard({ key: '', id: '' })
+    if (!latestLearningMessageId || !SEMANTIC_WHITEBOARD_ENABLED) {
+      return
+    }
+    if (compactWhiteboardId) {
+      return
+    }
+    if (!latestLearningCanvasId || !conversationId) {
+      return
+    }
+    if (!seedAttemptsRef.current.claim(conversationId, latestLearningMessageId)) return
+
+    let active = true
+    seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId)
+      .then(board => {
+        if (!active) return
+        setSeededWhiteboard({ key: seedRequestKey, id: board.id })
+      })
+      .catch(error => {
+        if (!active) return
+        const candidate = error as { msg?: string } | undefined
+        setWhiteboardSeedError(candidate?.msg || '转换可编辑白板失败，仍可查看原图')
+      })
+    return () => { active = false }
+  }, [compactWhiteboardId, conversationId, latestLearningCanvasId, latestLearningMessageId, seedRequestKey])
+
+  const retryWhiteboardSeed = () => {
+    if (!conversationId || !latestLearningMessageId) return
+    const retryKey = seedRequestKey
+    seedAttemptsRef.current.release(conversationId, latestLearningMessageId)
+    setWhiteboardSeedError('')
+    setSeededWhiteboard({ key: '', id: '' })
+    if (!latestLearningCanvasId) return
+    if (!seedAttemptsRef.current.claim(conversationId, latestLearningMessageId)) return
+    seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId)
+      .then(board => {
+        if (activeSeedKeyRef.current !== retryKey) return
+        setSeededWhiteboard({ key: retryKey, id: board.id })
+      })
+      .catch(error => {
+        if (activeSeedKeyRef.current !== retryKey) return
+        const candidate = error as { msg?: string } | undefined
+        setWhiteboardSeedError(candidate?.msg || '转换可编辑白板失败，仍可查看原图')
+      })
+  }
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)')
@@ -166,12 +243,12 @@ export const HomePage: FC = () => {
 
   useEffect(() => {
     if (hasLearningCanvas) {
-      setRightContentView(hasSelectedDocument ? 'note' : 'learning')
+      setRightContentView('learning')
       setViewerCollapsed(false)
       return
     }
     setRightContentView('note')
-  }, [currentTask?.id, latestLearningCanvasId, hasLearningCanvas, hasSelectedDocument])
+  }, [currentTask?.id, latestLearningCanvas?.messageId, hasLearningCanvas])
 
   useEffect(() => {
     if (hasLearningCanvas && !hasSelectedDocument) {
@@ -260,6 +337,16 @@ export const HomePage: FC = () => {
       console.error('刷新 Wiki 状态失败', err)
     })
   }
+
+  const handleWhiteboardPublished = async (result: WhiteboardPublishResult) => {
+    if (!currentTask?.id) return
+    await loadConversation(currentTask.id)
+    selectNoteDocument(currentTask.id, result.note_task_id)
+    setRightContentView('note')
+    if (isMobile) setMobileView('note')
+  }
+
+  const panelView: WhiteboardPanelView = rightContentView === 'learning' ? 'whiteboard' : 'note'
 
   // 只在切换会话或用户本来就在底部附近时自动跟随，避免轮询刷新把阅读位置拉走。
   useEffect(() => {
@@ -384,12 +471,12 @@ export const HomePage: FC = () => {
     }> = [
       { key: 'chat', label: '对话' },
       ...(hasLearningCanvas ? [{ key: 'learning' as const, label: '白板' }] : []),
-      ...(hasSelectedDocument
+      ...(hasLearningCanvas || hasSelectedDocument
         ? [
             { key: 'note' as const, label: '笔记' },
-            { key: 'wiki' as const, label: 'Wiki' },
           ]
         : []),
+      ...(hasSelectedDocument ? [{ key: 'wiki' as const, label: 'Wiki' }] : []),
     ]
 
     return (
@@ -437,16 +524,46 @@ export const HomePage: FC = () => {
               </div>
             </div>
           </div>
-        ) : mobileView === 'learning' && latestLearningCanvasId ? (
+        ) : mobileView === 'learning' && hasLearningCanvas ? (
           <div className="min-h-0 flex-1 overflow-hidden bg-surface-container-low">
-            <ScrollArea className="h-full">
-              <div className="p-3">
-                <LearningCanvasCard
-                  conversationId={currentTask!.id}
-                  canvasId={latestLearningCanvasId}
-                />
-              </div>
-            </ScrollArea>
+            {latestWhiteboardId && !useLegacyLearningCanvas ? (
+              <WhiteboardPanel
+                conversationId={currentTask!.id}
+                whiteboardId={latestWhiteboardId}
+                legacyCanvasId={latestLearningCanvasId || undefined}
+                noteContent={currentTask?.markdown || ''}
+                noteStatus={viewerStatus}
+                activeView="whiteboard"
+                showTabs={false}
+                onDeleteDocument={handleDeleteCurrentDocument}
+                onWikiRetrySuccess={handleWikiRetrySuccess}
+                onPublished={handleWhiteboardPublished}
+              />
+            ) : whiteboardSeedPending ? (
+              <div className="flex h-full items-center justify-center text-sm text-on-surface-variant">正在转换可编辑白板…</div>
+            ) : latestLearningCanvasId ? (
+              <LearningCanvasCard
+                conversationId={currentTask!.id}
+                canvasId={latestLearningCanvasId}
+                conversionError={whiteboardSeedError || (!SEMANTIC_WHITEBOARD_ENABLED ? '语义白板已关闭，当前显示兼容研究图。' : undefined)}
+                onRetryConversion={SEMANTIC_WHITEBOARD_ENABLED ? retryWhiteboardSeed : undefined}
+              />
+            ) : null}
+          </div>
+        ) : mobileView === 'note' && latestWhiteboardId && !useLegacyLearningCanvas ? (
+          <div className="min-h-0 flex-1 overflow-hidden bg-white">
+            <WhiteboardPanel
+              conversationId={currentTask!.id}
+              whiteboardId={latestWhiteboardId}
+              legacyCanvasId={latestLearningCanvasId || undefined}
+              noteContent={currentTask?.markdown || ''}
+              noteStatus={viewerStatus}
+              activeView="note"
+              showTabs={false}
+              onDeleteDocument={handleDeleteCurrentDocument}
+              onWikiRetrySuccess={handleWikiRetrySuccess}
+              onPublished={handleWhiteboardPublished}
+            />
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden bg-white">
@@ -527,47 +644,70 @@ export const HomePage: FC = () => {
       {/* 右侧：学习面板 / 笔记看板 */}
       {!viewerCollapsed && (
         <div className="flex min-w-0 flex-1 flex-col bg-white">
-          {hasLearningCanvas && hasSelectedDocument && (
-            <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border-subtle/60 px-4">
-              <button
-                type="button"
-                onClick={() => setRightContentView('learning')}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
-                  rightContentView === 'learning'
-                    ? 'bg-primary-light text-primary'
-                    : 'text-on-surface-variant hover:bg-surface-container-low',
-                )}
-              >
-                白板
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightContentView('note')}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
-                  rightContentView === 'note'
-                    ? 'bg-primary-light text-primary'
-                    : 'text-on-surface-variant hover:bg-surface-container-low',
-                )}
-              >
-                笔记
-              </button>
-            </div>
-          )}
-          {hasLearningCanvas && rightContentView === 'learning' ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-container-low">
-              {!hasSelectedDocument && (
-                <div className="flex h-12 items-center border-b border-border-subtle/60 bg-white px-4 text-[13px] font-medium text-on-surface-variant">
-                  研究白板
-                </div>
-              )}
-              <div className="min-h-0 flex-1">
-                <LearningCanvasCard
-                  conversationId={currentTask!.id}
-                  canvasId={latestLearningCanvasId}
-                />
+          {latestWhiteboardId && !useLegacyLearningCanvas ? (
+            <WhiteboardPanel
+              conversationId={currentTask!.id}
+              whiteboardId={latestWhiteboardId}
+              legacyCanvasId={latestLearningCanvasId || undefined}
+              noteContent={currentTask?.markdown || ''}
+              noteStatus={viewerStatus}
+              activeView={panelView}
+              onViewChange={view => setRightContentView(view === 'whiteboard' ? 'learning' : 'note')}
+              onDeleteDocument={handleDeleteCurrentDocument}
+              onWikiRetrySuccess={handleWikiRetrySuccess}
+              onPublished={handleWhiteboardPublished}
+            />
+          ) : hasLearningCanvas ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border-subtle/60 px-4">
+                <button
+                  type="button"
+                  onClick={() => setRightContentView('learning')}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
+                    rightContentView === 'learning'
+                      ? 'bg-primary-light text-primary'
+                      : 'text-on-surface-variant hover:bg-surface-container-low',
+                  )}
+                >
+                  白板
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightContentView('note')}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
+                    rightContentView === 'note'
+                      ? 'bg-primary-light text-primary'
+                      : 'text-on-surface-variant hover:bg-surface-container-low',
+                  )}
+                >
+                  笔记
+                </button>
               </div>
+              {rightContentView === 'learning' && whiteboardSeedPending ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-on-surface-variant">正在转换可编辑白板…</div>
+              ) : rightContentView === 'learning' && latestLearningCanvasId ? (
+                <div className="min-h-0 flex-1 overflow-hidden bg-surface-container-low">
+                  <LearningCanvasCard
+                    conversationId={currentTask!.id}
+                    canvasId={latestLearningCanvasId}
+                    conversionError={whiteboardSeedError || (!SEMANTIC_WHITEBOARD_ENABLED ? '语义白板已关闭，当前显示兼容研究图。' : undefined)}
+                    onRetryConversion={SEMANTIC_WHITEBOARD_ENABLED ? retryWhiteboardSeed : undefined}
+                  />
+                </div>
+              ) : hasSelectedDocument ? (
+                <div className="min-h-0 flex-1">
+                  <MarkdownViewer
+                    status={viewerStatus}
+                    content={currentTask?.markdown || ''}
+                    onDeleteDocument={handleDeleteCurrentDocument}
+                    onWikiRetrySuccess={handleWikiRetrySuccess}
+                  />
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-on-surface-variant">可编辑白板转换成功后即可发布标准笔记。</div>
+              )}
             </div>
           ) : (
             <div className="min-h-0 flex-1">

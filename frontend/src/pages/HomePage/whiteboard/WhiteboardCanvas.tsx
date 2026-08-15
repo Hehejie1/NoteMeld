@@ -41,6 +41,19 @@ interface WhiteboardCanvasProps {
   conversationId: string
   whiteboardId: string
   onOpenNestedWhiteboard?: (whiteboardId: string) => void
+  onStatusChange?: (status: WhiteboardCanvasStatus) => void
+}
+
+export interface WhiteboardCanvasStatus {
+  snapshot: ReturnType<typeof useWhiteboardController>['snapshot']
+  loading: boolean
+  pending: boolean
+  loadError: string | null
+  unsavedError: string | null
+  conflict: ReturnType<typeof useWhiteboardController>['conflict']
+  reload: ReturnType<typeof useWhiteboardController>['reload']
+  retry: ReturnType<typeof useWhiteboardController>['retry']
+  discardRetry: ReturnType<typeof useWhiteboardController>['discardRetry']
 }
 
 const nodeTypes = { whiteboardCard: WhiteboardCardNode } as NodeTypes
@@ -58,6 +71,7 @@ function WhiteboardCanvasInner({
   conversationId,
   whiteboardId,
   onOpenNestedWhiteboard,
+  onStatusChange,
 }: WhiteboardCanvasProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const clipboardRef = useRef<ReturnType<typeof copyWhiteboardSelection> | null>(null)
@@ -78,6 +92,20 @@ function WhiteboardCanvasInner({
   const [editingRelation, setEditingRelation] = useState<WhiteboardRelation | null>(null)
   const [addingContext, setAddingContext] = useState(false)
   const [contextError, setContextError] = useState<string | null>(null)
+
+  useEffect(() => {
+    onStatusChange?.({
+      snapshot: controller.snapshot,
+      loading: controller.loading,
+      pending: controller.pending,
+      loadError: controller.loadError,
+      unsavedError: controller.unsavedError,
+      conflict: controller.conflict,
+      reload: controller.reload,
+      retry: controller.retry,
+      discardRetry: controller.discardRetry,
+    })
+  }, [controller.conflict, controller.discardRetry, controller.loadError, controller.loading, controller.pending, controller.reload, controller.retry, controller.snapshot, controller.unsavedError, onStatusChange])
 
   const viewportCommitter = useMemo(() => createViewportCommitter(
     viewport => submitOperations([{
