@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Callable, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +12,7 @@ from app.services.whiteboard_repository import (
     WhiteboardRepository,
     WhiteboardRevisionConflict,
 )
+from app.services.whiteboard_note_publish_service import WhiteboardNotePublishService
 from app.services.whiteboard_seed_service import WhiteboardSeedService
 from app.utils.response import ResponseWrapper as R
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 repository = WhiteboardRepository(SessionLocal)
 seed_service = WhiteboardSeedService(repository=repository)
+publish_service = WhiteboardNotePublishService(repository=repository)
 
 
 class _StrictPayload(BaseModel):
@@ -34,6 +36,15 @@ class CreateWhiteboardPayload(_StrictPayload):
 class MutateWhiteboardPayload(_StrictPayload):
     base_revision: int = Field(ge=0)
     operations: list[WhiteboardOperation]
+
+
+class PublishWhiteboardPayload(_StrictPayload):
+    base_revision: int = Field(ge=1)
+    scope: Literal["all", "selection"] = "all"
+    card_ids: list[str] = Field(default_factory=list, max_length=20)
+    relation_ids: list[str] = Field(default_factory=list, max_length=40)
+    provider_id: str | None = Field(default=None, max_length=200)
+    model_name: str | None = Field(default=None, max_length=500)
 
 
 def _wrapped(action: Callable[[], object], *, not_found_msg: str = "白板不存在"):
@@ -114,6 +125,28 @@ def mutate_whiteboard(
         )
 
     return _wrapped(mutate)
+
+
+@router.post(
+    "/conversations/{conversation_id}/whiteboards/{whiteboard_id}/publish-note"
+)
+def publish_whiteboard_note(
+    conversation_id: str,
+    whiteboard_id: str,
+    data: PublishWhiteboardPayload,
+):
+    return _wrapped(
+        lambda: publish_service.publish(
+            conversation_id,
+            whiteboard_id,
+            data.base_revision,
+            data.scope,
+            data.card_ids,
+            data.relation_ids,
+            data.provider_id,
+            data.model_name,
+        )
+    )
 
 
 @router.post(
