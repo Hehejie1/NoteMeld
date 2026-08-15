@@ -14,6 +14,14 @@ const [
   projection,
   commands,
   controller,
+  canvas,
+  cardNode,
+  cardContent,
+  relationEdge,
+  toolbar,
+  selectionToolbar,
+  cardDialog,
+  relationDialog,
 ] = await Promise.all([
   read('src/services/chat.ts'),
   read('src/store/taskStore/index.ts'),
@@ -22,6 +30,14 @@ const [
   read('src/pages/HomePage/whiteboard/whiteboardProjection.ts'),
   read('src/pages/HomePage/whiteboard/whiteboardCommands.ts'),
   read('src/pages/HomePage/whiteboard/useWhiteboardController.ts'),
+  read('src/pages/HomePage/whiteboard/WhiteboardCanvas.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardCardNode.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardCardContent.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardRelationEdge.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardToolbar.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardSelectionToolbar.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardCardDialog.tsx'),
+  read('src/pages/HomePage/whiteboard/WhiteboardRelationDialog.tsx'),
 ])
 
 assert.match(chatService, /type:\s*'whiteboard_selection'/)
@@ -90,6 +106,74 @@ assert.match(controller, /setPendingCommand\(null\)/)
 assert.match(controller, /await\s+reload\(\)/)
 assert.match(controller, /applyWhiteboardOperations\([^]*command\.inverse/s)
 assert.match(controller, /rebaseWhiteboardCommand\(current, entry\.command\)/)
+
+assert.match(canvas, /ReactFlowProvider/)
+assert.match(canvas, /onlyRenderVisibleElements/)
+assert.match(canvas, /selectionOnDrag/)
+assert.match(canvas, /panOnDrag=\{\[1,\s*2\]\}/)
+assert.match(canvas, /zoomOnDoubleClick=\{false\}/, '画布双击创建卡片时不得同时触发默认缩放')
+assert.match(canvas, /screenToFlowPosition/)
+assert.match(canvas, /onPaneDoubleClick/)
+assert.match(canvas, /onNodeDragStop/)
+assert.match(canvas, /onEdgeDoubleClick/)
+assert.match(canvas, /onReconnect/)
+assert.match(canvas, /deleteKeyCode=\{null\}/)
+assert.match(canvas, /copyWhiteboardSelection/)
+assert.match(canvas, /buildPasteOperations/)
+assert.match(canvas, /offset:\s*32/)
+assert.match(canvas, /createWhiteboardContext/)
+assert.match(canvas, /addContextRef/)
+assert.match(canvas, /setActiveCardId/)
+assert.match(canvas, /onSelectionChange/)
+
+assert.match(cardNode, /NodeResizer/)
+assert.match(cardNode, /isVisible=\{selected\}/)
+assert.match(cardNode, /source_refs\.slice\(0,\s*3\)/)
+assert.match(cardNode, /line-clamp-2/)
+assert.match(cardNode, /<Handle/)
+assert.match(cardNode, /nodrag/)
+assert.match(cardNode, /nopan/)
+assert.match(cardNode, /data\.active\s*&&\s*\(/)
+assert.match(cardNode, /memo\(/)
+assert.doesNotMatch(
+  cardNode,
+  /ReactMarkdown|<iframe|<video|<audio|<object|<embed/,
+  '紧凑卡片 shell 不得挂载重型正文或媒体 renderer',
+)
+
+assert.match(cardContent, /lazy\(/, '网页和文件内容必须惰性创建')
+assert.match(cardContent, /ChatMarkdown/, 'Markdown 必须复用现有安全 renderer')
+assert.match(cardContent, /openExternalUrl/)
+assert.match(cardContent, /child_whiteboard_id/)
+assert.match(cardContent, /upload_id/)
+
+assert.match(relationEdge, /getBezierPath/)
+assert.match(relationEdge, /getStraightPath/)
+assert.match(relationEdge, /getSmoothStepPath/)
+assert.match(relationEdge, /EdgeLabelRenderer|EdgeToolbar/)
+assert.match(relationEdge, /interactionWidth/)
+assert.match(relationEdge, /memo\(/)
+
+assert.match(toolbar, /fitView/)
+assert.match(toolbar, /zoomIn/)
+assert.match(toolbar, /zoomOut/)
+assert.match(toolbar, /撤销/)
+assert.match(toolbar, /重做/)
+assert.match(selectionToolbar, /添加到对话/)
+assert.match(selectionToolbar, /复制/)
+assert.match(selectionToolbar, /删除/)
+
+assert.match(cardDialog, /markdown/)
+assert.match(cardDialog, /web/)
+assert.match(cardDialog, /file/)
+assert.match(cardDialog, /whiteboard/)
+assert.match(cardDialog, /https?:/)
+assert.match(cardDialog, /nodrag/)
+assert.match(cardDialog, /nopan/)
+assert.match(relationDialog, /bezier/)
+assert.match(relationDialog, /straight/)
+assert.match(relationDialog, /smoothstep/)
+assert.match(relationDialog, /direction/)
 
 assert.match(taskStore, /\.slice\(-8\)/, '引用 chip 数量必须继续限制为 8')
 assert.match(taskStore, /reference\.type === 'whiteboard_selection' \? 12000 : 2000/)
