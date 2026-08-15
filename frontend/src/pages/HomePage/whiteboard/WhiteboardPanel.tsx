@@ -16,6 +16,7 @@ import {
   loadWhiteboardSnapshotForTarget,
   resolveWhiteboardNoteDocument,
   resolvePublishedWhiteboardSnapshot,
+  reloadWhiteboardForPanelView,
   runDurableWhiteboardPublish,
   runPublishedWhiteboardReload,
   type PublishedNoteOverride,
@@ -86,12 +87,19 @@ export default function WhiteboardPanel({
   const [showLegacyFallback, setShowLegacyFallback] = useState(false)
   const snapshotLoaderRef = useRef(createWhiteboardSnapshotLoader<WhiteboardSnapshot>())
   const currentSnapshotTargetKeyRef = useRef('')
+  const currentViewRef = useRef<WhiteboardPanelView>('whiteboard')
+  const currentCanvasStatusRef = useRef<{
+    targetKey: string
+    status: WhiteboardCanvasStatus | null
+  } | null>(null)
   const view = activeView ?? localView
   const currentBoard = breadcrumbs[0]?.id === whiteboardId
     ? breadcrumbs[breadcrumbs.length - 1]
     : { id: whiteboardId, title: '研究白板' }
   const snapshotTargetKey = JSON.stringify([conversationId, currentBoard.id])
   currentSnapshotTargetKeyRef.current = snapshotTargetKey
+  currentViewRef.current = view
+  currentCanvasStatusRef.current = { targetKey: snapshotTargetKey, status: canvasStatus }
   const currentNoteSnapshot = noteSnapshot?.targetKey === snapshotTargetKey
     ? noteSnapshot.value
     : null
@@ -237,7 +245,7 @@ export default function WhiteboardPanel({
 
   const retryLegacyFallback = () => {
     setShowLegacyFallback(false)
-    if (canvasStatus) {
+    if (view === 'whiteboard' && canvasStatus) {
       void canvasStatus.reload().catch(() => undefined)
       return
     }
@@ -269,17 +277,22 @@ export default function WhiteboardPanel({
   }
 
   const reloadPublishedWhiteboard = async (targetKey: string) => {
+    if (currentSnapshotTargetKeyRef.current !== targetKey) return
     setRetryingPublishedReload(true)
-    const outcome = await runPublishedWhiteboardReload(async () => {
-      if (canvasStatus) {
-        await canvasStatus.reload()
-        return
-      }
-      const board = await getWhiteboard(conversationId, currentBoard.id)
-      if (currentSnapshotTargetKeyRef.current === targetKey) {
-        setNoteSnapshot({ targetKey, value: board })
-      }
-    })
+    const reloadView = currentViewRef.current
+    const activeCanvasStatus = currentCanvasStatusRef.current?.targetKey === targetKey
+      ? currentCanvasStatusRef.current.status
+      : null
+    const outcome = await runPublishedWhiteboardReload(() => reloadWhiteboardForPanelView({
+      view: reloadView,
+      canvasReload: reloadView === 'whiteboard' && activeCanvasStatus
+        ? activeCanvasStatus.reload
+        : undefined,
+      directLoad: () => getWhiteboard(conversationId, currentBoard.id),
+      targetKey,
+      getCurrentTargetKey: () => currentSnapshotTargetKeyRef.current,
+      accept: board => setNoteSnapshot({ targetKey, value: board }),
+    }))
     if (currentSnapshotTargetKeyRef.current !== targetKey) {
       setRetryingPublishedReload(false)
       return

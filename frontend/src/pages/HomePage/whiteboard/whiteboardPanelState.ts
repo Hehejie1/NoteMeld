@@ -167,7 +167,7 @@ export function resolvePublishedWhiteboardSnapshot<
 }
 
 export async function runPublishedWhiteboardReload(
-  reload: () => void | Promise<void>,
+  reload: () => unknown | Promise<unknown>,
 ): Promise<{ status: 'reloaded' } | { status: 'failed'; message: string }> {
   try {
     await reload()
@@ -178,6 +178,31 @@ export async function runPublishedWhiteboardReload(
       message: `笔记已发布，白板状态刷新失败：${errorMessage(error, '请重试')}`,
     }
   }
+}
+
+export async function reloadWhiteboardForPanelView<T>({
+  view,
+  canvasReload,
+  directLoad,
+  targetKey,
+  getCurrentTargetKey,
+  accept,
+}: {
+  view: 'whiteboard' | 'note'
+  canvasReload?: () => unknown | Promise<unknown>
+  directLoad: () => Promise<T>
+  targetKey: string
+  getCurrentTargetKey: () => string
+  accept: (snapshot: T) => void
+}): Promise<{ status: 'canvas' | 'direct' | 'stale' }> {
+  if (view === 'whiteboard' && canvasReload) {
+    await canvasReload()
+    return { status: 'canvas' }
+  }
+  const snapshot = await directLoad()
+  if (getCurrentTargetKey() !== targetKey) return { status: 'stale' }
+  accept(snapshot)
+  return { status: 'direct' }
 }
 
 export function createWhiteboardSnapshotLoader<T>() {

@@ -321,6 +321,58 @@ test('published Note link survives board reload failure and reload retry never r
   assert.match(panel, /重试白板刷新/)
 })
 
+test('Note lifecycle reload ignores stale canvas controller and guards direct fetch', async () => {
+  assert.equal(typeof panelStateModule.reloadWhiteboardForPanelView, 'function')
+  let view = 'whiteboard'
+  let currentTargetKey = 'conv_a:wb_a'
+  let canvasReloads = 0
+  let directLoads = 0
+  const accepted = []
+  const canvasReload = async () => { canvasReloads += 1 }
+  const directLoad = async () => {
+    directLoads += 1
+    return { id: 'wb_a', note_link: { note_task_id: 'note_a', published_revision: 4 } }
+  }
+
+  view = 'note'
+  const noteReload = await panelStateModule.reloadWhiteboardForPanelView({
+    view,
+    canvasReload,
+    directLoad,
+    targetKey: 'conv_a:wb_a',
+    getCurrentTargetKey: () => currentTargetKey,
+    accept: snapshot => accepted.push(snapshot.id),
+  })
+  assert.deepEqual(noteReload, { status: 'direct' })
+  assert.equal(canvasReloads, 0, 'Note视图不得调用已卸载canvas controller')
+  assert.equal(directLoads, 1)
+  assert.deepEqual(accepted, ['wb_a'])
+
+  let resolveStale
+  const staleDirect = new Promise(resolve => { resolveStale = resolve })
+  const staleReload = panelStateModule.reloadWhiteboardForPanelView({
+    view: 'note',
+    canvasReload,
+    directLoad: () => staleDirect,
+    targetKey: 'conv_a:wb_a',
+    getCurrentTargetKey: () => currentTargetKey,
+    accept: snapshot => accepted.push(snapshot.id),
+  })
+  currentTargetKey = 'conv_b:wb_b'
+  resolveStale({ id: 'wb_stale', note_link: null })
+  assert.deepEqual(await staleReload, { status: 'stale' })
+  assert.deepEqual(accepted, ['wb_a'])
+
+  assert.match(panel, /reloadWhiteboardForPanelView/)
+  assert.match(panel, /view === 'whiteboard' && canvasStatus/)
+  const reloadStart = panel.indexOf('const reloadPublishedWhiteboard')
+  const reloadEnd = panel.indexOf('\n  const publish', reloadStart)
+  const reloadSection = panel.slice(reloadStart, reloadEnd)
+  assert.match(reloadSection, /const reloadView = currentViewRef\.current/)
+  assert.match(reloadSection, /getWhiteboard\(conversationId, currentBoard\.id\)/)
+  assert.match(reloadSection, /currentSnapshotTargetKeyRef\.current/)
+})
+
 test('Note-only snapshot load is single-flight, race guarded, and recoverable', async () => {
   assert.equal(typeof panelStateModule.createWhiteboardSnapshotLoader, 'function')
   assert.equal(typeof panelStateModule.loadWhiteboardSnapshotForTarget, 'function')
@@ -386,6 +438,7 @@ test('Note-only snapshot load is single-flight, race guarded, and recoverable', 
   assert.match(panel, /const retryLegacyFallback/)
   const retryStart = panel.indexOf('const retryLegacyFallback')
   const retryEnd = panel.indexOf('\n  const ', retryStart + 10)
+  assert.match(panel.slice(retryStart, retryEnd), /view === 'whiteboard' && canvasStatus/)
   assert.match(panel.slice(retryStart, retryEnd), /retryNoteSnapshotLoad/)
   assert.match(panel, /onRetryConversion=\{retryLegacyFallback\}/)
 })
