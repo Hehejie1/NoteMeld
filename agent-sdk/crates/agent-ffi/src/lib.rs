@@ -488,7 +488,7 @@ impl ModelDriver for FfiModelDriver {
             request.cancellation,
         )
         .await?;
-        parse_driver_error(&response)?;
+        validate_driver_response(&response)?;
         if let Some(chunks) = response.get("chunks").and_then(Value::as_array) {
             for chunk in chunks {
                 if chunk.get("type").and_then(Value::as_str) == Some("content_delta") {
@@ -546,11 +546,27 @@ impl ToolDriver for FfiToolDriver {
             context.cancellation,
         )
         .await?;
-        parse_driver_error(&response)?;
+        validate_driver_response(&response)?;
         Ok(ToolResult::new(
             call.id(),
             response.get("output").cloned().unwrap_or(Value::Null),
         ))
+    }
+}
+
+fn validate_driver_response(response: &Value) -> Result<(), AgentError> {
+    match response.get("ok") {
+        Some(Value::Bool(true)) => {
+            if response.get("schema_version").and_then(Value::as_str) != Some(SCHEMA_VERSION) {
+                return Err(AgentError::new(
+                    AgentErrorCode::AgentSchemaMismatch,
+                    "driver completion schema version mismatch",
+                ));
+            }
+            Ok(())
+        }
+        Some(Value::Bool(false)) => parse_driver_error(response),
+        _ => Err(invalid_input("driver completion ok must be a boolean")),
     }
 }
 
@@ -561,8 +577,9 @@ fn parse_driver_error(response: &Value) -> Result<(), AgentError> {
             "driver completion schema version mismatch",
         ));
     }
-    if response.get("ok").and_then(Value::as_bool) == Some(true) {
-        return Ok(());
+    match response.get("ok") {
+        Some(Value::Bool(false)) => {}
+        _ => return Err(invalid_input("driver completion ok must be false")),
     }
     let error = response
         .get("error")
@@ -1098,5 +1115,31 @@ mod tests {
             events[0]["payload"]["error"]["message"],
             "agent FFI operation failed"
         );
+    }
+
+    #[test]
+    fn driver_error_parser_requires_an_explicit_false_boolean() {
+        for malformed in [
+            json!({"schema_version":"1"}),
+            json!({"schema_version":"1","ok":null}),
+            json!({"schema_version":"1","ok":"false"}),
+            json!({"schema_version":"1","ok":{}}),
+            json!({"schema_version":"1","ok":true,"error":{"code":"model_unavailable","message":"unsafe"}}),
+            json!({"schema_version":"1","ok":false,"error":{"code":"not_a_code","message":"unsafe"}}),
+        ] {
+            assert_eq!(
+                parse_driver_error(&malformed).unwrap_err().code,
+                AgentErrorCode::InvalidInput
+            );
+        }
+        let error = parse_driver_error(&json!({
+            "schema_version":"1","ok":false,
+            "error":{"code":"tool_failed","message":"provider secret","details":{"token":"secret"}}
+        }))
+        .unwrap_err();
+        assert_eq!(error.code, AgentErrorCode::ToolFailed);
+        assert_eq!(error.message, "tool failed");
+        assert!(error.details.is_empty());
+        assert!(error.extra.is_empty());
     }
 }

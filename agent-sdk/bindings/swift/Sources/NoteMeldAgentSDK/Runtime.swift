@@ -33,7 +33,7 @@ private final class CallbackBox {
     private let driver: Driver
     private let eventHandler: ([String: Any]) -> Void
     private let lock = NSLock()
-    private(set) var events: [[String: Any]] = []
+    private var events: [[String: Any]] = []
 
     init(handle: OpaquePointer, driver: @escaping Driver, eventHandler: @escaping ([String: Any]) -> Void) {
         self.handle = handle; self.driver = driver; self.eventHandler = eventHandler
@@ -46,6 +46,12 @@ private final class CallbackBox {
         lock.lock(); events.append(event); lock.unlock()
         eventHandler(event)
         return 0
+    }
+
+    func eventSnapshot() -> [[String: Any]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return events
     }
 
     func receiveDriverRequest(_ wire: String) -> Int32 {
@@ -69,7 +75,7 @@ public final class NoteMeldAgentRuntime {
 
     private var handle: OpaquePointer?
     private var callbackBox: CallbackBox?
-    public var events: [[String: Any]] { callbackBox?.events ?? [] }
+    public var events: [[String: Any]] { callbackBox?.eventSnapshot() ?? [] }
 
     public init(maxTurns: Int = 16, driver: @escaping Driver, onEvent: @escaping EventHandler = { _ in }) throws {
         guard String(cString: notemeld_agent_sdk_version()) == noteMeldAgentSdkVersion,

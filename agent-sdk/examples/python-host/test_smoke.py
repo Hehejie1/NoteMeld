@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bindings" / "python"))
 
 from notemeld_agent_sdk import Runtime  # noqa: E402
+from notemeld_agent_sdk.runtime import ABI_SIGNATURES  # noqa: E402
 
 
 def fake_driver(request):
@@ -32,6 +33,10 @@ def fake_driver(request):
 def test_python_binding_loads_native_library_and_observes_terminal_event():
     library = os.environ["NOTEMELD_AGENT_SDK_LIBRARY"]
     with Runtime(library, driver=fake_driver) as runtime:
+        for name, (restype, argtypes) in ABI_SIGNATURES.items():
+            function = getattr(runtime._lib, name)
+            assert function.restype is restype
+            assert tuple(function.argtypes) == argtypes
         turn = runtime.submit_turn(
             {
                 "schema_version": "1",

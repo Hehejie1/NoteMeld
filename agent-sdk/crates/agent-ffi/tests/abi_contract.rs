@@ -590,16 +590,52 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(jni.contains("ReleaseBridge"));
     assert!(!jni.contains("GetStringUTFChars"));
     assert!(!jni.contains("retired"));
+    assert!(jni.contains("deferred_releases"));
+    assert!(jni.contains("DrainDeferred"));
     let android_test = std::fs::read_to_string(root.join("examples/android-harness/app/src/androidTest/java/wiki/notemeld/agent/harness/NativeSmokeTest.kt")).unwrap();
     assert!(android_test.contains("CountDownLatch"));
     assert!(android_test.contains("turn.succeeded"));
     let harmony =
         std::fs::read_to_string(root.join("bindings/harmony/src/main/ets/index.ets")).unwrap();
-    assert!(harmony.contains("waitForTerminal(): Promise<string>"));
+    assert!(harmony.contains("waitForTerminal(timeoutMs: number = 30000): Promise<string>"));
     assert!(!harmony.contains("agentNative.waitTurn"));
     let harmony_native =
         std::fs::read_to_string(root.join("bindings/harmony/src/main/cpp/napi_init.cpp")).unwrap();
     assert!(harmony_native.contains("ReleaseBridge"));
+    assert!(harmony_native.contains("#include <memory>"));
+    assert!(harmony_native.contains("type != napi_function"));
+    assert!(harmony_native.contains("return Int(env, handle == nullptr ? -2 : 0)"));
     assert!(!harmony_native.contains("retired_bridges"));
     assert!(!harmony_native.contains("napi_tsfn_abort"));
+
+    let parse = harmony.find("JSON.parse(eventJson)").unwrap();
+    let user = harmony.find("this.userEvent(eventJson)").unwrap();
+    assert!(
+        parse < user,
+        "terminal state must settle before user callback"
+    );
+    assert!(harmony.contains("event['turn_id'] === this.activeTurnId"));
+    assert!(harmony.contains(
+        "this.resolveTerminal = null\n        this.rejectTerminal = null\n        this.activeToken = 0n"
+    ));
+    assert!(harmony.contains("agent_runtime_busy"));
+    assert!(harmony.contains("callback registration failed"));
+    assert!(harmony.contains("terminal wait timed out"));
+    assert!(harmony.contains("const pendingReject = this.rejectTerminal"));
+
+    let kotlin = std::fs::read_to_string(
+        root.join("bindings/kotlin/src/main/kotlin/wiki/notemeld/agent/Runtime.kt"),
+    )
+    .unwrap();
+    assert!(
+        kotlin.find("nativeSdkVersion()").unwrap() < kotlin.find("nativeNew(configJson)").unwrap()
+    );
+    assert!(kotlin.contains("catch (error: Throwable)"));
+    assert!(kotlin.contains("nativeFree(created)"));
+
+    assert!(!root
+        .join("examples/android-harness/app/src/main/java/wiki/notemeld/agent/harness/Smoke.kt")
+        .exists());
+
+    assert!(swift.contains("defer { lock.unlock() }"));
 }

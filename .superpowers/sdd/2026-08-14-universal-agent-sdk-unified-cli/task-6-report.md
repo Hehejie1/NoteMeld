@@ -131,3 +131,27 @@ All externally supplied driver messages/details/extra fields are discarded befor
 - Android and OpenHarmony target execution: CI-only due missing local toolchains; static lifecycle/Promise/instrumentation contracts are checked by the Rust ABI suite.
 
 No new Rust dependency or lockfile entry was added. MSRV and license inventory are unchanged. Remaining release work is target CI execution/package generation in Task 7; this fix round does not claim unavailable mobile target builds.
+
+## Fix Round 2 (2026-08-15)
+
+### Additional RED → GREEN evidence
+
+- **Strict driver status RED:** direct parser cases proved that `ok=true` was incorrectly accepted by the error parser. Missing/null/string/object `ok`, `ok=true` with an error body, and malformed `ok=false` are now all stable `invalid_input`. Only an explicit Boolean `false` reaches shared `AgentError` parsing and safe sanitization. Normal Boolean `true` is handled by the success validator and the real model/tool ABI path remains green.
+- **Binding contract RED:** the Python contract initially failed to import the absent `ABI_SIGNATURES`; the Harmony/Kotlin/Swift/Android static contract failed because terminal parsing followed the user callback, busy/cleanup/timeout paths were absent, the Swift event getter was unlocked, and the obsolete `Smoke.kt` still existed.
+- **Binding contract GREEN:** an executable Python unittest derives all 12 expected ctypes signatures from `abi-v1.json` and compares the complete ordered signature table, including both callback types, the context-release callback and explicit `None` restypes for both void functions. The real dylib smoke additionally verifies every configured function object before submitting a turn.
+
+### Binding lifecycle closure
+
+- Harmony processes and matches the internal terminal envelope before invoking the user observer; observer parse/callback failures are caught independently. A terminal is matched against the active request/turn id and settles the Promise even if the user callback throws. The wrapper permits one active turn, rejects a second submit with `agent_runtime_busy`, clears state on submit/terminal failure, checks creation/registration and operation statuses, and uses a five-second bounded terminal wait during close. Cancel failure or timeout cannot leave close permanently pending; native state is released in `finally`. N-API validates arity, handles, BigInts, strings and callback types, and returns a typed status for runtime free. Synchronous native wait remains absent from the ArkTS surface.
+- Kotlin checks SDK/schema versions before allocating a runtime. Callback registration is inside `try/catch`; every exception after native creation frees the exact created handle before rethrowing. The unused source-level `Smoke.kt` was deleted, leaving only the real `androidTest` instrumentation harness.
+- Swift now returns the event list through `CallbackBox.eventSnapshot()`, using the same `NSLock` as callback append with `defer`-based unlock. The user event callback remains outside that lock, so close/release and observer reentry cannot deadlock it.
+- JNI release attach failure no longer deletes the bridge while silently losing its `GlobalRef`. Failed attaches enqueue a deferred release under a mutex. The next attached JNI entry drains it, and `JNI_OnUnload` provides the final attached cleanup opportunity. If the VM supplies no `JNIEnv` during unload, VM teardown owns remaining global references; this is the platform limit and there is no UAF because the bridge stays allocated until a valid environment can delete the reference.
+
+### Round 2 verification
+
+- Focused strict parser RED observed, then agent-ffi **5 unit + 10 ABI** tests GREEN.
+- Complete Python manifest/signature unittest GREEN; real native Python smoke GREEN.
+- Swift package build and real native harness GREEN.
+- Workspace tests, workspace clippy with warnings denied, rustfmt check and diff check GREEN.
+- Python oracle remains 27/27; UTF codec host test and native symbol inventory remain GREEN.
+- Android connected instrumentation and Harmony target compilation remain explicitly CI-only because their local toolchains are unavailable.

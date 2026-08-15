@@ -1,4 +1,4 @@
-import { AgentRuntime } from '@notemeld/agent-sdk'
+import { AgentRuntime, AgentRuntimeError } from '@notemeld/agent-sdk'
 
 export async function runNativeSmoke(): Promise<void> {
   const runtime = new AgentRuntime('{"schema_version":"1"}', (_eventJson: string) => {}, (_requestJson: string) => {
@@ -8,6 +8,9 @@ export async function runNativeSmoke(): Promise<void> {
   if (token === 0n || await runtime.waitForTerminal() !== 'turn.succeeded') {
     throw new Error('Harmony harness did not observe turn.succeeded')
   }
-  if (runtime.steer(token, '{"text":"later"}') !== -6) throw new Error('steer must be unsupported')
+  let unsupported = false
+  try { runtime.steer(token, '{"text":"later"}') }
+  catch (error) { unsupported = error instanceof AgentRuntimeError && error.status === -6 }
+  if (!unsupported) throw new Error('steer must be unsupported')
   await runtime.close()
 }

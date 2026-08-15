@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <atomic>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -117,9 +118,9 @@ std::string String(napi_env env, napi_value value) {
     napi_valuetype type = napi_undefined;
     if (napi_typeof(env, value, &type) != napi_ok || type != napi_string) return {};
     size_t size = 0;
-    napi_get_value_string_utf8(env, value, nullptr, 0, &size);
+    if (napi_get_value_string_utf8(env, value, nullptr, 0, &size) != napi_ok) return {};
     std::string result(size + 1, '\0');
-    napi_get_value_string_utf8(env, value, result.data(), result.size(), &size);
+    if (napi_get_value_string_utf8(env, value, result.data(), result.size(), &size) != napi_ok) return {};
     result.resize(size);
     return result;
 }
@@ -130,14 +131,22 @@ napi_value Int(napi_env env, int32_t value) {
     return result;
 }
 
-napi_value SdkVersion(napi_env env, napi_callback_info) {
+napi_value SdkVersion(napi_env env, napi_callback_info info) {
+    size_t argc = 0;
     napi_value result;
+    if (napi_get_cb_info(env, info, &argc, nullptr, nullptr, nullptr) != napi_ok || argc != 0) {
+        napi_create_string_utf8(env, "", 0, &result); return result;
+    }
     napi_create_string_utf8(env, notemeld_agent_sdk_version(), NAPI_AUTO_LENGTH, &result);
     return result;
 }
 
-napi_value SchemaVersion(napi_env env, napi_callback_info) {
+napi_value SchemaVersion(napi_env env, napi_callback_info info) {
+    size_t argc = 0;
     napi_value result;
+    if (napi_get_cb_info(env, info, &argc, nullptr, nullptr, nullptr) != napi_ok || argc != 0) {
+        napi_create_string_utf8(env, "", 0, &result); return result;
+    }
     napi_create_string_utf8(env, notemeld_agent_schema_version(), NAPI_AUTO_LENGTH, &result);
     return result;
 }
@@ -154,8 +163,10 @@ napi_value SubmitTurn(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value argv[2];
     if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 2) return BigInt(env, 0);
+    auto *handle = HandleFromBigInt(env, argv[0]);
+    if (handle == nullptr) return BigInt(env, 0);
     auto request = String(env, argv[1]);
-    return BigInt(env, notemeld_agent_submit_turn(HandleFromBigInt(env, argv[0]), request.c_str()));
+    return BigInt(env, notemeld_agent_submit_turn(handle, request.c_str()));
 }
 
 napi_value CompleteDriverCall(napi_env env, napi_callback_info info) {
@@ -164,10 +175,11 @@ napi_value CompleteDriverCall(napi_env env, napi_callback_info info) {
     if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 3) return Int(env, -2);
     uint64_t call_id = 0;
     bool lossless = false;
-    napi_get_value_bigint_uint64(env, argv[1], &call_id, &lossless);
+    auto *handle = HandleFromBigInt(env, argv[0]);
+    if (handle == nullptr || napi_get_value_bigint_uint64(env, argv[1], &call_id, &lossless) != napi_ok) return Int(env, -2);
     auto result = String(env, argv[2]);
     return Int(env, lossless ? notemeld_agent_complete_driver_call(
-        HandleFromBigInt(env, argv[0]), call_id, result.c_str()) : -2);
+        handle, call_id, result.c_str()) : -2);
 }
 
 napi_value CancelTurn(napi_env env, napi_callback_info info) {
@@ -176,8 +188,9 @@ napi_value CancelTurn(napi_env env, napi_callback_info info) {
     if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 2) return Int(env, -2);
     uint64_t token = 0;
     bool lossless = false;
-    napi_get_value_bigint_uint64(env, argv[1], &token, &lossless);
-    return Int(env, lossless ? notemeld_agent_cancel_turn(HandleFromBigInt(env, argv[0]), token) : -2);
+    auto *handle = HandleFromBigInt(env, argv[0]);
+    if (handle == nullptr || napi_get_value_bigint_uint64(env, argv[1], &token, &lossless) != napi_ok) return Int(env, -2);
+    return Int(env, lossless ? notemeld_agent_cancel_turn(handle, token) : -2);
 }
 
 napi_value SteerTurn(napi_env env, napi_callback_info info) {
@@ -186,23 +199,22 @@ napi_value SteerTurn(napi_env env, napi_callback_info info) {
     if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 3) return Int(env, -2);
     uint64_t token = 0;
     bool lossless = false;
-    napi_get_value_bigint_uint64(env, argv[1], &token, &lossless);
+    auto *handle = HandleFromBigInt(env, argv[0]);
+    if (handle == nullptr || napi_get_value_bigint_uint64(env, argv[1], &token, &lossless) != napi_ok) return Int(env, -2);
     auto steer = String(env, argv[2]);
     return Int(env, lossless ? notemeld_agent_steer_turn(
-        HandleFromBigInt(env, argv[0]), token, steer.c_str()) : -2);
+        handle, token, steer.c_str()) : -2);
 }
 
 napi_value RuntimeFree(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value argv[1];
     if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 1) {
-        napi_value result; napi_get_undefined(env, &result); return result;
+        return Int(env, -2);
     }
     auto *handle = HandleFromBigInt(env, argv[0]);
-    notemeld_agent_runtime_free(handle);
-    napi_value result;
-    napi_get_undefined(env, &result);
-    return result;
+    if (handle != nullptr) notemeld_agent_runtime_free(handle);
+    return Int(env, handle == nullptr ? -2 : 0);
 }
 
 napi_value SetCallbacks(napi_env env, napi_callback_info info) {
@@ -211,6 +223,10 @@ napi_value SetCallbacks(napi_env env, napi_callback_info info) {
     if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 3) return Int(env, -2);
     auto *handle = HandleFromBigInt(env, argv[0]);
     if (handle == nullptr || argc != 3) return Int(env, -2);
+    for (size_t index = 1; index < 3; ++index) {
+        napi_valuetype type = napi_undefined;
+        if (napi_typeof(env, argv[index], &type) != napi_ok || type != napi_function) return Int(env, -2);
+    }
     auto *bridge = new CallbackBridge();
     bridge->handle = handle;
     napi_value resource_name;

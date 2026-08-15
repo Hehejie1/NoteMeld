@@ -9,13 +9,20 @@ class Runtime(
     private val driver: (String) -> String,
     private val onEvent: (String) -> Unit = {}
 ) : AutoCloseable {
-    private var handle: Long = nativeNew(configJson)
+    private var handle: Long = 0L
 
     init {
         require(nativeSdkVersion() == SDK_VERSION)
         require(nativeSchemaVersion() == SCHEMA_VERSION)
-        require(handle != 0L) { "native runtime creation failed" }
-        require(nativeSetCallbacks(handle, this) == 0) { "callback registration failed" }
+        val created = nativeNew(configJson)
+        require(created != 0L) { "native runtime creation failed" }
+        try {
+            require(nativeSetCallbacks(created, this) == 0) { "callback registration failed" }
+            handle = created
+        } catch (error: Throwable) {
+            nativeFree(created)
+            throw error
+        }
     }
 
     fun submitTurn(requestJson: String): ULong = nativeSubmit(handle, requestJson).toULong()

@@ -26,6 +26,27 @@ class AgentSdkError(RuntimeError):
 
 _CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p)
 _RELEASE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+ABI_SIGNATURES: dict[str, tuple[Any, tuple[Any, ...]]] = {
+    "notemeld_agent_sdk_version": (ctypes.c_char_p, ()),
+    "notemeld_agent_schema_version": (ctypes.c_char_p, ()),
+    "notemeld_agent_runtime_new": (ctypes.c_void_p, (ctypes.c_char_p,)),
+    "notemeld_agent_runtime_set_callbacks": (
+        ctypes.c_int32,
+        (ctypes.c_void_p, _CALLBACK, ctypes.c_void_p, _CALLBACK,
+         ctypes.c_void_p, _RELEASE_CALLBACK, ctypes.c_void_p),
+    ),
+    "notemeld_agent_submit_turn": (ctypes.c_uint64, (ctypes.c_void_p, ctypes.c_char_p)),
+    "notemeld_agent_complete_driver_call": (
+        ctypes.c_int32, (ctypes.c_void_p, ctypes.c_uint64, ctypes.c_char_p)),
+    "notemeld_agent_cancel_turn": (ctypes.c_int32, (ctypes.c_void_p, ctypes.c_uint64)),
+    "notemeld_agent_steer_turn": (
+        ctypes.c_int32, (ctypes.c_void_p, ctypes.c_uint64, ctypes.c_char_p)),
+    "notemeld_agent_wait_turn": (
+        ctypes.c_int32, (ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)),
+    "notemeld_agent_last_error_json": (ctypes.c_void_p, (ctypes.c_void_p,)),
+    "notemeld_agent_string_free": (None, (ctypes.c_void_p,)),
+    "notemeld_agent_runtime_free": (None, (ctypes.c_void_p,)),
+}
 _CONTEXTS: dict[int, "_CallbackBox"] = {}
 _CONTEXTS_LOCK = threading.Lock()
 
@@ -143,39 +164,10 @@ class Runtime:
             self._check(code, "callback registration failed")
 
     def _configure_abi(self) -> None:
-        lib = self._lib
-        lib.notemeld_agent_sdk_version.restype = ctypes.c_char_p
-        lib.notemeld_agent_schema_version.restype = ctypes.c_char_p
-        lib.notemeld_agent_runtime_new.argtypes = [ctypes.c_char_p]
-        lib.notemeld_agent_runtime_new.restype = ctypes.c_void_p
-        lib.notemeld_agent_runtime_set_callbacks.argtypes = [
-            ctypes.c_void_p,
-            _CALLBACK,
-            ctypes.c_void_p,
-            _CALLBACK,
-            ctypes.c_void_p,
-            _RELEASE_CALLBACK,
-            ctypes.c_void_p,
-        ]
-        lib.notemeld_agent_runtime_set_callbacks.restype = ctypes.c_int32
-        lib.notemeld_agent_submit_turn.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        lib.notemeld_agent_submit_turn.restype = ctypes.c_uint64
-        lib.notemeld_agent_complete_driver_call.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_uint64,
-            ctypes.c_char_p,
-        ]
-        lib.notemeld_agent_complete_driver_call.restype = ctypes.c_int32
-        lib.notemeld_agent_cancel_turn.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
-        lib.notemeld_agent_cancel_turn.restype = ctypes.c_int32
-        lib.notemeld_agent_steer_turn.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_char_p]
-        lib.notemeld_agent_steer_turn.restype = ctypes.c_int32
-        lib.notemeld_agent_wait_turn.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64]
-        lib.notemeld_agent_wait_turn.restype = ctypes.c_int32
-        lib.notemeld_agent_last_error_json.argtypes = [ctypes.c_void_p]
-        lib.notemeld_agent_last_error_json.restype = ctypes.c_void_p
-        lib.notemeld_agent_string_free.argtypes = [ctypes.c_void_p]
-        lib.notemeld_agent_runtime_free.argtypes = [ctypes.c_void_p]
+        for name, (restype, argtypes) in ABI_SIGNATURES.items():
+            function = getattr(self._lib, name)
+            function.argtypes = list(argtypes)
+            function.restype = restype
 
     def submit_turn(self, request: Mapping[str, Any]) -> int:
         self._ensure_open()
