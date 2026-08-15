@@ -1,20 +1,32 @@
 use std::{
     fs,
     path::PathBuf,
-    sync::{Arc, Barrier},
+    sync::{mpsc, Arc, Barrier},
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use agent_events::{
     AgentErrorCode, AgentEvent, AgentEventEnvelope, EventId, MessageDeltaPayload, RequestId,
-    SessionId, TurnId, TurnStatus, SCHEMA_VERSION,
+    SessionId, TurnId, TurnStatus, UnknownEvent, SCHEMA_VERSION,
 };
 use agent_storage::{
     EventStore, EventWriteOutcome, ReferenceSqliteStore, SessionStore, StoredSession, StoredTurn,
     TurnWriteOutcome,
 };
-use serde_json::Map;
+use rusqlite::{Connection, TransactionBehavior};
+use serde_json::{json, Map};
+
+fn temporary_database_path(label: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "notemeld-agent-storage-{label}-{}-{unique}.sqlite",
+        std::process::id()
+    ))
+}
 
 fn turn(session: &str, turn_id: &str, request_id: &str) -> StoredTurn {
     StoredTurn {
@@ -238,6 +250,341 @@ fn concurrent_retry_is_linearized_without_duplicate_rows() {
 }
 
 #[test]
+fn concurrent_retry_across_connections_linearizes_turn_insertion() {
+    let path = temporary_database_path("turn-race");
+    let stored_turn = turn(
+        "session-race",
+        "10000000-0000-4000-8000-000000000031",
+        "20000000-0000-4000-8000-000000000031",
+    );
+    {
+        let seed = ReferenceSqliteStore::open(&path).unwrap();
+        seed.insert_session(&StoredSession::new(SessionId::from("session-race")))
+            .unwrap();
+    }
+
+    let stores = [
+        Arc::new(ReferenceSqliteStore::open(&path).unwrap()),
+        Arc::new(ReferenceSqliteStore::open(&path).unwrap()),
+    ];
+    let barrier = Arc::new(Barrier::new(3));
+    let workers: Vec<_> = stores
+        .iter()
+        .map(|store| {
+            let store = Arc::clone(store);
+            let barrier = Arc::clone(&barrier);
+            let stored_turn = stored_turn.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                store.insert_turn(&stored_turn)
+            })
+        })
+        .collect();
+    barrier.wait();
+    let outcomes: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap().unwrap())
+        .collect();
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|outcome| **outcome == TurnWriteOutcome::Inserted)
+            .count(),
+        1
+    );
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|outcome| {
+                matches!(outcome, TurnWriteOutcome::Replayed(existing) if **existing == stored_turn)
+            })
+            .count(),
+        1
+    );
+
+    drop(stores);
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn concurrent_conflicting_turns_across_connections_keep_typed_error() {
+    let path = temporary_database_path("turn-conflict");
+    {
+        let seed = ReferenceSqliteStore::open(&path).unwrap();
+        seed.insert_session(&StoredSession::new(SessionId::from("session-race")))
+            .unwrap();
+    }
+    let turns = [
+        turn(
+            "session-race",
+            "10000000-0000-4000-8000-000000000032",
+            "20000000-0000-4000-8000-000000000032",
+        ),
+        turn(
+            "session-race",
+            "10000000-0000-4000-8000-000000000033",
+            "20000000-0000-4000-8000-000000000032",
+        ),
+    ];
+    let stores = [
+        Arc::new(ReferenceSqliteStore::open(&path).unwrap()),
+        Arc::new(ReferenceSqliteStore::open(&path).unwrap()),
+    ];
+    let barrier = Arc::new(Barrier::new(3));
+    let workers: Vec<_> = stores
+        .iter()
+        .zip(turns)
+        .map(|(store, stored_turn)| {
+            let store = Arc::clone(store);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                store.insert_turn(&stored_turn)
+            })
+        })
+        .collect();
+    barrier.wait();
+    let outcomes: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, Ok(TurnWriteOutcome::Inserted)))
+            .count(),
+        1
+    );
+    let errors: Vec<_> = outcomes
+        .iter()
+        .filter_map(|outcome| outcome.as_ref().err())
+        .collect();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].code, AgentErrorCode::DuplicateRequest);
+    assert_eq!(
+        errors[0].message,
+        "session request_id already belongs to another turn"
+    );
+
+    drop(stores);
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn concurrent_retry_across_connections_linearizes_event_append() {
+    let path = temporary_database_path("event-race");
+    let stored_turn = turn(
+        "session-race",
+        "10000000-0000-4000-8000-000000000034",
+        "20000000-0000-4000-8000-000000000034",
+    );
+    let envelope = event(
+        "session-race",
+        &stored_turn.id.0,
+        "30000000-0000-4000-8000-000000000034",
+        1,
+    );
+    {
+        let seed = ReferenceSqliteStore::open(&path).unwrap();
+        seed.insert_session(&StoredSession::new(SessionId::from("session-race")))
+            .unwrap();
+        seed.insert_turn(&stored_turn).unwrap();
+    }
+
+    let stores = [
+        Arc::new(ReferenceSqliteStore::open(&path).unwrap()),
+        Arc::new(ReferenceSqliteStore::open(&path).unwrap()),
+    ];
+    let barrier = Arc::new(Barrier::new(3));
+    let workers: Vec<_> = stores
+        .iter()
+        .map(|store| {
+            let store = Arc::clone(store);
+            let barrier = Arc::clone(&barrier);
+            let envelope = envelope.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                store.append_event(&envelope)
+            })
+        })
+        .collect();
+    barrier.wait();
+    let outcomes: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap().unwrap())
+        .collect();
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|outcome| **outcome == EventWriteOutcome::Inserted)
+            .count(),
+        1
+    );
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|outcome| **outcome == EventWriteOutcome::Replayed)
+            .count(),
+        1
+    );
+
+    drop(stores);
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn an_external_write_lock_has_a_bounded_safe_busy_error() {
+    let path = temporary_database_path("bounded-busy");
+    {
+        let seed = ReferenceSqliteStore::open(&path).unwrap();
+        seed.insert_session(&StoredSession::new(SessionId::from("session-busy")))
+            .unwrap();
+    }
+    let mut blocking_connection = Connection::open(&path).unwrap();
+    let blocking_transaction = blocking_connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .unwrap();
+    let store = ReferenceSqliteStore::open(&path).unwrap();
+    let stored_turn = turn(
+        "session-busy",
+        "10000000-0000-4000-8000-000000000039",
+        "20000000-0000-4000-8000-000000000039",
+    );
+    let (sender, receiver) = mpsc::channel();
+    let worker = thread::spawn(move || {
+        sender.send(store.insert_turn(&stored_turn)).unwrap();
+    });
+
+    let outcome = receiver.recv_timeout(Duration::from_secs(3));
+    drop(blocking_transaction);
+    worker.join().unwrap();
+    let error = outcome
+        .expect("reference store must stop waiting within its busy timeout")
+        .unwrap_err();
+    assert_eq!(error.code, AgentErrorCode::SdkInternalError);
+    assert_eq!(error.message, "reference sqlite database is busy");
+
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn append_rejects_non_v1_schema_without_persisting_it() {
+    let stored_turn = turn(
+        "session-a",
+        "10000000-0000-4000-8000-000000000035",
+        "20000000-0000-4000-8000-000000000035",
+    );
+    let store = seeded_store("session-a", stored_turn.clone());
+    let mut envelope = event(
+        "session-a",
+        &stored_turn.id.0,
+        "30000000-0000-4000-8000-000000000035",
+        1,
+    );
+    envelope.schema_version = "2".to_owned();
+
+    let error = store.append_event(&envelope).unwrap_err();
+    assert_eq!(error.code, AgentErrorCode::AgentSchemaMismatch);
+    assert_eq!(error.message, "event schema_version must be \"1\"");
+    assert!(store.replay_events(&stored_turn.id, 0).unwrap().is_empty());
+}
+
+#[test]
+fn file_reopen_replays_unknown_event_losslessly_and_retries_exactly() {
+    let path = temporary_database_path("reopen");
+    let stored_turn = turn(
+        "session-file",
+        "10000000-0000-4000-8000-000000000036",
+        "20000000-0000-4000-8000-000000000036",
+    );
+    let envelope = AgentEventEnvelope {
+        schema_version: SCHEMA_VERSION.to_owned(),
+        event_id: EventId::from("30000000-0000-4000-8000-000000000036"),
+        sequence: 1,
+        session_id: SessionId::from("session-file"),
+        turn_id: stored_turn.id.clone(),
+        timestamp: "2026-08-15T09:08:07.654321Z".to_owned(),
+        event: AgentEvent::Unknown(UnknownEvent {
+            event_type: "future.deep-event".to_owned(),
+            payload: json!({
+                "nested": {"items": [1, true, null, {"future": "value"}]},
+                "opaque_number": 18446744073709551615_u64,
+                "unicode": "无损"
+            }),
+        }),
+    };
+    {
+        let store = ReferenceSqliteStore::open(&path).unwrap();
+        store
+            .insert_session(&StoredSession::new(SessionId::from("session-file")))
+            .unwrap();
+        store.insert_turn(&stored_turn).unwrap();
+        assert_eq!(
+            store.append_event(&envelope).unwrap(),
+            EventWriteOutcome::Inserted
+        );
+    }
+    {
+        let reopened = ReferenceSqliteStore::open(&path).unwrap();
+        assert_eq!(
+            reopened.replay_events(&stored_turn.id, 0).unwrap(),
+            vec![envelope.clone()]
+        );
+        assert_eq!(
+            reopened.append_event(&envelope).unwrap(),
+            EventWriteOutcome::Replayed
+        );
+    }
+    fs::remove_file(&path).unwrap();
+    assert!(!path.exists());
+}
+
+#[test]
+fn event_identity_is_global_and_sequence_respects_sqlite_u64_boundary() {
+    let turn_a = turn(
+        "session-a",
+        "10000000-0000-4000-8000-000000000037",
+        "20000000-0000-4000-8000-000000000037",
+    );
+    let store = seeded_store("session-a", turn_a.clone());
+    let turn_b = turn(
+        "session-a",
+        "10000000-0000-4000-8000-000000000038",
+        "20000000-0000-4000-8000-000000000038",
+    );
+    store.insert_turn(&turn_b).unwrap();
+    let global_event_id = "30000000-0000-4000-8000-000000000037";
+    store
+        .append_event(&event("session-a", &turn_a.id.0, global_event_id, 1))
+        .unwrap();
+    let error = store
+        .append_event(&event("session-a", &turn_b.id.0, global_event_id, 1))
+        .unwrap_err();
+    assert_eq!(error.code, AgentErrorCode::DuplicateRequest);
+    assert_eq!(
+        error.message,
+        "event_id already identifies a different event"
+    );
+
+    let overflow = event(
+        "session-a",
+        &turn_b.id.0,
+        "30000000-0000-4000-8000-000000000038",
+        i64::MAX as u64 + 1,
+    );
+    let error = store.append_event(&overflow).unwrap_err();
+    assert_eq!(error.code, AgentErrorCode::InvalidInput);
+    assert_eq!(
+        error.message,
+        "event sequence exceeds reference SQLite range"
+    );
+    assert!(store
+        .replay_events(&turn_b.id, u64::MAX)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn missing_parent_turn_and_sequence_gaps_have_stable_errors() {
     let store = ReferenceSqliteStore::open_in_memory().unwrap();
     let missing = event(
@@ -271,14 +618,7 @@ fn missing_parent_turn_and_sequence_gaps_have_stable_errors() {
 
 #[test]
 fn file_backed_store_releases_the_database_file_on_drop() {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let path: PathBuf = std::env::temp_dir().join(format!(
-        "notemeld-agent-storage-{}-{unique}.sqlite",
-        std::process::id()
-    ));
+    let path = temporary_database_path("close");
     {
         let store = ReferenceSqliteStore::open(&path).unwrap();
         store

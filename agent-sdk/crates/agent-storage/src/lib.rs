@@ -3,13 +3,14 @@
 use std::{
     path::Path,
     sync::{Mutex, MutexGuard},
+    time::Duration,
 };
 
 use agent_events::{
     AgentError, AgentErrorCode, AgentEvent, AgentEventEnvelope, EventId, RequestId, SessionId,
     TurnId, TurnStatus, SCHEMA_VERSION,
 };
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Row, TransactionBehavior};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +84,9 @@ impl ReferenceSqliteStore {
 
     fn initialize(connection: Connection) -> Result<Self, AgentError> {
         connection
+            .busy_timeout(Duration::from_secs(2))
+            .map_err(sqlite_error)?;
+        connection
             .execute_batch(
                 "PRAGMA foreign_keys = ON;
                  CREATE TABLE IF NOT EXISTS reference_sessions (
@@ -151,7 +155,9 @@ impl SessionStore for ReferenceSqliteStore {
     fn insert_turn(&self, turn: &StoredTurn) -> Result<TurnWriteOutcome, AgentError> {
         validate_turn(turn)?;
         let mut connection = self.lock()?;
-        let transaction = connection.transaction().map_err(sqlite_error)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
 
         if let Some(existing) =
             query_turn_by_request(&transaction, &turn.session_id.0, &turn.request_id.0)?
@@ -226,8 +232,14 @@ impl SessionStore for ReferenceSqliteStore {
 
 impl EventStore for ReferenceSqliteStore {
     fn append_event(&self, envelope: &AgentEventEnvelope) -> Result<EventWriteOutcome, AgentError> {
-        let wire = serde_json::to_value(envelope).map_err(wire_error)?;
+        if envelope.schema_version != SCHEMA_VERSION {
+            return Err(AgentError::new(
+                AgentErrorCode::AgentSchemaMismatch,
+                "event schema_version must be \"1\"",
+            ));
+        }
         let sequence = sequence_to_i64(envelope.sequence)?;
+        let wire = serde_json::to_value(envelope).map_err(wire_error)?;
         let event_type = wire
             .get("type")
             .and_then(Value::as_str)
@@ -240,7 +252,9 @@ impl EventStore for ReferenceSqliteStore {
         let payload_json = serde_json::to_string(&payload).map_err(wire_error)?;
 
         let mut connection = self.lock()?;
-        let transaction = connection.transaction().map_err(sqlite_error)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
         let parent_session: Option<String> = transaction
             .query_row(
                 "SELECT session_id FROM agent_turns WHERE id = ?1",
@@ -516,7 +530,16 @@ fn wire_error(_error: serde_json::Error) -> AgentError {
     )
 }
 
-fn sqlite_error(_error: rusqlite::Error) -> AgentError {
+fn sqlite_error(error: rusqlite::Error) -> AgentError {
+    if matches!(
+        error.sqlite_error_code(),
+        Some(ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked)
+    ) {
+        return AgentError::new(
+            AgentErrorCode::SdkInternalError,
+            "reference sqlite database is busy",
+        );
+    }
     AgentError::new(
         AgentErrorCode::SdkInternalError,
         "reference sqlite operation failed",

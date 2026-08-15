@@ -9,4 +9,3 @@ license.workspace = true
 agent-events = { path = "../agent-events" }
 serde_json.workspace = true
 uuid.workspace = true
-

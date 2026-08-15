@@ -212,15 +212,21 @@ stateDiagram-v2
     WAITING_APPROVAL --> RUNNING: approve / deny result
     RUNNING --> CANCELLING: cancel
     WAITING_APPROVAL --> CANCELLING: cancel
-    CANCELLING --> CANCELLED
     RUNNING --> SUCCEEDED
     RUNNING --> FAILED
+    RUNNING --> CANCELLED
     RUNNING --> INTERRUPTED: process/runtime loss
+    WAITING_APPROVAL --> FAILED
+    WAITING_APPROVAL --> CANCELLED
     WAITING_APPROVAL --> INTERRUPTED: process/runtime loss
+    CANCELLING --> CANCELLED
+    CANCELLING --> FAILED
+    CANCELLING --> INTERRUPTED: process/runtime loss
 ```
 
 规则：
 
+- Ready-for-Execution implementation spec §4.4 的允许转换表是精确执行契约；上图必须与该表保持同一完整边集合，未列出的转换全部非法。
 - `SUCCEEDED/FAILED/CANCELLED/INTERRUPTED` 是终态，不能回到 RUNNING。
 - cancel/steer/approval command 都幂等；重复 command 返回当前状态，不重复执行工具。
 - 同 Session 存在 CREATED/RUNNING/WAITING_APPROVAL/CANCELLING 时，start_turn 返回 `session_busy`。

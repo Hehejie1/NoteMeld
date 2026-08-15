@@ -6,6 +6,7 @@ use std::{
 use agent_events::{AgentErrorCode, RequestId, SessionId, TurnStatus};
 use agent_session::{TurnCoordinator, TurnStartRequest, TurnStateMachine};
 use serde_json::json;
+use uuid::{Uuid, Version};
 
 fn request(session: &str, request_id: &str, text: &str) -> TurnStartRequest {
     TurnStartRequest::new(
@@ -220,4 +221,90 @@ fn request_replay_is_linearized_and_payload_conflicts_are_rejected() {
         conflict.message,
         "request_id was already used with a different payload"
     );
+}
+
+#[test]
+fn transition_cartesian_product_allows_only_the_execution_spec_table() {
+    let statuses = [
+        TurnStatus::Created,
+        TurnStatus::Running,
+        TurnStatus::WaitingApproval,
+        TurnStatus::Cancelling,
+        TurnStatus::Succeeded,
+        TurnStatus::Failed,
+        TurnStatus::Cancelled,
+        TurnStatus::Interrupted,
+    ];
+
+    for from in statuses {
+        for to in statuses {
+            let expected_legal = matches!(
+                (from, to),
+                (TurnStatus::Created, TurnStatus::Running)
+                    | (TurnStatus::Running, TurnStatus::WaitingApproval)
+                    | (TurnStatus::Running, TurnStatus::Cancelling)
+                    | (TurnStatus::Running, TurnStatus::Succeeded)
+                    | (TurnStatus::Running, TurnStatus::Failed)
+                    | (TurnStatus::Running, TurnStatus::Cancelled)
+                    | (TurnStatus::Running, TurnStatus::Interrupted)
+                    | (TurnStatus::WaitingApproval, TurnStatus::Running)
+                    | (TurnStatus::WaitingApproval, TurnStatus::Cancelling)
+                    | (TurnStatus::WaitingApproval, TurnStatus::Failed)
+                    | (TurnStatus::WaitingApproval, TurnStatus::Cancelled)
+                    | (TurnStatus::WaitingApproval, TurnStatus::Interrupted)
+                    | (TurnStatus::Cancelling, TurnStatus::Cancelled)
+                    | (TurnStatus::Cancelling, TurnStatus::Failed)
+                    | (TurnStatus::Cancelling, TurnStatus::Interrupted)
+            );
+            let mut machine = TurnStateMachine::new(from);
+            let result = machine.transition(to);
+            assert_eq!(result.is_ok(), expected_legal, "{from:?} -> {to:?}");
+            assert_eq!(
+                machine.status(),
+                if expected_legal { to } else { from },
+                "failed transition mutated state for {from:?} -> {to:?}"
+            );
+            if !expected_legal
+                && matches!(
+                    from,
+                    TurnStatus::Succeeded
+                        | TurnStatus::Failed
+                        | TurnStatus::Cancelled
+                        | TurnStatus::Interrupted
+                )
+            {
+                assert_eq!(result.unwrap_err().code, AgentErrorCode::TurnTerminal);
+            }
+        }
+    }
+}
+
+#[test]
+fn invalid_session_or_request_ids_do_not_consume_a_lease() {
+    let coordinator = TurnCoordinator::new();
+    let invalid_session = coordinator
+        .start_turn(request(
+            "",
+            "00000000-0000-4000-8000-000000000009",
+            "invalid session",
+        ))
+        .unwrap_err();
+    assert_eq!(invalid_session.code, AgentErrorCode::InvalidInput);
+    assert_eq!(invalid_session.message, "session_id must be nonempty");
+
+    let invalid_request = coordinator
+        .start_turn(request("session-valid", "not-a-uuid", "invalid request"))
+        .unwrap_err();
+    assert_eq!(invalid_request.code, AgentErrorCode::InvalidInput);
+    assert_eq!(invalid_request.message, "request_id must be a UUID");
+
+    let valid = coordinator
+        .start_turn(request(
+            "session-valid",
+            "00000000-0000-4000-8000-000000000010",
+            "valid after rejected input",
+        ))
+        .unwrap();
+    let generated = Uuid::parse_str(&valid.turn.id.0).unwrap();
+    assert_eq!(generated.get_version(), Some(Version::Random));
 }

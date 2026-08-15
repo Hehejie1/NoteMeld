@@ -4,8 +4,10 @@ use std::{collections::BTreeMap, fmt, sync::Arc};
 
 use agent_events::{AgentError, AgentErrorCode};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
+
+pub const MAX_DISCOVERY_RESULTS: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisclosureLevel {
@@ -15,13 +17,13 @@ pub enum DisclosureLevel {
     L3,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CapabilityManifest {
-    pub id: String,
-    pub name: String,
-    pub summary: String,
-    pub description: String,
-    pub input_schema: Value,
+    id: String,
+    name: String,
+    summary: String,
+    description: String,
+    input_schema: Value,
 }
 
 impl CapabilityManifest {
@@ -39,36 +41,74 @@ impl CapabilityManifest {
             description: description.into(),
             input_schema,
         };
-        let valid_identity = manifest.id.trim() == manifest.id
-            && manifest
-                .id
-                .split_once(':')
-                .is_some_and(|(namespace, local_name)| {
-                    !namespace.is_empty() && !local_name.is_empty()
-                });
-        if !valid_identity {
-            return Err(AgentError::new(
-                AgentErrorCode::InvalidInput,
-                "capability id must use namespace:name form",
-            ));
-        }
-        if manifest.id.trim().is_empty()
-            || manifest.name.trim().is_empty()
-            || manifest.summary.trim().is_empty()
-            || manifest.description.trim().is_empty()
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    pub fn input_schema(&self) -> &Value {
+        &self.input_schema
+    }
+
+    fn validate(&self) -> Result<(), AgentError> {
+        validate_capability_id(&self.id)?;
+        if self.name.trim().is_empty()
+            || self.summary.trim().is_empty()
+            || self.description.trim().is_empty()
         {
             return Err(AgentError::new(
                 AgentErrorCode::InvalidInput,
                 "capability metadata must be nonempty",
             ));
         }
-        if !manifest.input_schema.is_object() {
+        if !self.input_schema.is_object() {
             return Err(AgentError::new(
                 AgentErrorCode::InvalidInput,
                 "capability input_schema must be a JSON object",
             ));
         }
-        Ok(manifest)
+        Ok(())
+    }
+}
+
+#[derive(Deserialize)]
+struct CapabilityManifestWire {
+    id: String,
+    name: String,
+    summary: String,
+    description: String,
+    input_schema: Value,
+}
+
+impl<'de> Deserialize<'de> for CapabilityManifest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = CapabilityManifestWire::deserialize(deserializer)?;
+        Self::try_new(
+            wire.id,
+            wire.name,
+            wire.summary,
+            wire.description,
+            wire.input_schema,
+        )
+        .map_err(|error| D::Error::custom(error.message))
     }
 }
 
@@ -90,21 +130,16 @@ pub struct CapabilityDescription {
     pub input_schema: Value,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CapabilityInvocation {
-    pub capability_id: String,
-    pub arguments: Map<String, Value>,
+    capability_id: String,
+    arguments: Map<String, Value>,
 }
 
 impl CapabilityInvocation {
     pub fn try_new(capability_id: impl Into<String>, arguments: Value) -> Result<Self, AgentError> {
         let capability_id = capability_id.into();
-        if capability_id.trim().is_empty() {
-            return Err(AgentError::new(
-                AgentErrorCode::InvalidInput,
-                "capability_id must be nonempty",
-            ));
-        }
+        validate_capability_id(&capability_id)?;
         let Value::Object(arguments) = arguments else {
             return Err(AgentError::new(
                 AgentErrorCode::InvalidInput,
@@ -115,6 +150,35 @@ impl CapabilityInvocation {
             capability_id,
             arguments,
         })
+    }
+
+    pub fn capability_id(&self) -> &str {
+        &self.capability_id
+    }
+
+    pub fn arguments(&self) -> &Map<String, Value> {
+        &self.arguments
+    }
+
+    fn validate(&self) -> Result<(), AgentError> {
+        validate_capability_id(&self.capability_id)
+    }
+}
+
+#[derive(Deserialize)]
+struct CapabilityInvocationWire {
+    capability_id: String,
+    arguments: Value,
+}
+
+impl<'de> Deserialize<'de> for CapabilityInvocation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = CapabilityInvocationWire::deserialize(deserializer)?;
+        Self::try_new(wire.capability_id, wire.arguments)
+            .map_err(|error| D::Error::custom(error.message))
     }
 }
 
@@ -159,6 +223,7 @@ impl CapabilityRegistry {
     pub fn try_new(registrations: Vec<CapabilityRegistration>) -> Result<Self, AgentError> {
         let mut by_id = BTreeMap::new();
         for registration in registrations {
+            registration.manifest.validate()?;
             let id = registration.manifest.id.clone();
             if by_id
                 .insert(
@@ -193,6 +258,7 @@ impl CapabilityRegistry {
         Ok(self
             .registrations
             .values()
+            .take(MAX_DISCOVERY_RESULTS)
             .map(|registered| CapabilityListing {
                 disclosure_level: level,
                 id: registered.manifest.id.clone(),
@@ -219,12 +285,28 @@ impl CapabilityRegistry {
     }
 
     pub async fn invoke(&self, invocation: CapabilityInvocation) -> Result<Value, AgentError> {
+        invocation.validate()?;
         let provider = self
             .registrations
             .get(&invocation.capability_id)
             .map(|registered| Arc::clone(&registered.provider))
             .ok_or_else(|| capability_not_found(&invocation.capability_id))?;
         provider.invoke(invocation).await
+    }
+}
+
+fn validate_capability_id(capability_id: &str) -> Result<(), AgentError> {
+    let valid = capability_id.trim() == capability_id
+        && capability_id
+            .split_once(':')
+            .is_some_and(|(namespace, local_name)| !namespace.is_empty() && !local_name.is_empty());
+    if valid {
+        Ok(())
+    } else {
+        Err(AgentError::new(
+            AgentErrorCode::InvalidInput,
+            "capability id must use namespace:name form",
+        ))
     }
 }
 

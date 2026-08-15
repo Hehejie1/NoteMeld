@@ -106,6 +106,7 @@ impl TurnCoordinator {
     }
 
     pub fn start_turn(&self, request: TurnStartRequest) -> Result<TurnStartOutcome, AgentError> {
+        validate_start_request(&request)?;
         let mut state = self.lock_state()?;
         let request_key = (request.session_id.clone(), request.request_id.clone());
 
@@ -190,6 +191,22 @@ impl TurnCoordinator {
             )
         })
     }
+}
+
+fn validate_start_request(request: &TurnStartRequest) -> Result<(), AgentError> {
+    if request.session_id.0.is_empty() {
+        return Err(AgentError::new(
+            AgentErrorCode::InvalidInput,
+            "session_id must be nonempty",
+        ));
+    }
+    if Uuid::parse_str(&request.request_id.0).is_err() {
+        return Err(AgentError::new(
+            AgentErrorCode::InvalidInput,
+            "request_id must be a UUID",
+        ));
+    }
+    Ok(())
 }
 
 fn turn_not_found() -> AgentError {
