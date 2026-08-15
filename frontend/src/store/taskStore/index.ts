@@ -529,7 +529,13 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
   addContextRef: reference => set(state => ({
     pendingContextRefs: [
       ...state.pendingContextRefs.filter(item => item.id !== reference.id),
-      { ...reference, snapshot: reference.snapshot.slice(0, 2000) },
+      {
+        ...reference,
+        snapshot: reference.snapshot.slice(
+          0,
+          reference.type === 'whiteboard_selection' ? 12000 : 2000,
+        ),
+      },
     ].slice(-8),
   })),
   removeContextRef: referenceId => set(state => ({

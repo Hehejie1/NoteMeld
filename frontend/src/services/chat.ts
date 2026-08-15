@@ -4,7 +4,7 @@ import type { ConversationMessage, ConversationSource } from '@/store/taskStore'
 import { isDemoMode } from '@/demo/mode'
 import { demoStreamFreeChat } from '@/demo/transport'
 
-export interface ConversationContextRef {
+export interface LegacyConversationContextRef {
   id: string
   type: 'note_selection' | 'whiteboard_node'
   document_task_id?: string
@@ -14,6 +14,20 @@ export interface ConversationContextRef {
   snapshot: string
   source_ids?: string[]
 }
+
+export interface WhiteboardSelectionContextRef {
+  id: string
+  type: 'whiteboard_selection'
+  whiteboard_id: string
+  revision: number
+  card_ids: string[]
+  relation_ids: string[]
+  label: string
+  snapshot: string
+  source_ids?: string[]
+}
+
+export type ConversationContextRef = LegacyConversationContextRef | WhiteboardSelectionContextRef
 
 export interface FreeChatPayload {
   question: string
