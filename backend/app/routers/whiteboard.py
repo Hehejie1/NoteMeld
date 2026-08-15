@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.db.engine import SessionLocal
 from app.models.whiteboard import SafeId, WhiteboardOperation
 from app.services.conversation_context_refs import resolve_context_refs
+from app.services.whiteboard_asset_service import WhiteboardAssetRegistrationService
 from app.services.whiteboard_repository import (
     WhiteboardRepository,
     WhiteboardRevisionConflict,
@@ -24,6 +25,7 @@ router = APIRouter()
 repository = WhiteboardRepository(SessionLocal)
 seed_service = WhiteboardSeedService(repository=repository)
 publish_service = WhiteboardNotePublishService(repository=repository)
+asset_service = WhiteboardAssetRegistrationService(repository=repository)
 
 
 class _StrictPayload(BaseModel):
@@ -62,6 +64,13 @@ class WhiteboardContextPayload(_StrictPayload):
         if not normalized:
             raise ValueError("label must not be blank")
         return normalized
+
+
+class RegisterWhiteboardAssetPayload(_StrictPayload):
+    upload_id: SafeId
+    file_name: str = Field(min_length=1, max_length=500)
+    content_type: str = Field(default="", max_length=200)
+    file_kind: Literal["markdown", "audio", "video", "document", "image"]
 
 
 def _wrapped(action: Callable[[], object], *, not_found_msg: str = "白板不存在"):
@@ -176,6 +185,27 @@ def create_whiteboard_context(
         return resolved[0]
 
     return _wrapped(resolve)
+
+
+@router.post(
+    "/conversations/{conversation_id}/whiteboards/{whiteboard_id}/assets"
+)
+def register_whiteboard_asset(
+    conversation_id: str,
+    whiteboard_id: str,
+    data: RegisterWhiteboardAssetPayload,
+):
+    return _wrapped(
+        lambda: asset_service.register(
+            conversation_id,
+            whiteboard_id,
+            upload_id=data.upload_id,
+            file_name=data.file_name,
+            content_type=data.content_type,
+            file_kind=data.file_kind,
+        ),
+        not_found_msg="白板或上传文件不存在",
+    )
 
 
 @router.post(

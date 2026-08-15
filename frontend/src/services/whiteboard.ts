@@ -16,6 +16,18 @@ const conversationPath = (conversationId: string) =>
 const whiteboardPath = (conversationId: string, whiteboardId: string) =>
   `${conversationPath(conversationId)}/${encodeURIComponent(whiteboardId)}`
 
+export interface RegisterWhiteboardAssetPayload {
+  upload_id: string
+  file_name: string
+  content_type: string
+  file_kind: 'markdown' | 'audio' | 'video' | 'document' | 'image'
+}
+
+export interface RegisteredWhiteboardAsset extends RegisterWhiteboardAssetPayload {
+  asset_id: string
+  source_url: string
+}
+
 export const listWhiteboards = async (conversationId: string): Promise<WhiteboardSummary[]> =>
   request.get(conversationPath(conversationId)) as unknown as Promise<WhiteboardSummary[]>
 
@@ -56,6 +68,16 @@ export const createWhiteboardContext = async (
     `${whiteboardPath(conversationId, whiteboardId)}/context`,
     payload,
   ) as unknown as Promise<WhiteboardSelectionContextRef>
+
+export const registerWhiteboardAsset = async (
+  conversationId: string,
+  whiteboardId: string,
+  payload: RegisterWhiteboardAssetPayload,
+): Promise<RegisteredWhiteboardAsset> =>
+  request.post(
+    `${whiteboardPath(conversationId, whiteboardId)}/assets`,
+    payload,
+  ) as unknown as Promise<RegisteredWhiteboardAsset>
 
 export const publishWhiteboard = async (
   conversationId: string,

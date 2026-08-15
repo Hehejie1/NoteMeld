@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { uploadFile } from '@/services/upload'
+import { registerWhiteboardAsset } from '@/services/whiteboard'
 import type { WhiteboardCard, WhiteboardCardType, WhiteboardSourceRef } from './types'
 import { uploadFileForWhiteboardCard, type WhiteboardUploadMetadata } from './whiteboardInteractions'
 
@@ -17,6 +18,8 @@ export interface WhiteboardCardFormValue {
 
 interface WhiteboardCardDialogProps {
   open: boolean
+  conversationId: string
+  whiteboardId: string
   initialType?: WhiteboardCardType
   card?: WhiteboardCard | null
   onOpenChange: (open: boolean) => void
@@ -53,6 +56,8 @@ const parseSources = (raw: string): WhiteboardSourceRef[] => {
 
 export default function WhiteboardCardDialog({
   open,
+  conversationId,
+  whiteboardId,
   initialType = 'markdown',
   card,
   onOpenChange,
@@ -66,6 +71,7 @@ export default function WhiteboardCardDialog({
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadMetadata, setUploadMetadata] = useState<WhiteboardUploadMetadata | null>(null)
+  const [fileRegistrationFailed, setFileRegistrationFailed] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -76,6 +82,7 @@ export default function WhiteboardCardDialog({
     setContent(contentValue(card))
     setSources(card?.source_refs.length ? JSON.stringify(card.source_refs, null, 2) : '')
     setUploadMetadata(null)
+    setFileRegistrationFailed(false)
     setError('')
   }, [card, initialType, open])
 
@@ -85,7 +92,17 @@ export default function WhiteboardCardDialog({
     if (!file) return
     setUploading(true)
     setError('')
-    const result = await uploadFileForWhiteboardCard(file, content, uploadFile)
+    const result = await uploadFileForWhiteboardCard(
+      file,
+      content,
+      uploadFile,
+      response => registerWhiteboardAsset(conversationId, whiteboardId, {
+        upload_id: response.upload_id || '',
+        file_name: response.file_name,
+        content_type: response.content_type,
+        file_kind: response.file_kind,
+      }),
+    )
     setContent(result.uploadId)
     setUploadMetadata(result.metadata)
     if (result.metadata) {
@@ -95,6 +112,7 @@ export default function WhiteboardCardDialog({
         : `${result.metadata?.fileKind || 'file'} · ${result.metadata?.contentType || file.type || 'application/octet-stream'}`)
     }
     if (result.error) setError(result.error)
+    setFileRegistrationFailed(Boolean(result.error))
     setUploading(false)
   }
 
@@ -110,6 +128,7 @@ export default function WhiteboardCardDialog({
         if (!/^https?:\/\//i.test(raw)) throw new Error('网页地址必须以 http:// 或 https:// 开头')
         shapedContent = { url: raw }
       } else if (type === 'file') {
+        if (fileRegistrationFailed) throw new Error('文件尚未完成白板资产登记，请重新上传')
         if (!raw || /[\\/]/.test(raw)) throw new Error('请输入已上传文件的 upload id')
         shapedContent = { upload_id: raw }
       } else {
@@ -185,7 +204,7 @@ export default function WhiteboardCardDialog({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" disabled={saving || uploading} onClick={() => onOpenChange(false)}>取消</Button>
-          <Button type="button" disabled={saving || uploading} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</Button>
+          <Button type="button" disabled={saving || uploading || (type === 'file' && fileRegistrationFailed)} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

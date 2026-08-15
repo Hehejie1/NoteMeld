@@ -26,25 +26,29 @@ export function createViewportCommitter(
     timer = null
   }
 
+  const commitLatest = () => {
+    const pending = latest
+    latest = null
+    if (!pending) return
+    try {
+      void Promise.resolve(commit(pending)).catch(onError)
+    } catch (error) {
+      onError(error)
+    }
+  }
+
   return {
     schedule(viewport: WhiteboardViewport) {
       latest = { ...viewport }
       clear()
       timer = scheduler.setTimeout(() => {
         timer = null
-        const pending = latest
-        latest = null
-        if (!pending) return
-        try {
-          void Promise.resolve(commit(pending)).catch(onError)
-        } catch (error) {
-          onError(error)
-        }
+        commitLatest()
       }, delayMs)
     },
     dispose() {
       clear()
-      latest = null
+      commitLatest()
     },
   }
 }
@@ -59,12 +63,14 @@ export async function uploadFileForWhiteboardCard(
   file: File,
   currentUploadId: string,
   uploader: (formData: FormData) => Promise<UploadFileResponse>,
+  registrar: (response: UploadFileResponse) => Promise<unknown>,
 ): Promise<{ uploadId: string; metadata: WhiteboardUploadMetadata | null; error: string | null }> {
   const formData = new FormData()
   formData.append('file', file)
   try {
     const response = await uploader(formData)
     if (!response.upload_id?.trim()) throw new Error('上传完成但没有返回 upload id')
+    await registrar(response)
     return {
       uploadId: response.upload_id.trim(),
       metadata: {
@@ -75,10 +81,13 @@ export async function uploadFileForWhiteboardCard(
       error: null,
     }
   } catch (error) {
+    const candidate = error as { msg?: string; detail?: string } | null
     return {
       uploadId: currentUploadId,
       metadata: null,
-      error: error instanceof Error ? error.message : '文件上传失败，请重试',
+      error: error instanceof Error
+        ? error.message
+        : candidate?.detail || candidate?.msg || '文件上传失败，请重试',
     }
   }
 }

@@ -53,6 +53,7 @@ for (const segment of [
   '/whiteboards',
   '/mutations',
   '/context',
+  '/assets',
   '/publish-note',
   '/from-learning-canvas/',
 ]) {
@@ -190,6 +191,11 @@ assert.match(cardDialog, /nopan/)
 assert.match(cardDialog, /type="file"/)
 assert.match(cardDialog, /uploadFile/)
 assert.match(cardDialog, /uploadFileForWhiteboardCard/)
+assert.match(cardDialog, /registerWhiteboardAsset/)
+assert.match(cardDialog, /conversationId/)
+assert.match(cardDialog, /whiteboardId/)
+assert.match(cardDialog, /fileRegistrationFailed/)
+assert.match(cardDialog, /type === 'file' && fileRegistrationFailed/)
 assert.match(relationDialog, /bezier/)
 assert.match(relationDialog, /straight/)
 assert.match(relationDialog, /smoothstep/)
@@ -254,11 +260,16 @@ assert.deepEqual(viewportCommits, [{ x: 50, y: 60, zoom: 0.6 }], '只持久化�
 viewportCommitter.schedule({ x: 70, y: 80, zoom: 0.5 })
 viewportCommitter.dispose()
 assert.equal(scheduled.size, 0, 'board 切换或 unmount 必须清理 timer')
+assert.deepEqual(viewportCommits, [
+  { x: 50, y: 60, zoom: 0.6 },
+  { x: 70, y: 80, zoom: 0.5 },
+], 'dispose 必须 flush 最后一份视口，不能在切板时丢失用户位置')
 
 const uploaded = await interactionsModule.uploadFileForWhiteboardCard(
   new File(['pdf'], 'paper.pdf', { type: 'application/pdf' }),
   'existing_upload',
   async () => ({ upload_id: 'upload_new', file_name: 'paper.pdf', content_type: 'application/pdf', file_kind: 'document' }),
+  async response => ({ upload_id: response.upload_id }),
 )
 assert.deepEqual(uploaded, {
   uploadId: 'upload_new',
@@ -269,10 +280,29 @@ const failedUpload = await interactionsModule.uploadFileForWhiteboardCard(
   new File(['pdf'], 'paper.pdf', { type: 'application/pdf' }),
   'existing_upload',
   async () => { throw new Error('network down') },
+  async () => { throw new Error('must not register') },
 )
 assert.equal(failedUpload.uploadId, 'existing_upload', '上传失败必须保留原 upload id 输入')
 assert.equal(failedUpload.metadata, null)
 assert.match(failedUpload.error, /network down/)
+
+const uploadOrder = []
+const failedRegistration = await interactionsModule.uploadFileForWhiteboardCard(
+  new File(['pdf'], 'paper.pdf', { type: 'application/pdf' }),
+  'existing_upload',
+  async () => {
+    uploadOrder.push('upload')
+    return { upload_id: 'upload_unowned', file_name: 'paper.pdf', content_type: 'application/pdf', file_kind: 'document' }
+  },
+  async () => {
+    uploadOrder.push('register')
+    throw new Error('registration failed')
+  },
+)
+assert.deepEqual(uploadOrder, ['upload', 'register'])
+assert.equal(failedRegistration.uploadId, 'existing_upload')
+assert.equal(failedRegistration.metadata, null)
+assert.match(failedRegistration.error, /registration failed/)
 
 let currentTaskId = 'conv_a'
 let resolveContext

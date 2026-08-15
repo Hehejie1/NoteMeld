@@ -406,6 +406,8 @@ function WhiteboardCanvasInner({
 
       <WhiteboardCardDialog
         open={cardDialogOpen}
+        conversationId={conversationId}
+        whiteboardId={whiteboardId}
         initialType={cardDialogType}
         card={editingCard}
         onOpenChange={setCardDialogOpen}
