@@ -142,6 +142,32 @@ export interface PublishedNoteOverride {
   }
 }
 
+export function selectWhiteboardPanelSnapshot<T>(
+  view: 'whiteboard' | 'note',
+  noteSnapshot: T | null,
+  canvasSnapshot: T | null,
+): T | null {
+  return view === 'note'
+    ? noteSnapshot ?? canvasSnapshot
+    : canvasSnapshot ?? noteSnapshot
+}
+
+export function isPublishedNoteOverrideConfirmed(
+  snapshot: { note_link: { note_task_id: string; published_revision: number } | null } | null,
+  override: PublishedNoteOverride | null,
+): boolean {
+  if (!snapshot?.note_link || !override) return false
+  return snapshot.note_link.note_task_id === override.noteLink.note_task_id
+    && snapshot.note_link.published_revision >= override.noteLink.published_revision
+}
+
+export function isWhiteboardTargetCurrent(
+  targetKey: string,
+  getCurrentTargetKey: () => string,
+): boolean {
+  return getCurrentTargetKey() === targetKey
+}
+
 export function createPublishedNoteOverride(
   targetKey: string,
   result: { note_task_id: string; published_revision: number },

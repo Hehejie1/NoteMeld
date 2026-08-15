@@ -14,11 +14,14 @@ import {
   deliverPublishedNoteRefresh,
   getWhiteboardPublishPresentation,
   loadWhiteboardSnapshotForTarget,
+  isPublishedNoteOverrideConfirmed,
+  isWhiteboardTargetCurrent,
   resolveWhiteboardNoteDocument,
   resolvePublishedWhiteboardSnapshot,
   reloadWhiteboardForPanelView,
   runDurableWhiteboardPublish,
   runPublishedWhiteboardReload,
+  selectWhiteboardPanelSnapshot,
   type PublishedNoteOverride,
   type WhiteboardNoteDocumentLike,
 } from './whiteboardPanelState'
@@ -103,11 +106,17 @@ export default function WhiteboardPanel({
   const currentNoteSnapshot = noteSnapshot?.targetKey === snapshotTargetKey
     ? noteSnapshot.value
     : null
-  const rawSnapshot = canvasStatus?.snapshot?.id === currentBoard.id
+  const canvasSnapshot = canvasStatus?.snapshot?.id === currentBoard.id
     ? canvasStatus.snapshot
-    : currentNoteSnapshot?.id === currentBoard.id
+    : null
+  const noteSnapshotForBoard = currentNoteSnapshot?.id === currentBoard.id
     ? currentNoteSnapshot
     : null
+  const rawSnapshot = selectWhiteboardPanelSnapshot(
+    view,
+    noteSnapshotForBoard,
+    canvasSnapshot,
+  )
   const currentPublishedNoteOverride = publishedNoteOverride?.targetKey === snapshotTargetKey
     ? publishedNoteOverride
     : null
@@ -199,14 +208,10 @@ export default function WhiteboardPanel({
   }, [currentBoard.id, snapshot])
 
   useEffect(() => {
-    if (!currentPublishedNoteOverride || !rawSnapshot?.note_link) return
-    if (
-      rawSnapshot.note_link.note_task_id === currentPublishedNoteOverride.noteLink.note_task_id
-      && rawSnapshot.note_link.published_revision >= currentPublishedNoteOverride.noteLink.published_revision
-    ) {
+    if (isPublishedNoteOverrideConfirmed(rawSnapshot, currentPublishedNoteOverride)) {
       setPublishedNoteOverride(null)
     }
-  }, [currentPublishedNoteOverride, rawSnapshot?.note_link])
+  }, [currentPublishedNoteOverride, rawSnapshot])
 
   const publishPresentation = useMemo(() => snapshot
     ? getWhiteboardPublishPresentation({ revision: snapshot.revision, noteLink: snapshot.note_link })
@@ -307,12 +312,12 @@ export default function WhiteboardPanel({
 
   const publish = async () => {
     if (!snapshot || publishing) return
+    const publishTargetKey = snapshotTargetKey
     setPublishing(true)
     setPublishError('')
     setPublishedNoteDelivery(null)
     setPublishedReloadFailure(null)
     try {
-      const publishTargetKey = snapshotTargetKey
       const outcome = await runDurableWhiteboardPublish({
         publish: () => publishWhiteboard(conversationId, snapshot.id, {
           base_revision: snapshot.revision,
@@ -336,6 +341,10 @@ export default function WhiteboardPanel({
         await reloadPublishedWhiteboard(publishTargetKey)
       }
     } catch (error) {
+      if (!isWhiteboardTargetCurrent(
+        publishTargetKey,
+        () => currentSnapshotTargetKeyRef.current,
+      )) return
       const candidate = error as { msg?: string } | undefined
       setPublishError(candidate?.msg || '发布失败，白板和上一次笔记均已保留')
     } finally {

@@ -161,6 +161,48 @@ test('Note view resolves only the current board linked document', () => {
   assert.match(markdownViewer, /documentTaskId/)
 })
 
+test('panel snapshot selection follows the live view and confirms published override', () => {
+  assert.equal(typeof panelStateModule.selectWhiteboardPanelSnapshot, 'function')
+  assert.equal(typeof panelStateModule.isPublishedNoteOverrideConfirmed, 'function')
+  const staleCanvas = { id: 'wb_a', revision: 4, note_link: null, source: 'canvas' }
+  const freshNote = {
+    id: 'wb_a',
+    revision: 4,
+    note_link: { note_task_id: 'note_a', published_revision: 4 },
+    source: 'note',
+  }
+  const override = panelStateModule.createPublishedNoteOverride('conv_a:wb_a', {
+    note_task_id: 'note_a',
+    published_revision: 4,
+  })
+
+  const selectedNote = panelStateModule.selectWhiteboardPanelSnapshot(
+    'note',
+    freshNote,
+    staleCanvas,
+  )
+  assert.equal(selectedNote.source, 'note')
+  assert.equal(panelStateModule.isPublishedNoteOverrideConfirmed(selectedNote, override), true)
+  const withoutOverride = panelStateModule.resolvePublishedWhiteboardSnapshot(
+    selectedNote,
+    'conv_a:wb_a',
+    null,
+  )
+  assert.equal(panelStateModule.getWhiteboardPublishPresentation({
+    revision: withoutOverride.revision,
+    noteLink: withoutOverride.note_link,
+  }).state, 'synced')
+
+  const selectedWhiteboard = panelStateModule.selectWhiteboardPanelSnapshot(
+    'whiteboard',
+    freshNote,
+    staleCanvas,
+  )
+  assert.equal(selectedWhiteboard.source, 'canvas')
+  assert.match(panel, /selectWhiteboardPanelSnapshot/)
+  assert.match(panel, /isPublishedNoteOverrideConfirmed/)
+})
+
 test('publish completion cannot reactivate an old conversation', async () => {
   assert.equal(typeof panelStateModule.completePublishedConversationRefresh, 'function')
   let currentConversationId = 'conv_a'
@@ -319,6 +361,30 @@ test('published Note link survives board reload failure and reload retry never r
   assert.match(panel, /currentPublishedReloadFailure/)
   assert.match(panel, /笔记已发布，白板状态刷新失败/)
   assert.match(panel, /重试白板刷新/)
+})
+
+test('publish failure cannot leak into a newly selected child board', () => {
+  assert.equal(typeof panelStateModule.isWhiteboardTargetCurrent, 'function')
+  let currentTargetKey = 'conv_a:wb_root'
+  const capturedTargetKey = currentTargetKey
+  currentTargetKey = 'conv_a:wb_child'
+  assert.equal(panelStateModule.isWhiteboardTargetCurrent(
+    capturedTargetKey,
+    () => currentTargetKey,
+  ), false)
+  assert.equal(panelStateModule.isWhiteboardTargetCurrent(
+    currentTargetKey,
+    () => currentTargetKey,
+  ), true)
+
+  const publishStart = panel.indexOf('const publish = async')
+  const publishEnd = panel.indexOf('\n  if (!backendReady)', publishStart)
+  assert.notEqual(publishStart, -1)
+  assert.notEqual(publishEnd, -1)
+  const publishSection = panel.slice(publishStart, publishEnd)
+  assert.match(publishSection, /const publishTargetKey = snapshotTargetKey/)
+  assert.match(publishSection, /catch \(error\)[^]*?isWhiteboardTargetCurrent\(\s*publishTargetKey/)
+  assert.doesNotMatch(publishSection, /catch \(error\) \{\s*const candidate/)
 })
 
 test('Note lifecycle reload ignores stale canvas controller and guards direct fetch', async () => {
