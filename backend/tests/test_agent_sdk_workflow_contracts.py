@@ -51,7 +51,52 @@ def _workflow() -> tuple[dict, str]:
     return parsed, source
 
 
+def _cargo_graph_fixture(directory: Path) -> tuple[Path, Path, dict[str, object]]:
+    directory.mkdir(parents=True, exist_ok=True)
+    lock = directory / "Cargo.lock"
+    lock.write_text(
+        'version = 4\n\n[[package]]\nname = "agent-ffi"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
+    package_id = "path+file:///workspace/agent-ffi#0.1.0"
+    metadata = directory / "cargo-metadata.json"
+    metadata.write_text(
+        json.dumps(
+            {
+                "packages": [
+                    {
+                        "id": package_id,
+                        "name": "agent-ffi",
+                        "version": "0.1.0",
+                        "license": "MIT",
+                    }
+                ],
+                "resolve": {
+                    "nodes": [
+                        {"id": package_id, "dependencies": [], "deps": []}
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    resolve_summary = json.dumps(
+        [{"component": "agent-ffi@0.1.0", "dependencies": []}],
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    inventory = {
+        "format_version": 1,
+        "cargo_lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+        "root_package": "agent-ffi@0.1.0",
+        "resolve_sha256": hashlib.sha256(resolve_summary).hexdigest(),
+        "packages": [{"component": "agent-ffi@0.1.0", "license": "MIT"}],
+    }
+    return metadata, lock, inventory
+
+
 def _run_validator(root: Path, *expected_targets: str) -> subprocess.CompletedProcess[str]:
+    metadata, lock, _ = _cargo_graph_fixture(root / ".validator-expected")
     command = [
         sys.executable,
         str(VALIDATOR),
@@ -64,6 +109,12 @@ def _run_validator(root: Path, *expected_targets: str) -> subprocess.CompletedPr
         "1",
         "--binding-version",
         "0.1.0",
+        "--expected-cargo-metadata",
+        str(metadata),
+        "--expected-cargo-lock",
+        str(lock),
+        "--root-package",
+        "agent-ffi",
     ]
     for target in expected_targets:
         command.extend(("--expected-target", target))
@@ -101,16 +152,11 @@ def _write_manifest(root: Path, entries: list[dict[str, object]]) -> Path:
 
 def _write_complete_linux_bundle(root: Path) -> None:
     target = "x86_64-unknown-linux-gnu"
-    lock = root / "Cargo.lock"
-    lock.write_text(
-        'version = 4\n\n[[package]]\nname = "agent-ffi"\nversion = "0.1.0"\n',
-        encoding="utf-8",
+    _, lock_fixture, inventory_document = _cargo_graph_fixture(
+        root / ".bundle-license-source"
     )
-    inventory_document = {
-        "format_version": 1,
-        "cargo_lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
-        "packages": [{"component": "agent-ffi@0.1.0", "license": "MIT"}],
-    }
+    lock = root / "Cargo.lock"
+    shutil.copyfile(lock_fixture, lock)
     inventory = root / "license-inventory.json"
     inventory.write_text(json.dumps(inventory_document), encoding="utf-8")
     native = root / "libnotemeld_agent.so"
@@ -310,9 +356,17 @@ def test_harmony_build_configures_real_sysroot_and_sdk_consumer_gate() -> None:
     assert '--sysroot=' in source
     assert '-D__MUSL__=1' in source
     assert "local.properties" in source
+    assert "hwsdk.dir=" in source
+    assert "HOS_SDK_HOME" in source
+    assert "apiVersion" in source
+    assert "compileSdkVersion" in source
+    assert "compatibleSdkVersion" in source
+    assert "for sdk_component in ets native toolchains" in source
+    assert '"$OHOS_SDK_ROOT/$sdk_component"' in source
     assert "harmony-har-consumer" in source
     assert source.count("assembleHar") >= 2
     assert "OHOS_SDK_ROOT" in workflow
+    assert "*-linux-*.zip" in workflow
     for variable in (
         "OPENHARMONY_SDK_URL",
         "OPENHARMONY_COMMANDLINE_TOOLS_URL",
@@ -366,9 +420,10 @@ def test_python_release_uses_packaged_native_clean_venv_and_manylinux() -> None:
     parsed, workflow = _workflow()
     source = (SCRIPTS / "build-python.sh").read_text(encoding="utf-8")
 
-    assert "importlib.resources" in (
+    runtime_source = (
         ROOT / "agent-sdk" / "bindings" / "python" / "notemeld_agent_sdk" / "runtime.py"
     ).read_text(encoding="utf-8")
+    assert "importlib.resources" in runtime_source or "from importlib import resources" in runtime_source
     assert "venv" in source
     assert "pip install" in source
     assert "Runtime(driver=" in source
@@ -431,13 +486,31 @@ def test_license_inventory_is_derived_from_cargo_metadata(tmp_path: Path) -> Non
     metadata = tmp_path / "cargo-metadata.json"
     cargo_lock = tmp_path / "Cargo.lock"
     output = tmp_path / "license-inventory.json"
+    ffi_id = "path+file:///workspace/agent-ffi#0.1.0"
+    serde_id = "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229"
     metadata.write_text(
         json.dumps(
             {
                 "packages": [
-                    {"name": "serde", "version": "1.0.229", "license": "MIT OR Apache-2.0"},
-                    {"name": "agent-ffi", "version": "0.1.0", "license": "MIT"},
-                ]
+                    {
+                        "id": serde_id,
+                        "name": "serde",
+                        "version": "1.0.229",
+                        "license": "MIT OR Apache-2.0",
+                    },
+                    {
+                        "id": ffi_id,
+                        "name": "agent-ffi",
+                        "version": "0.1.0",
+                        "license": "MIT",
+                    },
+                ],
+                "resolve": {
+                    "nodes": [
+                        {"id": ffi_id, "dependencies": [serde_id], "deps": []},
+                        {"id": serde_id, "dependencies": [], "deps": []},
+                    ]
+                },
             }
         ),
         encoding="utf-8",
@@ -456,6 +529,8 @@ def test_license_inventory_is_derived_from_cargo_metadata(tmp_path: Path) -> Non
             str(metadata),
             "--cargo-lock",
             str(cargo_lock),
+            "--root-package",
+            "agent-ffi",
             "--output",
             str(output),
         ],
@@ -465,9 +540,23 @@ def test_license_inventory_is_derived_from_cargo_metadata(tmp_path: Path) -> Non
     )
 
     assert result.returncode == 0, result.stderr
-    assert json.loads(output.read_text(encoding="utf-8")) == {
+    inventory = json.loads(output.read_text(encoding="utf-8"))
+    expected_resolve = json.dumps(
+        [
+            {
+                "component": "agent-ffi@0.1.0",
+                "dependencies": ["serde@1.0.229"],
+            },
+            {"component": "serde@1.0.229", "dependencies": []},
+        ],
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    assert inventory == {
         "format_version": 1,
         "cargo_lock_sha256": hashlib.sha256(cargo_lock.read_bytes()).hexdigest(),
+        "root_package": "agent-ffi@0.1.0",
+        "resolve_sha256": hashlib.sha256(expected_resolve).hexdigest(),
         "packages": [
             {"component": "agent-ffi@0.1.0", "license": "MIT"},
             {"component": "serde@1.0.229", "license": "MIT OR Apache-2.0"},
@@ -475,16 +564,115 @@ def test_license_inventory_is_derived_from_cargo_metadata(tmp_path: Path) -> Non
     }
 
 
+def test_license_inventory_is_limited_to_agent_ffi_resolve_closure(
+    tmp_path: Path,
+) -> None:
+    metadata = tmp_path / "cargo-metadata.json"
+    cargo_lock = tmp_path / "Cargo.lock"
+    output = tmp_path / "license-inventory.json"
+    ffi_id = "path+file:///workspace/agent-ffi#0.1.0"
+    serde_id = "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229"
+    unrelated_id = "path+file:///workspace/agent-reference#0.1.0"
+    metadata.write_text(
+        json.dumps(
+            {
+                "packages": [
+                    {
+                        "id": ffi_id,
+                        "name": "agent-ffi",
+                        "version": "0.1.0",
+                        "license": "MIT",
+                    },
+                    {
+                        "id": serde_id,
+                        "name": "serde",
+                        "version": "1.0.229",
+                        "license": "MIT OR Apache-2.0",
+                    },
+                    {
+                        "id": unrelated_id,
+                        "name": "agent-reference",
+                        "version": "0.1.0",
+                        "license": "MIT",
+                    },
+                ],
+                "resolve": {
+                    "nodes": [
+                        {"id": ffi_id, "dependencies": [serde_id], "deps": []},
+                        {"id": serde_id, "dependencies": [], "deps": []},
+                        {"id": unrelated_id, "dependencies": [], "deps": []},
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    cargo_lock.write_text(
+        """version = 4
+
+[[package]]
+name = "agent-ffi"
+version = "0.1.0"
+
+[[package]]
+name = "agent-reference"
+version = "0.1.0"
+
+[[package]]
+name = "serde"
+version = "1.0.229"
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VALIDATOR),
+            "licenses",
+            "--cargo-metadata",
+            str(metadata),
+            "--cargo-lock",
+            str(cargo_lock),
+            "--root-package",
+            "agent-ffi",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    inventory = json.loads(output.read_text(encoding="utf-8"))
+    assert inventory["root_package"] == "agent-ffi@0.1.0"
+    assert [entry["component"] for entry in inventory["packages"]] == [
+        "agent-ffi@0.1.0",
+        "serde@1.0.229",
+    ]
+    assert len(inventory["resolve_sha256"]) == 64
+
+
+def test_final_verifier_attests_checkout_lock_and_resolve_closure() -> None:
+    parsed, source = _workflow()
+
+    assert "cargo metadata" in source
+    assert "--locked" in source
+    assert "--expected-cargo-lock agent-sdk/Cargo.lock" in source
+    assert "--expected-cargo-metadata" in source
+    assert "--root-package agent-ffi" in source
+    assert any(
+        step.get("uses") == "dtolnay/rust-toolchain@master"
+        for step in parsed["jobs"]["verify-manifests"]["steps"]
+    )
+
+
 def test_manifest_validator_rejects_duplicate_target_manifests(tmp_path: Path) -> None:
     for directory_name in ("first", "second"):
         directory = tmp_path / directory_name
         directory.mkdir()
-        payload = directory_name.encode()
-        (directory / "agent.bin").write_bytes(payload)
-        _write_manifest(
-            directory,
-            [_entry("agent.bin", payload, "x86_64-unknown-linux-gnu")],
-        )
+        _write_complete_linux_bundle(directory)
 
     result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
 
@@ -503,7 +691,7 @@ def test_manifest_validator_rejects_placeholder_only_bundle(tmp_path: Path) -> N
     result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
 
     assert result.returncode != 0
-    assert "required artifact kind" in result.stderr.lower()
+    assert "placeholder" in result.stderr.lower()
 
 
 @pytest.mark.parametrize(
@@ -630,17 +818,47 @@ def test_manifest_validator_rejects_android_aar_missing_jni_bridge(
     assert "libnotemeld_agent_jni.so" in result.stderr
 
 
+def test_manifest_validator_rejects_swift_package_with_empty_xcframework(
+    tmp_path: Path,
+) -> None:
+    target = "aarch64-apple-ios"
+    package = tmp_path / "NoteMeldAgentSwiftPackage.zip"
+    _write_zip(
+        package,
+        {
+            "notemeld-agent-sdk.json": _binding_marker(
+                "aarch64-apple-ios", "aarch64-apple-ios-sim"
+            ),
+            "Package.swift": (
+                '.binaryTarget(name: "CNotemeldAgent", '
+                'path: "NoteMeldAgentNative.xcframework")'
+            ),
+            "NoteMeldAgentNative.xcframework/Info.plist": "empty",
+        },
+    )
+    entry = _entry(package.name, package.read_bytes(), target)
+    entry["kind"] = "swift-package"
+    _write_manifest(tmp_path, [entry])
+
+    result = _run_validator(tmp_path, target)
+
+    assert result.returncode != 0
+    assert "embedded xcframework is missing" in result.stderr.lower()
+
+
 def test_manifest_validator_rejects_lock_digest_drift(tmp_path: Path) -> None:
     lock = tmp_path / "Cargo.lock"
     lock.write_text('version = 4\n[[package]]\nname="agent-ffi"\nversion="0.1.0"\n')
     inventory = tmp_path / "license-inventory.json"
     inventory.write_text(
         json.dumps(
-            {
-                "format_version": 1,
-                "cargo_lock_sha256": "0" * 64,
-                "packages": [{"component": "agent-ffi@0.1.0", "license": "MIT"}],
-            }
+                {
+                    "format_version": 1,
+                    "cargo_lock_sha256": "0" * 64,
+                    "root_package": "agent-ffi@0.1.0",
+                    "resolve_sha256": "1" * 64,
+                    "packages": [{"component": "agent-ffi@0.1.0", "license": "MIT"}],
+                }
         )
     )
     entries = []
@@ -654,6 +872,35 @@ def test_manifest_validator_rejects_lock_digest_drift(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "cargo lock digest mismatch" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_consistently_substituted_artifact_lock(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    lock = tmp_path / "Cargo.lock"
+    lock.write_text(
+        lock.read_text(encoding="utf-8")
+        + '\n[[package]]\nname = "substituted"\nversion = "9.9.9"\n',
+        encoding="utf-8",
+    )
+    inventory_path = tmp_path / "license-inventory.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    inventory["cargo_lock_sha256"] = hashlib.sha256(lock.read_bytes()).hexdigest()
+    inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["license_inventory"] = inventory
+    manifest["cargo_lock_sha256"] = inventory["cargo_lock_sha256"]
+    for entry in manifest["artifacts"]:
+        artifact = tmp_path / entry["path"]
+        entry["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "checkout cargo resolve closure" in result.stderr.lower()
 
 
 def test_manifest_validator_rejects_symlink_artifact(tmp_path: Path) -> None:
@@ -685,10 +932,11 @@ def test_manifest_validator_rejects_symlink_artifact(tmp_path: Path) -> None:
 def test_manifest_validator_rejects_invalid_or_incomplete_manifests(
     tmp_path: Path, mutation: str, expected_error: str
 ) -> None:
-    payload = b"payload"
-    (tmp_path / "agent.bin").write_bytes(payload)
-    entry = _entry("agent.bin", payload, "x86_64-unknown-linux-gnu")
-    entries = [entry]
+    _write_complete_linux_bundle(tmp_path)
+    manifest_path = tmp_path / "artifact-manifest.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = document["artifacts"]
+    entry = entries[0]
     expected_targets = ["x86_64-unknown-linux-gnu"]
 
     if mutation == "missing_field":
@@ -697,7 +945,7 @@ def test_manifest_validator_rejects_invalid_or_incomplete_manifests(
         entries.append(dict(entry))
     elif mutation == "escape":
         outside = tmp_path.parent / "outside.bin"
-        outside.write_bytes(payload)
+        outside.write_bytes((tmp_path / entry["path"]).read_bytes())
         entry["path"] = "../outside.bin"
     elif mutation == "checksum":
         entry["sha256"] = "0" * 64
@@ -708,7 +956,7 @@ def test_manifest_validator_rejects_invalid_or_incomplete_manifests(
     elif mutation == "missing_target":
         expected_targets.append("aarch64-unknown-linux-gnu")
 
-    _write_manifest(tmp_path, entries)
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
     result = _run_validator(tmp_path, *expected_targets)
 
     assert result.returncode != 0

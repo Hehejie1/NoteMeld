@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import ctypes
+from importlib import resources
 import json
 import os
 import queue
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -49,6 +51,22 @@ ABI_SIGNATURES: dict[str, tuple[Any, tuple[Any, ...]]] = {
 }
 _CONTEXTS: dict[int, "_CallbackBox"] = {}
 _CONTEXTS_LOCK = threading.Lock()
+
+
+def _packaged_native_library() -> Path | None:
+    library_name = (
+        "notemeld_agent.dll"
+        if sys.platform == "win32"
+        else "libnotemeld_agent.dylib"
+        if sys.platform == "darwin"
+        else "libnotemeld_agent.so"
+    )
+    candidate = resources.files(__package__).joinpath("native", library_name)
+    try:
+        path = Path(str(candidate))
+    except TypeError:
+        return None
+    return path if path.is_file() else None
 
 
 class _CallbackBox:
@@ -125,7 +143,11 @@ class Runtime:
         on_event: Callable[[dict[str, Any]], None] | None = None,
         max_turns: int = 16,
     ) -> None:
-        library = native_library or os.environ.get("NOTEMELD_AGENT_SDK_LIBRARY")
+        library = (
+            native_library
+            or os.environ.get("NOTEMELD_AGENT_SDK_LIBRARY")
+            or _packaged_native_library()
+        )
         if not library:
             raise AgentSdkError(-2, "native library path is required")
         path = Path(library).expanduser()

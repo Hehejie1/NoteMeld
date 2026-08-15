@@ -57,8 +57,10 @@ jobs:
             target: x86_64-pc-windows-msvc
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
+            manylinux_image: quay.io/pypa/manylinux_2_28_x86_64:2026.05.07-2
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            manylinux_image: quay.io/pypa/manylinux_2_28_aarch64:2026.05.07-2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -68,32 +70,29 @@ jobs:
         with:
           toolchain: "1.97.1"
           targets: ${{ matrix.target }}
-      - name: Install Linux ARM64 linker
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Configure Linux ARM64 linker
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        shell: bash
-        run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
-      - name: Build Python/native artifact
+      - name: Build Python/native artifact on macOS or Windows
+        if: ${{ !contains(matrix.target, 'unknown-linux-gnu') }}
         shell: bash
         run: agent-sdk/scripts/build-python.sh "${{ matrix.target }}"
-      - name: Run native Python fake-turn harness when host matches target
+      - name: Build, auditwheel repair, install, and smoke the manylinux wheel
+        if: ${{ contains(matrix.target, 'unknown-linux-gnu') }}
         shell: bash
         run: |
-          HOST_TARGET="$(rustc -vV | sed -n 's/^host: //p')"
-          if [[ "$HOST_TARGET" == "${{ matrix.target }}" ]]; then
-            case "${{ matrix.target }}" in
-              *-pc-windows-*) LIBRARY="notemeld_agent.dll" ;;
-              *-apple-darwin) LIBRARY="libnotemeld_agent.dylib" ;;
-              *) LIBRARY="libnotemeld_agent.so" ;;
-            esac
-            NOTEMELD_AGENT_SDK_LIBRARY="$PWD/agent-sdk/target/${{ matrix.target }}/release/$LIBRARY" \
-              PYTHONPATH=agent-sdk/bindings/python \
-              python -m pytest agent-sdk/examples/python-host/test_smoke.py -q
-          else
-            echo "${{ matrix.target }} was cross-built; no target process is available on $HOST_TARGET"
-          fi
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e CARGO_HOME=/tmp/notemeld-manylinux-cargo \
+            -e RUSTUP_HOME=/tmp/notemeld-manylinux-rustup \
+            -e NOTEMELD_MANYLINUX_BUILD=1 \
+            -e NOTEMELD_SDK_VERSION \
+            -e NOTEMELD_SCHEMA_VERSION \
+            -e NOTEMELD_BINDING_VERSION \
+            -v "$PWD:/io" -w /io \
+            "${{ matrix.manylinux_image }}" bash -lc '
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs |
+                sh -s -- -y --profile minimal --default-toolchain 1.97.1
+              export PATH="$CARGO_HOME/bin:/opt/python/cp311-cp311/bin:$PATH"
+              PYTHON_BIN=/opt/python/cp311-cp311/bin/python \
+                agent-sdk/scripts/build-python.sh "${{ matrix.target }}"
+            '
       - uses: actions/upload-artifact@v4
         with:
           name: agent-sdk-${{ matrix.target }}
@@ -158,7 +157,7 @@ jobs:
           api-level: 35
           arch: x86_64
           profile: pixel_2
-          script: NOTEMELD_AGENT_LIBRARY_DIR="$GITHUB_WORKSPACE/agent-sdk/target/android-jni" gradle -p agent-sdk/examples/android-harness --no-daemon connectedAndroidTest
+          script: gradle -p agent-sdk/target/android-aar-consumer --no-daemon connectedAndroidTest
       - uses: actions/upload-artifact@v4
         with:
           name: agent-sdk-android
@@ -222,18 +221,21 @@ jobs:
             echo "Unsupported OpenHarmony command-line tools archive format" >&2
             exit 3
           fi
-          while IFS= read -r NATIVE_ARCHIVE; do
-            unzip -q "$NATIVE_ARCHIVE" -d "$(dirname "$NATIVE_ARCHIVE")"
-          done < <(find "$RUNNER_TEMP/ohos-sdk" -type f -name 'native-*.zip' -print)
-          LLVM_DIR="$(find "$RUNNER_TEMP/ohos-sdk" -type d -path '*/native/llvm' -print -quit)"
+          while IFS= read -r SDK_COMPONENT_ARCHIVE; do
+            unzip -q "$SDK_COMPONENT_ARCHIVE" -d "$(dirname "$SDK_COMPONENT_ARCHIVE")"
+          done < <(find "$RUNNER_TEMP/ohos-sdk" -type f -name '*-linux-*.zip' -print)
+          LLVM_DIR="$(find "$RUNNER_TEMP/ohos-tools" "$RUNNER_TEMP/ohos-sdk" \
+            -type d -path '*/native/llvm' -print -quit)"
           NATIVE_DIR="${LLVM_DIR%/llvm}"
+          SDK_ROOT="${NATIVE_DIR%/native}"
           OHPM_PATH="$(find "$RUNNER_TEMP/ohos-tools" -type f -name ohpm -print -quit)"
           HVIGOR_PATH="$(find "$RUNNER_TEMP/ohos-tools" -type f \( -name hvigorw -o -name hvigor \) -print -quit)"
-          if [[ -z "$NATIVE_DIR" || -z "$OHPM_PATH" || -z "$HVIGOR_PATH" ]]; then
+          if [[ -z "$SDK_ROOT" || -z "$NATIVE_DIR" || -z "$OHPM_PATH" || -z "$HVIGOR_PATH" ]]; then
             echo "Downloaded OpenHarmony archives do not contain native SDK, ohpm, and hvigor" >&2
             exit 4
           fi
           chmod +x "$NATIVE_DIR/llvm/bin/clang" "$NATIVE_DIR/llvm/bin/llvm-ar" "$OHPM_PATH" "$HVIGOR_PATH"
+          echo "OHOS_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "OHOS_SDK_NATIVE=$NATIVE_DIR" >> "$GITHUB_ENV"
           echo "OHPM_BIN=$OHPM_PATH" >> "$GITHUB_ENV"
           echo "HVIGOR_BIN=$HVIGOR_PATH" >> "$GITHUB_ENV"
@@ -254,16 +256,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.1"
       - uses: actions/download-artifact@v4
         with:
           path: downloaded-agent-sdk-artifacts
       - name: Verify checksums, versions, paths, duplicates, and target coverage
         run: |
+          cargo metadata --manifest-path agent-sdk/Cargo.toml --locked --format-version 1 \
+            > "$RUNNER_TEMP/agent-sdk-cargo-metadata.json"
           python agent-sdk/scripts/verify-artifact-manifest.py verify \
             --artifact-root downloaded-agent-sdk-artifacts \
             --sdk-version "0.1.0" \
             --schema-version "1" \
             --binding-version "0.1.0" \
+            --expected-cargo-metadata "$RUNNER_TEMP/agent-sdk-cargo-metadata.json" \
+            --expected-cargo-lock agent-sdk/Cargo.lock \
+            --root-package agent-ffi \
             --expected-target x86_64-apple-darwin \
             --expected-target aarch64-apple-darwin \
             --expected-target x86_64-pc-windows-msvc \

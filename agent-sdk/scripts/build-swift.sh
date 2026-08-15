@@ -39,20 +39,73 @@ done
 swift build --package-path agent-sdk/bindings/swift
 
 rm -rf "$BUILD_ROOT"
-mkdir -p "$BUILD_ROOT"
+HEADERS="$BUILD_ROOT/headers"
+PUBLISHED_PACKAGE="$BUILD_ROOT/swift-package"
+mkdir -p "$HEADERS" "$PUBLISHED_PACKAGE/Sources/NoteMeldAgentSDK"
+cp agent-sdk/include/notemeld_agent.h "$HEADERS/"
+cat > "$HEADERS/module.modulemap" <<'EOF'
+module CNotemeldAgent {
+  header "notemeld_agent.h"
+  export *
+}
+EOF
 LICENSE_METADATA="$BUILD_ROOT/cargo-metadata.json"
 LICENSE_INVENTORY="$BUILD_ROOT/license-inventory.json"
 # cargo metadata is the source of the shipped dependency license inventory.
 "${CARGO_COMMAND[@]}" metadata --manifest-path agent-sdk/Cargo.toml \
   --locked --format-version 1 > "$LICENSE_METADATA"
 "$PYTHON_BIN" agent-sdk/scripts/verify-artifact-manifest.py licenses \
-  --cargo-metadata "$LICENSE_METADATA" --output "$LICENSE_INVENTORY"
+  --cargo-metadata "$LICENSE_METADATA" \
+  --cargo-lock agent-sdk/Cargo.lock \
+  --root-package agent-ffi \
+  --output "$LICENSE_INVENTORY"
 xcodebuild -create-xcframework \
   -library "$CARGO_TARGET_DIR/$DEVICE_TARGET/release/deps/libnotemeld_agent.a" \
-  -headers agent-sdk/include \
+  -headers "$HEADERS" \
   -library "$CARGO_TARGET_DIR/$SIMULATOR_TARGET/release/deps/libnotemeld_agent.a" \
-  -headers agent-sdk/include \
-  -output "$BUILD_ROOT/NoteMeldAgentSDK.xcframework"
+  -headers "$HEADERS" \
+  -output "$PUBLISHED_PACKAGE/NoteMeldAgentNative.xcframework"
+
+cp agent-sdk/bindings/swift/Sources/NoteMeldAgentSDK/Runtime.swift \
+  "$PUBLISHED_PACKAGE/Sources/NoteMeldAgentSDK/"
+cat > "$PUBLISHED_PACKAGE/Package.swift" <<'EOF'
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "NoteMeldAgentSDK",
+    platforms: [.iOS(.v15)],
+    products: [.library(name: "NoteMeldAgentSDK", targets: ["NoteMeldAgentSDK"])],
+    targets: [
+        .binaryTarget(
+            name: "CNotemeldAgent",
+            path: "NoteMeldAgentNative.xcframework"
+        ),
+        .target(
+            name: "NoteMeldAgentSDK",
+            dependencies: ["CNotemeldAgent"],
+            path: "Sources/NoteMeldAgentSDK"
+        )
+    ]
+)
+EOF
+"$PYTHON_BIN" - "$PUBLISHED_PACKAGE" "$SDK_VERSION" "$SCHEMA_VERSION" \
+  "$BINDING_VERSION" "$DEVICE_TARGET" "$SIMULATOR_TARGET" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+package = Path(sys.argv[1])
+sdk, schema, binding, device, simulator = sys.argv[2:]
+marker = json.dumps({
+    "sdk_version": sdk,
+    "schema_version": schema,
+    "binding_version": binding,
+    "target_triples": [device, simulator],
+}, indent=2, sort_keys=True) + "\n"
+(package / "notemeld-agent-sdk.json").write_text(marker)
+(package / "NoteMeldAgentNative.xcframework" / "notemeld-agent-sdk.json").write_text(marker)
+PY
 
 create_deterministic_zip() {
   "$PYTHON_BIN" - "$@" <<'PY'
@@ -83,21 +136,55 @@ PY
 }
 
 create_deterministic_zip \
-  "$BUILD_ROOT/NoteMeldAgentSDK.xcframework.zip" \
-  "$BUILD_ROOT" NoteMeldAgentSDK.xcframework "$SOURCE_DATE_EPOCH"
+  "$BUILD_ROOT/NoteMeldAgentNative.xcframework.zip" \
+  "$PUBLISHED_PACKAGE" NoteMeldAgentNative.xcframework notemeld-agent-sdk.json \
+  "$SOURCE_DATE_EPOCH"
 create_deterministic_zip \
   "$BUILD_ROOT/NoteMeldAgentSwiftPackage.zip" \
-  agent-sdk/bindings/swift Package.swift Sources "$SOURCE_DATE_EPOCH"
+  "$PUBLISHED_PACKAGE" Package.swift Sources NoteMeldAgentNative.xcframework \
+  notemeld-agent-sdk.json "$SOURCE_DATE_EPOCH"
+
+CONSUMER_ROOT="$BUILD_ROOT/swift-release-consumer"
+PUBLISHED_EXTRACTED="$CONSUMER_ROOT/published"
+mkdir -p "$PUBLISHED_EXTRACTED" "$CONSUMER_ROOT/Sources/NoteMeldAgentIOSHarness"
+unzip -q "$BUILD_ROOT/NoteMeldAgentSwiftPackage.zip" -d "$PUBLISHED_EXTRACTED"
+cp agent-sdk/examples/ios-harness/Sources/NoteMeldAgentIOSHarness/main.swift \
+  "$CONSUMER_ROOT/Sources/NoteMeldAgentIOSHarness/"
+cat > "$CONSUMER_ROOT/Package.swift" <<'EOF'
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "NoteMeldAgentIOSHarness",
+    platforms: [.iOS(.v15)],
+    dependencies: [.package(path: "published")],
+    targets: [.executableTarget(
+        name: "NoteMeldAgentIOSHarness",
+        dependencies: [.product(name: "NoteMeldAgentSDK", package: "published")]
+    )]
+)
+EOF
+(cd "$CONSUMER_ROOT" && xcodebuild \
+  -scheme NoteMeldAgentIOSHarness \
+  -destination 'generic/platform=iOS' \
+  -derivedDataPath "$BUILD_ROOT/derived-device" \
+  CODE_SIGNING_ALLOWED=NO build)
+(cd "$CONSUMER_ROOT" && xcodebuild \
+  -scheme NoteMeldAgentIOSHarness \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath "$BUILD_ROOT/derived-simulator" \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build)
 
 for target in "$DEVICE_TARGET" "$SIMULATOR_TARGET"; do
   output="$DIST_ROOT/$target"
   rm -rf "$output"
   mkdir -p "$output/native"
   cp "$CARGO_TARGET_DIR/$target/release/deps/libnotemeld_agent.a" "$output/native/"
-  cp "$BUILD_ROOT/NoteMeldAgentSDK.xcframework.zip" "$output/"
+  cp "$BUILD_ROOT/NoteMeldAgentNative.xcframework.zip" "$output/"
   cp "$BUILD_ROOT/NoteMeldAgentSwiftPackage.zip" "$output/"
   cp agent-sdk/bindings/abi-v1.json "$output/"
   cp "$LICENSE_INVENTORY" "$output/"
+  cp agent-sdk/Cargo.lock "$output/"
 
   "$PYTHON_BIN" agent-sdk/scripts/verify-artifact-manifest.py create \
     --artifact-dir "$output" \
@@ -106,15 +193,20 @@ for target in "$DEVICE_TARGET" "$SIMULATOR_TARGET"; do
     --schema-version "$SCHEMA_VERSION" \
     --binding-version "$BINDING_VERSION" \
     --license-inventory-file "$output/license-inventory.json" \
+    --cargo-lock-file "$output/Cargo.lock" \
     --artifact "static-library=native/libnotemeld_agent.a" \
-    --artifact "swift-xcframework=NoteMeldAgentSDK.xcframework.zip" \
+    --artifact "swift-xcframework=NoteMeldAgentNative.xcframework.zip" \
     --artifact "swift-package=NoteMeldAgentSwiftPackage.zip" \
     --artifact "abi-contract=abi-v1.json" \
-    --artifact "license-inventory=license-inventory.json"
+    --artifact "license-inventory=license-inventory.json" \
+    --artifact "cargo-lock=Cargo.lock"
   "$PYTHON_BIN" agent-sdk/scripts/verify-artifact-manifest.py verify \
     --artifact-root "$output" \
     --sdk-version "$SDK_VERSION" \
     --schema-version "$SCHEMA_VERSION" \
     --binding-version "$BINDING_VERSION" \
+    --expected-cargo-metadata "$LICENSE_METADATA" \
+    --expected-cargo-lock agent-sdk/Cargo.lock \
+    --root-package agent-ffi \
     --expected-target "$target"
 done

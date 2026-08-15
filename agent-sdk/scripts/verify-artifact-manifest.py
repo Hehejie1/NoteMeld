@@ -142,13 +142,6 @@ def _parse_artifact(value: str) -> tuple[str, str]:
     return kind.strip(), path.strip()
 
 
-def _parse_license(value: str) -> dict[str, str]:
-    component, separator, license_name = value.partition("=")
-    if not separator or not component.strip() or not license_name.strip():
-        raise argparse.ArgumentTypeError("license must use COMPONENT=SPDX_EXPRESSION")
-    return {"component": component.strip(), "license": license_name.strip()}
-
-
 def _read_license_inventory(path: Path) -> dict[str, object]:
     try:
         inventory = json.loads(path.read_text(encoding="utf-8"))
@@ -159,6 +152,14 @@ def _read_license_inventory(path: Path) -> dict[str, object]:
     lock_digest = inventory.get("cargo_lock_sha256")
     if not isinstance(lock_digest, str) or not SHA256_PATTERN.fullmatch(lock_digest):
         raise ManifestError(f"license inventory has invalid cargo lock digest: {path}")
+    root_package = inventory.get("root_package")
+    if not isinstance(root_package, str) or not root_package:
+        raise ManifestError(f"license inventory has invalid root package: {path}")
+    resolve_digest = inventory.get("resolve_sha256")
+    if not isinstance(resolve_digest, str) or not SHA256_PATTERN.fullmatch(
+        resolve_digest
+    ):
+        raise ManifestError(f"license inventory has invalid resolve digest: {path}")
     packages = inventory.get("packages")
     if not isinstance(packages, list) or not packages:
         raise ManifestError(f"license inventory packages must be a non-empty list: {path}")
@@ -184,6 +185,8 @@ def _read_license_inventory(path: Path) -> dict[str, object]:
     return {
         "format_version": 1,
         "cargo_lock_sha256": lock_digest,
+        "root_package": root_package,
+        "resolve_sha256": resolve_digest,
         "packages": sorted(normalized, key=lambda entry: entry["component"]),
     }
 
@@ -227,34 +230,89 @@ def _validate_inventory_against_lock(
     packages = inventory["packages"]
     assert isinstance(packages, list)
     inventory_components = {entry["component"] for entry in packages}
-    if inventory_components != locked_components:
-        missing = sorted(locked_components - inventory_components)
+    if not inventory_components <= locked_components:
         extra = sorted(inventory_components - locked_components)
         raise ManifestError(
-            f"license inventory does not match Cargo.lock; missing={missing}, extra={extra}"
+            f"license inventory contains packages absent from Cargo.lock; extra={extra}"
         )
     inventory_checksums = {
         entry["component"]: entry["checksum"]
         for entry in packages
         if "checksum" in entry
     }
-    if inventory_checksums != locked_checksums:
+    expected_checksums = {
+        component: checksum
+        for component, checksum in locked_checksums.items()
+        if component in inventory_components
+    }
+    if inventory_checksums != expected_checksums:
         raise ManifestError("license inventory package checksums do not match Cargo.lock")
 
 
-def create_license_inventory(args: argparse.Namespace) -> dict[str, object]:
+def _inventory_from_metadata(
+    metadata_path: Path, cargo_lock: Path, root_package: str
+) -> dict[str, object]:
     try:
-        metadata = json.loads(args.cargo_metadata.read_text(encoding="utf-8"))
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ManifestError(f"invalid cargo metadata: {error}") from error
     packages = metadata.get("packages") if isinstance(metadata, dict) else None
+    resolve = metadata.get("resolve") if isinstance(metadata, dict) else None
+    nodes = resolve.get("nodes") if isinstance(resolve, dict) else None
     if not isinstance(packages, list) or not packages:
         raise ManifestError("cargo metadata contains no packages")
-    locked_components, locked_checksums = _read_cargo_lock(args.cargo_lock)
-    inventory: dict[str, dict[str, str]] = {}
+    if not isinstance(nodes, list) or not nodes:
+        raise ManifestError("cargo metadata contains no resolve graph")
+
+    packages_by_id: dict[str, dict[str, object]] = {}
+    roots: list[str] = []
     for package in packages:
         if not isinstance(package, dict):
             raise ManifestError("cargo metadata package must be an object")
+        package_id = package.get("id")
+        name = package.get("name")
+        if not isinstance(package_id, str) or not package_id:
+            raise ManifestError("cargo metadata package is missing id")
+        if package_id in packages_by_id:
+            raise ManifestError(f"duplicate cargo metadata package id {package_id}")
+        packages_by_id[package_id] = package
+        if name == root_package:
+            roots.append(package_id)
+    if len(roots) != 1:
+        raise ManifestError(
+            f"cargo metadata must contain exactly one {root_package} package"
+        )
+
+    dependencies_by_id: dict[str, list[str]] = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            raise ManifestError("cargo metadata resolve node must be an object")
+        node_id = node.get("id")
+        dependencies = node.get("dependencies")
+        if not isinstance(node_id, str) or not isinstance(dependencies, list) or not all(
+            isinstance(dependency, str) and dependency for dependency in dependencies
+        ):
+            raise ManifestError("cargo metadata resolve node is malformed")
+        if node_id in dependencies_by_id:
+            raise ManifestError(f"duplicate cargo metadata resolve node {node_id}")
+        dependencies_by_id[node_id] = dependencies
+
+    closure: set[str] = set()
+    pending = [roots[0]]
+    while pending:
+        package_id = pending.pop()
+        if package_id in closure:
+            continue
+        if package_id not in packages_by_id or package_id not in dependencies_by_id:
+            raise ManifestError(f"unresolved cargo package id {package_id}")
+        closure.add(package_id)
+        pending.extend(dependencies_by_id[package_id])
+
+    _, locked_checksums = _read_cargo_lock(cargo_lock)
+    inventory: dict[str, dict[str, str]] = {}
+    component_by_id: dict[str, str] = {}
+    for package_id in closure:
+        package = packages_by_id[package_id]
         name = package.get("name")
         version = package.get("version")
         license_name = package.get("license")
@@ -264,28 +322,47 @@ def create_license_inventory(args: argparse.Namespace) -> dict[str, object]:
             raise ManifestError(f"package {name}@{version} has no SPDX license")
         component = f"{name}@{version}"
         if component in inventory:
-            raise ManifestError(f"duplicate cargo metadata package {component}")
+            raise ManifestError(f"duplicate cargo resolve component {component}")
         entry = {"component": component, "license": license_name}
         if component in locked_checksums:
             entry["checksum"] = locked_checksums[component]
         inventory[component] = entry
-    if set(inventory) != locked_components:
-        missing = sorted(locked_components - set(inventory))
-        extra = sorted(set(inventory) - locked_components)
-        raise ManifestError(
-            f"cargo metadata does not match Cargo.lock; missing={missing}, extra={extra}"
-        )
-    entries = [inventory[component] for component in sorted(inventory)]
-    document = {
+        component_by_id[package_id] = component
+
+    resolve_summary = [
+        {
+            "component": component_by_id[package_id],
+            "dependencies": sorted(
+                component_by_id[dependency]
+                for dependency in dependencies_by_id[package_id]
+                if dependency in closure
+            ),
+        }
+        for package_id in sorted(closure, key=lambda item: component_by_id[item])
+    ]
+    resolve_bytes = json.dumps(
+        resolve_summary, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    document: dict[str, object] = {
         "format_version": 1,
-        "cargo_lock_sha256": _sha256(args.cargo_lock),
-        "packages": entries,
+        "cargo_lock_sha256": _sha256(cargo_lock),
+        "root_package": component_by_id[roots[0]],
+        "resolve_sha256": hashlib.sha256(resolve_bytes).hexdigest(),
+        "packages": [inventory[component] for component in sorted(inventory)],
     }
+    _validate_inventory_against_lock(document, cargo_lock)
+    return document
+
+
+def create_license_inventory(args: argparse.Namespace) -> dict[str, object]:
+    document = _inventory_from_metadata(
+        args.cargo_metadata, args.cargo_lock, args.root_package
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    return {"license_count": len(entries), "output": str(args.output)}
+    return {"license_count": len(document["packages"]), "output": str(args.output)}
 
 
 def create_manifest(args: argparse.Namespace) -> dict[str, object]:
@@ -507,6 +584,30 @@ def _inspect_container(
                 for name in names
             ):
                 raise ManifestError("Swift package is missing embedded XCFramework")
+            embedded_prefix = "NoteMeldAgentNative.xcframework/"
+            embedded_libraries = [
+                name
+                for name in names
+                if name.startswith(embedded_prefix)
+                and name.endswith("libnotemeld_agent.a")
+            ]
+            if len(embedded_libraries) < 2:
+                raise ManifestError(
+                    "Swift package embedded XCFramework is missing device/simulator libraries"
+                )
+            for required_suffix in (
+                "Headers/notemeld_agent.h",
+                "Headers/module.modulemap",
+            ):
+                if not any(
+                    name.startswith(embedded_prefix)
+                    and name.endswith(required_suffix)
+                    for name in names
+                ):
+                    raise ManifestError(
+                        "Swift package embedded XCFramework is missing "
+                        + required_suffix
+                    )
         elif kind == "openharmony-har":
             for library in ("libnotemeld_agent.so", "libnotemeld_agent_napi.so"):
                 if not any(name.endswith(library) for name in names):
@@ -569,6 +670,11 @@ def verify_manifests(args: argparse.Namespace) -> dict[str, object]:
         raise ManifestError("no artifact-manifest.json files found")
 
     expected_targets = set(args.expected_target)
+    expected_inventory = _inventory_from_metadata(
+        args.expected_cargo_metadata,
+        args.expected_cargo_lock,
+        args.root_package,
+    )
     observed_targets: set[str] = set()
     manifest_targets: set[str] = set()
     seen_paths: set[Path] = set()
@@ -658,6 +764,12 @@ def verify_manifests(args: argparse.Namespace) -> dict[str, object]:
             )
         inventory = _read_license_inventory(license_paths[0])
         _validate_inventory_against_lock(inventory, lock_paths[0])
+        if inventory != expected_inventory:
+            raise ManifestError(
+                "license inventory does not match the checkout Cargo resolve closure"
+            )
+        if _sha256(lock_paths[0]) != _sha256(args.expected_cargo_lock):
+            raise ManifestError("artifact Cargo.lock does not match expected Cargo.lock")
         if inventory != document["license_inventory"]:
             raise ManifestError("license inventory manifest/file mismatch")
         if document.get("cargo_lock_sha256") != inventory["cargo_lock_sha256"]:
@@ -702,19 +814,16 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument(
         "--artifact", action="append", type=_parse_artifact, default=[], required=True
     )
-    create.add_argument(
-        "--license",
-        action="append",
-        type=_parse_license,
-        default=[{"component": "notemeld-agent-sdk", "license": "MIT"}],
-    )
-    create.add_argument("--license-inventory-file", type=Path)
+    create.add_argument("--license-inventory-file", type=Path, required=True)
+    create.add_argument("--cargo-lock-file", type=Path, required=True)
     create.set_defaults(handler=create_manifest)
 
     licenses = subparsers.add_parser(
         "licenses", help="create a deterministic inventory from cargo metadata"
     )
     licenses.add_argument("--cargo-metadata", type=Path, required=True)
+    licenses.add_argument("--cargo-lock", type=Path, required=True)
+    licenses.add_argument("--root-package", required=True)
     licenses.add_argument("--output", type=Path, required=True)
     licenses.set_defaults(handler=create_license_inventory)
 
@@ -724,6 +833,9 @@ def _parser() -> argparse.ArgumentParser:
     verify.add_argument("--schema-version", required=True)
     verify.add_argument("--binding-version", required=True)
     verify.add_argument("--expected-target", action="append", default=[])
+    verify.add_argument("--expected-cargo-metadata", type=Path, required=True)
+    verify.add_argument("--expected-cargo-lock", type=Path, required=True)
+    verify.add_argument("--root-package", required=True)
     verify.set_defaults(handler=verify_manifests)
     return parser
 

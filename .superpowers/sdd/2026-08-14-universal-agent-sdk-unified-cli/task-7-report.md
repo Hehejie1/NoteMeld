@@ -81,3 +81,38 @@ Local real probes:
 - System documentation synchronization remains the approved plan's Task 19; this Task establishes the executable evidence gate only.
 
 Rollback is to disable/remove the new standalone `agent-sdk.yml` and its new scripts/tests. No schema, stored conversation, note, or existing release artifact needs migration or recovery.
+
+## Fix Round 1 (2026-08-16)
+
+Status: **COMPLETE_WITH_PLATFORM_CI_CONCERNS**
+
+Handoff note: the user-owned whiteboard checkpoint `ee615d28c47b9fca4a0bbb43ee82d356315022ca` also absorbed part of the interrupted Task 7 handoff in `agent-sdk/scripts/verify-artifact-manifest.py` and `backend/tests/test_agent_sdk_workflow_contracts.py`. This round preserved that history, audited the shared working-tree diff in place, and did not amend, reset, or revert the checkpoint.
+
+### Review findings closed
+
+1. **Critical — OpenHarmony was not a real SDK/Hvigor build:** the workflow now restores the full pinned SDK component set, discovers a complete SDK root, exports `OHOS_SDK_ROOT`/`DEVECO_SDK_HOME`/`HOS_SDK_HOME`, and the Rust linker/CC use the native SDK sysroot. The build reads the SDK API version, writes SDK-aware Hvigor profiles, validates both native libraries plus ArkTS in the HAR, and installs/builds a second consumer from the repacked HAR.
+2. **Critical — Swift release was not self-contained or consumer-linked:** the SwiftPM ZIP now embeds its XCFramework, header and module map. The release gate extracts that ZIP into a separate consumer package and links both generic iOS device and arm64 simulator builds against the embedded binary target.
+3. **Important — native CI invoked unprovisioned pytest:** the host smoke moved into `build-python.sh`, where the completed wheel is installed in a clean venv and runs a real fake turn without depending on runner-global pytest.
+4. **Important — manifest/license validation could accept mislabeled or self-consistent substitutions:** target-specific artifact-kind ledgers now require exactly one permitted kind, ABI/container internal versions are checked, license and Cargo.lock artifacts are unique, and license generation is restricted to the `agent-ffi` Cargo resolve closure. Final verification independently regenerates that closure from the checked-out locked workspace and compares both inventory and Cargo.lock to every downloaded bundle. Adversarial tests cover wrong kinds, duplicate license entries, internal version drift, malformed ABI JSON, lock substitution, symlinks, paths, checksums, duplicates, and missing targets.
+5. **Important — Android runtime evidence bypassed the final AAR:** the final deterministic AAR is required to contain all four ABIs with both `libnotemeld_agent.so` and `libnotemeld_agent_jni.so`. A fresh app consumer compiles against that exact repacked AAR, and the x86_64 emulator job runs its instrumentation test.
+6. **Important — Python wheel did not prove packaged-native installation:** runtime discovery now falls back to the wheel's platform-native package resource. Linux builds run in pinned manylinux 2.28 images, require `auditwheel show/repair`, then install the repaired wheel into a clean venv and execute a fake turn on a matching host.
+7. **Minor — matrix contracts were weak against mutation:** the test oracle now checks the exact OS/target matrix and exact per-job upload ledgers, and a matrix-entry removal mutation demonstrates that the oracle fails.
+
+### Fresh verification evidence
+
+- Focused artifact contracts before final report update: **43 passed**.
+- PyYAML `BaseLoader` parse with exact job and final-needs assertions: passed.
+- `bash -n` for all four build scripts: passed.
+- `py_compile` for the validator, Python runtime and workflow contracts: passed.
+- Validator focused positive/adversarial selection: **14 passed**.
+- Task 6 Python ABI oracle with `PYTHONPATH=agent-sdk/bindings/python`: **2 passed**.
+- Real x86_64 macOS Python package build in isolated `/tmp` target/dist: Rust release build, 114-component `agent-ffi` license closure, six-artifact manifest create/verify, clean-venv wheel install, and fake turn ending in `turn.succeeded` all passed.
+- Real Swift packaging in isolated `/tmp` target/dist: both Rust iOS slices built, self-contained SwiftPM ZIP contained two static slices/header/module map, and consumers extracted from that ZIP linked successfully for generic iOS device and arm64 iOS simulator. No device process was claimed.
+- Both pinned manylinux image tags returned valid registry manifests; no image or mobile SDK was downloaded for this check.
+
+### Remaining platform-evidence limits
+
+- No GitHub Actions run is claimed.
+- This host lacks Gradle/cargo-ndk and OpenHarmony ohpm/Hvigor SDK tooling, so Android and OpenHarmony target builds/runs were not executed locally. Their CI jobs fail closed on missing tools, SDK components, required archive members, consumer build output, or manifest evidence.
+- Android runtime evidence remains x86_64 emulator instrumentation; the other Android ABIs are build/package evidence. OpenHarmony and iOS remain build/link evidence, not hosted device execution.
+- Local generated Swift `.build` was moved to `/tmp/notemeld-task7-fix1-source-swift-build`; no `agent-sdk/dist`, `agent-sdk/target`, `.build`, wheel, XCFramework, AAR or HAR artifact is staged.
