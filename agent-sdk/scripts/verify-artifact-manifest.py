@@ -4,12 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
 import sys
 from typing import Iterable
+import zipfile
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility for source installs.
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 MANIFEST_NAME = "artifact-manifest.json"
@@ -23,6 +30,78 @@ REQUIRED_FIELDS = {
     "sha256": str,
 }
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+ANDROID_ABIS = ("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+ANDROID_TARGETS = (
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "i686-linux-android",
+    "x86_64-linux-android",
+)
+IOS_TARGETS = ("aarch64-apple-ios", "aarch64-apple-ios-sim")
+DESKTOP_TARGETS = {
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+}
+TARGET_REQUIRED_KINDS = {
+    **{
+        target: frozenset(
+            {
+                "native-library",
+                "python-wheel",
+                "c-header",
+                "abi-contract",
+                "license-inventory",
+                "cargo-lock",
+            }
+        )
+        for target in DESKTOP_TARGETS
+    },
+    **{
+        target: frozenset(
+            {
+                "static-library",
+                "swift-xcframework",
+                "swift-package",
+                "abi-contract",
+                "license-inventory",
+                "cargo-lock",
+            }
+        )
+        for target in IOS_TARGETS
+    },
+    **{
+        target: frozenset(
+            {
+                "native-library",
+                "kotlin-aar",
+                "abi-contract",
+                "license-inventory",
+                "cargo-lock",
+            }
+        )
+        for target in ANDROID_TARGETS
+    },
+    "aarch64-unknown-linux-ohos": frozenset(
+        {
+            "native-library",
+            "openharmony-har",
+            "abi-contract",
+            "license-inventory",
+            "cargo-lock",
+        }
+    ),
+}
+KNOWN_KINDS = frozenset().union(*TARGET_REQUIRED_KINDS.values())
+CONTAINER_MARKERS = {
+    "python-wheel": "notemeld_agent_sdk/notemeld-agent-sdk.json",
+    "kotlin-aar": "META-INF/notemeld-agent-sdk.json",
+    "swift-xcframework": "notemeld-agent-sdk.json",
+    "swift-package": "notemeld-agent-sdk.json",
+    "openharmony-har": "notemeld-agent-sdk.json",
+}
 
 
 class ManifestError(ValueError):
@@ -70,24 +149,97 @@ def _parse_license(value: str) -> dict[str, str]:
     return {"component": component.strip(), "license": license_name.strip()}
 
 
-def _read_license_inventory(path: Path) -> list[dict[str, str]]:
+def _read_license_inventory(path: Path) -> dict[str, object]:
     try:
         inventory = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ManifestError(f"invalid license inventory {path}: {error}") from error
-    if not isinstance(inventory, list) or not inventory:
-        raise ManifestError(f"license inventory must be a non-empty list: {path}")
+    if not isinstance(inventory, dict) or inventory.get("format_version") != 1:
+        raise ManifestError(f"license inventory must be a versioned object: {path}")
+    lock_digest = inventory.get("cargo_lock_sha256")
+    if not isinstance(lock_digest, str) or not SHA256_PATTERN.fullmatch(lock_digest):
+        raise ManifestError(f"license inventory has invalid cargo lock digest: {path}")
+    packages = inventory.get("packages")
+    if not isinstance(packages, list) or not packages:
+        raise ManifestError(f"license inventory packages must be a non-empty list: {path}")
     normalized: list[dict[str, str]] = []
-    for entry in inventory:
+    seen: set[str] = set()
+    for entry in packages:
         if not isinstance(entry, dict) or not all(
             isinstance(entry.get(field), str) and entry[field]
             for field in ("component", "license")
         ):
             raise ManifestError(f"invalid license inventory entry in {path}")
-        normalized.append(
-            {"component": entry["component"], "license": entry["license"]}
+        component = entry["component"]
+        if component in seen:
+            raise ManifestError(f"duplicate license component {component} in {path}")
+        seen.add(component)
+        normalized_entry = {"component": component, "license": entry["license"]}
+        checksum = entry.get("checksum")
+        if checksum is not None:
+            if not isinstance(checksum, str) or not SHA256_PATTERN.fullmatch(checksum):
+                raise ManifestError(f"invalid package checksum for {component} in {path}")
+            normalized_entry["checksum"] = checksum
+        normalized.append(normalized_entry)
+    return {
+        "format_version": 1,
+        "cargo_lock_sha256": lock_digest,
+        "packages": sorted(normalized, key=lambda entry: entry["component"]),
+    }
+
+
+def _read_cargo_lock(path: Path) -> tuple[set[str], dict[str, str]]:
+    try:
+        document = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ManifestError(f"invalid Cargo.lock {path}: {error}") from error
+    packages = document.get("package") if isinstance(document, dict) else None
+    if not isinstance(packages, list) or not packages:
+        raise ManifestError(f"Cargo.lock contains no packages: {path}")
+    components: set[str] = set()
+    checksums: dict[str, str] = {}
+    for package in packages:
+        if not isinstance(package, dict):
+            raise ManifestError(f"invalid package in Cargo.lock: {path}")
+        name = package.get("name")
+        version = package.get("version")
+        if not all(isinstance(value, str) and value for value in (name, version)):
+            raise ManifestError(f"Cargo.lock package missing name/version: {path}")
+        component = f"{name}@{version}"
+        if component in components:
+            raise ManifestError(f"ambiguous duplicate locked package {component}")
+        components.add(component)
+        checksum = package.get("checksum")
+        if checksum is not None:
+            if not isinstance(checksum, str) or not SHA256_PATTERN.fullmatch(checksum):
+                raise ManifestError(f"invalid Cargo.lock checksum for {component}")
+            checksums[component] = checksum
+    return components, checksums
+
+
+def _validate_inventory_against_lock(
+    inventory: dict[str, object], lock_path: Path
+) -> None:
+    actual_digest = _sha256(lock_path)
+    if inventory["cargo_lock_sha256"] != actual_digest:
+        raise ManifestError("cargo lock digest mismatch")
+    locked_components, locked_checksums = _read_cargo_lock(lock_path)
+    packages = inventory["packages"]
+    assert isinstance(packages, list)
+    inventory_components = {entry["component"] for entry in packages}
+    if inventory_components != locked_components:
+        missing = sorted(locked_components - inventory_components)
+        extra = sorted(inventory_components - locked_components)
+        raise ManifestError(
+            f"license inventory does not match Cargo.lock; missing={missing}, extra={extra}"
         )
-    return normalized
+    inventory_checksums = {
+        entry["component"]: entry["checksum"]
+        for entry in packages
+        if "checksum" in entry
+    }
+    if inventory_checksums != locked_checksums:
+        raise ManifestError("license inventory package checksums do not match Cargo.lock")
 
 
 def create_license_inventory(args: argparse.Namespace) -> dict[str, object]:
@@ -98,7 +250,8 @@ def create_license_inventory(args: argparse.Namespace) -> dict[str, object]:
     packages = metadata.get("packages") if isinstance(metadata, dict) else None
     if not isinstance(packages, list) or not packages:
         raise ManifestError("cargo metadata contains no packages")
-    inventory: dict[str, str] = {}
+    locked_components, locked_checksums = _read_cargo_lock(args.cargo_lock)
+    inventory: dict[str, dict[str, str]] = {}
     for package in packages:
         if not isinstance(package, dict):
             raise ManifestError("cargo metadata package must be an object")
@@ -109,14 +262,28 @@ def create_license_inventory(args: argparse.Namespace) -> dict[str, object]:
             raise ManifestError("cargo metadata package is missing name or version")
         if not isinstance(license_name, str) or not license_name:
             raise ManifestError(f"package {name}@{version} has no SPDX license")
-        inventory[f"{name}@{version}"] = license_name
-    entries = [
-        {"component": component, "license": inventory[component]}
-        for component in sorted(inventory)
-    ]
+        component = f"{name}@{version}"
+        if component in inventory:
+            raise ManifestError(f"duplicate cargo metadata package {component}")
+        entry = {"component": component, "license": license_name}
+        if component in locked_checksums:
+            entry["checksum"] = locked_checksums[component]
+        inventory[component] = entry
+    if set(inventory) != locked_components:
+        missing = sorted(locked_components - set(inventory))
+        extra = sorted(set(inventory) - locked_components)
+        raise ManifestError(
+            f"cargo metadata does not match Cargo.lock; missing={missing}, extra={extra}"
+        )
+    entries = [inventory[component] for component in sorted(inventory)]
+    document = {
+        "format_version": 1,
+        "cargo_lock_sha256": _sha256(args.cargo_lock),
+        "packages": entries,
+    }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
-        json.dumps(entries, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return {"license_count": len(entries), "output": str(args.output)}
 
@@ -153,14 +320,22 @@ def create_manifest(args: argparse.Namespace) -> dict[str, object]:
     except ValueError as error:
         raise ManifestError("manifest output escapes artifact root") from error
 
-    licenses = (
-        _read_license_inventory(args.license_inventory_file)
-        if args.license_inventory_file
-        else args.license
-    )
+    licenses = _read_license_inventory(args.license_inventory_file)
+    cargo_lock = args.cargo_lock_file.resolve()
+    try:
+        cargo_lock.relative_to(artifact_root)
+    except ValueError as error:
+        raise ManifestError("Cargo.lock artifact escapes artifact root") from error
+    _validate_inventory_against_lock(licenses, cargo_lock)
+    kinds = [entry["kind"] for entry in entries]
+    if kinds.count("license-inventory") != 1:
+        raise ManifestError("manifest requires exactly one license-inventory artifact")
+    if kinds.count("cargo-lock") != 1:
+        raise ManifestError("manifest requires exactly one cargo-lock artifact")
     document: dict[str, object] = {
         "manifest_version": 1,
         "license_inventory": licenses,
+        "cargo_lock_sha256": licenses["cargo_lock_sha256"],
         "artifacts": sorted(entries, key=lambda entry: entry["path"]),
     }
     output.write_text(
@@ -182,15 +357,8 @@ def _load_manifest(path: Path) -> dict[str, object]:
         raise ManifestError(f"manifest must be an object: {path}")
     if document.get("manifest_version") != 1:
         raise ManifestError(f"manifest_version mismatch in {path}")
-    licenses = document.get("license_inventory")
-    if not isinstance(licenses, list) or not licenses:
+    if "license_inventory" not in document:
         raise ManifestError(f"missing license_inventory in {path}")
-    for license_entry in licenses:
-        if not isinstance(license_entry, dict) or not all(
-            isinstance(license_entry.get(field), str) and license_entry[field]
-            for field in ("component", "license")
-        ):
-            raise ManifestError(f"invalid license_inventory entry in {path}")
     artifacts = document.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise ManifestError(f"manifest has no artifacts: {path}")
@@ -205,6 +373,191 @@ def _check_required_fields(entry: object, manifest: Path) -> dict[str, str]:
         if not isinstance(value, field_type) or not value:
             raise ManifestError(f"missing field {field} in {manifest}")
     return entry  # type: ignore[return-value]
+
+
+def _verify_binding_marker(
+    marker: object,
+    *,
+    target: str,
+    sdk_version: str,
+    schema_version: str,
+    binding_version: str,
+) -> None:
+    if not isinstance(marker, dict):
+        raise ManifestError("container binding metadata must be an object")
+    for field, expected in (
+        ("sdk_version", sdk_version),
+        ("schema_version", schema_version),
+        ("binding_version", binding_version),
+    ):
+        if marker.get(field) != expected:
+            raise ManifestError(
+                f"container {field} mismatch: expected {expected}, got {marker.get(field)}"
+            )
+    targets = marker.get("target_triples")
+    if not isinstance(targets, list) or target not in targets or not all(
+        isinstance(item, str) and item for item in targets
+    ):
+        raise ManifestError(f"container target_triples do not include {target}")
+
+
+def _read_zip_json(archive: zipfile.ZipFile, name: str, label: str) -> object:
+    try:
+        raw = archive.read(name)
+    except KeyError as error:
+        raise ManifestError(f"{label} is missing {name}") from error
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ManifestError(f"invalid JSON in {label}: {name}") from error
+
+
+def _python_constants(source: bytes) -> dict[str, object]:
+    try:
+        tree = ast.parse(source.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError) as error:
+        raise ManifestError("python wheel runtime.py is invalid") from error
+    constants: dict[str, object] = {}
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+        ):
+            constants[node.targets[0].id] = node.value.value
+    return constants
+
+
+def _inspect_container(
+    path: Path,
+    *,
+    kind: str,
+    target: str,
+    sdk_version: str,
+    schema_version: str,
+    binding_version: str,
+) -> None:
+    if not zipfile.is_zipfile(path):
+        raise ManifestError(f"{kind} is not a valid ZIP container: {path.name}")
+    marker_name = CONTAINER_MARKERS[kind]
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        marker = _read_zip_json(archive, marker_name, kind)
+        _verify_binding_marker(
+            marker,
+            target=target,
+            sdk_version=sdk_version,
+            schema_version=schema_version,
+            binding_version=binding_version,
+        )
+        if kind == "python-wheel":
+            metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
+            if len(metadata_names) != 1:
+                raise ManifestError("python wheel requires exactly one METADATA file")
+            metadata = archive.read(metadata_names[0]).decode("utf-8", errors="strict")
+            if f"Version: {sdk_version}\n" not in metadata.replace("\r\n", "\n"):
+                raise ManifestError("python wheel METADATA version mismatch")
+            runtime_name = "notemeld_agent_sdk/runtime.py"
+            if runtime_name not in names:
+                raise ManifestError("python wheel is missing runtime.py")
+            constants = _python_constants(archive.read(runtime_name))
+            if constants.get("SDK_VERSION") != sdk_version:
+                raise ManifestError("python wheel SDK_VERSION mismatch")
+            if constants.get("SCHEMA_VERSION") != schema_version:
+                raise ManifestError("python wheel SCHEMA_VERSION mismatch")
+            expected_native = (
+                "notemeld_agent.dll"
+                if target.endswith("windows-msvc")
+                else "libnotemeld_agent.dylib"
+                if target.endswith("apple-darwin")
+                else "libnotemeld_agent.so"
+            )
+            if f"notemeld_agent_sdk/native/{expected_native}" not in names:
+                raise ManifestError("python wheel is missing packaged native library")
+        elif kind == "kotlin-aar":
+            for abi in ANDROID_ABIS:
+                for library in (
+                    "libnotemeld_agent.so",
+                    "libnotemeld_agent_jni.so",
+                ):
+                    member = f"jni/{abi}/{library}"
+                    if member not in names:
+                        raise ManifestError(f"Android AAR is missing {member}")
+                    if not archive.read(member).startswith(b"\x7fELF"):
+                        raise ManifestError(f"Android AAR contains invalid {member}")
+        elif kind == "swift-xcframework":
+            static_libraries = [name for name in names if name.endswith("libnotemeld_agent.a")]
+            if len(static_libraries) < 2:
+                raise ManifestError("XCFramework is missing device/simulator static libraries")
+            if not any(name.endswith("Headers/notemeld_agent.h") for name in names):
+                raise ManifestError("XCFramework is missing notemeld_agent.h")
+            if not any(name.endswith("Headers/module.modulemap") for name in names):
+                raise ManifestError("XCFramework is missing module.modulemap")
+        elif kind == "swift-package":
+            try:
+                package = archive.read("Package.swift").decode("utf-8")
+            except (KeyError, UnicodeDecodeError) as error:
+                raise ManifestError("Swift package is missing valid Package.swift") from error
+            if ".binaryTarget(" not in package or "NoteMeldAgentNative.xcframework" not in package:
+                raise ManifestError("Swift package does not link its XCFramework binary target")
+            if not any(
+                name.startswith("NoteMeldAgentNative.xcframework/")
+                and name.endswith("Info.plist")
+                for name in names
+            ):
+                raise ManifestError("Swift package is missing embedded XCFramework")
+        elif kind == "openharmony-har":
+            for library in ("libnotemeld_agent.so", "libnotemeld_agent_napi.so"):
+                if not any(name.endswith(library) for name in names):
+                    raise ManifestError(f"OpenHarmony HAR is missing {library}")
+            if not any(name.endswith("Index.ets") or name.endswith("index.ets") for name in names):
+                raise ManifestError("OpenHarmony HAR is missing ArkTS binding")
+
+
+def _inspect_non_container(
+    path: Path,
+    *,
+    kind: str,
+    target: str,
+    sdk_version: str,
+    schema_version: str,
+) -> None:
+    if kind == "abi-contract":
+        try:
+            abi = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ManifestError(f"invalid ABI contract: {path.name}") from error
+        if not isinstance(abi, dict) or abi.get("abi_version") != 1:
+            raise ManifestError("invalid ABI contract version")
+        if abi.get("sdk_version") != sdk_version:
+            raise ManifestError("ABI contract sdk_version mismatch")
+        if abi.get("schema_version") != schema_version:
+            raise ManifestError("ABI contract schema_version mismatch")
+    elif kind == "c-header":
+        try:
+            header = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            raise ManifestError("invalid C header") from error
+        if "notemeld_agent_sdk_version" not in header:
+            raise ManifestError("C header is missing Agent SDK declarations")
+    elif kind in {"native-library", "static-library"}:
+        prefix = path.read_bytes()[:8]
+        if kind == "static-library":
+            valid = prefix == b"!<arch>\n"
+        elif target.endswith("windows-msvc"):
+            valid = prefix.startswith(b"MZ")
+        elif target.endswith("apple-darwin"):
+            valid = prefix[:4] in {
+                b"\xfe\xed\xfa\xce",
+                b"\xce\xfa\xed\xfe",
+                b"\xfe\xed\xfa\xcf",
+                b"\xcf\xfa\xed\xfe",
+            }
+        else:
+            valid = prefix.startswith(b"\x7fELF")
+        if not valid:
+            raise ManifestError(f"placeholder or invalid {kind}: {path.name}")
 
 
 def verify_manifests(args: argparse.Namespace) -> dict[str, object]:
@@ -224,6 +577,7 @@ def verify_manifests(args: argparse.Namespace) -> dict[str, object]:
     for manifest in manifests:
         document = _load_manifest(manifest)
         local_targets: set[str] = set()
+        artifacts_by_kind: dict[str, list[Path]] = {}
         manifest_root = manifest.parent.resolve()
         for raw_entry in document["artifacts"]:  # type: ignore[index]
             entry = _check_required_fields(raw_entry, manifest)
@@ -259,12 +613,27 @@ def verify_manifests(args: argparse.Namespace) -> dict[str, object]:
             actual_checksum = _sha256(artifact)
             if actual_checksum != checksum:
                 raise ManifestError(f"checksum mismatch for {entry['path']}")
-            if entry["kind"] == "license-inventory":
-                inventory = _read_license_inventory(artifact)
-                if inventory != document["license_inventory"]:
-                    raise ManifestError(
-                        f"license inventory mismatch for {entry['path']}"
-                    )
+            kind = entry["kind"]
+            if kind not in KNOWN_KINDS:
+                raise ManifestError(f"unknown artifact kind {kind}")
+            artifacts_by_kind.setdefault(kind, []).append(artifact)
+            if kind in CONTAINER_MARKERS:
+                _inspect_container(
+                    artifact,
+                    kind=kind,
+                    target=target,
+                    sdk_version=args.sdk_version,
+                    schema_version=args.schema_version,
+                    binding_version=args.binding_version,
+                )
+            elif kind not in {"license-inventory", "cargo-lock"}:
+                _inspect_non_container(
+                    artifact,
+                    kind=kind,
+                    target=target,
+                    sdk_version=args.sdk_version,
+                    schema_version=args.schema_version,
+                )
             artifact_count += 1
 
         if len(local_targets) != 1:
@@ -272,6 +641,39 @@ def verify_manifests(args: argparse.Namespace) -> dict[str, object]:
         only_target = next(iter(local_targets))
         if only_target in manifest_targets:
             raise ManifestError(f"duplicate target manifest: {only_target}")
+        required_kinds = TARGET_REQUIRED_KINDS.get(only_target)
+        if required_kinds is None:
+            raise ManifestError(f"unsupported target triple: {only_target}")
+
+        license_paths = artifacts_by_kind.get("license-inventory", [])
+        if len(license_paths) != 1:
+            raise ManifestError(
+                "required artifact kind license-inventory: "
+                "exactly one license-inventory artifact is required"
+            )
+        lock_paths = artifacts_by_kind.get("cargo-lock", [])
+        if len(lock_paths) != 1:
+            raise ManifestError(
+                "required artifact kind cargo-lock: exactly one cargo-lock artifact is required"
+            )
+        inventory = _read_license_inventory(license_paths[0])
+        _validate_inventory_against_lock(inventory, lock_paths[0])
+        if inventory != document["license_inventory"]:
+            raise ManifestError("license inventory manifest/file mismatch")
+        if document.get("cargo_lock_sha256") != inventory["cargo_lock_sha256"]:
+            raise ManifestError("manifest cargo lock digest mismatch")
+
+        for kind in sorted(required_kinds):
+            if len(artifacts_by_kind.get(kind, [])) != 1:
+                raise ManifestError(
+                    f"required artifact kind {kind} must appear exactly once for {only_target}"
+                )
+        unexpected_kinds = set(artifacts_by_kind) - required_kinds
+        if unexpected_kinds:
+            raise ManifestError(
+                f"artifact kind(s) not allowed for {only_target}: "
+                + ", ".join(sorted(unexpected_kinds))
+            )
         manifest_targets.add(only_target)
 
     missing = expected_targets - observed_targets

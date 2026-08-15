@@ -212,6 +212,16 @@ assert.match(interactions, /createViewportCommitter/)
 assert.match(interactions, /uploadFileForWhiteboardCard/)
 assert.match(interactions, /resolveContextForCurrentTask/)
 
+const projectionStart = canvas.indexOf('const projected = useMemo')
+const projectionEnd = canvas.indexOf('const openCreateDialog', projectionStart)
+assert.notEqual(projectionStart, -1)
+assert.notEqual(projectionEnd, -1)
+assert.doesNotMatch(
+  canvas.slice(projectionStart, projectionEnd),
+  /selectedCardIds|selectedRelationIds/,
+  'React Flow 必须自行持有瞬时选区；把 controller 选区重新投影进 nodes/edges 会形成 selection→setNodes 递归',
+)
+
 assert.match(home, /WhiteboardPanel/, 'Home 必须优先挂载语义白板工作区')
 assert.match(home, /resolveLatestLearningWorkspace/, 'Home 必须按最新 compact message 恢复白板')
 assert.match(home, /seedLearningCanvasWhiteboard/, 'legacy canvas 必须幂等转换为语义白板')
@@ -282,6 +292,33 @@ const panelStateModule = await import(
     }).outputText,
   ).toString('base64')}`
 )
+
+const singleSelection = ['card_a']
+assert.equal(
+  interactionsModule.stabilizeSelectionIds(singleSelection, ['card_a']),
+  singleSelection,
+  '相同 React Flow 选区必须复用同一个数组引用，避免受控 setNodes 递归更新',
+)
+const stableSelection = ['card_b', 'card_a']
+assert.equal(
+  interactionsModule.stabilizeSelectionIds(stableSelection, ['card_a', 'card_b', 'card_a']),
+  stableSelection,
+  '选区去重、排序后未变化时必须保留当前 state 引用',
+)
+assert.deepEqual(
+  interactionsModule.stabilizeSelectionIds(stableSelection, ['card_c', 'card_a']),
+  ['card_a', 'card_c'],
+)
+assert.deepEqual(
+  interactionsModule.preserveProjectedSelection(
+    [{ id: 'card_a', selected: true }, { id: 'card_b', selected: false }],
+    [{ id: 'card_a', selected: false, value: 2 }, { id: 'card_c', selected: false, value: 3 }],
+  ),
+  [{ id: 'card_a', selected: true, value: 2 }, { id: 'card_c', selected: false, value: 3 }],
+  'snapshot/active-card 重投影必须保留 React Flow 已选状态',
+)
+assert.match(canvas, /preserveProjectedSelection\(current, projected\.nodes/)
+assert.match(canvas, /preserveProjectedSelection\(current, projected\.edges/)
 
 const latestWorkspace = panelStateModule.resolveLatestLearningWorkspace([
   { id: 'legacy', message_type: 'learning_canvas', meta: { canvas_id: 'canvas_old', status: 'ready' } },

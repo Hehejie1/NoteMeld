@@ -5,6 +5,7 @@ import {
   createWhiteboardCommand,
   rebaseWhiteboardCommand,
 } from './whiteboardCommands'
+import { stabilizeSelectionIds } from './whiteboardInteractions'
 import type {
   WhiteboardCommand,
   WhiteboardConflictState,
@@ -312,8 +313,8 @@ export function useWhiteboardController({
   }, [])
 
   const setSelection = useCallback((cardIds: readonly string[], relationIds: readonly string[]) => {
-    setSelectedCardIds([...new Set(cardIds)])
-    setSelectedRelationIds([...new Set(relationIds)])
+    setSelectedCardIds(current => stabilizeSelectionIds(current, cardIds))
+    setSelectedRelationIds(current => stabilizeSelectionIds(current, relationIds))
   }, [])
 
   return useMemo(() => ({

@@ -1,6 +1,6 @@
 # Current Architecture
 
-更新时间：2026-08-13
+更新时间：2026-08-16
 
 本文只记录当前仓库真实系统事实，不描述理想化重构方案。新需求、方案、Bug 修复和代码改动前必须先阅读本文。
 
@@ -124,10 +124,10 @@ Wiki 文件位于 `note_results/wiki/`：
 
 - 首页“学习”现在以主动研究而不是课程式教学为主。`ResearchNoteCompiler` 先过滤本地 Wiki 和外部候选，再由所选 LLM 判断是否存在会改变研究对象的重大歧义；有效歧义只返回一个 `clarifying` 问题，不创建 Note。模型不可用、输出非法或证据不足时使用可追溯的确定性研究框架降级。
 - 外部论文、GitHub 仓库和网页是 evidence candidate，不能直接转换为白板节点。compiler 只允许生成 `topic/concept/claim/evidence/conflict/case/question` 节点，并删除不存在于输入证据中的 `source_ids`。
-- 明确目标通过 `NoteImportService` 创建标准研究 Note，复用 `note_results/{task_id}.json`、`note_documents`、向量索引和异步 Wiki contribution；`LearningCanvas.version=2` 通过 `document_task_id` 绑定该 Note。Note Markdown 是正文权威，canvas 的 label/summary/edges 是可重建白板投影缓存。
+- 明确目标通过 `NoteImportService` 创建标准研究 Note，复用 `note_results/{task_id}.json`、`note_documents`、向量索引和异步 Wiki contribution；`LearningCanvas.version=2` 通过 `document_task_id` 绑定该 Note。对于研究会话，白板与 Note 两条线分离：白板保存研究草稿与关系拓扑，Note 保存用户确认后的线性事实快照。
 - HomePage 继续复用中间对话/右侧内容分栏，右侧在“笔记 / 白板”之间切换。白板首屏只显示图和当前焦点，不再同时倾倒学习路径、掌握度、复习队列和来源墙；version=1 历史画布仍可读取。
 - 白板视图占满右侧切换栏以下的剩余空间，不再套页面级滚动容器。节点默认以紧凑图形和短标签呈现，只有选中节点在画布内出现一张可关闭的摘要浮层；浮层继续复用 `whiteboard_node` 引用进入对话。
-- Markdown 选文与 Sigma 节点都可“添加到对话”。前端 Zustand 最多保存 8 条待发送引用，单条快照最多 2000 字；引用同时写入 user message meta，并通过 free-chat 或 learning create 的 `context_refs` 传入后端。后端重新校验、截断并把它们隔离为“资料而非指令”。仅经过当前服务端 resolver 的消息 row 会写入内部 `context_refs_authority_version=1`；历史/legacy row 默认为 0，同 locator 的 PATCH 也必须重新解析，不能只凭 `role=user` 复用快照。
+- Markdown 选文与 `whiteboard_node/whiteboard_selection` 都可“添加到对话”。前端 Zustand 最多保存 8 条待发送引用，单条快照最多 2000 字（`whiteboard_selection` 在后端 authority resolver 后可扩展到 12000 字）；引用同时写入 user message meta，并通过 free-chat 或 learning create 的 `context_refs` 传入后端。后端重新校验、截断并把它们隔离为“资料而非指令”。仅经过当前服务端 resolver 的消息 row 会写入内部 `context_refs_authority_version=1`；历史/legacy row 默认为 0，同 locator 的 PATCH 也必须重新解析，不能只凭 `role=user` 复用快照。
 - `suggested_actions` 分为 `focus` 和 `research`：focus 只派发前端节点聚焦事件，不调用模型；research 只预填研究问题，由用户提交后才触发新研究。
 - NoteImportService 返回成功是研究事务成功边界。之后 canvas 保存或 compact message 写入失败只追加安全的 `projection_save_failed/guide_message_failed`，不得让 API 报研究失败或诱导重复创建 Note；Wiki 状态继续独立演进。
 

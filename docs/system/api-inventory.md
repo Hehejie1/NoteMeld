@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-08-13
+更新时间：2026-08-16
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -113,6 +113,21 @@
 | POST | `/api/conversations/{cid}/learning-canvases/{canvas_id}/units/{node_id}/start` | path | `unit + canvas` | 学习卡/Agent | 本地 | 节点不存在 code=404 | 只能产生 exposed，不得直接 mastered |
 | POST | `/api/conversations/{cid}/learning-canvases/{canvas_id}/units/{node_id}/evidence` | `kind/answer/rubric_result/provider_id/model_name` | `evidence + canvas` | Agent | 本地+已有 LLM 评测结果 | 无效证据 code=409/400 | 非空答案和完整 rubric；状态由后端计算 |
 | GET | `/api/conversations/{cid}/learning-canvases/{canvas_id}/reviews/due` | path | 已到期复习项 | 学习卡/Agent | 本地 | 不存在 code=404 | 未到期 review 不得进入 mastered |
+
+## Whiteboard / 语义白板接口
+
+白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
+
+| 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| POST | `/api/conversations/{cid}/whiteboards` | `title/description` | `WhiteboardSnapshot` | 学习面板 / API | 本地 | 400/404 | 仅允许 conversation 归属操作 |
+| GET | `/api/conversations/{cid}/whiteboards` | 无 | `WhiteboardSummary[]` | 学习面板 | 本地 | 404/500 | 软删白板不返回 |
+| GET | `/api/conversations/{cid}/whiteboards/{wid}` | path | 完整 `WhiteboardSnapshot` | 学习面板 / API | 本地 | 403/404 | `whiteboard`、`conversation` 越界不可透传存在性 |
+| DELETE | `/api/conversations/{cid}/whiteboards/{wid}` | path | `{deleted:true}` | 学习面板 | 本地 | 403/404 | 软删除白板，保留画布快照用于历史 context 复用 |
+| POST | `/api/conversations/{cid}/whiteboards/{wid}/mutations` | `base_revision/operations[]` | `WhiteboardMutationResult` | 学习面板 | 本地 | 409/400/422/500 | 一次 mutation 成功才递增 revision，失败不落库 |
+| POST | `/api/conversations/{cid}/whiteboards/{wid}/context` | `revision/card_ids/relation_ids/label` | 后端 authority `ConversationContextRef` | chat/learning | 本地 | 400/403/404/409/500 | 服务端重建快照并截断 `source_ids`；客户端 snapshot 仅作展示 |
+| POST | `/api/conversations/{cid}/whiteboards/{wid}/publish-note` | `base_revision/scope/card_ids/relation_ids/provider_id/model_name` | `WhiteboardPublishResult` | 学习面板 / chat | 本地 | 409/400/500/503 | 发布失败不修改 `published_revision`，成功后异步触发向量索引/Wiki |
+| POST | `/api/conversations/{cid}/whiteboards/from-learning-canvas/{canvas_id}` | 无 | `WhiteboardSnapshot` | 学习面板 / API | 本地 | 404/409/500 | 与 `LearningCanvas` v1/v2 幂等转换，保留旧 `canvas` 文件 |
 
 ## Ingestion / Migration / Usage / Style 接口
 

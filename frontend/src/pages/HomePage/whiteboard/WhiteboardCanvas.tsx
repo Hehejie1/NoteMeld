@@ -35,7 +35,12 @@ import WhiteboardToolbar from './WhiteboardToolbar'
 import WhiteboardSelectionToolbar from './WhiteboardSelectionToolbar'
 import WhiteboardCardDialog, { type WhiteboardCardFormValue } from './WhiteboardCardDialog'
 import WhiteboardRelationDialog from './WhiteboardRelationDialog'
-import { createViewportCommitter, createWhiteboardCanvasKey, resolveContextForCurrentTask } from './whiteboardInteractions'
+import {
+  createViewportCommitter,
+  createWhiteboardCanvasKey,
+  preserveProjectedSelection,
+  resolveContextForCurrentTask,
+} from './whiteboardInteractions'
 
 interface WhiteboardCanvasProps {
   conversationId: string
@@ -145,26 +150,24 @@ function WhiteboardCanvasInner({
   const projected = useMemo(() => {
     if (!controller.snapshot) return { nodes: [], edges: [] }
     return projectWhiteboard(controller.snapshot, {
-      selectedCardIds: new Set(controller.selectedCardIds),
-      selectedRelationIds: new Set(controller.selectedRelationIds),
       activeCardId: controller.activeCardId,
     })
-  }, [controller.activeCardId, controller.selectedCardIds, controller.selectedRelationIds, controller.snapshot])
+  }, [controller.activeCardId, controller.snapshot])
 
   useEffect(() => {
-    setNodes(projected.nodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        onEdit: openEditCard,
-        onOpenNested: onOpenNestedWhiteboard,
-        onResizeEnd: persistResize,
-      },
-    })))
-    setEdges(projected.edges.map(edge => ({
-      ...edge,
-      data: edge.data ? { ...edge.data, onEdit: openEditRelation } : edge.data,
-    })))
+    setNodes(current => preserveProjectedSelection(current, projected.nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          onEdit: openEditCard,
+          onOpenNested: onOpenNestedWhiteboard,
+          onResizeEnd: persistResize,
+        },
+      }))))
+    setEdges(current => preserveProjectedSelection(current, projected.edges.map(edge => ({
+        ...edge,
+        data: edge.data ? { ...edge.data, onEdit: openEditRelation } : edge.data,
+      }))))
   }, [onOpenNestedWhiteboard, openEditCard, openEditRelation, persistResize, projected.edges, projected.nodes, setEdges, setNodes])
 
   const openCreateDialog = useCallback((type: WhiteboardCardType, position?: WhiteboardPosition) => {

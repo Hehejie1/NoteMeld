@@ -2,7 +2,7 @@
 
 日期：2026-08-14
 作者 / Agent：Codex
-状态：Planned
+状态：Implemented（白板域模型、路由、前端交互和上下文发布链路已落地；待补齐性能门禁与纵向验收证据）
 关联对话 / 任务：学习研究右侧白板从只读图谱升级为人可编辑的语义白板
 关联旧需求：`docs/requirements/2026-08-13-notemeld-research-note-whiteboard.md`
 关联系统文档：`docs/system/current-architecture.md` 、`product-rules.md` 、`data-model.md` 、`api-inventory.md` 、`known-pitfalls.md`
@@ -248,9 +248,9 @@ Reflection --[支持：改善复杂任务质量]--> 结果质量
 
 ## 12. 与系统事实的冲突检查
 
-- 与 `product-rules.md` 冲突：**有显式增量变更**。当前规则是“Note 是唯一正文，白板是可重建投影”。本需求改为“白板是未发布草稿/空间结构的权威，Note 是用户确认的线性发布快照”。实现完成时必须同步更新产品规则。
-- 与 `data-model.md` 冲突：需新增四张 SQLite 表和 `whiteboard_selection` 引用语义；不改写现有 LearningCanvas schema。
-- 与 `api-inventory.md` 冲突：需新增 whiteboard CRUD/mutation/publish API，并向 chat/conversation meta 扩展新引用类型；保持 `{code,msg,data}` wrapper。
+- 与 `product-rules.md` 已对齐：白板为未发布草稿/空间结构权威，Note 为用户确认后的线性快照。
+- 与 `data-model.md` 已对齐：新增 `whiteboards`、`whiteboard_cards`、`whiteboard_relations`、`whiteboard_note_links` 并保留 `LearningCanvas` 文件兼容；见 `whiteboard_note_links` 与 `whiteboard_selection` 权限解析。
+- 与 `api-inventory.md` 已对齐：新增 whiteboard CRUD/mutation/context/publish 路径并继续保持 `{code,msg,data}` wrapper。
 - 是否会重新引入 `known-pitfalls.md` 问题：已设置防线；不把搜索结果直接当卡片、不双向静默同步 Note、不信任客户端快照、不固定 tmp、不逐帧写后端。
 - 是否影响本地数据或线上服务：影响本地 SQLite、迁移包和 Note/Wiki 发布链路；日常编辑不新增远端调用。
 - 是否影响用户已确认交互：保留左/中/右布局、“白板 / 笔记”切换、中间对话和添加上下文；用真正卡片画布替代 Sigma 点图。
@@ -310,6 +310,14 @@ Reflection --[支持：改善复杂任务质量]--> 结果质量
 - [x] 已检查 product rules、data model、API inventory 和 known pitfalls 冲突。
 - [x] 无密钥、token、私有素材或 Provider payload。
 - [x] 无阻塞 Plan/Spec 的开放问题。
+
+## 16. 交付状态（2026-08-16）
+
+- [x] 后端四表 schema 与 revision mutation 已落地。
+- [x] 前端语义白板（卡片、关系、拖拽、连接、undo/redo、发布）与右侧学习面板已接入。
+- [x] 统一后端 authority resolver 覆盖 `whiteboard_selection`，客户端快照不再成为上下文源。
+- [x] 系统文档与 `data-model` / `api-inventory` 同步。
+- [ ] 基准数据 `whiteboard-500-1000.json` 与 500/1000 性能回归仍待手工基准化执行（未在当前会话执行）。
 
 ## 16. Superpowers 交接
 

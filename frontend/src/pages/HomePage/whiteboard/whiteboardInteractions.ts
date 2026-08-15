@@ -14,6 +14,30 @@ const defaultScheduler: WhiteboardTimerScheduler = {
 export const createWhiteboardCanvasKey = (conversationId: string, whiteboardId: string) =>
   JSON.stringify([conversationId, whiteboardId])
 
+export function stabilizeSelectionIds(
+  current: readonly string[],
+  next: readonly string[],
+): string[] {
+  const canonicalNext = [...new Set(next)].sort()
+  if (
+    current.length === canonicalNext.length
+    && current.every(id => canonicalNext.includes(id))
+  ) {
+    return current as string[]
+  }
+  return canonicalNext
+}
+
+export function preserveProjectedSelection<T extends { id: string; selected?: boolean }>(
+  current: readonly T[],
+  projected: readonly T[],
+): T[] {
+  const selectedById = new Map(current.map(item => [item.id, item.selected]))
+  return projected.map(item => selectedById.has(item.id)
+    ? { ...item, selected: selectedById.get(item.id) }
+    : item)
+}
+
 export function createViewportCommitter(
   commit: (viewport: WhiteboardViewport) => void | Promise<unknown>,
   delayMs = 500,

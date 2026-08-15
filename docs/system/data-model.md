@@ -1,6 +1,6 @@
 # Data Model
 
-更新时间：2026-08-13
+更新时间：2026-08-16
 
 本文记录当前数据模型和字段语义。修改数据结构、状态、缓存、统计或文件布局前必须先阅读本文，并搜索相关代码和测试。
 
@@ -50,7 +50,9 @@ legacy SQLite 合并不导入 `models` 表，返回摘要中 `models` 始终为 
 - `config/research_search.json`：Web provider、SearXNG endpoint、请求超时及本地 Tavily/GitHub 凭证。`academic/github` 是代码层基线，不依赖该文件；旧文件中的 `enabled_scopes` 继续容忍读取但不能关闭基线。公开读取时删除密钥和旧 scopes，并派生 `tavily_api_key_set/github_token_set`。
 - `settings/mcp_servers.json`：第三方 MCP server 的 transport、endpoint、command、headers/env/auth 和 enabled 状态。文件使用进程内写锁、唯一临时文件和原子替换；API 读取不返回 auth，headers/env 值只返回 `***`，编辑回传占位符时保留已有值。
 - `workspaces/{conversation_id}/canvases/{canvas_id}.json`：版本化 `LearningCanvas`。version 2 在原字段上追加 `document_task_id/overview/clarification/suggested_actions`，作为研究 Note 的白板投影；显式 version 1 历史文件继续读取。原始学习证据仍只保存在对应 canvas session attempt 中。
-- `document_task_id`：白板绑定的标准研究 Note task id。`note_documents.content` 与 `note_results/{task_id}.json.markdown` 是正文权威；canvas node label/summary/edge 只是可重建展示缓存。
+- `whiteboards`：会话内语义白板主体（标题、`revision`、`viewport`、`legacy_canvas_id`、状态）与四类关系表 `whiteboard_cards/whiteboard_relations/whiteboard_note_links`。白板是未发布草稿/关系结构的权威，`note_documents` 才是已发布文本权威。
+- `whiteboard_note_links`：持久化白板与 Note 的绑定关系（`note_task_id` + `published_revision`）
+- `document_task_id`：来自 `whiteboard_note_links.note_task_id` 的已发布 Note 绑定字段。白板内 `card/relation` 可更新并保留草稿状态，未发布内容不自动改变 `note_documents`。
 - `conversation_messages.message_type=learning_canvas`：只持久化轻量消息索引；`meta_json` 可含 `canvas_id/goal/status/node_count/document_task_id/overview/clarification/suggested_actions`，完整 nodes、正文和作答不得复制进消息表。
 - `conversation_messages.meta_json.context_refs`：用户消息可保存最多 8 条 `note_selection|whiteboard_node|whiteboard_selection` 引用。每条含有界 snapshot、document/canvas/node 或 whiteboard/card/relation 定位和 source_ids；legacy 单条 snapshot 最多 2000 字符，服务端生成的 `whiteboard_selection` canonical snapshot 最多 12000 字符。
 - `conversation_messages.context_refs_authority_version`：是否允许按相同 locator/revision 复用发送时快照的内部版本。只有 row 的版本等于当前服务端版本且 stored/resulting role 均为 user 才可复用；字段不进入普通会话 API 响应或请求模型。幂等补列和 legacy merge 均将历史行置 0，首次安全 PATCH 后才能升级。
