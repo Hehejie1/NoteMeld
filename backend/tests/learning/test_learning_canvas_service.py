@@ -34,6 +34,19 @@ class _ExternalSearch:
         return self.bundle
 
 
+class _SeedService:
+    def __init__(self, *, board_id: str = "wb_research", error: Exception | None = None):
+        self.board_id = board_id
+        self.error = error
+        self.calls: list[tuple[str, str]] = []
+
+    def ensure_from_learning_canvas(self, conversation_id: str, canvas_id: str):
+        self.calls.append((conversation_id, canvas_id))
+        if self.error is not None:
+            raise self.error
+        return type("Board", (), {"id": self.board_id})()
+
+
 def local_results(_goal: str):
     return [
         {
@@ -156,6 +169,7 @@ def test_learning_path_keeps_dependencies_declared_only_by_edges() -> None:
 
 def test_create_canvas_writes_one_compact_conversation_message(tmp_path) -> None:
     messages: list[tuple[str, dict]] = []
+    seed_service = _SeedService()
     service = LearningCanvasService(
         store=LearningCanvasStore(root=tmp_path),
         local_search=local_results,
@@ -164,6 +178,7 @@ def test_create_canvas_writes_one_compact_conversation_message(tmp_path) -> None
             (conversation_id, payload)
         ),
         note_importer=_NoteImporter(),
+        whiteboard_seed_service=seed_service,
     )
 
     canvas = service.create_canvas(
@@ -180,10 +195,84 @@ def test_create_canvas_writes_one_compact_conversation_message(tmp_path) -> None
     assert payload["meta"]["canvas_id"] == canvas.canvas_id
     assert payload["meta"]["goal"] == canvas.goal
     assert payload["meta"]["document_task_id"] == "note_research"
+    assert payload["meta"]["whiteboard_id"] == "wb_research"
     assert payload["meta"]["recommended_node_label"] == "自回归解码"
     assert "nodes" not in payload["meta"]
     assert "可以先查看“自回归解码”" in payload["content"]
     assert "笔记与白板" in payload["content"]
+    assert seed_service.calls == [("conv_canvas", "lc_canvas")]
+
+
+def test_seed_failure_preserves_successful_note_and_canvas(tmp_path) -> None:
+    messages: list[tuple[str, dict]] = []
+    store = LearningCanvasStore(root=tmp_path)
+    service = LearningCanvasService(
+        store=store,
+        local_search=local_results,
+        research_search=_ExternalSearch(ResearchSearchBundle()),
+        message_writer=lambda conversation_id, payload: messages.append(
+            (conversation_id, payload)
+        ),
+        note_importer=_NoteImporter(),
+        whiteboard_seed_service=_SeedService(
+            error=RuntimeError("sqlite:////sensitive/notemeld.db")
+        ),
+    )
+
+    canvas = service.create_canvas(
+        "conv_canvas",
+        goal="学习解码",
+        external_scopes=[],
+        canvas_id="lc_canvas",
+    )
+
+    assert canvas.document_task_id == "note_research"
+    assert canvas.whiteboard_id is None
+    assert any(error["code"] == "whiteboard_seed_failed" for error in canvas.external_errors)
+    restored = store.load("conv_canvas", "lc_canvas")
+    assert any(error["code"] == "whiteboard_seed_failed" for error in restored.external_errors)
+    assert len(messages) == 1
+    assert messages[0][1]["status"] == "success"
+    assert "sensitive" not in str(canvas.external_errors)
+
+
+def test_whiteboard_metadata_save_failure_does_not_misreport_seed_failure(tmp_path) -> None:
+    class FailSecondSaveStore(LearningCanvasStore):
+        def __init__(self, root):
+            super().__init__(root=root)
+            self.save_count = 0
+
+        def save(self, canvas):
+            self.save_count += 1
+            if self.save_count == 2:
+                raise OSError("metadata save failed")
+            return super().save(canvas)
+
+    store = FailSecondSaveStore(root=tmp_path)
+    service = LearningCanvasService(
+        store=store,
+        local_search=local_results,
+        research_search=_ExternalSearch(ResearchSearchBundle()),
+        note_importer=_NoteImporter(),
+        whiteboard_seed_service=_SeedService(),
+    )
+
+    canvas = service.create_canvas(
+        "conv_canvas",
+        goal="学习解码",
+        external_scopes=[],
+        canvas_id="lc_canvas",
+    )
+
+    assert canvas.whiteboard_id == "wb_research"
+    assert any(
+        error["code"] == "whiteboard_link_save_failed"
+        for error in canvas.external_errors
+    )
+    assert not any(
+        error["code"] == "whiteboard_seed_failed"
+        for error in canvas.external_errors
+    )
 
 
 def test_ready_research_imports_standard_note_and_binds_canvas(tmp_path) -> None:

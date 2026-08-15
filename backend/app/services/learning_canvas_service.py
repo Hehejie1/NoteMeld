@@ -23,6 +23,7 @@ from app.services.research_note_compiler import ResearchNoteCompiler, build_llm_
 from app.services.note_import_service import ImportNoteRequest, NoteImportService
 from app.services.conversation_context_refs import sanitize_context_refs
 from app.services.wiki_search import WikiSearch
+from app.services.whiteboard_seed_service import WhiteboardSeedService
 from app.utils.storage_paths import note_output_dir
 
 
@@ -105,6 +106,7 @@ class LearningCanvasService:
         message_writer: Callable[[str, dict], object] | None = None,
         compiler: ResearchNoteCompiler | None = None,
         note_importer: NoteImportService | None = None,
+        whiteboard_seed_service: WhiteboardSeedService | None = None,
     ):
         self.store = store or LearningCanvasStore()
         self.local_search = local_search or self._default_local_search
@@ -113,6 +115,9 @@ class LearningCanvasService:
         self.message_writer = message_writer
         self.compiler = compiler or ResearchNoteCompiler(llm_compiler=build_llm_research_compiler())
         self.note_importer = note_importer or NoteImportService()
+        self.whiteboard_seed_service = whiteboard_seed_service or WhiteboardSeedService(
+            store=self.store
+        )
 
     def create_canvas(
         self,
@@ -213,6 +218,40 @@ class LearningCanvasService:
                     "message": "研究笔记已保存，白板暂时无法持久化",
                 }
             )
+        if projection_saved and canvas.status == "ready":
+            try:
+                board = self.whiteboard_seed_service.ensure_from_learning_canvas(
+                    conversation_id,
+                    canvas.canvas_id,
+                )
+            except Exception:
+                canvas.external_errors.append(
+                    {
+                        "provider": "notemeld",
+                        "code": "whiteboard_seed_failed",
+                        "message": "研究笔记和原白板已保存，可编辑白板暂时无法生成",
+                    }
+                )
+                try:
+                    self.store.save(canvas)
+                except Exception:
+                    pass
+            else:
+                canvas.whiteboard_id = board.id
+                try:
+                    self.store.save(canvas)
+                except Exception:
+                    canvas.external_errors.append(
+                        {
+                            "provider": "notemeld",
+                            "code": "whiteboard_link_save_failed",
+                            "message": "可编辑白板已生成，原白板索引暂时无法更新",
+                        }
+                    )
+                    try:
+                        self.store.save(canvas)
+                    except Exception:
+                        pass
         if self.message_writer is not None and projection_saved:
             source_types = list(
                 dict.fromkeys(source.source_type for source in canvas.sources)
@@ -247,6 +286,7 @@ class LearningCanvasService:
                             ),
                             "external_error_count": len(canvas.external_errors),
                             "document_task_id": canvas.document_task_id,
+                            "whiteboard_id": canvas.whiteboard_id,
                             "overview": canvas.overview,
                             "clarification": canvas.clarification,
                             "suggested_actions": canvas.suggested_actions,
