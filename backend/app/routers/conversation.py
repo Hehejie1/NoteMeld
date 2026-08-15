@@ -32,6 +32,8 @@ from app.utils.response import ResponseWrapper as R
 
 router = APIRouter()
 
+_CONTEXT_REFS_AUTHORITY_VERSION = 1
+
 _TRUSTED_CONTEXT_REF_FIELDS = {
     "note_selection": (
         "id",
@@ -281,6 +283,11 @@ def post_conversation_message(conversation_id: str, data: ConversationMessagePay
             payload.get("meta"),
             conversation_id=conversation_id,
         ) or {}
+        payload["context_refs_authority_version"] = (
+            _CONTEXT_REFS_AUTHORITY_VERSION
+            if data.role == "user" and "context_refs" in payload["meta"]
+            else 0
+        )
         return R.success(append_message(conversation_id, payload))
     except ValueError as exc:
         message = str(exc)
@@ -294,7 +301,10 @@ def patch_conversation_message(conversation_id: str, message_id: str, data: Conv
     payload = data.model_dump(exclude_unset=True)
     current_message: dict[str, Any] = {}
     if "meta" in payload or payload.get("role") == "user":
-        current = get_conversation(conversation_id) or {}
+        current = get_conversation(
+            conversation_id,
+            include_message_context_ref_authority=True,
+        ) or {}
         current_message = next(
             (message for message in current.get("messages", []) if message.get("id") == message_id),
             {},
@@ -315,6 +325,8 @@ def patch_conversation_message(conversation_id: str, message_id: str, data: Conv
             current_meta.get("context_refs")
             if stored_role == "user"
             and role == "user"
+            and current_message.get("context_refs_authority_version")
+            == _CONTEXT_REFS_AUTHORITY_VERSION
             and isinstance(current_meta, dict)
             else None
         )
@@ -324,6 +336,15 @@ def patch_conversation_message(conversation_id: str, message_id: str, data: Conv
             conversation_id=conversation_id,
             trusted_existing_context_refs=trusted_context_refs,
         )
+        payload["context_refs_authority_version"] = (
+            _CONTEXT_REFS_AUTHORITY_VERSION
+            if role == "user"
+            and isinstance(payload["meta"], dict)
+            and "context_refs" in payload["meta"]
+            else 0
+        )
+    elif "role" in payload and role != "user":
+        payload["context_refs_authority_version"] = 0
     payload["id"] = message_id
     try:
         return R.success(update_message(conversation_id, message_id, payload))

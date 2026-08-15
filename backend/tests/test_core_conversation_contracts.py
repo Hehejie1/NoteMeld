@@ -15,6 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.db.engine import merge_legacy_sqlite_data  # noqa: E402
+from app.db.conversation_schema import ensure_conversation_columns  # noqa: E402
 from app.db.models.conversation import Base  # noqa: E402
 from app.routers import conversation  # noqa: E402
 from app.services import conversation_store, note_document_store  # noqa: E402
@@ -106,6 +107,9 @@ class TestCoreConversationContracts(unittest.TestCase):
             legacy_path = pathlib.Path(tmp_dir) / "legacy.db"
             self._prepare_conversation_tables(current_path)
             self._prepare_conversation_tables(legacy_path)
+            current_engine = create_engine(f"sqlite:///{current_path}")
+            ensure_conversation_columns(current_engine)
+            ensure_conversation_columns(current_engine)
 
             legacy_conn = sqlite3.connect(legacy_path)
             legacy_conn.execute(
@@ -175,7 +179,60 @@ class TestCoreConversationContracts(unittest.TestCase):
             self.assertEqual(current_conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0], 1)
             self.assertEqual(current_conn.execute("SELECT COUNT(*) FROM conversation_messages").fetchone()[0], 1)
             self.assertEqual(current_conn.execute("SELECT COUNT(*) FROM note_documents").fetchone()[0], 1)
+            authority_columns = [
+                row[1]
+                for row in current_conn.execute(
+                    "PRAGMA table_info(conversation_messages)"
+                ).fetchall()
+                if row[1] == "context_refs_authority_version"
+            ]
+            self.assertEqual(authority_columns, ["context_refs_authority_version"])
+            self.assertEqual(
+                current_conn.execute(
+                    "SELECT context_refs_authority_version "
+                    "FROM conversation_messages WHERE id = 'msg-1'"
+                ).fetchone()[0],
+                0,
+            )
             current_conn.close()
+
+    def test_conversation_store_persists_internal_context_ref_authority(self):
+        engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        Base.metadata.create_all(bind=engine)
+        testing_session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+        def session_factory():
+            return testing_session()
+
+        with patch("app.services.conversation_store._db", side_effect=session_factory):
+            conversation_store.upsert_conversation({"id": "conv-authority"})
+            conversation_store.append_message(
+                "conv-authority",
+                {
+                    "id": "msg-authority",
+                    "role": "user",
+                    "message_type": "user_input",
+                    "content": "hello",
+                    "meta": {"context_refs": []},
+                    "context_refs_authority_version": 1,
+                },
+            )
+
+        with engine.connect() as conn:
+            columns = {
+                row[1]
+                for row in conn.exec_driver_sql(
+                    "PRAGMA table_info(conversation_messages)"
+                ).fetchall()
+            }
+            self.assertIn("context_refs_authority_version", columns)
+            self.assertEqual(
+                conn.exec_driver_sql(
+                    "SELECT context_refs_authority_version "
+                    "FROM conversation_messages WHERE id = 'msg-authority'"
+                ).scalar_one(),
+                1,
+            )
 
     def test_bootstrap_conversations_restores_note_conversation_from_sidecars(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

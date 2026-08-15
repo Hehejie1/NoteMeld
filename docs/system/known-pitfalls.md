@@ -140,6 +140,14 @@
 - 检查方式：`backend/tests/test_core_task_status_contracts.py`、`backend/tests/test_core_note_task_status_api.py`。
 - 修复经验：任务创建时绑定 conversation，状态更新走统一 writer，成功时同步 note document。
 
+## 仅凭 role=user 信任历史 context refs
+
+- 发生过的问题/风险：assistant row 可先保存伪造白板 `snapshot/source_ids` 再改成 user；第一轮角色门禁修复后，漏洞产生的历史 tainted user row 仍能在相同 locator/revision PATCH 时被当成可信发送时快照。
+- 根因：`role` 和 `meta_json` 都是客户端可影响的业务数据，不能证明该 row 曾经过服务端 authority resolver；只检查 stored/resulting role 会把历史污染状态永久升级成可信。
+- 不允许重新引入的错误做法：仅凭 `role=user` 复用；把可伪造 marker 放在 `meta_json`；迁移或 legacy merge 时把历史 row 默认标可信；把内部 provenance 暴露为 POST/PATCH 请求字段。
+- 检查方式：`backend/tests/test_conversation_context_refs.py` 的 tainted-user/canonical-reuse/assistant-transition 回归，以及 `backend/tests/test_core_conversation_contracts.py` 的幂等补列、legacy 默认 0 和 store 持久化测试。
+- 修复经验：使用 `conversation_messages.context_refs_authority_version` 作为服务端持久、客户端不可写的 provenance。只有当前 resolver 写入的版本可复用；历史/legacy 默认 0 并在下一次引用 PATCH 时重新解析。
+
 ## 学习入口依赖模型自行选工具
 
 - 发生过的问题：用户在普通聊天里说“我想学习某主题”，界面只返回一段泛化建议，没有学习画布；LearningCanvas 已存在却无法被稳定体验。

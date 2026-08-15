@@ -60,8 +60,8 @@
 | GET | `/api/conversations` | query | 会话列表 | 侧边栏/工作区 | 本地 | 空列表 | 软删除过滤 |
 | GET | `/api/conversations/{conversation_id}` | path | 会话详情 | 工作区 | 本地 | 不存在 404 | 消息和文档结构兼容 |
 | PUT/PATCH | `/api/conversations/{conversation_id}` | JSON patch | 更新会话 | 工作区 | 本地 | 更新失败 | 不能破坏 linked task |
-| POST | `/api/conversations/{conversation_id}/messages` | JSON message | 新消息 | 聊天/笔记 | 本地 | 写入失败 | role/message_type 兼容 |
-| PATCH | `/api/conversations/{conversation_id}/messages/{message_id}` | JSON patch | 更新消息 | 聊天/编辑 | 本地 | 不存在 404 | 保留 meta_json/sources_json |
+| POST | `/api/conversations/{conversation_id}/messages` | JSON message | 新消息 | 聊天/笔记 | 本地 | 写入失败 | role/message_type 兼容；user refs 经 resolver 后写内部 authority provenance，客户端不能设置该字段 |
+| PATCH | `/api/conversations/{conversation_id}/messages/{message_id}` | JSON patch | 更新消息 | 聊天/编辑 | 本地 | 不存在 404 | 保留 meta_json/sources_json；只有 provenance 为当前版本的 user→user 同 locator/revision 可复用发送时快照，历史/legacy/角色转换必须重解析 |
 | DELETE | `/api/conversations/{conversation_id}` | path | 删除结果 | 会话删除 | 本地 | 删除失败 | 应软删并清理关联 artifacts |
 | DELETE | `/api/conversations/{conversation_id}/documents/{task_id}` | path | 删除文档 | 文档删除 | 本地 | 删除失败 | 不误删其他 conversation |
 | POST | `/api/conversations/{conversation_id}/workspace/cancel_task` | `card_id` | 取消结果 | 长任务卡 | 本地 | 不存在/跨会话 code=404；已结束 code=400 | 必须按卡片自身 `conversation_id` 校验归属 |

@@ -36,6 +36,12 @@ class ConversationMessage(Base):
     status = Column(String, nullable=True)
     meta_json = Column(Text, nullable=False, default="{}")
     sources_json = Column(Text, nullable=False, default="[]")
+    context_refs_authority_version = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     error = Column(Integer, nullable=False, default=0)
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)

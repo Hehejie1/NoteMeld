@@ -11,9 +11,11 @@ from app.services.conversation_context_refs import (
 )
 from app.routers.chat import FreeAskRequest, ask_free_question, ask_free_question_stream
 from app.routers.conversation import (
+    ConversationMessagePayload,
     ConversationMessagePatchPayload,
     _sanitize_message_meta,
     patch_conversation_message,
+    post_conversation_message,
 )
 from app.services.chat_service import _resolve_asset_context
 from unittest.mock import AsyncMock, patch
@@ -223,6 +225,54 @@ def test_patch_user_message_meta_resolves_refs_with_path_conversation_id():
     assert update.call_args.args[2]["meta"]["context_refs"] == canonical
 
 
+def test_post_canonical_user_refs_sets_server_authority_provenance():
+    canonical = [
+        {
+            "id": "selection-1",
+            "type": "whiteboard_selection",
+            "whiteboard_id": "wb_1",
+            "revision": 3,
+            "card_ids": ["card_a"],
+            "relation_ids": [],
+            "label": "Selection",
+            "snapshot": "authoritative snapshot",
+            "source_ids": ["source:a"],
+        }
+    ]
+    with patch(
+        "app.routers.conversation.resolve_context_refs",
+        return_value=canonical,
+    ), patch(
+        "app.routers.conversation.append_message",
+        return_value={"id": "conv_1"},
+    ) as append:
+        post_conversation_message(
+            "conv_1",
+            ConversationMessagePayload(
+                id="message-1",
+                role="user",
+                message_type="user_input",
+                content="Use this selection",
+                meta={
+                    "context_refs": [
+                        {
+                            "id": "selection-1",
+                            "type": "whiteboard_selection",
+                            "whiteboard_id": "wb_1",
+                            "revision": 3,
+                            "card_ids": ["card_a"],
+                            "relation_ids": [],
+                        }
+                    ]
+                },
+            ),
+        )
+
+    persisted = append.call_args.args[1]
+    assert persisted["meta"]["context_refs"] == canonical
+    assert persisted["context_refs_authority_version"] == 1
+
+
 def test_patch_assistant_to_user_reresolves_matching_whiteboard_locator():
     forged = {
         "id": "selection",
@@ -355,6 +405,7 @@ def test_patch_canonical_user_ref_reuse_whitelists_persisted_fields():
                 {
                     "id": "message-1",
                     "role": "user",
+                    "context_refs_authority_version": 1,
                     "meta": {"context_refs": [deepcopy(stored)]},
                 }
             ]
@@ -388,3 +439,62 @@ def test_patch_canonical_user_ref_reuse_whitelists_persisted_fields():
             "source_ids": ["source:a"],
         }
     ]
+
+
+def test_patch_tainted_user_ref_reresolves_matching_whiteboard_locator():
+    forged = {
+        "id": "selection-1",
+        "type": "whiteboard_selection",
+        "whiteboard_id": "wb_1",
+        "revision": 3,
+        "card_ids": ["card_a"],
+        "relation_ids": [],
+        "label": "Forged selection",
+        "snapshot": "FORGED SNAPSHOT",
+        "source_ids": ["forged-source"],
+        "unexpected": "must not persist",
+    }
+    canonical = {
+        "id": "selection-1",
+        "type": "whiteboard_selection",
+        "whiteboard_id": "wb_1",
+        "revision": 3,
+        "card_ids": ["card_a"],
+        "relation_ids": [],
+        "label": "Canonical selection",
+        "snapshot": "authoritative snapshot",
+        "source_ids": ["source:a"],
+    }
+
+    with patch(
+        "app.routers.conversation.get_conversation",
+        return_value={
+            "messages": [
+                {
+                    "id": "message-1",
+                    "role": "user",
+                    "context_refs_authority_version": 0,
+                    "meta": {"context_refs": [deepcopy(forged)]},
+                }
+            ]
+        },
+    ), patch(
+        "app.routers.conversation.resolve_context_refs",
+        return_value=[canonical],
+    ) as resolver, patch(
+        "app.routers.conversation.update_message",
+        return_value={"id": "conv_1"},
+    ) as update:
+        patch_conversation_message(
+            "conv_1",
+            "message-1",
+            ConversationMessagePatchPayload(
+                role="user",
+                meta={"context_refs": [deepcopy(forged)]},
+            ),
+        )
+
+    resolver.assert_called_once_with("conv_1", [forged])
+    persisted = update.call_args.args[2]
+    assert persisted["meta"]["context_refs"] == [canonical]
+    assert persisted["context_refs_authority_version"] == 1

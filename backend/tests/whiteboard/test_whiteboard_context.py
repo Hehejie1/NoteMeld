@@ -286,9 +286,12 @@ def test_cross_conversation_whiteboard_selection_is_discarded(repository):
 def test_persisted_canonical_snapshot_is_stable_after_board_edit(repository):
     board = create_selection_board(repository)
     stored_meta: dict = {}
+    stored_authority_version = 0
 
     def capture_message(_conversation_id: str, payload: dict):
+        nonlocal stored_authority_version
         stored_meta.update(deepcopy(payload["meta"]))
+        stored_authority_version = payload["context_refs_authority_version"]
         return {"messages": [deepcopy(payload)]}
 
     from app.routers.conversation import ConversationMessagePayload, post_conversation_message
@@ -336,6 +339,7 @@ def test_persisted_canonical_snapshot_is_stable_after_board_edit(repository):
         return_value={
             "messages": [
                 {"id": "message-1", "role": "user", "meta": deepcopy(stored_meta)}
+                | {"context_refs_authority_version": stored_authority_version}
             ]
         },
     ), patch(
@@ -353,6 +357,7 @@ def test_persisted_canonical_snapshot_is_stable_after_board_edit(repository):
         )
 
     assert stored_meta["context_refs"][0] == persisted
+    assert stored_authority_version == 1
     assert updated_payload["meta"]["context_refs"][0] == persisted
     assert "[卡片] A\n" in persisted["snapshot"]
     assert "A revised" not in persisted["snapshot"]

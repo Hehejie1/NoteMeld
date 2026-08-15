@@ -36,7 +36,7 @@
 - `model_usage_records`：LLM 调用用量记录。字段：`task_id`、`provider_id`、`provider_name`、`model_name`、`phase`、`platform`、`video_id`、token、状态、错误和耗时。
 - `video_tasks`：视频任务索引。字段：`video_id`、`platform`、`task_id`；`task_id` 唯一。
 - `conversations`：会话。字段：`id`、`mode`、`title`、`status`、`message`、`platform`、`linked_note_task_id`、`note_state`、表单/转写/音频/Markdown JSON、`research_space_id`（P3 阶段二新增，nullable，cid→rs_id 映射，由 `ensure_conversation_columns` 幂等迁移）、时间戳、`deleted_at`。
-- `conversation_messages`：会话消息。字段：`id`、`conversation_id`、`role`、`message_type`、`content`、`status`、`meta_json`、`sources_json`、`error`、时间戳。
+- `conversation_messages`：会话消息。字段：`id`、`conversation_id`、`role`、`message_type`、`content`、`status`、`meta_json`、`sources_json`、`context_refs_authority_version`、`error`、时间戳。authority version 是客户端不可写的服务端 provenance：当前 resolver 成功处理引用后写 1；历史 schema、legacy merge 和未认证内部写入默认 0。
 - `note_documents`：笔记文档索引。字段：`task_id`、`conversation_id`、`title`、`content`、`source_url`、`platform`、`model_name`、`style`、`status`、`wiki_status`、时间戳、`deleted_at`。
 - `note_styles`：笔记样式。字段：`id`、`name`、`description`、`skeleton_html`、`style_constraints`、`rule_config`、`example_content`、`output_formats`、`builtin`、时间戳。
 - `template_extraction_tasks`：样式模板提取任务。字段：`task_id`、`status`、`stage`、`messages_json`、`chunks_json`、`provider_id`、`model_name`、`file_name`、`progress`、请求 payload、结果和错误。
@@ -52,7 +52,8 @@ legacy SQLite 合并不导入 `models` 表，返回摘要中 `models` 始终为 
 - `workspaces/{conversation_id}/canvases/{canvas_id}.json`：版本化 `LearningCanvas`。version 2 在原字段上追加 `document_task_id/overview/clarification/suggested_actions`，作为研究 Note 的白板投影；显式 version 1 历史文件继续读取。原始学习证据仍只保存在对应 canvas session attempt 中。
 - `document_task_id`：白板绑定的标准研究 Note task id。`note_documents.content` 与 `note_results/{task_id}.json.markdown` 是正文权威；canvas node label/summary/edge 只是可重建展示缓存。
 - `conversation_messages.message_type=learning_canvas`：只持久化轻量消息索引；`meta_json` 可含 `canvas_id/goal/status/node_count/document_task_id/overview/clarification/suggested_actions`，完整 nodes、正文和作答不得复制进消息表。
-- `conversation_messages.meta_json.context_refs`：用户消息可保存最多 8 条 `note_selection|whiteboard_node` 引用。每条含有界 snapshot、document/canvas/node 定位和 source_ids；单条 snapshot 最多 2000 字符。
+- `conversation_messages.meta_json.context_refs`：用户消息可保存最多 8 条 `note_selection|whiteboard_node|whiteboard_selection` 引用。每条含有界 snapshot、document/canvas/node 或 whiteboard/card/relation 定位和 source_ids；legacy 单条 snapshot 最多 2000 字符，服务端生成的 `whiteboard_selection` canonical snapshot 最多 12000 字符。
+- `conversation_messages.context_refs_authority_version`：是否允许按相同 locator/revision 复用发送时快照的内部版本。只有 row 的版本等于当前服务端版本且 stored/resulting role 均为 user 才可复用；字段不进入普通会话 API 响应或请求模型。幂等补列和 legacy merge 均将历史行置 0，首次安全 PATCH 后才能升级。
 
 - `note_results/{task_id}.status.json`：任务状态事实来源。
 - `note_results/{task_id}.json`：结构化任务结果。

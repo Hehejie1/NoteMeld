@@ -82,8 +82,12 @@ def _hydrate_conversation_payload(conversation: Conversation) -> dict:
     return payload
 
 
-def _message_to_dict(row: ConversationMessage) -> dict:
-    return {
+def _message_to_dict(
+    row: ConversationMessage,
+    *,
+    include_context_ref_authority: bool = False,
+) -> dict:
+    payload = {
         "id": row.id,
         "role": row.role,
         "message_type": row.message_type,
@@ -95,16 +99,32 @@ def _message_to_dict(row: ConversationMessage) -> dict:
         "createdAt": row.created_at,
         "updatedAt": row.updated_at,
     }
+    if include_context_ref_authority:
+        payload["context_refs_authority_version"] = int(
+            row.context_refs_authority_version or 0
+        )
+    return payload
 
 
-def _messages_for_conversation(db: Session, conversation_id: str) -> list[dict]:
+def _messages_for_conversation(
+    db: Session,
+    conversation_id: str,
+    *,
+    include_context_ref_authority: bool = False,
+) -> list[dict]:
     rows = (
         db.query(ConversationMessage)
         .filter(ConversationMessage.conversation_id == conversation_id)
         .order_by(ConversationMessage.created_at.asc())
         .all()
     )
-    return [_message_to_dict(row) for row in rows]
+    return [
+        _message_to_dict(
+            row,
+            include_context_ref_authority=include_context_ref_authority,
+        )
+        for row in rows
+    ]
 
 
 def _storage_root() -> Path:
@@ -265,7 +285,11 @@ def list_conversations() -> list[dict]:
         db.close()
 
 
-def get_conversation(conversation_id: str) -> dict | None:
+def get_conversation(
+    conversation_id: str,
+    *,
+    include_message_context_ref_authority: bool = False,
+) -> dict | None:
     db = _db()
     try:
         row = (
@@ -276,7 +300,11 @@ def get_conversation(conversation_id: str) -> dict | None:
         if not row:
             return None
         payload = _hydrate_conversation_payload(row)
-        payload["messages"] = _messages_for_conversation(db, conversation_id)
+        payload["messages"] = _messages_for_conversation(
+            db,
+            conversation_id,
+            include_context_ref_authority=include_message_context_ref_authority,
+        )
         try:
             from app.services.note_document_store import list_note_documents
 
@@ -534,6 +562,9 @@ def append_message(conversation_id: str, data: dict) -> dict:
             status=data.get("status"),
             meta_json=_json_dumps(data.get("meta", {})),
             sources_json=_json_dumps(data.get("sources", [])),
+            context_refs_authority_version=int(
+                data.get("context_refs_authority_version") or 0
+            ),
             error=1 if data.get("error") else 0,
             created_at=now_iso,
             updated_at=data.get("updatedAt") or now_iso,
@@ -575,6 +606,10 @@ def update_message(conversation_id: str, message_id: str, data: dict) -> dict:
             row.meta_json = _json_dumps(data.get("meta", {}))
         if "sources" in data:
             row.sources_json = _json_dumps(data.get("sources", []))
+        if "context_refs_authority_version" in data:
+            row.context_refs_authority_version = int(
+                data.get("context_refs_authority_version") or 0
+            )
         if "error" in data:
             row.error = 1 if data.get("error") else 0
         row.updated_at = data.get("updatedAt") or _now_iso()

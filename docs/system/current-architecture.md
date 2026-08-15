@@ -127,7 +127,7 @@ Wiki 文件位于 `note_results/wiki/`：
 - 明确目标通过 `NoteImportService` 创建标准研究 Note，复用 `note_results/{task_id}.json`、`note_documents`、向量索引和异步 Wiki contribution；`LearningCanvas.version=2` 通过 `document_task_id` 绑定该 Note。Note Markdown 是正文权威，canvas 的 label/summary/edges 是可重建白板投影缓存。
 - HomePage 继续复用中间对话/右侧内容分栏，右侧在“笔记 / 白板”之间切换。白板首屏只显示图和当前焦点，不再同时倾倒学习路径、掌握度、复习队列和来源墙；version=1 历史画布仍可读取。
 - 白板视图占满右侧切换栏以下的剩余空间，不再套页面级滚动容器。节点默认以紧凑图形和短标签呈现，只有选中节点在画布内出现一张可关闭的摘要浮层；浮层继续复用 `whiteboard_node` 引用进入对话。
-- Markdown 选文与 Sigma 节点都可“添加到对话”。前端 Zustand 最多保存 8 条待发送引用，单条快照最多 2000 字；引用同时写入 user message meta，并通过 free-chat 或 learning create 的 `context_refs` 传入后端。后端重新校验、截断并把它们隔离为“资料而非指令”。
+- Markdown 选文与 Sigma 节点都可“添加到对话”。前端 Zustand 最多保存 8 条待发送引用，单条快照最多 2000 字；引用同时写入 user message meta，并通过 free-chat 或 learning create 的 `context_refs` 传入后端。后端重新校验、截断并把它们隔离为“资料而非指令”。仅经过当前服务端 resolver 的消息 row 会写入内部 `context_refs_authority_version=1`；历史/legacy row 默认为 0，同 locator 的 PATCH 也必须重新解析，不能只凭 `role=user` 复用快照。
 - `suggested_actions` 分为 `focus` 和 `research`：focus 只派发前端节点聚焦事件，不调用模型；research 只预填研究问题，由用户提交后才触发新研究。
 - NoteImportService 返回成功是研究事务成功边界。之后 canvas 保存或 compact message 写入失败只追加安全的 `projection_save_failed/guide_message_failed`，不得让 API 报研究失败或诱导重复创建 Note；Wiki 状态继续独立演进。
 
