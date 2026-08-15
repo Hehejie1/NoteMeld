@@ -12,6 +12,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.models.conversation import Conversation, NoteDocument
 from app.db.models.whiteboard import (
     Whiteboard as WhiteboardRow,
     WhiteboardCard as WhiteboardCardRow,
@@ -121,7 +122,8 @@ class WhiteboardRepository:
             viewport_json=self._dump_json({"x": 0.0, "y": 0.0, "zoom": 1.0}),
             status="active",
         )
-        with self._session_factory.begin() as session:
+        with self._write_session() as session:
+            self._active_conversation(session, conversation_id)
             session.add(board)
             session.flush()
             session.refresh(board)
@@ -131,10 +133,15 @@ class WhiteboardRepository:
         with self._session_factory() as session:
             rows = session.scalars(
                 select(WhiteboardRow)
+                .join(
+                    Conversation,
+                    Conversation.id == WhiteboardRow.conversation_id,
+                )
                 .where(
                     WhiteboardRow.conversation_id == conversation_id,
                     WhiteboardRow.deleted_at.is_(None),
                     WhiteboardRow.status == "active",
+                    Conversation.deleted_at.is_(None),
                 )
                 .order_by(WhiteboardRow.updated_at.desc(), WhiteboardRow.id.asc())
             ).all()
@@ -549,7 +556,16 @@ class WhiteboardRepository:
         )
         note_link_row = session.get(WhiteboardNoteLinkRow, board.id)
         note_link = None
+        active_note = None
         if note_link_row is not None:
+            active_note = session.scalar(
+                select(NoteDocument.task_id).where(
+                    NoteDocument.task_id == note_link_row.note_task_id,
+                    NoteDocument.conversation_id == board.conversation_id,
+                    NoteDocument.deleted_at.is_(None),
+                )
+            )
+        if note_link_row is not None and active_note is not None:
             note_link = WhiteboardNoteLink(
                 note_task_id=note_link_row.note_task_id,
                 published_revision=note_link_row.published_revision,
@@ -591,16 +607,34 @@ class WhiteboardRepository:
         whiteboard_id: str,
     ) -> WhiteboardRow:
         board = session.scalar(
-            select(WhiteboardRow).where(
+            select(WhiteboardRow)
+            .join(
+                Conversation,
+                Conversation.id == WhiteboardRow.conversation_id,
+            )
+            .where(
                 WhiteboardRow.id == whiteboard_id,
                 WhiteboardRow.conversation_id == conversation_id,
                 WhiteboardRow.deleted_at.is_(None),
                 WhiteboardRow.status == "active",
+                Conversation.deleted_at.is_(None),
             )
         )
         if board is None:
             raise LookupError("whiteboard not found")
         return board
+
+    @staticmethod
+    def _active_conversation(session: Session, conversation_id: str) -> Conversation:
+        conversation = session.scalar(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.deleted_at.is_(None),
+            )
+        )
+        if conversation is None:
+            raise LookupError("conversation not found")
+        return conversation
 
     def _card_from_row(self, row: WhiteboardCardRow) -> WhiteboardCard:
         return WhiteboardCard(

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -17,6 +19,7 @@ from app.models.learning_canvas import (
     LearningNode,
     LearningSource,
 )
+from app.services import conversation_store, note_document_store
 from app.services.learning_canvas_store import LearningCanvasStore
 from app.services.whiteboard_repository import WhiteboardRepository
 from app.services.whiteboard_seed_service import WhiteboardSeedService
@@ -199,6 +202,21 @@ def test_soft_deleted_legacy_seed_is_not_resurfaced(tmp_path) -> None:
         engine.dispose()
 
 
+def test_seed_rejects_deleted_conversation_before_creating_board(tmp_path) -> None:
+    engine, factory, _store, service = _seed_fixture(tmp_path)
+    try:
+        with factory.begin() as session:
+            session.get(Conversation, "conv_legacy").deleted_at = conversation_store._now_dt()
+
+        with pytest.raises(LookupError):
+            service.ensure_from_learning_canvas("conv_legacy", "lc_legacy")
+
+        with factory() as session:
+            assert session.scalar(select(func.count()).select_from(Whiteboard)) == 0
+    finally:
+        engine.dispose()
+
+
 def test_foreign_and_absent_learning_canvas_paths_are_indistinguishable(tmp_path) -> None:
     engine, _factory, _store, service = _seed_fixture(tmp_path)
     try:
@@ -229,6 +247,70 @@ def test_concurrent_seed_calls_create_one_legacy_canvas_row(tmp_path) -> None:
                     Whiteboard.legacy_canvas_id == "lc_legacy"
                 )
             ) == 1
+    finally:
+        engine.dispose()
+
+
+def test_conversation_delete_serializes_against_learning_canvas_seed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine, factory, _store, service = _seed_fixture(tmp_path)
+
+    def open_session():
+        return factory()
+
+    monkeypatch.setattr(conversation_store, "_db", open_session)
+    monkeypatch.setattr(note_document_store, "_db", open_session)
+    delete_entered = threading.Event()
+    allow_delete = threading.Event()
+    original_soft_delete = conversation_store.soft_delete_whiteboards_by_conversation
+    outcomes: dict[str, object] = {}
+
+    def paused_soft_delete(conversation_id: str, *, db=None) -> int:
+        delete_entered.set()
+        assert allow_delete.wait(timeout=5)
+        return original_soft_delete(conversation_id, db=db)
+
+    monkeypatch.setattr(
+        conversation_store,
+        "soft_delete_whiteboards_by_conversation",
+        paused_soft_delete,
+    )
+
+    def delete_conversation() -> None:
+        try:
+            outcomes["delete"] = conversation_store.soft_delete_conversation(
+                "conv_legacy"
+            )
+        except Exception as exc:  # pragma: no cover - asserted through outcomes
+            outcomes["delete_error"] = exc
+
+    def seed_canvas() -> None:
+        try:
+            outcomes["seed"] = service.ensure_from_learning_canvas(
+                "conv_legacy",
+                "lc_legacy",
+            )
+        except Exception as exc:  # pragma: no cover - asserted through outcomes
+            outcomes["seed_error"] = exc
+
+    try:
+        delete_thread = threading.Thread(target=delete_conversation)
+        delete_thread.start()
+        assert delete_entered.wait(timeout=5)
+        seed_thread = threading.Thread(target=seed_canvas)
+        seed_thread.start()
+        time.sleep(0.1)
+        allow_delete.set()
+        delete_thread.join(timeout=5)
+        seed_thread.join(timeout=5)
+
+        assert outcomes.get("delete") is True
+        assert isinstance(outcomes.get("seed_error"), LookupError)
+        assert "seed" not in outcomes
+        with factory() as session:
+            assert session.scalar(select(func.count()).select_from(Whiteboard)) == 0
     finally:
         engine.dispose()
 

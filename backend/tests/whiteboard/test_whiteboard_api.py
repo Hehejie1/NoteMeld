@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.engine import Base
+from app.db.models.conversation import Conversation
 from app.routers import whiteboard
 from app.services.whiteboard_repository import WhiteboardRepository
 
@@ -27,6 +28,8 @@ def api(tmp_path, monkeypatch):
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add(Conversation(id="conv_1"))
     repository = WhiteboardRepository(factory)
     monkeypatch.setattr(whiteboard, "repository", repository)
     monkeypatch.setattr(whiteboard, "seed_service", _SeedService(repository))

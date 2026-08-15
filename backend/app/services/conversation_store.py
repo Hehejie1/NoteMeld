@@ -439,7 +439,6 @@ def delete_conversation_note_document(conversation_id: str, task_id: str) -> dic
     from app.services.note_document_store import (
         delete_note_task_artifacts,
         list_note_documents,
-        soft_delete_note_document,
     )
     from app.services.note_task_store import cancel_note_task
 
@@ -447,11 +446,13 @@ def delete_conversation_note_document(conversation_id: str, task_id: str) -> dic
     if current is None:
         return None
 
-    deleted = soft_delete_note_document(conversation_id, task_id)
+    deleted = soft_delete_note_document_and_clear_whiteboard_links(
+        conversation_id,
+        task_id,
+    )
     if not deleted:
         return None
 
-    clear_whiteboard_note_links_for_task(task_id)
     delete_note_task_artifacts(task_id)
     cancel_note_task(task_id, "笔记已删除，任务已取消")
     _delete_note_messages_for_task(conversation_id, task_id)
@@ -487,6 +488,50 @@ def delete_conversation_note_document(conversation_id: str, task_id: str) -> dic
             "transcript": {},
         }
     )
+
+
+def soft_delete_note_document_and_clear_whiteboard_links(
+    conversation_id: str,
+    task_id: str,
+) -> bool:
+    if not conversation_id or not task_id:
+        return False
+
+    from app.db.models.conversation import NoteDocument
+    from app.db.models.whiteboard import WhiteboardNoteLink
+
+    db = _db()
+    try:
+        if db.get_bind().dialect.name == "sqlite":
+            db.execute(text("BEGIN IMMEDIATE"))
+        document = (
+            db.query(NoteDocument)
+            .filter(
+                NoteDocument.conversation_id == conversation_id,
+                NoteDocument.task_id == task_id,
+            )
+            .first()
+        )
+        if document is None:
+            db.rollback()
+            return False
+
+        (
+            db.query(WhiteboardNoteLink)
+            .filter(WhiteboardNoteLink.note_task_id == task_id)
+            .delete(synchronize_session=False)
+        )
+        now = _now_dt()
+        if document.deleted_at is None:
+            document.deleted_at = now
+        document.updated_at = now
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def clear_whiteboard_note_links_for_task(task_id: str) -> int:

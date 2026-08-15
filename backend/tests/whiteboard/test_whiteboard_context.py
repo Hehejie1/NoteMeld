@@ -75,6 +75,8 @@ def repository(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-context.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add_all([Conversation(id="conv_1"), Conversation(id="conv_2")])
     repo = WhiteboardRepository(factory)
     try:
         yield repo

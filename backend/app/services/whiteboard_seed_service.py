@@ -49,6 +49,7 @@ class WhiteboardSeedService:
 
         try:
             with self.repository._write_session() as session:
+                self.repository._active_conversation(session, conversation_id)
                 existing = session.scalar(
                     select(WhiteboardRow).where(
                         WhiteboardRow.legacy_canvas_id == canvas.canvas_id
@@ -150,6 +151,7 @@ class WhiteboardSeedService:
         *,
         conversation_id: str,
     ) -> WhiteboardSnapshot:
+        self.repository._active_conversation(session, conversation_id)
         if (
             board.conversation_id != conversation_id
             or board.deleted_at is not None

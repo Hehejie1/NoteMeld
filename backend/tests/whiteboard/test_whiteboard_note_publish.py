@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.engine import Base
+from app.db.models.conversation import Conversation, NoteDocument
 from app.routers import whiteboard
 from app.services.note_import_service import NoteImportService
 from app.services.whiteboard_note_publish_service import WhiteboardNotePublishService
@@ -92,15 +93,72 @@ def publishing(tmp_path):
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add(Conversation(id="conv_1"))
     repository = WhiteboardRepository(factory)
     documents = MemoryDocuments()
     vector = VectorStore()
     wiki_calls = []
+
+    def write_document(payload: dict) -> dict:
+        saved = documents.write(payload)
+        with factory.begin() as session:
+            row = session.get(NoteDocument, payload["task_id"])
+            if row is None:
+                row = NoteDocument(
+                    task_id=payload["task_id"],
+                    conversation_id=payload["conversation_id"],
+                )
+                session.add(row)
+            for field in (
+                "conversation_id",
+                "title",
+                "content",
+                "source_url",
+                "platform",
+                "model_name",
+                "style",
+                "status",
+                "wiki_status",
+            ):
+                if field in payload:
+                    setattr(row, field, payload[field])
+            row.deleted_at = None
+        return saved
+
+    def compensate_document(task_id: str, previous: dict | None) -> None:
+        documents.compensate(task_id, previous)
+        with factory.begin() as session:
+            row = session.get(NoteDocument, task_id)
+            if previous is None:
+                if row is not None:
+                    session.delete(row)
+                return
+            if row is None:
+                row = NoteDocument(task_id=task_id)
+                session.add(row)
+            for field in (
+                "conversation_id",
+                "title",
+                "content",
+                "source_url",
+                "platform",
+                "model_name",
+                "style",
+                "status",
+                "wiki_status",
+                "created_at",
+                "updated_at",
+                "deleted_at",
+            ):
+                if field in previous:
+                    setattr(row, field, previous[field])
+
     importer = NoteImportService(
         output_dir=tmp_path / "notes",
-        document_writer=documents.write,
+        document_writer=write_document,
         document_by_id_reader=documents.read,
-        document_compensator=documents.compensate,
+        document_compensator=compensate_document,
         vector_store_factory=lambda: vector,
         wiki_scheduler=lambda **kwargs: wiki_calls.append(kwargs),
     )
@@ -456,11 +514,11 @@ def test_postprocessing_failure_is_partial_and_published_revision_is_durable(
         vector.fail = True
         importer = _service.note_importer
     else:
-        importer = NoteImportService(
-            output_dir=_service.note_importer.output_dir,
-            document_writer=documents.write,
-            document_by_id_reader=documents.read,
-            document_compensator=documents.compensate,
+            importer = NoteImportService(
+                output_dir=_service.note_importer.output_dir,
+                document_writer=_service.note_importer.document_writer,
+                document_by_id_reader=documents.read,
+                document_compensator=_service.note_importer.document_compensator,
             vector_store_factory=lambda: vector,
             wiki_scheduler=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("wiki failed")),
         )

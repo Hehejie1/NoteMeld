@@ -78,6 +78,8 @@ def repository(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-repository.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add_all([Conversation(id="conv_1"), Conversation(id="conv_2")])
     repo = WhiteboardRepository(factory)
     try:
         yield repo
@@ -94,6 +96,8 @@ def authoritative_file_repository(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-files.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add_all([Conversation(id="conv_1"), Conversation(id="conv_2")])
     repo = WhiteboardRepository(factory)
     store = ConversationAssetStore()
     try:
@@ -326,6 +330,8 @@ def test_file_card_fails_closed_when_the_injected_resolver_raises(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-resolver-error.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add_all([Conversation(id="conv_1"), Conversation(id="conv_2")])
 
     def failing_resolver(_conversation_id: str, _upload_id: str) -> bool:
         raise RuntimeError("private resolver detail")
@@ -582,6 +588,8 @@ def test_concurrent_nested_whiteboard_mutations_cannot_persist_a_cycle(tmp_path,
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add_all([Conversation(id="conv_1"), Conversation(id="conv_2")])
     repository = WhiteboardRepository(factory)
     first = repository.create("conv_1", "First")
     second = repository.create("conv_1", "Second")

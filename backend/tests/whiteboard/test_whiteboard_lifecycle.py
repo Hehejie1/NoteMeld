@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.db.engine import Base
@@ -105,6 +106,25 @@ def test_conversation_soft_delete_hides_boards_without_deleting_graph(lifecycle)
         assert session.get(WhiteboardCardRow, "card-recoverable") is not None
 
 
+def test_repository_rejects_create_and_hides_dirty_active_board_for_deleted_conversation(
+    lifecycle,
+) -> None:
+    factory, repository = lifecycle
+    board = repository.create("conv-lifecycle", "Pre-delete board")
+    with factory.begin() as session:
+        conversation = session.get(Conversation, "conv-lifecycle")
+        conversation.deleted_at = conversation_store._now_dt()
+        stored_board = session.get(WhiteboardRow, board.id)
+        stored_board.status = "active"
+        stored_board.deleted_at = None
+
+    with pytest.raises(LookupError):
+        repository.create("conv-lifecycle", "Orphan board")
+    assert repository.list_for_conversation("conv-lifecycle") == []
+    with pytest.raises(LookupError):
+        repository.get("conv-lifecycle", board.id)
+
+
 def test_card_delete_removes_its_relations_in_the_same_mutation(lifecycle) -> None:
     factory, repository = lifecycle
     board = repository.create("conv-lifecycle", "Transactional graph")
@@ -182,6 +202,58 @@ def test_deleting_linked_note_clears_link_but_preserves_board(lifecycle) -> None
         assert session.get(Conversation, "conv-lifecycle").deleted_at is None
 
 
+def test_note_link_cleanup_failure_rolls_back_note_soft_delete(lifecycle) -> None:
+    factory, repository = lifecycle
+    board = _create_linked_board(factory, repository)
+    engine = factory.kw["bind"]
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE TRIGGER fail_whiteboard_note_link_delete
+            BEFORE DELETE ON whiteboard_note_links
+            BEGIN SELECT RAISE(ABORT, 'injected link cleanup failure'); END
+            """
+        )
+
+    with pytest.raises(IntegrityError):
+        conversation_store.delete_conversation_note_document(
+            "conv-lifecycle",
+            "note-lifecycle",
+        )
+
+    with factory() as session:
+        assert session.get(NoteDocument, "note-lifecycle").deleted_at is None
+        assert session.get(WhiteboardNoteLinkRow, board.id) is not None
+
+
+def test_retry_deleted_note_clears_historical_stale_link(lifecycle) -> None:
+    factory, repository = lifecycle
+    board = _create_linked_board(factory, repository)
+    with factory.begin() as session:
+        document = session.get(NoteDocument, "note-lifecycle")
+        document.deleted_at = conversation_store._now_dt()
+
+    result = conversation_store.delete_conversation_note_document(
+        "conv-lifecycle",
+        "note-lifecycle",
+    )
+
+    assert result is not None
+    assert repository.get("conv-lifecycle", board.id).note_link is None
+    with factory() as session:
+        assert session.get(WhiteboardNoteLinkRow, board.id) is None
+
+
+def test_repository_hides_historical_link_to_deleted_note(lifecycle) -> None:
+    factory, repository = lifecycle
+    board = _create_linked_board(factory, repository)
+    with factory.begin() as session:
+        document = session.get(NoteDocument, "note-lifecycle")
+        document.deleted_at = conversation_store._now_dt()
+
+    assert repository.get("conv-lifecycle", board.id).note_link is None
+
+
 def test_conversation_delete_serializes_against_board_mutation(
     lifecycle,
     monkeypatch: pytest.MonkeyPatch,
@@ -238,4 +310,58 @@ def test_conversation_delete_serializes_against_board_mutation(
     assert "delete_error" not in outcomes
     assert isinstance(outcomes.get("mutation_error"), LookupError)
     assert "mutation" not in outcomes
+    assert repository.list_for_conversation("conv-lifecycle") == []
+
+
+def test_conversation_delete_serializes_against_board_create(
+    lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _factory, repository = lifecycle
+    delete_entered = threading.Event()
+    allow_delete = threading.Event()
+    original_soft_delete = conversation_store.soft_delete_whiteboards_by_conversation
+    outcomes: dict[str, object] = {}
+
+    def paused_soft_delete(conversation_id: str, *, db=None) -> int:
+        delete_entered.set()
+        assert allow_delete.wait(timeout=5)
+        return original_soft_delete(conversation_id, db=db)
+
+    monkeypatch.setattr(
+        conversation_store,
+        "soft_delete_whiteboards_by_conversation",
+        paused_soft_delete,
+    )
+
+    def delete_conversation() -> None:
+        try:
+            outcomes["delete"] = conversation_store.soft_delete_conversation(
+                "conv-lifecycle"
+            )
+        except Exception as exc:  # pragma: no cover - asserted through outcomes
+            outcomes["delete_error"] = exc
+
+    def create_board() -> None:
+        try:
+            outcomes["created"] = repository.create(
+                "conv-lifecycle",
+                "Concurrent orphan",
+            )
+        except Exception as exc:  # pragma: no cover - asserted through outcomes
+            outcomes["create_error"] = exc
+
+    delete_thread = threading.Thread(target=delete_conversation)
+    delete_thread.start()
+    assert delete_entered.wait(timeout=5)
+    create_thread = threading.Thread(target=create_board)
+    create_thread.start()
+    time.sleep(0.1)
+    allow_delete.set()
+    delete_thread.join(timeout=5)
+    create_thread.join(timeout=5)
+
+    assert outcomes.get("delete") is True
+    assert isinstance(outcomes.get("create_error"), LookupError)
+    assert "created" not in outcomes
     assert repository.list_for_conversation("conv-lifecycle") == []

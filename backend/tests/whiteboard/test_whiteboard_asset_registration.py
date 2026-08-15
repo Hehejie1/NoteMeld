@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.engine import Base
+from app.db.models.conversation import Conversation
 from app.routers import whiteboard
 from app.services.conversation_asset_store import ConversationAssetStore
 from app.services.whiteboard_asset_service import WhiteboardAssetRegistrationService
@@ -22,6 +23,10 @@ def asset_environment(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-assets.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        session.add_all(
+            [Conversation(id="conv_owner"), Conversation(id="conv_foreign")]
+        )
     store = ConversationAssetStore()
     repository = WhiteboardRepository(factory)
     service = WhiteboardAssetRegistrationService(
