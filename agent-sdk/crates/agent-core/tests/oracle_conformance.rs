@@ -239,10 +239,32 @@ fn expected_semantics(scenario: &str) -> Vec<String> {
                     "message.delta:{}",
                     payload["delta"].as_str().unwrap()
                 )),
-                "message_end" => Some(format!(
-                    "message.completed:{}",
-                    normalize_role(payload["role"].as_str().unwrap())
-                )),
+                "message_end" => {
+                    let role = normalize_role(payload["role"].as_str().unwrap());
+                    if role == "assistant" {
+                        let content = &payload["extra"]["content"];
+                        let tool_calls = payload["extra"]["tool_calls"]
+                            .as_array()
+                            .expect("assistant message_end tool_calls must be an array")
+                            .iter()
+                            .map(|call| {
+                                (
+                                    call["id"]
+                                        .as_str()
+                                        .expect("oracle tool call must have an id")
+                                        .to_owned(),
+                                    call["function"]["name"]
+                                        .as_str()
+                                        .expect("oracle tool call must have a name")
+                                        .to_owned(),
+                                )
+                            })
+                            .collect();
+                        Some(assistant_completion_semantic(content, tool_calls))
+                    } else {
+                        Some(format!("message.completed:{role}"))
+                    }
+                }
                 "tool_execution_start" => Some(format!(
                     "tool.started:{}:{}",
                     payload["call_id"].as_str().unwrap(),
@@ -322,6 +344,51 @@ fn normalize_role(role: &str) -> &str {
     }
 }
 
+fn assistant_completion_semantic(content: &Value, tool_calls: Vec<(String, String)>) -> String {
+    let tool_identities = tool_calls
+        .into_iter()
+        .map(|(call_id, tool_name)| format!("{call_id}:{tool_name}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "message.completed:assistant:content={}:tools=[{tool_identities}]",
+        serde_json::to_string(content).expect("assistant completion content must serialize")
+    )
+}
+
+fn actual_assistant_completion_semantic(content: &Value) -> String {
+    match content {
+        Value::String(text) => {
+            assistant_completion_semantic(&Value::String(text.clone()), Vec::new())
+        }
+        Value::Object(fields) => {
+            let content = fields
+                .get("content")
+                .expect("tool-call completion must contain assistant content");
+            let tool_calls = fields
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .expect("tool-call completion must contain tool_calls")
+                .iter()
+                .map(|call| {
+                    (
+                        call["call_id"]
+                            .as_str()
+                            .expect("Rust tool call summary must have a call id")
+                            .to_owned(),
+                        call["tool_name"]
+                            .as_str()
+                            .expect("Rust tool call summary must have a name")
+                            .to_owned(),
+                    )
+                })
+                .collect();
+            assistant_completion_semantic(content, tool_calls)
+        }
+        other => panic!("unexpected Rust assistant completion content: {other:?}"),
+    }
+}
+
 fn actual_semantics(events: &[AgentEvent]) -> Vec<String> {
     events
         .iter()
@@ -335,10 +402,19 @@ fn actual_semantics(events: &[AgentEvent]) -> Vec<String> {
                 "message.delta:{}",
                 payload.delta.as_deref().unwrap()
             )),
-            AgentEvent::MessageCompleted(payload) => Some(format!(
-                "message.completed:{}",
-                normalize_role(payload.role.as_deref().unwrap())
-            )),
+            AgentEvent::MessageCompleted(payload) => {
+                let role = normalize_role(payload.role.as_deref().unwrap());
+                if role == "assistant" {
+                    Some(actual_assistant_completion_semantic(
+                        payload
+                            .content
+                            .as_ref()
+                            .expect("assistant completion event must have content"),
+                    ))
+                } else {
+                    Some(format!("message.completed:{role}"))
+                }
+            }
             AgentEvent::ToolStarted(payload) => Some(format!(
                 "tool.started:{}:{}",
                 payload.call_id.as_deref().unwrap(),
@@ -354,22 +430,20 @@ fn actual_semantics(events: &[AgentEvent]) -> Vec<String> {
         .collect()
 }
 
-fn actual_tool_results(events: &[AgentEvent]) -> Vec<(String, Value)> {
-    events
+fn actual_tool_results(outcome: &TurnOutcome) -> Vec<(String, Value)> {
+    outcome
+        .messages
         .iter()
-        .filter_map(|event| match event {
-            AgentEvent::ToolCompleted(payload) => Some((
-                payload
-                    .call_id
+        .filter(|message| message.role == "tool")
+        .map(|message| {
+            (
+                message
+                    .tool_call_id
                     .as_deref()
                     .expect("Rust tool result must have a call id")
                     .to_owned(),
-                payload
-                    .result_summary
-                    .clone()
-                    .expect("Rust tool result must have a safe summary"),
-            )),
-            _ => None,
+                message.content.clone(),
+            )
         })
         .collect()
 }
@@ -423,16 +497,16 @@ async fn normalized_python_oracle_event_traces_match_the_run_turn_boundary() {
                 assert_eq!(tool_result_ids(&outcome), ["slow-call", "fast-call"]);
             }
             assert_eq!(
-                Some(outcome.content),
+                actual_tool_results(&outcome),
+                expected_tool_results(scenario),
+                "lossless tool identity/result order diverged for {scenario}"
+            );
+            assert_eq!(
+                Some(outcome.content.clone()),
                 expected_final_assistant_content(scenario),
                 "final assistant content diverged for {scenario}"
             );
         }
-        assert_eq!(
-            actual_tool_results(&observed.lock().unwrap()),
-            expected_tool_results(scenario),
-            "stable tool identity/result order diverged for {scenario}"
-        );
         assert_eq!(
             actual_semantics(&observed.lock().unwrap()),
             expected_semantics(scenario),
@@ -478,10 +552,6 @@ async fn abort_normalized_event_trace_matches_at_the_active_tool_boundary() {
     let error = task.await.unwrap().unwrap_err();
 
     assert_eq!(error.code, agent_events::AgentErrorCode::Cancelled);
-    assert_eq!(
-        actual_tool_results(&observed.lock().unwrap()),
-        expected_tool_results("abort")
-    );
     assert_eq!(
         actual_semantics(&observed.lock().unwrap()),
         expected_semantics("abort")

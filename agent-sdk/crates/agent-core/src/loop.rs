@@ -434,8 +434,9 @@ fn summarize_value(value: &Value, depth: usize, remaining_items: &mut usize) -> 
                     break;
                 }
                 *remaining_items -= 1;
+                let safe_key =
+                    truncate_chars(&format!("field_{consumed:03}"), MAX_SUMMARY_KEY_CHARS);
                 consumed += 1;
-                let safe_key = truncate_chars(key, MAX_SUMMARY_KEY_CHARS);
                 let safe_value = if is_secret_key(key) {
                     Value::String("[REDACTED]".to_owned())
                 } else {

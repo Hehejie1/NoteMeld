@@ -500,6 +500,7 @@ async fn tool_events_redact_nested_secrets_and_bound_large_summaries() {
         .map(|index| (format!("field_{index:03}"), json!(index)))
         .collect::<serde_json::Map<_, _>>();
     let arguments = json!({
+        "sk-live-actual-secret": true,
         "api_key": "ARG-API-SECRET",
         "nested": [{
             "Authorization": "ARG-AUTH-SECRET",
@@ -510,6 +511,7 @@ async fn tool_events_redact_nested_secrets_and_bound_large_summaries() {
         "large_object": large_object,
     });
     let output = json!({
+        "sk-output-actual-secret": false,
         "result": [{
             "ToKeN": "RESULT-TOKEN-SECRET",
             "nested": {"password": "RESULT-PASSWORD-SECRET"},
@@ -569,6 +571,24 @@ async fn tool_events_redact_nested_secrets_and_bound_large_summaries() {
             "event serialization leaked {secret}"
         );
     }
+    for key_only_secret in ["sk-live-actual-secret", "sk-output-actual-secret"] {
+        let related_public_events = events.iter().filter(|event| {
+            matches!(
+                event,
+                AgentEvent::ToolStarted(_)
+                    | AgentEvent::ToolCompleted(_)
+                    | AgentEvent::MessageCompleted(_)
+            )
+        });
+        for event in related_public_events {
+            assert!(
+                !serde_json::to_string(event)
+                    .unwrap()
+                    .contains(key_only_secret),
+                "public event serialization leaked object-key secret {key_only_secret}: {event:?}"
+            );
+        }
+    }
     for summary in events.iter().filter_map(|event| match event {
         AgentEvent::ToolStarted(payload) => payload.arguments_summary.as_ref(),
         AgentEvent::ToolCompleted(payload) => payload.result_summary.as_ref(),
@@ -586,16 +606,33 @@ async fn tool_events_redact_nested_secrets_and_bound_large_summaries() {
             _ => None,
         })
         .expect("tool start must contain a safe summary");
+    let summary_arrays = nested_values(started_summary)
+        .filter_map(Value::as_array)
+        .collect::<Vec<_>>();
+    let summary_objects = nested_values(started_summary)
+        .filter_map(Value::as_object)
+        .collect::<Vec<_>>();
     assert!(
-        started_summary["large_array"].as_array().unwrap().len() <= 17,
-        "large arrays must contain at most 16 values plus a truncation marker"
+        summary_arrays.iter().all(|array| array.len() <= 17),
+        "every summarized array must contain at most 16 values plus a truncation marker"
     );
     assert!(
-        started_summary["large_object"].as_object().unwrap().len() <= 17,
-        "large objects must contain at most 16 values plus a truncation marker"
+        summary_objects.iter().all(|object| object.len() <= 17),
+        "every summarized object must contain at most 16 values plus a truncation marker"
     );
+    assert!(summary_arrays.iter().any(|array| array.len() == 17));
+    assert!(summary_objects.iter().any(|object| object.len() == 17));
     assert!(serialized_events.contains("[REDACTED]"));
     assert_eq!(terminal_count(&events), 1);
+}
+
+fn nested_values(value: &Value) -> Box<dyn Iterator<Item = &Value> + '_> {
+    let children: Box<dyn Iterator<Item = &Value> + '_> = match value {
+        Value::Array(values) => Box::new(values.iter().flat_map(nested_values)),
+        Value::Object(fields) => Box::new(fields.values().flat_map(nested_values)),
+        _ => Box::new(std::iter::empty()),
+    };
+    Box::new(std::iter::once(value).chain(children))
 }
 
 #[tokio::test]
