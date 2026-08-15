@@ -1,8 +1,8 @@
-import { lazy, Suspense } from 'react'
-import { ArrowUpRight, Download, FileText, PanelsTopLeft } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { AlertCircle, ArrowUpRight, Download, FileText, Loader2, PanelsTopLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ChatMarkdown from '@/pages/HomePage/components/ChatMarkdown'
-import { getRuntimeApiBaseUrl, openExternalUrl } from '@/utils/runtime'
+import { getRuntimeApiBaseUrl, getRuntimeSessionToken, openExternalUrl } from '@/utils/runtime'
 import type { WhiteboardCard } from './types'
 
 interface WhiteboardCardContentProps {
@@ -10,9 +10,13 @@ interface WhiteboardCardContentProps {
   onOpenNested?: (whiteboardId: string) => void
 }
 
-function absoluteApiUrl(path: string) {
+const FILE_UPLOAD_ROUTE = '/api/uploads/'
+
+function absoluteUploadUrl(uploadId: string) {
+  const encoded = encodeURIComponent(uploadId)
   const base = getRuntimeApiBaseUrl()
-  if (base) return `${base.replace(/\/$/, '')}${path}`
+  if (base) return `${base.replace(/\/$/, '')}/uploads/${encoded}`
+  const path = `${FILE_UPLOAD_ROUTE}${encoded}`
   if (typeof window !== 'undefined') return new URL(path, window.location.origin).toString()
   return path
 }
@@ -40,7 +44,56 @@ function WebCardContent({ card }: { card: Extract<WhiteboardCard, { type: 'web' 
 }
 
 function FileCardContent({ card }: { card: Extract<WhiteboardCard, { type: 'file' }> }) {
-  const url = absoluteApiUrl(`/api/note/uploads/${encodeURIComponent(card.content.upload_id)}`)
+  const url = absoluteUploadUrl(card.content.upload_id)
+  const [loadState, setLoadState] = useState<'loading' | 'available' | 'missing' | 'error'>('loading')
+  const [attempt, setAttempt] = useState(0)
+
+  const checkFile = useCallback(async (signal: AbortSignal) => {
+    setLoadState('loading')
+    try {
+      const sessionToken = getRuntimeSessionToken()
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Range: 'bytes=0-0',
+          ...(sessionToken ? { 'X-NoteMeld-Session': sessionToken } : {}),
+        },
+        signal,
+      })
+      if (response.body) void response.body.cancel()
+      if (response.status === 404) setLoadState('missing')
+      else if (response.ok) setLoadState('available')
+      else setLoadState('error')
+    } catch {
+      if (!signal.aborted) setLoadState('error')
+    }
+  }, [url])
+
+  useEffect(() => {
+    const abortController = new AbortController()
+    void checkFile(abortController.signal)
+    return () => abortController.abort()
+  }, [attempt, checkFile])
+
+  if (loadState === 'loading') {
+    return <div className="flex items-center gap-2 text-xs text-on-surface-variant"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在检查文件…</div>
+  }
+
+  if (loadState === 'missing' || loadState === 'error') {
+    return (
+      <div className="rounded-lg border border-dashed border-border-subtle bg-surface-container/40 p-2.5 text-xs text-on-surface-variant">
+        <div className="flex items-center gap-2 font-medium text-on-surface">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          {loadState === 'missing' ? '资源不存在或已被移除' : '文件加载失败'}
+        </div>
+        {loadState === 'error' ? (
+          <Button type="button" size="sm" variant="ghost" className="nodrag nopan mt-2 h-7" onClick={() => setAttempt(value => value + 1)}>
+            重试
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-container/40 p-2.5">
       <div className="flex items-center gap-2 text-xs font-medium text-on-surface">

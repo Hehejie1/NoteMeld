@@ -35,6 +35,7 @@ import WhiteboardToolbar from './WhiteboardToolbar'
 import WhiteboardSelectionToolbar from './WhiteboardSelectionToolbar'
 import WhiteboardCardDialog, { type WhiteboardCardFormValue } from './WhiteboardCardDialog'
 import WhiteboardRelationDialog from './WhiteboardRelationDialog'
+import { createViewportCommitter, resolveContextForCurrentTask } from './whiteboardInteractions'
 
 interface WhiteboardCanvasProps {
   conversationId: string
@@ -76,6 +77,19 @@ function WhiteboardCanvasInner({
   const [editingCard, setEditingCard] = useState<WhiteboardCard | null>(null)
   const [editingRelation, setEditingRelation] = useState<WhiteboardRelation | null>(null)
   const [addingContext, setAddingContext] = useState(false)
+  const [contextError, setContextError] = useState<string | null>(null)
+
+  const viewportCommitter = useMemo(() => createViewportCommitter(
+    viewport => submitOperations([{
+      op: 'viewport.update',
+      x: viewport.x,
+      y: viewport.y,
+      zoom: viewport.zoom,
+    }], '保存白板视口'),
+    500,
+  ), [submitOperations])
+
+  useEffect(() => () => viewportCommitter.dispose(), [viewportCommitter, whiteboardId])
 
   const persistResize = useCallback((cardId: string, bounds: { x: number; y: number; width: number; height: number }) => {
     void submitOperations([{
@@ -93,6 +107,11 @@ function WhiteboardCanvasInner({
     if (!card) return
     setEditingCard(card)
     setCardDialogOpen(true)
+  }, [controller.snapshot])
+
+  const openEditRelation = useCallback((relationId: string) => {
+    const relation = controller.snapshot?.relations.find(item => item.id === relationId) || null
+    setEditingRelation(relation)
   }, [controller.snapshot])
 
   const projected = useMemo(() => {
@@ -114,8 +133,11 @@ function WhiteboardCanvasInner({
         onResizeEnd: persistResize,
       },
     })))
-    setEdges(projected.edges)
-  }, [onOpenNestedWhiteboard, openEditCard, persistResize, projected.edges, projected.nodes, setEdges, setNodes])
+    setEdges(projected.edges.map(edge => ({
+      ...edge,
+      data: edge.data ? { ...edge.data, onEdit: openEditRelation } : edge.data,
+    })))
+  }, [onOpenNestedWhiteboard, openEditCard, openEditRelation, persistResize, projected.edges, projected.nodes, setEdges, setNodes])
 
   const openCreateDialog = useCallback((type: WhiteboardCardType, position?: WhiteboardPosition) => {
     let nextPosition = position
@@ -240,20 +262,25 @@ function WhiteboardCanvasInner({
 
   const addSelectionToConversation = useCallback(async () => {
     if (!controller.snapshot || controller.selectedCardIds.length + controller.selectedRelationIds.length === 0) return
+    const initiatingTaskId = useTaskStore.getState().currentTaskId
+    if (!initiatingTaskId || initiatingTaskId !== conversationId) return
     setAddingContext(true)
-    try {
-      const reference = await createWhiteboardContext(conversationId, whiteboardId, {
+    setContextError(null)
+    const result = await resolveContextForCurrentTask({
+      initiatingTaskId,
+      getCurrentTaskId: () => useTaskStore.getState().currentTaskId,
+      request: () => createWhiteboardContext(conversationId, whiteboardId, {
         revision: controller.serverRevision,
         card_ids: controller.selectedCardIds,
         relation_ids: controller.selectedRelationIds,
         label: controller.selectedCardIds.length === 1
-          ? controller.snapshot.cards.find(card => card.id === controller.selectedCardIds[0])?.title || '白板选区'
+          ? controller.snapshot?.cards.find(card => card.id === controller.selectedCardIds[0])?.title || '白板选区'
           : `白板选区（${controller.selectedCardIds.length} 张卡片）`,
-      })
-      addContextRef(reference)
-    } finally {
-      setAddingContext(false)
-    }
+      }),
+      accept: addContextRef,
+    })
+    if (result.status === 'error') setContextError(result.error)
+    setAddingContext(false)
   }, [addContextRef, controller.selectedCardIds, controller.selectedRelationIds, controller.serverRevision, controller.snapshot, conversationId, whiteboardId])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
@@ -294,6 +321,8 @@ function WhiteboardCanvasInner({
   return (
     <div
       ref={rootRef}
+      role="application"
+      aria-label="语义白板画布"
       className="relative h-full min-h-0 w-full overflow-hidden bg-[#f7f8fb] outline-none"
       tabIndex={0}
       onDoubleClick={onPaneDoubleClick}
@@ -314,13 +343,13 @@ function WhiteboardCanvasInner({
         onNodeDoubleClick={(_, node) => openEditCard(node.id)}
         onPaneClick={() => controller.setActiveCardId(null)}
         onEdgeDoubleClick={(_, edge) => {
-          const relation = controller.snapshot?.relations.find(item => item.id === edge.id) || null
-          setEditingRelation(relation)
+          openEditRelation(edge.id)
         }}
         onNodeDragStop={(_, node, draggedNodes) => {
           const changed = draggedNodes.length > 0 ? draggedNodes : [node]
           void controller.submitOperations([cardMoveResizeOperation(changed)], '移动卡片').catch(() => undefined)
         }}
+        onMoveEnd={(_, viewport) => viewportCommitter.schedule(viewport)}
         defaultViewport={controller.snapshot.viewport}
         onlyRenderVisibleElements
         selectionOnDrag
@@ -329,7 +358,7 @@ function WhiteboardCanvasInner({
         selectionMode={SelectionMode.Partial}
         multiSelectionKeyCode={["Meta", "Control", "Shift"]}
         deleteKeyCode={null}
-        minZoom={0.15}
+        minZoom={0.1}
         maxZoom={2.5}
         fitView={controller.snapshot.cards.length > 0}
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
@@ -366,6 +395,12 @@ function WhiteboardCanvasInner({
         <div className="absolute right-3 top-3 z-30 flex max-w-sm items-center gap-2 rounded-lg border border-destructive/20 bg-white px-3 py-2 text-xs text-destructive shadow-md">
           {controller.unsavedError}
           <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void controller.retry()}>重试保存</Button>
+        </div>
+      ) : null}
+
+      {contextError ? (
+        <div className="absolute bottom-16 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-destructive/20 bg-white px-3 py-2 text-xs text-destructive shadow-md" role="alert">
+          {contextError}
         </div>
       ) : null}
 

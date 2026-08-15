@@ -34,17 +34,20 @@ function WhiteboardRelationEdge(props: EdgeProps<WhiteboardFlowEdge>) {
         style={props.style}
         interactionWidth={28}
       />
-      {relation?.label ? (
+      {relation ? (
         <EdgeLabelRenderer>
-          <div
-            className={`pointer-events-none absolute max-w-40 -translate-x-1/2 -translate-y-1/2 truncate rounded-full border bg-white/95 px-2 py-1 text-[10px] shadow-sm ${
+          <button
+            type="button"
+            className={`nodrag nopan pointer-events-auto absolute max-w-40 -translate-x-1/2 -translate-y-1/2 truncate rounded-full border bg-white/95 px-2 py-1 text-[10px] shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
               props.selected ? 'border-primary text-primary' : 'border-border-subtle text-on-surface-variant'
             }`}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
             title={relation.description || relation.label}
+            aria-label={`编辑关系：${relation.label || '未命名关系'}`}
+            onClick={() => props.data?.onEdit?.(props.id)}
           >
-            {relation.label}
-          </div>
+            {relation.label || '关系'}
+          </button>
         </EdgeLabelRenderer>
       ) : null}
     </>

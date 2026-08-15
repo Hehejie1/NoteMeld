@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { uploadFile } from '@/services/upload'
 import type { WhiteboardCard, WhiteboardCardType, WhiteboardSourceRef } from './types'
+import { uploadFileForWhiteboardCard, type WhiteboardUploadMetadata } from './whiteboardInteractions'
 
 export interface WhiteboardCardFormValue {
   type: WhiteboardCardType
@@ -62,6 +64,8 @@ export default function WhiteboardCardDialog({
   const [content, setContent] = useState('')
   const [sources, setSources] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadMetadata, setUploadMetadata] = useState<WhiteboardUploadMetadata | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -71,8 +75,28 @@ export default function WhiteboardCardDialog({
     setDescription(card?.description || '')
     setContent(contentValue(card))
     setSources(card?.source_refs.length ? JSON.stringify(card.source_refs, null, 2) : '')
+    setUploadMetadata(null)
     setError('')
   }, [card, initialType, open])
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setUploading(true)
+    setError('')
+    const result = await uploadFileForWhiteboardCard(file, content, uploadFile)
+    setContent(result.uploadId)
+    setUploadMetadata(result.metadata)
+    if (result.metadata) {
+      setTitle(current => current.trim() ? current : result.metadata?.fileName || file.name)
+      setDescription(current => current.trim()
+        ? current
+        : `${result.metadata?.fileKind || 'file'} · ${result.metadata?.contentType || file.type || 'application/octet-stream'}`)
+    }
+    if (result.error) setError(result.error)
+    setUploading(false)
+  }
 
   const submit = async () => {
     try {
@@ -130,8 +154,28 @@ export default function WhiteboardCardDialog({
           <label className="block space-y-1.5 text-xs font-medium">标题<Input value={title} onChange={event => setTitle(event.target.value)} /></label>
           <label className="block space-y-1.5 text-xs font-medium">描述<Textarea className="min-h-20" value={description} onChange={event => setDescription(event.target.value)} /></label>
           <label className="block space-y-1.5 text-xs font-medium">
-            {type === 'markdown' ? 'Markdown 内容' : type === 'web' ? '网页地址' : type === 'file' ? 'Upload ID' : '子白板 ID'}
-            <Textarea className="min-h-28 font-mono text-xs" value={content} onChange={event => setContent(event.target.value)} />
+            {type === 'markdown' ? 'Markdown 内容' : type === 'web' ? '网页地址' : type === 'file' ? '已上传文件' : '子白板 ID'}
+            {type === 'file' ? (
+              <div className="space-y-2">
+                <Input
+                  type="file"
+                  className="cursor-pointer text-xs"
+                  disabled={uploading || saving}
+                  onChange={event => void handleFileChange(event)}
+                />
+                <div className="rounded-md border border-border-subtle bg-surface-container/40 px-3 py-2 text-[11px] text-on-surface-variant">
+                  {uploading
+                    ? '正在上传文件…'
+                    : uploadMetadata
+                      ? `${uploadMetadata.fileName} · ${uploadMetadata.fileKind}`
+                      : content
+                        ? `已关联文件：${content}`
+                        : '选择文件后会安全上传并关联到当前卡片。'}
+                </div>
+              </div>
+            ) : (
+              <Textarea className="min-h-28 font-mono text-xs" value={content} onChange={event => setContent(event.target.value)} />
+            )}
           </label>
           <label className="block space-y-1.5 text-xs font-medium">
             来源（可选 JSON 数组）
@@ -140,8 +184,8 @@ export default function WhiteboardCardDialog({
           {error ? <div className="rounded-md bg-destructive/8 px-3 py-2 text-xs text-destructive">{error}</div> : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>取消</Button>
-          <Button type="button" disabled={saving} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</Button>
+          <Button type="button" variant="outline" disabled={saving || uploading} onClick={() => onOpenChange(false)}>取消</Button>
+          <Button type="button" disabled={saving || uploading} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

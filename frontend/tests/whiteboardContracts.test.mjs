@@ -22,6 +22,7 @@ const [
   selectionToolbar,
   cardDialog,
   relationDialog,
+  interactions,
 ] = await Promise.all([
   read('src/services/chat.ts'),
   read('src/store/taskStore/index.ts'),
@@ -38,6 +39,7 @@ const [
   read('src/pages/HomePage/whiteboard/WhiteboardSelectionToolbar.tsx'),
   read('src/pages/HomePage/whiteboard/WhiteboardCardDialog.tsx'),
   read('src/pages/HomePage/whiteboard/WhiteboardRelationDialog.tsx'),
+  read('src/pages/HomePage/whiteboard/whiteboardInteractions.ts'),
 ])
 
 assert.match(chatService, /type:\s*'whiteboard_selection'/)
@@ -117,6 +119,9 @@ assert.match(canvas, /onPaneDoubleClick/)
 assert.match(canvas, /onNodeDragStop/)
 assert.match(canvas, /onEdgeDoubleClick/)
 assert.match(canvas, /onReconnect/)
+assert.match(canvas, /onMoveEnd/)
+assert.match(canvas, /createViewportCommitter/)
+assert.match(canvas, /resolveContextForCurrentTask/)
 assert.match(canvas, /deleteKeyCode=\{null\}/)
 assert.match(canvas, /copyWhiteboardSelection/)
 assert.match(canvas, /buildPasteOperations/)
@@ -125,9 +130,17 @@ assert.match(canvas, /createWhiteboardContext/)
 assert.match(canvas, /addContextRef/)
 assert.match(canvas, /setActiveCardId/)
 assert.match(canvas, /onSelectionChange/)
+assert.match(canvas, /minZoom=\{0\.1\}/)
 
 assert.match(cardNode, /NodeResizer/)
 assert.match(cardNode, /isVisible=\{selected\}/)
+assert.match(cardNode, /minWidth=\{220\}/)
+assert.match(cardNode, /minHeight=\{120\}/)
+assert.match(cardNode, /maxWidth=\{960\}/)
+assert.match(cardNode, /maxHeight=\{720\}/)
+assert.match(cardNode, /role="group"/)
+assert.match(cardNode, /tabIndex=\{0\}/)
+assert.match(cardNode, /event\.key !== 'Enter'.*event\.key !== ' '/s)
 assert.match(cardNode, /source_refs\.slice\(0,\s*3\)/)
 assert.match(cardNode, /line-clamp-2/)
 assert.match(cardNode, /<Handle/)
@@ -146,6 +159,8 @@ assert.match(cardContent, /ChatMarkdown/, 'Markdown 必须复用现有安全 ren
 assert.match(cardContent, /openExternalUrl/)
 assert.match(cardContent, /child_whiteboard_id/)
 assert.match(cardContent, /upload_id/)
+assert.match(cardContent, /\/api\/uploads\//)
+assert.match(cardContent, /资源不存在|文件加载失败/)
 
 assert.match(relationEdge, /getBezierPath/)
 assert.match(relationEdge, /getStraightPath/)
@@ -153,6 +168,8 @@ assert.match(relationEdge, /getSmoothStepPath/)
 assert.match(relationEdge, /EdgeLabelRenderer|EdgeToolbar/)
 assert.match(relationEdge, /interactionWidth/)
 assert.match(relationEdge, /memo\(/)
+assert.match(relationEdge, /aria-label=\{`编辑关系/)
+assert.match(relationEdge, /onClick=\{\(\) => props\.data\?\.onEdit/)
 
 assert.match(toolbar, /fitView/)
 assert.match(toolbar, /zoomIn/)
@@ -170,10 +187,16 @@ assert.match(cardDialog, /whiteboard/)
 assert.match(cardDialog, /https?:/)
 assert.match(cardDialog, /nodrag/)
 assert.match(cardDialog, /nopan/)
+assert.match(cardDialog, /type="file"/)
+assert.match(cardDialog, /uploadFile/)
+assert.match(cardDialog, /uploadFileForWhiteboardCard/)
 assert.match(relationDialog, /bezier/)
 assert.match(relationDialog, /straight/)
 assert.match(relationDialog, /smoothstep/)
 assert.match(relationDialog, /direction/)
+assert.match(interactions, /createViewportCommitter/)
+assert.match(interactions, /uploadFileForWhiteboardCard/)
+assert.match(interactions, /resolveContextForCurrentTask/)
 
 assert.match(taskStore, /\.slice\(-8\)/, '引用 chip 数量必须继续限制为 8')
 assert.match(taskStore, /reference\.type === 'whiteboard_selection' \? 12000 : 2000/)
@@ -190,6 +213,90 @@ const commandsModule = await import(
     }).outputText,
   ).toString('base64')}`
 )
+
+const interactionsModule = await import(
+  `data:text/javascript;base64,${Buffer.from(
+    ts.transpileModule(interactions, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText,
+  ).toString('base64')}`
+)
+
+const scheduled = new Map()
+let nextTimerId = 1
+const viewportCommits = []
+const viewportCommitter = interactionsModule.createViewportCommitter(
+  viewport => viewportCommits.push(viewport),
+  500,
+  {
+    setTimeout: callback => {
+      const id = nextTimerId++
+      scheduled.set(id, () => {
+        scheduled.delete(id)
+        callback()
+      })
+      return id
+    },
+    clearTimeout: id => scheduled.delete(id),
+  },
+)
+viewportCommitter.schedule({ x: 10, y: 20, zoom: 0.8 })
+viewportCommitter.schedule({ x: 30, y: 40, zoom: 0.7 })
+viewportCommitter.schedule({ x: 50, y: 60, zoom: 0.6 })
+assert.equal(scheduled.size, 1, '视口移动必须合并为一个 500ms debounce')
+assert.equal(viewportCommits.length, 0)
+scheduled.values().next().value()
+await Promise.resolve()
+assert.deepEqual(viewportCommits, [{ x: 50, y: 60, zoom: 0.6 }], '只持久化最后一个视口')
+viewportCommitter.schedule({ x: 70, y: 80, zoom: 0.5 })
+viewportCommitter.dispose()
+assert.equal(scheduled.size, 0, 'board 切换或 unmount 必须清理 timer')
+
+const uploaded = await interactionsModule.uploadFileForWhiteboardCard(
+  new File(['pdf'], 'paper.pdf', { type: 'application/pdf' }),
+  'existing_upload',
+  async () => ({ upload_id: 'upload_new', file_name: 'paper.pdf', content_type: 'application/pdf', file_kind: 'document' }),
+)
+assert.deepEqual(uploaded, {
+  uploadId: 'upload_new',
+  metadata: { fileName: 'paper.pdf', contentType: 'application/pdf', fileKind: 'document' },
+  error: null,
+})
+const failedUpload = await interactionsModule.uploadFileForWhiteboardCard(
+  new File(['pdf'], 'paper.pdf', { type: 'application/pdf' }),
+  'existing_upload',
+  async () => { throw new Error('network down') },
+)
+assert.equal(failedUpload.uploadId, 'existing_upload', '上传失败必须保留原 upload id 输入')
+assert.equal(failedUpload.metadata, null)
+assert.match(failedUpload.error, /network down/)
+
+let currentTaskId = 'conv_a'
+let resolveContext
+const contextPromise = new Promise(resolve => { resolveContext = resolve })
+const acceptedRefs = []
+const guardedContext = interactionsModule.resolveContextForCurrentTask({
+  initiatingTaskId: 'conv_a',
+  getCurrentTaskId: () => currentTaskId,
+  request: () => contextPromise,
+  accept: reference => acceptedRefs.push(reference),
+})
+currentTaskId = 'conv_b'
+resolveContext({ id: 'ref_a' })
+assert.deepEqual(await guardedContext, { status: 'stale' })
+assert.deepEqual(acceptedRefs, [], '旧会话完成的 context ref 不得写入新会话')
+
+const contextFailure = await interactionsModule.resolveContextForCurrentTask({
+  initiatingTaskId: 'conv_b',
+  getCurrentTaskId: () => currentTaskId,
+  request: async () => { throw new Error('context failed') },
+  accept: () => { throw new Error('must not accept') },
+})
+assert.equal(contextFailure.status, 'error')
+assert.match(contextFailure.error, /context failed/)
 
 const sampleBoard = {
   id: 'wb_1',

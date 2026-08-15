@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, type KeyboardEvent } from 'react'
 import { FileText, Globe2, Maximize2, Network, Pencil, StickyNote } from 'lucide-react'
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
@@ -23,18 +23,27 @@ const typeMeta = {
 function WhiteboardCardNode({ id, data, selected }: NodeProps<InteractiveWhiteboardCardNode>) {
   const meta = typeMeta[data.card.type]
   const Icon = meta.icon
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    data.onEdit?.(id)
+  }
   return (
     <div
-      className={`group h-full w-full overflow-hidden rounded-2xl border bg-white shadow-sm transition-[border-color,box-shadow] ${
+      role="group"
+      aria-label={`${meta.label}卡片：${data.card.title || '未命名卡片'}`}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className={`group h-full w-full overflow-hidden rounded-2xl border bg-white shadow-sm outline-none transition-[border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-primary/60 ${
         selected ? 'border-primary shadow-[0_12px_35px_rgba(79,70,229,0.16)]' : 'border-border-subtle hover:border-primary/35'
       }`}
     >
       <NodeResizer
         isVisible={selected}
-        minWidth={240}
-        minHeight={150}
-        maxWidth={720}
-        maxHeight={640}
+        minWidth={220}
+        minHeight={120}
+        maxWidth={960}
+        maxHeight={720}
         color="#6366f1"
         onResizeEnd={(_, bounds) => data.onResizeEnd?.(id, bounds)}
       />

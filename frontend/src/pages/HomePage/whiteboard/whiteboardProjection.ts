@@ -14,6 +14,7 @@ export interface WhiteboardCardNodeData extends Record<string, unknown> {
 
 export interface WhiteboardRelationEdgeData extends Record<string, unknown> {
   relation: WhiteboardRelation
+  onEdit?: (relationId: string) => void
 }
 
 export type WhiteboardFlowNode = Node<WhiteboardCardNodeData, 'whiteboardCard'>
