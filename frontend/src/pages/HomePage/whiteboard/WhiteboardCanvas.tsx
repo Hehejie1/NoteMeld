@@ -35,7 +35,7 @@ import WhiteboardToolbar from './WhiteboardToolbar'
 import WhiteboardSelectionToolbar from './WhiteboardSelectionToolbar'
 import WhiteboardCardDialog, { type WhiteboardCardFormValue } from './WhiteboardCardDialog'
 import WhiteboardRelationDialog from './WhiteboardRelationDialog'
-import { createViewportCommitter, resolveContextForCurrentTask } from './whiteboardInteractions'
+import { createViewportCommitter, createWhiteboardCanvasKey, resolveContextForCurrentTask } from './whiteboardInteractions'
 
 interface WhiteboardCanvasProps {
   conversationId: string
@@ -388,8 +388,6 @@ function WhiteboardCanvasInner({
         deleteKeyCode={null}
         minZoom={0.1}
         maxZoom={2.5}
-        fitView={controller.snapshot.cards.length > 0}
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="#d7dce5" />
         <WhiteboardToolbar
@@ -453,7 +451,7 @@ function WhiteboardCanvasInner({
 
 export default function WhiteboardCanvas(props: WhiteboardCanvasProps) {
   return (
-    <ReactFlowProvider>
+    <ReactFlowProvider key={createWhiteboardCanvasKey(props.conversationId, props.whiteboardId)}>
       <WhiteboardCanvasInner {...props} />
     </ReactFlowProvider>
   )

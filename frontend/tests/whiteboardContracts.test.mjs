@@ -216,10 +216,16 @@ assert.match(home, /WhiteboardPanel/, 'Home 必须优先挂载语义白板工作
 assert.match(home, /resolveLatestLearningWorkspace/, 'Home 必须按最新 compact message 恢复白板')
 assert.match(home, /seedLearningCanvasWhiteboard/, 'legacy canvas 必须幂等转换为语义白板')
 assert.match(home, /LearningCanvasCard/, 'seed 或 feature flag 失败时必须保留 Sigma fallback')
-const automaticSeedSection = home.slice(
-  home.indexOf('const workspace = latestLearningCanvas'),
-  home.indexOf('const retryWhiteboardSeed'),
+const automaticSeedStart = home.indexOf('let active = true\n    runLegacyWhiteboardSeed')
+const automaticSeedEnd = home.indexOf('const retryWhiteboardSeed')
+assert.notEqual(
+  automaticSeedStart,
+  -1,
+  'automatic seed contract 必须锚定真实 effect，不能 slice(-1) 空跑',
 )
+assert.notEqual(automaticSeedEnd, -1)
+assert.ok(automaticSeedEnd > automaticSeedStart)
+const automaticSeedSection = home.slice(automaticSeedStart, automaticSeedEnd)
 assert.doesNotMatch(automaticSeedSection, /navigate\(/, 'legacy seed 不得通过导航重挂载 composer')
 assert.match(panel, /useBackendInitContext/, '白板请求必须服从 backend ready gate')
 assert.match(panel, /h-full[\s\S]*min-h-0/, 'WhiteboardPanel 必须占满右栏剩余高度')
@@ -419,6 +425,8 @@ const contextFailure = await interactionsModule.resolveContextForCurrentTask({
 })
 assert.equal(contextFailure.status, 'error')
 assert.match(contextFailure.error, /context failed/)
+
+await import('./whiteboardHomeIntegrationFixContracts.test.mjs')
 
 const sampleBoard = {
   id: 'wb_1',

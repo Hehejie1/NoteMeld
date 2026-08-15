@@ -11,6 +11,9 @@ const defaultScheduler: WhiteboardTimerScheduler = {
   clearTimeout: handle => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>),
 }
 
+export const createWhiteboardCanvasKey = (conversationId: string, whiteboardId: string) =>
+  JSON.stringify([conversationId, whiteboardId])
+
 export function createViewportCommitter(
   commit: (viewport: WhiteboardViewport) => void | Promise<unknown>,
   delayMs = 500,

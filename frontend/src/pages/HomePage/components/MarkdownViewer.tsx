@@ -29,6 +29,7 @@ import { getLoadingProgressCopy, getProgressSteps, type CollectorTimings } from 
 
 interface MarkdownViewerProps {
   content: string
+  documentTaskId?: string
   status: 'idle' | 'loading' | 'success' | 'failed'
   onDeleteDocument?: () => void
   onWikiRetrySuccess?: () => void
@@ -335,6 +336,8 @@ function createMarkdownComponents(baseURL: string, containerRef: RefObject<HTMLD
 
 const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
   status,
+  content,
+  documentTaskId,
   onDeleteDocument,
   onWikiRetrySuccess,
   initialViewMode = 'preview',
@@ -371,23 +374,25 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
     if (!currentTask) return
     setCurrentVerId('')
     const activeDocument = (currentTask.documents || []).find(
-      document => document.taskId === currentTask.activeDocumentTaskId,
+      document => document.taskId === (documentTaskId || currentTask.activeDocumentTaskId),
     )
     setModelName(activeDocument?.modelName || currentTask.formData.model_name)
     setStyle(activeDocument?.style || currentTask.formData.style || '')
     setCreateTime(currentTask.createdAt)
-    setSelectedContent(activeDocument?.content || currentTask.markdown || '')
+    setSelectedContent(documentTaskId ? content : activeDocument?.content || currentTask.markdown || '')
   }, [
     currentTask?.id,
     currentTask?.markdown,
     currentTask?.activeDocumentTaskId,
     currentTask?.documents,
+    content,
+    documentTaskId,
     taskStatus,
   ])
 
   useEffect(() => {
     setViewMode(initialViewMode)
-  }, [initialViewMode, currentTask?.id, currentTask?.activeDocumentTaskId])
+  }, [documentTaskId, initialViewMode, currentTask?.id, currentTask?.activeDocumentTaskId])
 
   const handleSelectDocument = (taskId: string) => {
     if (!currentTask?.id || !taskId) return
@@ -417,9 +422,9 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
   }
 
   const activeDocument = (currentTask?.documents || []).find(
-    document => document.taskId === currentTask?.activeDocumentTaskId,
+    document => document.taskId === (documentTaskId || currentTask?.activeDocumentTaskId),
   )
-  const currentDocumentTaskId = activeDocument?.taskId || currentTask?.activeDocumentTaskId || currentTask?.id || ''
+  const currentDocumentTaskId = documentTaskId || activeDocument?.taskId || currentTask?.activeDocumentTaskId || currentTask?.id || ''
   const currentDocumentTitle =
     activeDocument?.title || currentTask?.audioMeta?.title || currentTask?.title || '未命名笔记'
   const transcriptText = currentTask?.transcript?.full_text?.trim() || ''
@@ -539,7 +544,7 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
               retryTask(
                 currentTask.id,
                 undefined,
-                currentTask.activeDocumentTaskId || currentTask.linkedNoteTaskId || currentTask.id,
+                documentTaskId || currentTask.activeDocumentTaskId || currentTask.linkedNoteTaskId || currentTask.id,
               )
             }}
             size="lg"
@@ -563,10 +568,10 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
         noteStyles={noteStyles}
         copyActions={copyActions}
         exportActions={exportActions}
-        onDeleteDocument={currentTask?.activeDocumentTaskId ? onDeleteDocument : undefined}
-        documents={currentTask?.documents || []}
-        activeDocumentTaskId={currentTask?.activeDocumentTaskId}
-        onSelectDocument={handleSelectDocument}
+        onDeleteDocument={currentDocumentTaskId ? onDeleteDocument : undefined}
+        documents={documentTaskId ? (activeDocument ? [activeDocument] : []) : currentTask?.documents || []}
+        activeDocumentTaskId={currentDocumentTaskId}
+        onSelectDocument={documentTaskId ? undefined : handleSelectDocument}
         createAt={createTime}
         showTranscribe={showTranscribe}
         setShowTranscribe={setShowTranscribe}
@@ -588,8 +593,8 @@ const MarkdownViewer: FC<MarkdownViewerProps> = memo(({
       ) : viewMode === 'wiki' ? (
         <div className="flex h-full w-full flex-col overflow-hidden bg-white">
           <WikiViewer
-            taskId={currentTask?.activeDocumentTaskId || ''}
-            wikiStatus={currentTask?.documents?.find(document => document.taskId === currentTask?.activeDocumentTaskId)?.wikiStatus || 'pending'}
+            taskId={currentDocumentTaskId}
+            wikiStatus={activeDocument?.wikiStatus || 'pending'}
             onRetrySuccess={onWikiRetrySuccess}
           />
         </div>

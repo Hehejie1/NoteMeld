@@ -9,7 +9,10 @@ import {
   createLearningSeedKey,
   createSeedAttemptRegistry,
   resolveLatestLearningWorkspace,
+  resolveSeedError,
   resolveWhiteboardId,
+  runLegacyWhiteboardSeed,
+  completePublishedConversationRefresh,
 } from '@/pages/HomePage/whiteboard/whiteboardPanelState'
 import { useTaskStore, type ConversationMessage, type Task } from '@/store/taskStore'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -25,6 +28,7 @@ import { get_task_status } from '@/services/note'
 import { cancelWorkspaceTask } from '@/services/workspace'
 import { seedLearningCanvasWhiteboard } from '@/services/learning'
 import type { WhiteboardPublishResult } from '@/pages/HomePage/whiteboard/types'
+import { useBackendInitContext } from '@/contexts/BackendInitContext'
 
 type ViewStatus = 'idle' | 'loading' | 'success' | 'failed'
 
@@ -33,6 +37,7 @@ const SEMANTIC_WHITEBOARD_ENABLED = import.meta.env.VITE_SEMANTIC_WHITEBOARD_ENA
 export const HomePage: FC = () => {
   const { taskId } = useParams<{ taskId?: string }>()
   const navigate = useNavigate()
+  const { backendReady, failureKind, checkNow } = useBackendInitContext()
   const tasks = useTaskStore(state => state.tasks)
   const currentTaskId = useTaskStore(state => state.currentTaskId)
   const hasLoadedConversations = useTaskStore(state => state.hasLoadedConversations)
@@ -43,6 +48,7 @@ export const HomePage: FC = () => {
   const selectNoteDocument = useTaskStore(state => state.selectNoteDocument)
   const deleteNoteDocument = useTaskStore(state => state.deleteNoteDocument)
   const loadConversation = useTaskStore(state => state.loadConversation)
+  const refreshConversation = useTaskStore(state => state.refreshConversation)
 
   // /new 视为“新建笔记”，强制空态、不展示任何选中笔记
   const isNewNote = !taskId
@@ -78,7 +84,7 @@ export const HomePage: FC = () => {
   const [mobileView, setMobileView] = useState<'chat' | 'learning' | 'note' | 'wiki'>('chat')
   const [rightContentView, setRightContentView] = useState<'learning' | 'note'>('learning')
   const [seededWhiteboard, setSeededWhiteboard] = useState({ key: '', id: '' })
-  const [whiteboardSeedError, setWhiteboardSeedError] = useState('')
+  const [whiteboardSeedError, setWhiteboardSeedError] = useState({ key: '', message: '' })
   const seedAttemptsRef = useRef(createSeedAttemptRegistry())
   const activeSeedKeyRef = useRef('')
   const [isMobile, setIsMobile] = useState(false)
@@ -114,24 +120,23 @@ export const HomePage: FC = () => {
     seedRequestKey,
     seededWhiteboard,
   )
+  const activeWhiteboardSeedError = resolveSeedError(seedRequestKey, whiteboardSeedError)
   const hasLearningCanvas = Boolean(
     latestLearningCanvas && (latestLearningCanvas.canvasId || latestWhiteboardId),
   )
   const useLegacyLearningCanvas = Boolean(
     latestLearningCanvasId
-    && (!SEMANTIC_WHITEBOARD_ENABLED || whiteboardSeedError),
+    && (!SEMANTIC_WHITEBOARD_ENABLED || activeWhiteboardSeedError),
   )
   const whiteboardSeedPending = Boolean(
     SEMANTIC_WHITEBOARD_ENABLED
     && latestLearningCanvasId
     && !compactWhiteboardId
     && !latestWhiteboardId
-    && !whiteboardSeedError,
+    && !activeWhiteboardSeedError,
   )
 
   useEffect(() => {
-    setWhiteboardSeedError('')
-    setSeededWhiteboard({ key: '', id: '' })
     if (!latestLearningMessageId || !SEMANTIC_WHITEBOARD_ENABLED) {
       return
     }
@@ -141,39 +146,57 @@ export const HomePage: FC = () => {
     if (!latestLearningCanvasId || !conversationId) {
       return
     }
-    if (!seedAttemptsRef.current.claim(conversationId, latestLearningMessageId)) return
-
     let active = true
-    seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId)
-      .then(board => {
-        if (!active) return
-        setSeededWhiteboard({ key: seedRequestKey, id: board.id })
+    runLegacyWhiteboardSeed({
+      backendReady,
+      conversationId,
+      messageId: latestLearningMessageId,
+      canvasId: latestLearningCanvasId,
+      registry: seedAttemptsRef.current,
+      request: () => seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId),
+    })
+      .then(result => {
+        if (!active || result.status !== 'seeded') return
+        setSeededWhiteboard({ key: seedRequestKey, id: result.value.id })
+        setWhiteboardSeedError({ key: '', message: '' })
       })
       .catch(error => {
         if (!active) return
         const candidate = error as { msg?: string } | undefined
-        setWhiteboardSeedError(candidate?.msg || '转换可编辑白板失败，仍可查看原图')
+        setWhiteboardSeedError({
+          key: seedRequestKey,
+          message: candidate?.msg || '转换可编辑白板失败，仍可查看原图',
+        })
       })
     return () => { active = false }
-  }, [compactWhiteboardId, conversationId, latestLearningCanvasId, latestLearningMessageId, seedRequestKey])
+  }, [backendReady, compactWhiteboardId, conversationId, latestLearningCanvasId, latestLearningMessageId, seedRequestKey])
 
   const retryWhiteboardSeed = () => {
     if (!conversationId || !latestLearningMessageId) return
     const retryKey = seedRequestKey
     seedAttemptsRef.current.release(conversationId, latestLearningMessageId)
-    setWhiteboardSeedError('')
+    setWhiteboardSeedError({ key: '', message: '' })
     setSeededWhiteboard({ key: '', id: '' })
     if (!latestLearningCanvasId) return
-    if (!seedAttemptsRef.current.claim(conversationId, latestLearningMessageId)) return
-    seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId)
-      .then(board => {
-        if (activeSeedKeyRef.current !== retryKey) return
-        setSeededWhiteboard({ key: retryKey, id: board.id })
+    runLegacyWhiteboardSeed({
+      backendReady,
+      conversationId,
+      messageId: latestLearningMessageId,
+      canvasId: latestLearningCanvasId,
+      registry: seedAttemptsRef.current,
+      request: () => seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId),
+    })
+      .then(result => {
+        if (activeSeedKeyRef.current !== retryKey || result.status !== 'seeded') return
+        setSeededWhiteboard({ key: retryKey, id: result.value.id })
       })
       .catch(error => {
         if (activeSeedKeyRef.current !== retryKey) return
         const candidate = error as { msg?: string } | undefined
-        setWhiteboardSeedError(candidate?.msg || '转换可编辑白板失败，仍可查看原图')
+        setWhiteboardSeedError({
+          key: retryKey,
+          message: candidate?.msg || '转换可编辑白板失败，仍可查看原图',
+        })
       })
   }
 
@@ -331,22 +354,45 @@ export const HomePage: FC = () => {
     await deleteNoteDocument(currentTask.id, currentTask.activeDocumentTaskId)
   }
 
+  const handleDeleteWhiteboardDocument = async (noteTaskId: string) => {
+    if (!currentTask?.id || !noteTaskId) return
+    const confirmed = window.confirm('删除这篇笔记？此操作会移除对应 Wiki 贡献。')
+    if (!confirmed) return
+    await deleteNoteDocument(currentTask.id, noteTaskId)
+  }
+
   const handleWikiRetrySuccess = () => {
     if (!currentTask?.id) return
-    loadConversation(currentTask.id).catch(err => {
+    refreshConversation(currentTask.id).catch(err => {
       console.error('刷新 Wiki 状态失败', err)
     })
   }
 
   const handleWhiteboardPublished = async (result: WhiteboardPublishResult) => {
     if (!currentTask?.id) return
-    await loadConversation(currentTask.id)
-    selectNoteDocument(currentTask.id, result.note_task_id)
-    setRightContentView('note')
-    if (isMobile) setMobileView('note')
+    const publishedConversationId = currentTask.id
+    await completePublishedConversationRefresh({
+      conversationId: publishedConversationId,
+      getCurrentConversationId: () => useTaskStore.getState().currentTaskId,
+      refresh: () => refreshConversation(publishedConversationId),
+      apply: () => {
+        selectNoteDocument(publishedConversationId, result.note_task_id)
+        setRightContentView('note')
+        if (isMobile) setMobileView('note')
+      },
+    })
   }
 
   const panelView: WhiteboardPanelView = rightContentView === 'learning' ? 'whiteboard' : 'note'
+
+  const renderWhiteboardSeedPending = () => (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-on-surface-variant">
+      <span>{failureKind ? '本地知识库尚未连接，暂时无法转换可编辑白板。' : '正在转换可编辑白板…'}</span>
+      {failureKind ? (
+        <button type="button" className="rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs text-primary hover:bg-primary-light" onClick={() => void checkNow().catch(() => undefined)}>重试连接</button>
+      ) : null}
+    </div>
+  )
 
   // 只在切换会话或用户本来就在底部附近时自动跟随，避免轮询刷新把阅读位置拉走。
   useEffect(() => {
@@ -531,21 +577,20 @@ export const HomePage: FC = () => {
                 conversationId={currentTask!.id}
                 whiteboardId={latestWhiteboardId}
                 legacyCanvasId={latestLearningCanvasId || undefined}
-                noteContent={currentTask?.markdown || ''}
-                noteStatus={viewerStatus}
+                documents={currentTask?.documents || []}
                 activeView="whiteboard"
                 showTabs={false}
-                onDeleteDocument={handleDeleteCurrentDocument}
+                onDeleteDocument={handleDeleteWhiteboardDocument}
                 onWikiRetrySuccess={handleWikiRetrySuccess}
                 onPublished={handleWhiteboardPublished}
               />
             ) : whiteboardSeedPending ? (
-              <div className="flex h-full items-center justify-center text-sm text-on-surface-variant">正在转换可编辑白板…</div>
+              renderWhiteboardSeedPending()
             ) : latestLearningCanvasId ? (
               <LearningCanvasCard
                 conversationId={currentTask!.id}
                 canvasId={latestLearningCanvasId}
-                conversionError={whiteboardSeedError || (!SEMANTIC_WHITEBOARD_ENABLED ? '语义白板已关闭，当前显示兼容研究图。' : undefined)}
+                conversionError={activeWhiteboardSeedError || (!SEMANTIC_WHITEBOARD_ENABLED ? '语义白板已关闭，当前显示兼容研究图。' : undefined)}
                 onRetryConversion={SEMANTIC_WHITEBOARD_ENABLED ? retryWhiteboardSeed : undefined}
               />
             ) : null}
@@ -556,11 +601,10 @@ export const HomePage: FC = () => {
               conversationId={currentTask!.id}
               whiteboardId={latestWhiteboardId}
               legacyCanvasId={latestLearningCanvasId || undefined}
-              noteContent={currentTask?.markdown || ''}
-              noteStatus={viewerStatus}
+              documents={currentTask?.documents || []}
               activeView="note"
               showTabs={false}
-              onDeleteDocument={handleDeleteCurrentDocument}
+              onDeleteDocument={handleDeleteWhiteboardDocument}
               onWikiRetrySuccess={handleWikiRetrySuccess}
               onPublished={handleWhiteboardPublished}
             />
@@ -649,11 +693,10 @@ export const HomePage: FC = () => {
               conversationId={currentTask!.id}
               whiteboardId={latestWhiteboardId}
               legacyCanvasId={latestLearningCanvasId || undefined}
-              noteContent={currentTask?.markdown || ''}
-              noteStatus={viewerStatus}
+              documents={currentTask?.documents || []}
               activeView={panelView}
               onViewChange={view => setRightContentView(view === 'whiteboard' ? 'learning' : 'note')}
-              onDeleteDocument={handleDeleteCurrentDocument}
+              onDeleteDocument={handleDeleteWhiteboardDocument}
               onWikiRetrySuccess={handleWikiRetrySuccess}
               onPublished={handleWhiteboardPublished}
             />
@@ -686,13 +729,13 @@ export const HomePage: FC = () => {
                 </button>
               </div>
               {rightContentView === 'learning' && whiteboardSeedPending ? (
-                <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-on-surface-variant">正在转换可编辑白板…</div>
+                <div className="min-h-0 flex-1">{renderWhiteboardSeedPending()}</div>
               ) : rightContentView === 'learning' && latestLearningCanvasId ? (
                 <div className="min-h-0 flex-1 overflow-hidden bg-surface-container-low">
                   <LearningCanvasCard
                     conversationId={currentTask!.id}
                     canvasId={latestLearningCanvasId}
-                    conversionError={whiteboardSeedError || (!SEMANTIC_WHITEBOARD_ENABLED ? '语义白板已关闭，当前显示兼容研究图。' : undefined)}
+                    conversionError={activeWhiteboardSeedError || (!SEMANTIC_WHITEBOARD_ENABLED ? '语义白板已关闭，当前显示兼容研究图。' : undefined)}
                     onRetryConversion={SEMANTIC_WHITEBOARD_ENABLED ? retryWhiteboardSeed : undefined}
                   />
                 </div>

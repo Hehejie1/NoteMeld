@@ -16,6 +16,87 @@ export interface SeededWhiteboardTarget {
   id: string
 }
 
+export interface WhiteboardSeedErrorTarget {
+  key: string
+  message: string
+}
+
+export function resolveSeedError(
+  seedRequestKey: string,
+  error: WhiteboardSeedErrorTarget,
+): string {
+  return error.key === seedRequestKey ? error.message : ''
+}
+
+export interface SeedAttemptRegistry {
+  claim: (conversationId: string, messageId: string) => boolean
+}
+
+export interface WhiteboardNoteDocumentLike {
+  taskId: string
+  content?: string
+  status?: string
+}
+
+export function resolveWhiteboardNoteDocument<T extends WhiteboardNoteDocumentLike>(
+  noteLink: { note_task_id: string } | null,
+  documents: readonly T[],
+): {
+  taskId: string
+  content: string
+  status: 'idle' | 'loading' | 'success' | 'failed'
+  document: T | null
+} {
+  const taskId = noteLink?.note_task_id || ''
+  if (!taskId) return { taskId: '', content: '', status: 'idle', document: null }
+  const document = documents.find(item => item.taskId === taskId) || null
+  const normalizedStatus = document?.status?.toUpperCase() || ''
+  const status = normalizedStatus === 'FAILED' || normalizedStatus === 'CANCELED'
+    ? 'failed'
+    : document?.content
+    ? 'success'
+    : 'loading'
+  return { taskId, content: document?.content || '', status, document }
+}
+
+export async function runLegacyWhiteboardSeed<T>({
+  backendReady,
+  conversationId,
+  messageId,
+  canvasId,
+  registry,
+  request,
+}: {
+  backendReady: boolean
+  conversationId: string
+  messageId: string
+  canvasId: string
+  registry: SeedAttemptRegistry
+  request: () => Promise<T>
+}): Promise<{ status: 'waiting' | 'skipped' } | { status: 'seeded'; value: T }> {
+  if (!backendReady) return { status: 'waiting' }
+  if (!conversationId || !messageId || !canvasId) return { status: 'skipped' }
+  if (!registry.claim(conversationId, messageId)) return { status: 'skipped' }
+  return { status: 'seeded', value: await request() }
+}
+
+export async function completePublishedConversationRefresh<T>({
+  conversationId,
+  getCurrentConversationId,
+  refresh,
+  apply,
+}: {
+  conversationId: string
+  getCurrentConversationId: () => string | null
+  refresh: () => Promise<T>
+  apply: (value: T) => void
+}): Promise<{ status: 'applied'; value: T } | { status: 'stale' }> {
+  const value = await refresh()
+  if (getCurrentConversationId() !== conversationId) return { status: 'stale' }
+  apply(value)
+  return { status: 'applied', value }
+}
+
 export function createLearningSeedKey(
   conversationId: string,
   messageId: string,

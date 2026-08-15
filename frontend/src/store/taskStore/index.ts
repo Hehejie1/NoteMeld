@@ -177,6 +177,7 @@ interface TaskStore {
   retryTask: (id: string, payload?: any, noteTaskIdOverride?: string) => Promise<void>
   loadConversations: () => Promise<void>
   loadConversation: (id: string) => Promise<Task | null>
+  refreshConversation: (id: string) => Promise<Task | null>
   retryChat: (id: string) => Promise<void>
 }
 
@@ -755,7 +756,6 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     const nextTask = normalizeTask(await deleteConversationDocument(conversationId, taskId))
     set(state => ({
       tasks: upsertLocalTask(state.tasks, nextTask),
-      currentTaskId: conversationId,
     }))
     toast.success('笔记已删除')
   },
@@ -844,6 +844,15 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     set(state => ({
       tasks: upsertLocalTask(state.tasks, task),
       currentTaskId: id,
+    }))
+    return task
+  },
+
+  refreshConversation: async (id: string) => {
+    const data = await fetchConversation(id)
+    const task = normalizeTask(data)
+    set(state => ({
+      tasks: upsertLocalTask(state.tasks, task),
     }))
     return task
   },

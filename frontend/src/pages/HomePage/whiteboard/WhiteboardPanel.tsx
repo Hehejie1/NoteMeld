@@ -5,10 +5,14 @@ import { useBackendInitContext } from '@/contexts/BackendInitContext'
 import LearningCanvasCard from '@/pages/HomePage/components/LearningCanvasCard'
 import MarkdownViewer from '@/pages/HomePage/components/MarkdownViewer'
 import { cn } from '@/lib/utils'
-import { publishWhiteboard } from '@/services/whiteboard'
-import type { WhiteboardPublishResult } from './types'
+import { getWhiteboard, publishWhiteboard } from '@/services/whiteboard'
+import type { WhiteboardPublishResult, WhiteboardSnapshot } from './types'
 import WhiteboardCanvas, { type WhiteboardCanvasStatus } from './WhiteboardCanvas'
-import { getWhiteboardPublishPresentation } from './whiteboardPanelState'
+import {
+  getWhiteboardPublishPresentation,
+  resolveWhiteboardNoteDocument,
+  type WhiteboardNoteDocumentLike,
+} from './whiteboardPanelState'
 
 export type WhiteboardPanelView = 'whiteboard' | 'note'
 
@@ -21,12 +25,11 @@ interface WhiteboardPanelProps {
   conversationId: string
   whiteboardId: string
   legacyCanvasId?: string
-  noteContent: string
-  noteStatus: 'idle' | 'loading' | 'success' | 'failed'
+  documents: readonly WhiteboardNoteDocumentLike[]
   activeView?: WhiteboardPanelView
   onViewChange?: (view: WhiteboardPanelView) => void
   showTabs?: boolean
-  onDeleteDocument?: () => void
+  onDeleteDocument?: (taskId: string) => void | Promise<void>
   onWikiRetrySuccess?: () => void
   onPublished?: (result: WhiteboardPublishResult) => void | Promise<void>
 }
@@ -35,8 +38,7 @@ export default function WhiteboardPanel({
   conversationId,
   whiteboardId,
   legacyCanvasId,
-  noteContent,
-  noteStatus,
+  documents,
   activeView,
   onViewChange,
   showTabs = true,
@@ -44,18 +46,23 @@ export default function WhiteboardPanel({
   onWikiRetrySuccess,
   onPublished,
 }: WhiteboardPanelProps) {
-  const { backendReady } = useBackendInitContext()
+  const { backendReady, failureKind, checkNow } = useBackendInitContext()
   const [localView, setLocalView] = useState<WhiteboardPanelView>('whiteboard')
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([
     { id: whiteboardId, title: '研究白板' },
   ])
   const [canvasStatus, setCanvasStatus] = useState<WhiteboardCanvasStatus | null>(null)
+  const [noteSnapshot, setNoteSnapshot] = useState<WhiteboardSnapshot | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState('')
   const [showLegacyFallback, setShowLegacyFallback] = useState(false)
   const view = activeView ?? localView
   const currentBoard = breadcrumbs[breadcrumbs.length - 1]
-  const snapshot = canvasStatus?.snapshot || null
+  const snapshot = canvasStatus?.snapshot?.id === currentBoard.id
+    ? canvasStatus.snapshot
+    : noteSnapshot?.id === currentBoard.id
+    ? noteSnapshot
+    : null
   const publishBlocked = Boolean(
     !snapshot
     || publishing
@@ -67,9 +74,19 @@ export default function WhiteboardPanel({
   useEffect(() => {
     setBreadcrumbs([{ id: whiteboardId, title: '研究白板' }])
     setCanvasStatus(null)
+    setNoteSnapshot(null)
     setPublishError('')
     setShowLegacyFallback(false)
   }, [conversationId, whiteboardId])
+
+  useEffect(() => {
+    if (!backendReady || view !== 'note' || snapshot?.id === currentBoard.id) return
+    let active = true
+    getWhiteboard(conversationId, currentBoard.id)
+      .then(board => { if (active) setNoteSnapshot(board) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [backendReady, conversationId, currentBoard.id, snapshot?.id, view])
 
   useEffect(() => {
     if (!snapshot || snapshot.id !== currentBoard.id) return
@@ -81,6 +98,10 @@ export default function WhiteboardPanel({
   const publishPresentation = useMemo(() => snapshot
     ? getWhiteboardPublishPresentation({ revision: snapshot.revision, noteLink: snapshot.note_link })
     : null, [snapshot])
+  const boardNote = useMemo(
+    () => resolveWhiteboardNoteDocument(snapshot?.note_link || null, documents),
+    [documents, snapshot?.note_link],
+  )
 
   const selectView = (next: WhiteboardPanelView) => {
     if (activeView === undefined) setLocalView(next)
@@ -94,6 +115,7 @@ export default function WhiteboardPanel({
       return [...items, { id: childWhiteboardId, title: '子白板' }]
     })
     setCanvasStatus(null)
+    setNoteSnapshot(null)
     setPublishError('')
   }
 
@@ -109,7 +131,12 @@ export default function WhiteboardPanel({
         relation_ids: [],
       })
       await Promise.resolve(onPublished?.(result)).catch(() => undefined)
-      await canvasStatus?.reload().catch(() => undefined)
+      if (view === 'whiteboard' && canvasStatus) {
+        await canvasStatus.reload().catch(() => undefined)
+      } else {
+        const refreshed = await getWhiteboard(conversationId, snapshot.id).catch(() => null)
+        if (refreshed) setNoteSnapshot(refreshed)
+      }
     } catch (error) {
       const candidate = error as { msg?: string } | undefined
       setPublishError(candidate?.msg || '发布失败，白板和上一次笔记均已保留')
@@ -119,6 +146,15 @@ export default function WhiteboardPanel({
   }
 
   if (!backendReady) {
+    if (failureKind) {
+      return (
+        <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-on-surface-variant" role="alert">
+          <AlertCircle className="h-5 w-5 text-destructive" />
+          <span>{failureKind === 'runtime' ? '本地运行时启动失败，白板尚未连接。' : '本地知识库连接失败，白板尚未加载。'}</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void checkNow().catch(() => undefined)}><RefreshCw className="h-4 w-4" />重试连接</Button>
+        </div>
+      )
+    }
     return (
       <div className="flex h-full min-h-0 items-center justify-center gap-2 text-sm text-on-surface-variant">
         <Loader2 className="h-4 w-4 animate-spin" />正在连接本地知识库…
@@ -168,8 +204,18 @@ export default function WhiteboardPanel({
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {view === 'note' ? (
-          noteContent ? (
-            <MarkdownViewer status={noteStatus} content={noteContent} onDeleteDocument={onDeleteDocument} onWikiRetrySuccess={onWikiRetrySuccess} />
+          boardNote.taskId ? (
+            <MarkdownViewer
+              status={boardNote.status}
+              content={boardNote.content}
+              documentTaskId={boardNote.taskId}
+              onDeleteDocument={onDeleteDocument ? async () => {
+                await onDeleteDocument(boardNote.taskId)
+                const refreshed = await getWhiteboard(conversationId, currentBoard.id).catch(() => null)
+                if (refreshed) setNoteSnapshot(refreshed)
+              } : undefined}
+              onWikiRetrySuccess={onWikiRetrySuccess}
+            />
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center">
               <div>
