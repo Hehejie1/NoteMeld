@@ -230,6 +230,9 @@ files["notemeld-agent-sdk.json"] = json.dumps({
     "binding_version": binding,
     "target_triples": [target],
 }, sort_keys=True).encode()
+files["notemeld-agent-abi.json"] = Path(
+    "agent-sdk/bindings/abi-v1.json"
+).read_bytes()
 with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
     for name, data in sorted(files.items()):
         info = zipfile.ZipInfo(name, timestamp)

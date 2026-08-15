@@ -116,3 +116,42 @@ Handoff note: the user-owned whiteboard checkpoint `ee615d28c47b9fca4a0bbb43ee82
 - This host lacks Gradle/cargo-ndk and OpenHarmony ohpm/Hvigor SDK tooling, so Android and OpenHarmony target builds/runs were not executed locally. Their CI jobs fail closed on missing tools, SDK components, required archive members, consumer build output, or manifest evidence.
 - Android runtime evidence remains x86_64 emulator instrumentation; the other Android ABIs are build/package evidence. OpenHarmony and iOS remain build/link evidence, not hosted device execution.
 - Local generated Swift `.build` was moved to `/tmp/notemeld-task7-fix1-source-swift-build`; no `agent-sdk/dist`, `agent-sdk/target`, `.build`, wheel, XCFramework, AAR or HAR artifact is staged.
+
+## Fix Round 2 (2026-08-16)
+
+Status: **IMPORTANT_FINDING_4_CLOSED; TWO_MINORS_DEFERRED**
+
+Correction to Fix Round 1: its item 4 described the manifest substitution finding as closed too early. Round 1 added target-kind, ABI, license and locked-closure checks, but the validator could still accept undeclared files, symlinked parent path components, relabelled native architectures/wheel tags, incomplete wheel metadata, and Swift source-version drift. Those remaining acceptance paths are closed in this round. The two separate Minor ledger items—workflow command-dispatch mutation strength and historical report wording outside this appended correction—remain explicitly deferred and were not expanded into this fix cycle.
+
+### Strict TDD evidence
+
+Five independent adversarial tests were added before production changes:
+
+1. an unmanifested payload file under the artifact root;
+2. an artifact reached through a parent-directory symlink that still resolves inside the root;
+3. an x86_64 native/wheel bundle relabelled as `aarch64-unknown-linux-gnu` while retaining x86_64 binary and wheel tags;
+4. a wheel with `METADATA` but no `WHEEL` or `RECORD`;
+5. a Swift package whose `Runtime.swift` SDK constant is changed to `9.9.9` while its JSON marker remains unchanged.
+
+Initial focused selection: **5 failed**. In every case the pre-fix validator incorrectly returned exit code 0 and printed a successful six-artifact summary. After the minimal validator/build-script changes, the same five tests passed. Fresh final selection: **5 passed, 43 deselected in 0.95s**. Final focused suite: **48 passed in 5.25s**.
+
+### Fixes and closed-world definition
+
+- Artifact roots are closed-world at the file level: the only allowed files are discovered `artifact-manifest.json` files and regular payload files declared exactly once by those manifests. Directory entries/empty directories are metadata only; undeclared regular files, symlink files, symlink directories, missing files, and duplicate declared paths fail verification.
+- Each path component from a manifest root to its payload is checked before resolution and may not be a symlink, including symlinks whose target remains inside the artifact root.
+- Native target checks now read ELF class/machine, Mach-O CPU type, PE machine, and native members of static `ar` archives, then compare the result with an explicit target-triple architecture map.
+- Wheels must have a target-compatible filename platform tag and compatible `WHEEL` `Tag` entries; exactly one shared dist-info `METADATA`, `WHEEL`, and `RECORD`; complete `RECORD` coverage with SHA-256 and size verification; packaged runtime SDK/schema constants; packaged native target architecture; and an internal ABI contract equal to the external manifest ABI.
+- Swift package/XCFramework verification reads the real `Runtime.swift`, XCFramework `Info.plist`, device/simulator slice archives, headers/module map, inner marker, and embedded ABI. Android reads both native architectures and the compiled Kotlin constants from `classes.jar`; OpenHarmony reads both native architectures, ArkTS constants, package version, and embedded ABI. Marker-only validation is not treated as sufficient evidence.
+- Python packaging no longer leaves loose `python/__init__.py` or `python/runtime.py` files outside the manifest. Every binding container now embeds the shared ABI contract. Existing unique license/Cargo.lock and independent locked `agent-ffi` closure checks remain intact.
+
+### Fresh verification and platform limits
+
+- Focused workflow/validator contracts: **48 passed**.
+- Task 6 Python ABI oracle: **2 passed**.
+- PyYAML parse of `.github/workflows/agent-sdk.yml`: passed.
+- `bash -n` over all four build scripts: passed.
+- `py_compile` over the validator and workflow contract tests: passed.
+- Real x86_64 macOS Python build in isolated `/tmp`: Rust native build, 114-component license closure, closed-world six-artifact manifest verification, clean-venv wheel install, and fake turn ending in `turn.succeeded` all passed.
+- Real iOS Swift build in isolated `/tmp`: both Rust slices, XCFramework/package creation, closed-world manifest verification, extraction of the published package ZIP, and separate generic-device and arm64-simulator consumer builds all passed. This is build/link evidence, not a device runtime claim.
+- No GitHub Actions run is claimed. This host still lacks Gradle/cargo-ndk and OpenHarmony ohpm/Hvigor SDK tooling, so Android and OpenHarmony were not built or run locally; their workflow paths remain fail-closed. No large mobile SDK was downloaded.
+- The source Swift `.build` generated by the real probe was moved to `/tmp/notemeld-task7-round2-source-swift-build`; no generated wheel, XCFramework, AAR, HAR, `.build`, `dist`, or `target` payload is staged.

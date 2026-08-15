@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
+import csv
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import textwrap
@@ -96,7 +100,9 @@ def _cargo_graph_fixture(directory: Path) -> tuple[Path, Path, dict[str, object]
 
 
 def _run_validator(root: Path, *expected_targets: str) -> subprocess.CompletedProcess[str]:
-    metadata, lock, _ = _cargo_graph_fixture(root / ".validator-expected")
+    metadata, lock, _ = _cargo_graph_fixture(
+        root.parent / f".validator-expected-{root.name}"
+    )
     command = [
         sys.executable,
         str(VALIDATOR),
@@ -153,14 +159,14 @@ def _write_manifest(root: Path, entries: list[dict[str, object]]) -> Path:
 def _write_complete_linux_bundle(root: Path) -> None:
     target = "x86_64-unknown-linux-gnu"
     _, lock_fixture, inventory_document = _cargo_graph_fixture(
-        root / ".bundle-license-source"
+        root.parent / f".bundle-license-source-{root.name}"
     )
     lock = root / "Cargo.lock"
     shutil.copyfile(lock_fixture, lock)
     inventory = root / "license-inventory.json"
     inventory.write_text(json.dumps(inventory_document), encoding="utf-8")
     native = root / "libnotemeld_agent.so"
-    native.write_bytes(b"\x7fELF" + b"\0" * 128)
+    native.write_bytes(_elf(machine=62, bits=64))
     header = root / "notemeld_agent.h"
     header.write_text("const char *notemeld_agent_sdk_version(void);\n")
     abi = root / "abi-v1.json"
@@ -168,17 +174,21 @@ def _write_complete_linux_bundle(root: Path) -> None:
         json.dumps({"abi_version": 1, "sdk_version": "0.1.0", "schema_version": "1"})
     )
     wheel = root / "notemeld_agent_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl"
-    _write_zip(
-        wheel,
-        {
-            "notemeld_agent_sdk/notemeld-agent-sdk.json": _binding_marker(target),
-            "notemeld_agent_sdk/native/libnotemeld_agent.so": native.read_bytes(),
-            "notemeld_agent_sdk/runtime.py": 'SDK_VERSION = "0.1.0"\nSCHEMA_VERSION = "1"\n',
-            "notemeld_agent_sdk-0.1.0.dist-info/METADATA": (
-                "Metadata-Version: 2.1\nName: notemeld-agent-sdk\nVersion: 0.1.0\n"
-            ),
-        },
-    )
+    wheel_members: dict[str, bytes | str] = {
+        "notemeld_agent_sdk/notemeld-agent-sdk.json": _binding_marker(target),
+        "notemeld_agent_sdk/abi-v1.json": abi.read_bytes(),
+        "notemeld_agent_sdk/native/libnotemeld_agent.so": native.read_bytes(),
+        "notemeld_agent_sdk/runtime.py": 'SDK_VERSION = "0.1.0"\nSCHEMA_VERSION = "1"\n',
+        "notemeld_agent_sdk-0.1.0.dist-info/METADATA": (
+            "Metadata-Version: 2.1\nName: notemeld-agent-sdk\nVersion: 0.1.0\n"
+        ),
+        "notemeld_agent_sdk-0.1.0.dist-info/WHEEL": (
+            "Wheel-Version: 1.0\nRoot-Is-Purelib: false\n"
+            "Tag: py3-none-manylinux_2_28_x86_64\n"
+        ),
+    }
+    _add_wheel_record(wheel_members, "notemeld_agent_sdk-0.1.0.dist-info/RECORD")
+    _write_zip(wheel, wheel_members)
     artifacts = [
         (native, "native-library"),
         (wheel, "python-wheel"),
@@ -211,6 +221,124 @@ def _write_zip(path: Path, members: dict[str, bytes | str]) -> None:
             archive.writestr(name, payload)
 
 
+def _add_wheel_record(members: dict[str, bytes | str], record_path: str) -> None:
+    rows: list[tuple[str, str, str]] = []
+    for name, payload in sorted(members.items()):
+        data = payload.encode() if isinstance(payload, str) else payload
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        rows.append((name, f"sha256={digest}", str(len(data))))
+    rows.append((record_path, "", ""))
+    output = io.StringIO(newline="")
+    csv.writer(output, lineterminator="\n").writerows(rows)
+    members[record_path] = output.getvalue()
+
+
+def _elf(*, machine: int, bits: int) -> bytes:
+    elf_class = 2 if bits == 64 else 1
+    ident = b"\x7fELF" + bytes((elf_class, 1, 1, 0)) + b"\0" * 8
+    if bits == 64:
+        header = struct.pack("<HHIQQQIHHHHHH", 3, machine, 1, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0)
+    else:
+        header = struct.pack("<HHIIIIIHHHHHH", 3, machine, 1, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0)
+    return ident + header + b"\0" * 64
+
+
+def _macho_arm64() -> bytes:
+    return struct.pack("<IIIIIIII", 0xFEEDFACF, 0x0100000C, 0, 1, 0, 0, 0, 0)
+
+
+def _archive(member: bytes) -> bytes:
+    name = b"member.o/".ljust(16)
+    header = (
+        name
+        + b"0".ljust(12)
+        + b"0".ljust(6)
+        + b"0".ljust(6)
+        + b"100644".ljust(8)
+        + str(len(member)).encode().ljust(10)
+        + b"`\n"
+    )
+    return b"!<arch>\n" + header + member + (b"\n" if len(member) % 2 else b"")
+
+
+def _write_complete_swift_bundle(root: Path) -> None:
+    target = "aarch64-apple-ios"
+    _, lock_fixture, inventory_document = _cargo_graph_fixture(
+        root.parent / f".swift-license-source-{root.name}"
+    )
+    lock = root / "Cargo.lock"
+    shutil.copyfile(lock_fixture, lock)
+    inventory = root / "license-inventory.json"
+    inventory.write_text(json.dumps(inventory_document), encoding="utf-8")
+    abi = root / "abi-v1.json"
+    abi.write_text(
+        json.dumps({"abi_version": 1, "sdk_version": "0.1.0", "schema_version": "1"})
+    )
+    static = root / "libnotemeld_agent.a"
+    static.write_bytes(_archive(_macho_arm64()))
+    info_plist = """<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>AvailableLibraries</key><array>
+<dict><key>LibraryIdentifier</key><string>ios-arm64</string><key>LibraryPath</key><string>libnotemeld_agent.a</string><key>HeadersPath</key><string>Headers</string><key>SupportedArchitectures</key><array><string>arm64</string></array><key>SupportedPlatform</key><string>ios</string></dict>
+<dict><key>LibraryIdentifier</key><string>ios-arm64-simulator</string><key>LibraryPath</key><string>libnotemeld_agent.a</string><key>HeadersPath</key><string>Headers</string><key>SupportedArchitectures</key><array><string>arm64</string></array><key>SupportedPlatform</key><string>ios</string><key>SupportedPlatformVariant</key><string>simulator</string></dict>
+</array></dict></plist>"""
+    xc_members: dict[str, bytes | str] = {
+        "notemeld-agent-sdk.json": _binding_marker(target, "aarch64-apple-ios-sim"),
+        "abi-v1.json": abi.read_bytes(),
+        "NoteMeldAgentNative.xcframework/Info.plist": info_plist,
+        "NoteMeldAgentNative.xcframework/notemeld-agent-sdk.json": _binding_marker(
+            target, "aarch64-apple-ios-sim"
+        ),
+        "NoteMeldAgentNative.xcframework/abi-v1.json": abi.read_bytes(),
+    }
+    for identifier in ("ios-arm64", "ios-arm64-simulator"):
+        prefix = f"NoteMeldAgentNative.xcframework/{identifier}"
+        xc_members[f"{prefix}/libnotemeld_agent.a"] = static.read_bytes()
+        xc_members[f"{prefix}/Headers/notemeld_agent.h"] = "const char *notemeld_agent_sdk_version(void);"
+        xc_members[f"{prefix}/Headers/module.modulemap"] = "module CNotemeldAgent {}"
+    xcframework = root / "NoteMeldAgentNative.xcframework.zip"
+    _write_zip(xcframework, xc_members)
+    runtime = (
+        'public let noteMeldAgentSdkVersion = "0.1.0"\n'
+        'public let noteMeldAgentSchemaVersion = "1"\n'
+    )
+    package_members = {
+        "notemeld-agent-sdk.json": _binding_marker(target, "aarch64-apple-ios-sim"),
+        "abi-v1.json": abi.read_bytes(),
+        "Package.swift": (
+            '.binaryTarget(name: "CNotemeldAgent", '
+            'path: "NoteMeldAgentNative.xcframework")'
+        ),
+        "Sources/NoteMeldAgentSDK/Runtime.swift": runtime,
+        **xc_members,
+    }
+    package = root / "NoteMeldAgentSwiftPackage.zip"
+    _write_zip(package, package_members)
+    artifacts = [
+        (static, "static-library"),
+        (xcframework, "swift-xcframework"),
+        (package, "swift-package"),
+        (abi, "abi-contract"),
+        (inventory, "license-inventory"),
+        (lock, "cargo-lock"),
+    ]
+    entries = []
+    for path, kind in artifacts:
+        entry = _entry(path.name, path.read_bytes(), target)
+        entry["kind"] = kind
+        entries.append(entry)
+    (root / "artifact-manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "cargo_lock_sha256": inventory_document["cargo_lock_sha256"],
+                "license_inventory": inventory_document,
+                "artifacts": entries,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _binding_marker(*targets: str, sdk_version: str = "0.1.0") -> str:
     return json.dumps(
         {
@@ -219,6 +347,45 @@ def _binding_marker(*targets: str, sdk_version: str = "0.1.0") -> str:
             "binding_version": "0.1.0",
             "target_triples": list(targets),
         }
+    )
+
+
+def _write_manifest_with_common_support(
+    root: Path,
+    target: str,
+    artifacts: list[tuple[Path, str]],
+) -> None:
+    _, lock_fixture, inventory_document = _cargo_graph_fixture(
+        root.parent / f".common-license-source-{root.name}"
+    )
+    lock = root / "Cargo.lock"
+    shutil.copyfile(lock_fixture, lock)
+    inventory = root / "license-inventory.json"
+    inventory.write_text(json.dumps(inventory_document), encoding="utf-8")
+    abi = root / "abi-v1.json"
+    abi.write_text(
+        json.dumps({"abi_version": 1, "sdk_version": "0.1.0", "schema_version": "1"})
+    )
+    entries = []
+    for path, kind in [
+        *artifacts,
+        (abi, "abi-contract"),
+        (inventory, "license-inventory"),
+        (lock, "cargo-lock"),
+    ]:
+        entry = _entry(path.relative_to(root).as_posix(), path.read_bytes(), target)
+        entry["kind"] = kind
+        entries.append(entry)
+    (root / "artifact-manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "cargo_lock_sha256": inventory_document["cargo_lock_sha256"],
+                "license_inventory": inventory_document,
+                "artifacts": entries,
+            }
+        ),
+        encoding="utf-8",
     )
 
 
@@ -480,6 +647,131 @@ def test_manifest_validator_accepts_complete_matching_artifact(tmp_path: Path) -
     summary = json.loads(result.stdout)
     assert summary["targets"] == ["x86_64-unknown-linux-gnu"]
     assert summary["artifact_count"] == 6
+
+
+def test_manifest_validator_rejects_unmanifested_payload_file(tmp_path: Path) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    (tmp_path / "unmanifested-runtime.py").write_text("surprise = True\n")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "unmanifested payload" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_symlink_in_artifact_parent_path(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    payload = tmp_path / "payload"
+    payload.mkdir()
+    native = tmp_path / "libnotemeld_agent.so"
+    moved_native = payload / native.name
+    native.replace(moved_native)
+    alias = tmp_path / "linked-payload"
+    try:
+        alias.symlink_to(payload, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    native_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "native-library"
+    )
+    native_entry["path"] = f"{alias.name}/{moved_native.name}"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "symlink" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_x86_bundle_relabelled_as_arm64(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    with zipfile.ZipFile(wheel) as archive:
+        members = {
+            info.filename: archive.read(info)
+            for info in archive.infolist()
+            if not info.is_dir() and not info.filename.endswith(".dist-info/RECORD")
+        }
+    members["notemeld_agent_sdk/notemeld-agent-sdk.json"] = _binding_marker(
+        "aarch64-unknown-linux-gnu"
+    )
+    record_path = "notemeld_agent_sdk-0.1.0.dist-info/RECORD"
+    _add_wheel_record(members, record_path)
+    _write_zip(wheel, members)
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest["artifacts"]:
+        entry["target_triple"] = "aarch64-unknown-linux-gnu"
+        artifact = tmp_path / entry["path"]
+        entry["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "aarch64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "architecture" in result.stderr.lower() or "wheel tag" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_wheel_without_wheel_or_record(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    with zipfile.ZipFile(wheel) as archive:
+        members = {
+            info.filename: archive.read(info)
+            for info in archive.infolist()
+            if not info.is_dir()
+            and not info.filename.endswith(".dist-info/WHEEL")
+            and not info.filename.endswith(".dist-info/RECORD")
+        }
+    _write_zip(wheel, members)
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
+    )
+    wheel_entry["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "wheel" in result.stderr.lower() and "record" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_swift_runtime_version_drift(
+    tmp_path: Path,
+) -> None:
+    _write_complete_swift_bundle(tmp_path)
+    package = tmp_path / "NoteMeldAgentSwiftPackage.zip"
+    with zipfile.ZipFile(package) as archive:
+        members = {
+            info.filename: archive.read(info)
+            for info in archive.infolist()
+            if not info.is_dir()
+        }
+    runtime_path = "Sources/NoteMeldAgentSDK/Runtime.swift"
+    members[runtime_path] = members[runtime_path].replace(b'"0.1.0"', b'"9.9.9"', 1)
+    _write_zip(package, members)
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    package_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "swift-package"
+    )
+    package_entry["sha256"] = hashlib.sha256(package.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "aarch64-apple-ios")
+
+    assert result.returncode != 0
+    assert "swift runtime sdk version mismatch" in result.stderr.lower()
 
 
 def test_license_inventory_is_derived_from_cargo_metadata(tmp_path: Path) -> None:
@@ -757,7 +1049,7 @@ def test_manifest_validator_rejects_wrong_artifact_kind(tmp_path: Path) -> None:
 
 
 def test_manifest_validator_requires_one_license_artifact(tmp_path: Path) -> None:
-    payload = b"\x7fELF" + b"\0" * 64
+    payload = _elf(machine=62, bits=64)
     (tmp_path / "libnotemeld_agent.so").write_bytes(payload)
     _write_manifest(
         tmp_path,
@@ -803,14 +1095,18 @@ def test_manifest_validator_rejects_android_aar_missing_jni_bridge(
     tmp_path: Path,
 ) -> None:
     target = "x86_64-linux-android"
+    native = tmp_path / "libnotemeld_agent.so"
+    native.write_bytes(_elf(machine=62, bits=64))
     aar = tmp_path / "notemeld-agent.aar"
     members = {"META-INF/notemeld-agent-sdk.json": _binding_marker(target)}
     for abi in ("armeabi-v7a", "arm64-v8a", "x86", "x86_64"):
         members[f"jni/{abi}/libnotemeld_agent.so"] = b"\x7fELF" + b"\0" * 64
     _write_zip(aar, members)
-    entry = _entry(aar.name, aar.read_bytes(), target)
-    entry["kind"] = "kotlin-aar"
-    _write_manifest(tmp_path, [entry])
+    _write_manifest_with_common_support(
+        tmp_path,
+        target,
+        [(native, "native-library"), (aar, "kotlin-aar")],
+    )
 
     result = _run_validator(tmp_path, target)
 
@@ -822,23 +1118,29 @@ def test_manifest_validator_rejects_swift_package_with_empty_xcframework(
     tmp_path: Path,
 ) -> None:
     target = "aarch64-apple-ios"
+    _write_complete_swift_bundle(tmp_path)
     package = tmp_path / "NoteMeldAgentSwiftPackage.zip"
     _write_zip(
         package,
-        {
-            "notemeld-agent-sdk.json": _binding_marker(
-                "aarch64-apple-ios", "aarch64-apple-ios-sim"
-            ),
-            "Package.swift": (
-                '.binaryTarget(name: "CNotemeldAgent", '
-                'path: "NoteMeldAgentNative.xcframework")'
+            {
+                "notemeld-agent-sdk.json": _binding_marker(
+                    "aarch64-apple-ios", "aarch64-apple-ios-sim"
+                ),
+                "abi-v1.json": (tmp_path / "abi-v1.json").read_bytes(),
+                "Package.swift": (
+                    '.binaryTarget(name: "CNotemeldAgent", '
+                    'path: "NoteMeldAgentNative.xcframework")'
             ),
             "NoteMeldAgentNative.xcframework/Info.plist": "empty",
-        },
+            },
+        )
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    package_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "swift-package"
     )
-    entry = _entry(package.name, package.read_bytes(), target)
-    entry["kind"] = "swift-package"
-    _write_manifest(tmp_path, [entry])
+    package_entry["sha256"] = hashlib.sha256(package.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     result = _run_validator(tmp_path, target)
 

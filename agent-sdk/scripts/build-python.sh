@@ -75,10 +75,8 @@ fi
 
 OUTPUT="$DIST_ROOT/$TARGET"
 rm -rf "$OUTPUT"
-mkdir -p "$OUTPUT/native" "$OUTPUT/python" "$OUTPUT/include"
+mkdir -p "$OUTPUT/native" "$OUTPUT/include"
 cp "$NATIVE_SOURCE" "$OUTPUT/native/$NATIVE_NAME"
-cp agent-sdk/bindings/python/notemeld_agent_sdk/__init__.py "$OUTPUT/python/"
-cp agent-sdk/bindings/python/notemeld_agent_sdk/runtime.py "$OUTPUT/python/"
 cp agent-sdk/include/notemeld_agent.h "$OUTPUT/include/"
 cp agent-sdk/bindings/abi-v1.json "$OUTPUT/"
 cp "$LICENSE_INVENTORY" "$OUTPUT/"
@@ -100,8 +98,15 @@ output = Path(sys.argv[1])
 wheel_name, version, schema, binding, target, platform, native_name = sys.argv[2:]
 dist_info = f"notemeld_agent_sdk-{version}.dist-info"
 files = {
-    "notemeld_agent_sdk/__init__.py": (output / "python" / "__init__.py").read_bytes(),
-    "notemeld_agent_sdk/runtime.py": (output / "python" / "runtime.py").read_bytes(),
+    "notemeld_agent_sdk/__init__.py": Path(
+        "agent-sdk/bindings/python/notemeld_agent_sdk/__init__.py"
+    ).read_bytes(),
+    "notemeld_agent_sdk/runtime.py": Path(
+        "agent-sdk/bindings/python/notemeld_agent_sdk/runtime.py"
+    ).read_bytes(),
+    "notemeld_agent_sdk/abi-v1.json": Path(
+        "agent-sdk/bindings/abi-v1.json"
+    ).read_bytes(),
     f"notemeld_agent_sdk/native/{native_name}": (output / "native" / native_name).read_bytes(),
     "notemeld_agent_sdk/notemeld-agent-sdk.json": json.dumps({
         "sdk_version": version,

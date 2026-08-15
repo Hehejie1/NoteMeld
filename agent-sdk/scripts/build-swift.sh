@@ -68,6 +68,9 @@ xcodebuild -create-xcframework \
 
 cp agent-sdk/bindings/swift/Sources/NoteMeldAgentSDK/Runtime.swift \
   "$PUBLISHED_PACKAGE/Sources/NoteMeldAgentSDK/"
+cp agent-sdk/bindings/abi-v1.json "$PUBLISHED_PACKAGE/abi-v1.json"
+cp agent-sdk/bindings/abi-v1.json \
+  "$PUBLISHED_PACKAGE/NoteMeldAgentNative.xcframework/abi-v1.json"
 cat > "$PUBLISHED_PACKAGE/Package.swift" <<'EOF'
 // swift-tools-version: 5.9
 import PackageDescription
@@ -138,11 +141,12 @@ PY
 create_deterministic_zip \
   "$BUILD_ROOT/NoteMeldAgentNative.xcframework.zip" \
   "$PUBLISHED_PACKAGE" NoteMeldAgentNative.xcframework notemeld-agent-sdk.json \
+  abi-v1.json \
   "$SOURCE_DATE_EPOCH"
 create_deterministic_zip \
   "$BUILD_ROOT/NoteMeldAgentSwiftPackage.zip" \
   "$PUBLISHED_PACKAGE" Package.swift Sources NoteMeldAgentNative.xcframework \
-  notemeld-agent-sdk.json "$SOURCE_DATE_EPOCH"
+  notemeld-agent-sdk.json abi-v1.json "$SOURCE_DATE_EPOCH"
 
 CONSUMER_ROOT="$BUILD_ROOT/swift-release-consumer"
 PUBLISHED_EXTRACTED="$CONSUMER_ROOT/published"

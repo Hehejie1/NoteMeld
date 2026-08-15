@@ -103,6 +103,9 @@ files["META-INF/notemeld-agent-sdk.json"] = json.dumps({
         "x86_64-linux-android",
     ],
 }, sort_keys=True).encode()
+files["META-INF/notemeld-agent-abi.json"] = Path(
+    "agent-sdk/bindings/abi-v1.json"
+).read_bytes()
 with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
     for name, data in sorted(files.items()):
         info = zipfile.ZipInfo(name, timestamp)
