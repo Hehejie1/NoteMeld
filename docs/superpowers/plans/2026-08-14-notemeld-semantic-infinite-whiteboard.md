@@ -370,7 +370,7 @@ git commit -m "feat: add authoritative whiteboard conversation context"
 - Modify: `backend/app/services/note_import_service.py`
 - Modify: `backend/app/routers/whiteboard.py`
 - Create: `backend/tests/whiteboard/test_whiteboard_note_publish.py`
-- Modify: `backend/tests/test_note_import_service.py`
+- Create: `backend/tests/test_note_import_service.py`
 
 **Interfaces:**
 - Produces `WhiteboardNotePublishService.publish(...) -> WhiteboardPublishResult`.
