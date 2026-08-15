@@ -21,18 +21,80 @@ from app.services.conversation_store import (
 )
 from app.services.note_document_store import delete_note_task_artifacts
 from app.services.note_task_store import cancel_note_task
-from app.services.conversation_context_refs import sanitize_context_refs
+from app.services.conversation_context_refs import (
+    MAX_CONTEXT_REFS,
+    resolve_context_refs,
+    sanitize_context_ref_shape,
+)
 from app.utils.response import ResponseWrapper as R
 
 router = APIRouter()
 
 
-def _sanitize_message_meta(role: str | None, meta: dict[str, Any] | None) -> dict[str, Any] | None:
+def _context_ref_locator(reference: Any) -> tuple[Any, ...] | None:
+    shaped = sanitize_context_ref_shape([reference])
+    if not shaped:
+        return None
+    item = shaped[0]
+    if item["type"] == "whiteboard_selection":
+        return (
+            item["type"],
+            item["id"],
+            item["whiteboard_id"],
+            item["revision"],
+            tuple(item["card_ids"]),
+            tuple(item["relation_ids"]),
+        )
+    return (
+        item["type"],
+        item["id"],
+        item["document_task_id"],
+        item["canvas_id"],
+        item.get("whiteboard_id", ""),
+        item["node_id"],
+    )
+
+
+def _resolve_message_context_refs(
+    conversation_id: str,
+    raw: Any,
+    trusted_existing: Any,
+) -> list[dict[str, Any]]:
+    trusted_by_locator: dict[tuple[Any, ...], dict[str, Any]] = {}
+    if isinstance(trusted_existing, list):
+        for reference in trusted_existing[:MAX_CONTEXT_REFS]:
+            locator = _context_ref_locator(reference)
+            if locator is not None and isinstance(reference, dict):
+                trusted_by_locator[locator] = dict(reference)
+
+    if not isinstance(raw, list):
+        return []
+    resolved: list[dict[str, Any]] = []
+    for reference in raw[:MAX_CONTEXT_REFS]:
+        locator = _context_ref_locator(reference)
+        if locator is not None and locator in trusted_by_locator:
+            resolved.append(trusted_by_locator[locator])
+        else:
+            resolved.extend(resolve_context_refs(conversation_id, [reference]))
+    return resolved[:MAX_CONTEXT_REFS]
+
+
+def _sanitize_message_meta(
+    role: str | None,
+    meta: dict[str, Any] | None,
+    *,
+    conversation_id: str = "",
+    trusted_existing_context_refs: Any = None,
+) -> dict[str, Any] | None:
     if meta is None:
         return None
     result = dict(meta)
     if role == "user" and "context_refs" in result:
-        result["context_refs"] = sanitize_context_refs(result["context_refs"])
+        result["context_refs"] = _resolve_message_context_refs(
+            conversation_id,
+            result["context_refs"],
+            trusted_existing_context_refs,
+        )
     return result
 
 
@@ -144,7 +206,11 @@ def patch_conversation(conversation_id: str, data: ConversationPatchPayload):
 def post_conversation_message(conversation_id: str, data: ConversationMessagePayload):
     try:
         payload = data.model_dump()
-        payload["meta"] = _sanitize_message_meta(data.role, payload.get("meta")) or {}
+        payload["meta"] = _sanitize_message_meta(
+            data.role,
+            payload.get("meta"),
+            conversation_id=conversation_id,
+        ) or {}
         return R.success(append_message(conversation_id, payload))
     except ValueError as exc:
         message = str(exc)
@@ -163,7 +229,18 @@ def patch_conversation_message(conversation_id: str, message_id: str, data: Conv
             {},
         )
         role = payload.get("role") or current_message.get("role")
-        payload["meta"] = _sanitize_message_meta(role, payload.get("meta"))
+        current_meta = current_message.get("meta")
+        trusted_context_refs = (
+            current_meta.get("context_refs")
+            if isinstance(current_meta, dict)
+            else None
+        )
+        payload["meta"] = _sanitize_message_meta(
+            role,
+            payload.get("meta"),
+            conversation_id=conversation_id,
+            trusted_existing_context_refs=trusted_context_refs,
+        )
     payload["id"] = message_id
     try:
         return R.success(update_message(conversation_id, message_id, payload))

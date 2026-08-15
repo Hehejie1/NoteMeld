@@ -11,7 +11,10 @@ from app.services.chat_service import free_chat_stream as free_chat_stream_servi
 from app.services.vector_store import VectorStoreManager
 from app.utils.logger import get_logger
 from app.utils.response import ResponseWrapper as R
-from app.services.conversation_context_refs import merge_context_refs_with_asset
+from app.services.conversation_context_refs import (
+    merge_context_refs_with_asset,
+    resolve_context_refs,
+)
 
 logger = get_logger(__name__)
 
@@ -50,8 +53,13 @@ class FreeAskRequest(BaseModel):
     context_refs: list[dict[str, Any]] = Field(default_factory=list)
 
 
-def _merge_context_refs(asset_content: Optional[str], context_refs: list[dict[str, Any]]) -> Optional[str]:
-    return merge_context_refs_with_asset(asset_content, context_refs)
+def _merge_context_refs(
+    conversation_id: Optional[str],
+    asset_content: Optional[str],
+    context_refs: list[dict[str, Any]],
+) -> Optional[str]:
+    resolved = resolve_context_refs(conversation_id or "", context_refs)
+    return merge_context_refs_with_asset(asset_content, resolved)
 
 
 def _do_index(task_id: str):
@@ -137,7 +145,11 @@ async def ask_free_question(data: FreeAskRequest):
             conversation_id=data.conversation_id,
             linked_task_id=data.linked_task_id,
             use_wiki=data.use_wiki,
-            asset_content=_merge_context_refs(data.asset_content, data.context_refs),
+            asset_content=_merge_context_refs(
+                data.conversation_id,
+                data.asset_content,
+                data.context_refs,
+            ),
         )
         return R.success(data=result)
     except ValueError as e:
@@ -162,7 +174,11 @@ async def ask_free_question_stream(data: FreeAskRequest):
                 conversation_id=data.conversation_id,
                 linked_task_id=data.linked_task_id,
                 use_wiki=data.use_wiki,
-                asset_content=_merge_context_refs(data.asset_content, data.context_refs),
+                asset_content=_merge_context_refs(
+                    data.conversation_id,
+                    data.asset_content,
+                    data.context_refs,
+                ),
             ):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except ValueError as e:
