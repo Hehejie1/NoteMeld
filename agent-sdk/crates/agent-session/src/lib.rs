@@ -172,11 +172,14 @@ impl TurnCoordinator {
 
     pub fn release(&self, turn_id: &TurnId) -> Result<(), AgentError> {
         let mut state = self.lock_state()?;
-        let session_id = state
-            .turns
-            .get(turn_id)
-            .map(|tracked| tracked.turn.session_id.clone())
-            .ok_or_else(turn_not_found)?;
+        let tracked = state.turns.get(turn_id).ok_or_else(turn_not_found)?;
+        if !is_terminal(tracked.turn.status) {
+            return Err(AgentError::new(
+                AgentErrorCode::InvalidInput,
+                "active turn lease cannot be released before terminal state",
+            ));
+        }
+        let session_id = tracked.turn.session_id.clone();
         if state.active_by_session.get(&session_id) == Some(turn_id) {
             state.active_by_session.remove(&session_id);
         }

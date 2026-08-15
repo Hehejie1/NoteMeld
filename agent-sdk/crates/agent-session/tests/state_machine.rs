@@ -141,44 +141,85 @@ fn different_sessions_can_acquire_leases_concurrently() {
 }
 
 #[test]
-fn terminal_transition_or_explicit_release_allows_next_turn() {
-    let coordinator = TurnCoordinator::new();
-    let first = coordinator
-        .start_turn(request(
-            "session-a",
-            "00000000-0000-4000-8000-000000000004",
-            "first",
-        ))
-        .unwrap();
-    coordinator
-        .transition(&first.turn.id, TurnStatus::Running)
-        .unwrap();
-    coordinator
-        .transition(&first.turn.id, TurnStatus::Succeeded)
-        .unwrap();
-    coordinator
-        .start_turn(request(
-            "session-a",
-            "00000000-0000-4000-8000-000000000005",
-            "second",
-        ))
-        .unwrap();
+fn release_rejects_every_nonterminal_without_changing_status_or_lease() {
+    for (index, status) in [
+        TurnStatus::Created,
+        TurnStatus::Running,
+        TurnStatus::WaitingApproval,
+        TurnStatus::Cancelling,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let coordinator = TurnCoordinator::new();
+        let session_id = format!("session-release-{index}");
+        let request_id = format!("00000000-0000-4000-8000-{:012}", 40 + index);
+        let active = coordinator
+            .start_turn(request(&session_id, &request_id, "active"))
+            .unwrap();
+        if status != TurnStatus::Created {
+            coordinator
+                .transition(&active.turn.id, TurnStatus::Running)
+                .unwrap();
+        }
+        if matches!(status, TurnStatus::WaitingApproval | TurnStatus::Cancelling) {
+            coordinator.transition(&active.turn.id, status).unwrap();
+        }
 
-    let released = coordinator
-        .start_turn(request(
-            "session-b",
-            "00000000-0000-4000-8000-000000000006",
-            "release me",
-        ))
-        .unwrap();
-    coordinator.release(&released.turn.id).unwrap();
-    coordinator
-        .start_turn(request(
-            "session-b",
-            "00000000-0000-4000-8000-000000000007",
-            "after release",
-        ))
-        .unwrap();
+        let error = coordinator.release(&active.turn.id).unwrap_err();
+        assert_eq!(error.code, AgentErrorCode::InvalidInput, "{status:?}");
+        assert_eq!(
+            error.message, "active turn lease cannot be released before terminal state",
+            "{status:?}"
+        );
+        let replay = coordinator
+            .start_turn(request(&session_id, &request_id, "active"))
+            .unwrap();
+        assert!(replay.replayed, "{status:?}");
+        assert_eq!(replay.turn.status, status, "{status:?}");
+        let contender_id = format!("00000000-0000-4000-8000-{:012}", 50 + index);
+        let busy = coordinator
+            .start_turn(request(&session_id, &contender_id, "contender"))
+            .unwrap_err();
+        assert_eq!(busy.code, AgentErrorCode::SessionBusy, "{status:?}");
+    }
+}
+
+#[test]
+fn terminal_release_is_idempotent_and_cannot_remove_a_new_active_lease() {
+    for (index, terminal) in [
+        TurnStatus::Succeeded,
+        TurnStatus::Failed,
+        TurnStatus::Cancelled,
+        TurnStatus::Interrupted,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let coordinator = TurnCoordinator::new();
+        let session_id = format!("session-terminal-release-{index}");
+        let first_request = format!("00000000-0000-4000-8000-{:012}", 60 + index);
+        let first = coordinator
+            .start_turn(request(&session_id, &first_request, "first"))
+            .unwrap();
+        coordinator
+            .transition(&first.turn.id, TurnStatus::Running)
+            .unwrap();
+        coordinator.transition(&first.turn.id, terminal).unwrap();
+
+        coordinator.release(&first.turn.id).unwrap();
+        let second_request = format!("00000000-0000-4000-8000-{:012}", 70 + index);
+        let second = coordinator
+            .start_turn(request(&session_id, &second_request, "second"))
+            .unwrap();
+        coordinator.release(&first.turn.id).unwrap();
+        let contender_request = format!("00000000-0000-4000-8000-{:012}", 80 + index);
+        let busy = coordinator
+            .start_turn(request(&session_id, &contender_request, "contender"))
+            .unwrap_err();
+        assert_eq!(busy.code, AgentErrorCode::SessionBusy, "{terminal:?}");
+        assert_eq!(second.turn.status, TurnStatus::Created);
+    }
 }
 
 #[test]

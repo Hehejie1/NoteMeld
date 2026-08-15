@@ -307,7 +307,18 @@ impl EventStore for ReferenceSqliteStore {
                 |row| row.get(0),
             )
             .map_err(sqlite_error)?;
-        if sequence != last_sequence + 1 {
+        let next_sequence = last_sequence.checked_add(1).ok_or_else(|| {
+            let mut error = AgentError::new(
+                AgentErrorCode::InvalidInput,
+                "event sequence space is exhausted",
+            );
+            error.details.insert(
+                "reason".to_owned(),
+                Value::String("sequence_exhausted".to_owned()),
+            );
+            error
+        })?;
+        if sequence != next_sequence {
             return Err(AgentError::new(
                 AgentErrorCode::InvalidInput,
                 "event sequence must append without gaps",

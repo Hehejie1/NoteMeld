@@ -464,6 +464,57 @@ fn an_external_write_lock_has_a_bounded_safe_busy_error() {
     assert_eq!(error.code, AgentErrorCode::SdkInternalError);
     assert_eq!(error.message, "reference sqlite database is busy");
 
+    drop(blocking_connection);
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn persisted_max_sequence_returns_exhausted_without_poisoning_the_store() {
+    let path = temporary_database_path("sequence-exhausted");
+    let stored_turn = turn(
+        "session-exhausted",
+        "10000000-0000-4000-8000-000000000040",
+        "20000000-0000-4000-8000-000000000040",
+    );
+    let first = event(
+        "session-exhausted",
+        &stored_turn.id.0,
+        "30000000-0000-4000-8000-000000000040",
+        1,
+    );
+    let store = ReferenceSqliteStore::open(&path).unwrap();
+    store
+        .insert_session(&StoredSession::new(SessionId::from("session-exhausted")))
+        .unwrap();
+    store.insert_turn(&stored_turn).unwrap();
+    store.append_event(&first).unwrap();
+    {
+        let raw = Connection::open(&path).unwrap();
+        raw.execute(
+            "UPDATE agent_events SET sequence = ?1 WHERE event_id = ?2",
+            rusqlite::params![i64::MAX, first.event_id.0],
+        )
+        .unwrap();
+    }
+
+    let mut incoming = event(
+        "session-exhausted",
+        &stored_turn.id.0,
+        "30000000-0000-4000-8000-000000000041",
+        i64::MAX as u64 - 1,
+    );
+    incoming.timestamp = "2026-08-15T00:00:02Z".to_owned();
+    let error = store.append_event(&incoming).unwrap_err();
+    assert_eq!(error.code, AgentErrorCode::InvalidInput);
+    assert_eq!(error.message, "event sequence space is exhausted");
+    assert_eq!(error.details["reason"], "sequence_exhausted");
+
+    let replay = store.replay_events(&stored_turn.id, 0).unwrap();
+    assert_eq!(replay.len(), 1);
+    assert_eq!(replay[0].sequence, i64::MAX as u64);
+    assert_eq!(store.get_turn(&stored_turn.id).unwrap(), Some(stored_turn));
+
+    drop(store);
     fs::remove_file(&path).unwrap();
 }
 
@@ -565,6 +616,17 @@ fn event_identity_is_global_and_sequence_respects_sqlite_u64_boundary() {
         error.message,
         "event_id already identifies a different event"
     );
+
+    let mut max_in_range_gap = event(
+        "session-a",
+        &turn_b.id.0,
+        "30000000-0000-4000-8000-000000000039",
+        i64::MAX as u64,
+    );
+    max_in_range_gap.timestamp = "2026-08-15T00:00:02Z".to_owned();
+    let error = store.append_event(&max_in_range_gap).unwrap_err();
+    assert_eq!(error.code, AgentErrorCode::InvalidInput);
+    assert_eq!(error.message, "event sequence must append without gaps");
 
     let overflow = event(
         "session-a",
