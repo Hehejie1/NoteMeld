@@ -170,3 +170,104 @@ test('switching root and child boards remounts viewport ownership', () => {
   childCommitter.dispose()
   assert.deepEqual(commits.map(item => item.boardId), ['wb_root', 'wb_child'])
 })
+
+test('durable publish survives Note refresh rejection and retries delivery without republishing', async () => {
+  assert.equal(typeof panelStateModule.runDurableWhiteboardPublish, 'function')
+  assert.equal(typeof panelStateModule.deliverPublishedNoteRefresh, 'function')
+  let publishCalls = 0
+  let refreshCalls = 0
+  const publishResult = { whiteboard_id: 'wb_a', note_task_id: 'note_a', published_revision: 4 }
+  const first = await panelStateModule.runDurableWhiteboardPublish({
+    publish: async () => {
+      publishCalls += 1
+      return publishResult
+    },
+    deliver: async () => {
+      refreshCalls += 1
+      throw new Error('conversation refresh failed')
+    },
+  })
+  assert.equal(first.status, 'published')
+  assert.equal(first.result, publishResult)
+  assert.deepEqual(first.noteRefresh, {
+    status: 'failed',
+    message: '发布成功，笔记内容刷新失败：conversation refresh failed',
+  })
+  assert.equal(publishCalls, 1)
+
+  const retried = await panelStateModule.deliverPublishedNoteRefresh(publishResult, async () => {
+    refreshCalls += 1
+    return { status: 'refreshed' }
+  })
+  assert.deepEqual(retried, { status: 'refreshed' })
+  assert.equal(publishCalls, 1, '刷新重试不得再次发布 Note')
+  assert.equal(refreshCalls, 2)
+  assert.match(panel, /runDurableWhiteboardPublish/)
+  assert.match(panel, /deliverPublishedNoteRefresh/)
+  assert.match(panel, /发布成功，笔记内容刷新失败/)
+  assert.match(panel, /重试刷新/)
+})
+
+test('Note-only snapshot load is single-flight, race guarded, and recoverable', async () => {
+  assert.equal(typeof panelStateModule.createWhiteboardSnapshotLoader, 'function')
+  assert.equal(typeof panelStateModule.loadWhiteboardSnapshotForTarget, 'function')
+  const loader = panelStateModule.createWhiteboardSnapshotLoader()
+  let requestCalls = 0
+  let currentTargetKey = 'conv_a:wb_root'
+  let resolveRoot
+  const rootRequest = new Promise(resolve => { resolveRoot = resolve })
+  const accepted = []
+  const loadRoot = () => panelStateModule.loadWhiteboardSnapshotForTarget({
+    targetKey: 'conv_a:wb_root',
+    getCurrentTargetKey: () => currentTargetKey,
+    load: () => loader.load('conv_a:wb_root', () => {
+      requestCalls += 1
+      return rootRequest
+    }),
+    accept: snapshot => accepted.push(snapshot.id),
+  })
+  const rootA = loadRoot()
+  const rootB = loadRoot()
+  assert.equal(requestCalls, 1, 'StrictMode/重复effect不得发起重复snapshot请求')
+  currentTargetKey = 'conv_a:wb_child'
+  resolveRoot({ id: 'wb_root', note_link: null })
+  assert.deepEqual(await rootA, { status: 'stale' })
+  assert.deepEqual(await rootB, { status: 'stale' })
+  assert.deepEqual(accepted, [])
+
+  const failed = await panelStateModule.loadWhiteboardSnapshotForTarget({
+    targetKey: currentTargetKey,
+    getCurrentTargetKey: () => currentTargetKey,
+    load: () => loader.load(currentTargetKey, async () => {
+      requestCalls += 1
+      throw new Error('snapshot network failed')
+    }),
+    accept: () => assert.fail('failed snapshot must not be accepted'),
+  })
+  assert.deepEqual(failed, { status: 'error', message: 'snapshot network failed' })
+
+  const recovered = await panelStateModule.loadWhiteboardSnapshotForTarget({
+    targetKey: currentTargetKey,
+    getCurrentTargetKey: () => currentTargetKey,
+    load: () => loader.load(currentTargetKey, async () => {
+      requestCalls += 1
+      return { id: 'wb_child', note_link: { note_task_id: 'note_child' } }
+    }),
+    accept: snapshot => accepted.push(snapshot.id),
+  })
+  assert.deepEqual(recovered, { status: 'loaded' })
+  assert.deepEqual(accepted, ['wb_child'])
+  assert.equal(requestCalls, 3)
+  assert.match(panel, /createWhiteboardSnapshotLoader/)
+  assert.match(panel, /loadWhiteboardSnapshotForTarget/)
+  assert.match(panel, /白板发布状态加载失败/)
+  assert.match(panel, /重试加载/)
+  assert.match(panel, /查看原研究图/)
+  const workspaceStart = panel.indexOf('<div className="relative min-h-0 flex-1 overflow-hidden">')
+  assert.notEqual(workspaceStart, -1)
+  const workspace = panel.slice(workspaceStart)
+  assert.ok(
+    workspace.indexOf('showLegacyFallback && legacyCanvasId ?') < workspace.indexOf("view === 'note' ?"),
+    '移动端受控 Note 视图也必须能优先进入 legacy fallback',
+  )
+})

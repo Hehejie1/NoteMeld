@@ -97,6 +97,84 @@ export async function completePublishedConversationRefresh<T>({
   return { status: 'applied', value }
 }
 
+export type PublishedNoteRefreshOutcome =
+  | { status: 'refreshed' }
+  | { status: 'stale' }
+  | { status: 'failed'; message: string }
+
+const errorMessage = (error: unknown, fallback: string) => {
+  const candidate = error as { msg?: string } | null
+  return error instanceof Error ? error.message : candidate?.msg || fallback
+}
+
+export async function deliverPublishedNoteRefresh<T>(
+  result: T,
+  deliver?: (result: T) => PublishedNoteRefreshOutcome | void | Promise<PublishedNoteRefreshOutcome | void>,
+): Promise<PublishedNoteRefreshOutcome> {
+  if (!deliver) return { status: 'refreshed' }
+  try {
+    return await deliver(result) || { status: 'refreshed' }
+  } catch (error) {
+    return {
+      status: 'failed',
+      message: `发布成功，笔记内容刷新失败：${errorMessage(error, '请重试')}`,
+    }
+  }
+}
+
+export async function runDurableWhiteboardPublish<T>({
+  publish,
+  deliver,
+}: {
+  publish: () => Promise<T>
+  deliver?: (result: T) => PublishedNoteRefreshOutcome | void | Promise<PublishedNoteRefreshOutcome | void>
+}): Promise<{ status: 'published'; result: T; noteRefresh: PublishedNoteRefreshOutcome }> {
+  const result = await publish()
+  const noteRefresh = await deliverPublishedNoteRefresh(result, deliver)
+  return { status: 'published', result, noteRefresh }
+}
+
+export function createWhiteboardSnapshotLoader<T>() {
+  let inFlight: { key: string; promise: Promise<T> } | null = null
+  return {
+    load(key: string, request: () => Promise<T>): Promise<T> {
+      if (inFlight?.key === key) return inFlight.promise
+      let promise: Promise<T>
+      try {
+        promise = Promise.resolve(request())
+      } catch (error) {
+        promise = Promise.reject(error)
+      }
+      inFlight = { key, promise }
+      void promise.finally(() => {
+        if (inFlight?.promise === promise) inFlight = null
+      }).catch(() => undefined)
+      return promise
+    },
+  }
+}
+
+export async function loadWhiteboardSnapshotForTarget<T>({
+  targetKey,
+  getCurrentTargetKey,
+  load,
+  accept,
+}: {
+  targetKey: string
+  getCurrentTargetKey: () => string
+  load: () => Promise<T>
+  accept: (snapshot: T) => void
+}): Promise<{ status: 'loaded' | 'stale' } | { status: 'error'; message: string }> {
+  try {
+    const snapshot = await load()
+    if (getCurrentTargetKey() !== targetKey) return { status: 'stale' }
+    accept(snapshot)
+    return { status: 'loaded' }
+  } catch (error) {
+    return { status: 'error', message: errorMessage(error, '白板发布状态加载失败') }
+  }
+}
+
 export function createLearningSeedKey(
   conversationId: string,
   messageId: string,

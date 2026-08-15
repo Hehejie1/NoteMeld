@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useBackendInitContext } from '@/contexts/BackendInitContext'
@@ -9,8 +9,12 @@ import { getWhiteboard, publishWhiteboard } from '@/services/whiteboard'
 import type { WhiteboardPublishResult, WhiteboardSnapshot } from './types'
 import WhiteboardCanvas, { type WhiteboardCanvasStatus } from './WhiteboardCanvas'
 import {
+  createWhiteboardSnapshotLoader,
+  deliverPublishedNoteRefresh,
   getWhiteboardPublishPresentation,
+  loadWhiteboardSnapshotForTarget,
   resolveWhiteboardNoteDocument,
+  runDurableWhiteboardPublish,
   type WhiteboardNoteDocumentLike,
 } from './whiteboardPanelState'
 
@@ -52,20 +56,55 @@ export default function WhiteboardPanel({
     { id: whiteboardId, title: '研究白板' },
   ])
   const [canvasStatus, setCanvasStatus] = useState<WhiteboardCanvasStatus | null>(null)
-  const [noteSnapshot, setNoteSnapshot] = useState<WhiteboardSnapshot | null>(null)
+  const [noteSnapshot, setNoteSnapshot] = useState<{
+    targetKey: string
+    value: WhiteboardSnapshot
+  } | null>(null)
+  const [snapshotLoadState, setSnapshotLoadState] = useState<{
+    targetKey: string
+    status: 'idle' | 'loading' | 'loaded' | 'error'
+    message: string
+  }>({ targetKey: '', status: 'idle', message: '' })
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState('')
+  const [publishedNoteDelivery, setPublishedNoteDelivery] = useState<{
+    targetKey: string
+    result: WhiteboardPublishResult
+    message: string
+  } | null>(null)
+  const [retryingPublishedNote, setRetryingPublishedNote] = useState(false)
   const [showLegacyFallback, setShowLegacyFallback] = useState(false)
+  const snapshotLoaderRef = useRef(createWhiteboardSnapshotLoader<WhiteboardSnapshot>())
+  const currentSnapshotTargetKeyRef = useRef('')
   const view = activeView ?? localView
-  const currentBoard = breadcrumbs[breadcrumbs.length - 1]
+  const currentBoard = breadcrumbs[0]?.id === whiteboardId
+    ? breadcrumbs[breadcrumbs.length - 1]
+    : { id: whiteboardId, title: '研究白板' }
+  const snapshotTargetKey = JSON.stringify([conversationId, currentBoard.id])
+  currentSnapshotTargetKeyRef.current = snapshotTargetKey
+  const currentNoteSnapshot = noteSnapshot?.targetKey === snapshotTargetKey
+    ? noteSnapshot.value
+    : null
   const snapshot = canvasStatus?.snapshot?.id === currentBoard.id
     ? canvasStatus.snapshot
-    : noteSnapshot?.id === currentBoard.id
-    ? noteSnapshot
+    : currentNoteSnapshot?.id === currentBoard.id
+    ? currentNoteSnapshot
+    : null
+  const snapshotLoadError = snapshotLoadState.targetKey === snapshotTargetKey
+    && snapshotLoadState.status === 'error'
+    ? snapshotLoadState.message
+    : ''
+  const snapshotLoading = view === 'note'
+    && !snapshot
+    && !snapshotLoadError
+  const currentPublishedNoteDelivery = publishedNoteDelivery?.targetKey === snapshotTargetKey
+    ? publishedNoteDelivery
     : null
   const publishBlocked = Boolean(
     !snapshot
     || publishing
+    || retryingPublishedNote
+    || currentPublishedNoteDelivery
     || canvasStatus?.pending
     || canvasStatus?.conflict
     || canvasStatus?.unsavedError,
@@ -75,18 +114,47 @@ export default function WhiteboardPanel({
     setBreadcrumbs([{ id: whiteboardId, title: '研究白板' }])
     setCanvasStatus(null)
     setNoteSnapshot(null)
+    setSnapshotLoadState({ targetKey: '', status: 'idle', message: '' })
     setPublishError('')
+    setPublishedNoteDelivery(null)
+    setRetryingPublishedNote(false)
     setShowLegacyFallback(false)
   }, [conversationId, whiteboardId])
 
+  const loadNoteSnapshot = useCallback(async () => {
+    if (!backendReady) return
+    const targetKey = JSON.stringify([conversationId, currentBoard.id])
+    setSnapshotLoadState({ targetKey, status: 'loading', message: '' })
+    const outcome = await loadWhiteboardSnapshotForTarget({
+      targetKey,
+      getCurrentTargetKey: () => currentSnapshotTargetKeyRef.current,
+      load: () => snapshotLoaderRef.current.load(
+        targetKey,
+        () => getWhiteboard(conversationId, currentBoard.id),
+      ),
+      accept: board => {
+        setNoteSnapshot({ targetKey, value: board })
+        setSnapshotLoadState({ targetKey, status: 'loaded', message: '' })
+      },
+    })
+    if (outcome.status === 'error' && currentSnapshotTargetKeyRef.current === targetKey) {
+      setSnapshotLoadState({
+        targetKey,
+        status: 'error',
+        message: `白板发布状态加载失败：${outcome.message}`,
+      })
+    }
+  }, [backendReady, conversationId, currentBoard.id])
+
   useEffect(() => {
-    if (!backendReady || view !== 'note' || snapshot?.id === currentBoard.id) return
-    let active = true
-    getWhiteboard(conversationId, currentBoard.id)
-      .then(board => { if (active) setNoteSnapshot(board) })
-      .catch(() => undefined)
-    return () => { active = false }
-  }, [backendReady, conversationId, currentBoard.id, snapshot?.id, view])
+    if (
+      !backendReady
+      || view !== 'note'
+      || snapshot?.id === currentBoard.id
+      || (snapshotLoadState.targetKey === snapshotTargetKey && snapshotLoadState.status !== 'idle')
+    ) return
+    void loadNoteSnapshot()
+  }, [backendReady, currentBoard.id, loadNoteSnapshot, snapshot?.id, snapshotLoadState.status, snapshotLoadState.targetKey, snapshotTargetKey, view])
 
   useEffect(() => {
     if (!snapshot || snapshot.id !== currentBoard.id) return
@@ -116,26 +184,80 @@ export default function WhiteboardPanel({
     })
     setCanvasStatus(null)
     setNoteSnapshot(null)
+    setSnapshotLoadState({ targetKey: '', status: 'idle', message: '' })
     setPublishError('')
+    setPublishedNoteDelivery(null)
+    setRetryingPublishedNote(false)
+  }
+
+  const retryNoteSnapshotLoad = async () => {
+    await checkNow().catch(() => undefined)
+    await loadNoteSnapshot()
+  }
+
+  const retryPublishedNoteRefresh = async () => {
+    if (!currentPublishedNoteDelivery || retryingPublishedNote) return
+    const retryTargetKey = currentPublishedNoteDelivery.targetKey
+    setRetryingPublishedNote(true)
+    const delivery = await deliverPublishedNoteRefresh(
+      currentPublishedNoteDelivery.result,
+      onPublished,
+    )
+    if (currentSnapshotTargetKeyRef.current !== retryTargetKey) {
+      setRetryingPublishedNote(false)
+      return
+    }
+    if (delivery.status === 'failed') {
+      setPublishedNoteDelivery({
+        targetKey: retryTargetKey,
+        result: currentPublishedNoteDelivery.result,
+        message: delivery.message,
+      })
+    } else {
+      setPublishedNoteDelivery(null)
+    }
+    setRetryingPublishedNote(false)
   }
 
   const publish = async () => {
     if (!snapshot || publishing) return
     setPublishing(true)
     setPublishError('')
+    setPublishedNoteDelivery(null)
     try {
-      const result = await publishWhiteboard(conversationId, snapshot.id, {
-        base_revision: snapshot.revision,
-        scope: 'all',
-        card_ids: [],
-        relation_ids: [],
+      const publishTargetKey = snapshotTargetKey
+      const outcome = await runDurableWhiteboardPublish({
+        publish: () => publishWhiteboard(conversationId, snapshot.id, {
+          base_revision: snapshot.revision,
+          scope: 'all',
+          card_ids: [],
+          relation_ids: [],
+        }),
+        deliver: onPublished,
       })
-      await Promise.resolve(onPublished?.(result)).catch(() => undefined)
+      if (outcome.noteRefresh.status === 'failed') {
+        if (currentSnapshotTargetKeyRef.current === publishTargetKey) {
+          setPublishedNoteDelivery({
+            targetKey: publishTargetKey,
+            result: outcome.result,
+            message: outcome.noteRefresh.message,
+          })
+        }
+      }
+      if (currentSnapshotTargetKeyRef.current === publishTargetKey) {
+        setNoteSnapshot({
+          targetKey: publishTargetKey,
+          value: {
+            ...snapshot,
+            note_link: {
+              note_task_id: outcome.result.note_task_id,
+              published_revision: outcome.result.published_revision,
+            },
+          },
+        })
+      }
       if (view === 'whiteboard' && canvasStatus) {
         await canvasStatus.reload().catch(() => undefined)
-      } else {
-        const refreshed = await getWhiteboard(conversationId, snapshot.id).catch(() => null)
-        if (refreshed) setNoteSnapshot(refreshed)
       }
     } catch (error) {
       const candidate = error as { msg?: string } | undefined
@@ -193,6 +315,15 @@ export default function WhiteboardPanel({
           </div>
         </div>
         {publishError ? <div className="border-t border-destructive/10 bg-destructive/5 px-4 py-2 text-xs text-destructive" role="alert">{publishError}</div> : null}
+        {currentPublishedNoteDelivery ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800" role="alert">
+            <span>发布成功，笔记内容刷新失败：{currentPublishedNoteDelivery.message.replace(/^发布成功，笔记内容刷新失败：/, '')}</span>
+            <Button type="button" size="sm" variant="outline" className="h-7" disabled={retryingPublishedNote} onClick={() => void retryPublishedNoteRefresh()}>
+              {retryingPublishedNote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              重试刷新
+            </Button>
+          </div>
+        ) : null}
         {canvasStatus?.conflict ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800" role="alert">
             <span>白板已在其他窗口更新，本地操作仍可重新应用。</span>
@@ -203,8 +334,23 @@ export default function WhiteboardPanel({
       </header>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {view === 'note' ? (
-          boardNote.taskId ? (
+        {showLegacyFallback && legacyCanvasId ? (
+          <LearningCanvasCard conversationId={conversationId} canvasId={legacyCanvasId} conversionError="可编辑白板加载失败，当前显示原研究图。" onRetryConversion={() => { setShowLegacyFallback(false); void canvasStatus?.reload().catch(() => undefined) }} />
+        ) : view === 'note' ? (
+          snapshotLoadError ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-on-surface-variant" role="alert">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <span>{snapshotLoadError}</span>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => void retryNoteSnapshotLoad()}><RefreshCw className="h-4 w-4" />重试加载</Button>
+                {legacyCanvasId ? <Button type="button" size="sm" variant="ghost" onClick={() => { setShowLegacyFallback(true); selectView('whiteboard') }}>查看原研究图</Button> : null}
+              </div>
+            </div>
+          ) : snapshotLoading ? (
+            <div className="flex h-full items-center justify-center gap-2 text-sm text-on-surface-variant">
+              <Loader2 className="h-4 w-4 animate-spin" />正在加载白板发布状态…
+            </div>
+          ) : boardNote.taskId ? (
             <MarkdownViewer
               status={boardNote.status}
               content={boardNote.content}
@@ -212,7 +358,7 @@ export default function WhiteboardPanel({
               onDeleteDocument={onDeleteDocument ? async () => {
                 await onDeleteDocument(boardNote.taskId)
                 const refreshed = await getWhiteboard(conversationId, currentBoard.id).catch(() => null)
-                if (refreshed) setNoteSnapshot(refreshed)
+                if (refreshed) setNoteSnapshot({ targetKey: snapshotTargetKey, value: refreshed })
               } : undefined}
               onWikiRetrySuccess={onWikiRetrySuccess}
             />
@@ -225,8 +371,6 @@ export default function WhiteboardPanel({
               </div>
             </div>
           )
-        ) : showLegacyFallback && legacyCanvasId ? (
-          <LearningCanvasCard conversationId={conversationId} canvasId={legacyCanvasId} conversionError="可编辑白板加载失败，当前显示原研究图。" onRetryConversion={() => { setShowLegacyFallback(false); void canvasStatus?.reload().catch(() => undefined) }} />
         ) : (
           <div className="relative h-full min-h-0">
             <WhiteboardCanvas conversationId={conversationId} whiteboardId={currentBoard.id} onOpenNestedWhiteboard={openNestedWhiteboard} onStatusChange={setCanvasStatus} />
