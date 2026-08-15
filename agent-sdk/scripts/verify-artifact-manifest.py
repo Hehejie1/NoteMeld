@@ -7,6 +7,9 @@ import argparse
 import ast
 import base64
 import csv
+from email import policy
+from email.message import Message
+from email.parser import Parser
 import hashlib
 import io
 import json
@@ -533,8 +536,21 @@ def _verify_container_marker_only(
 ) -> None:
     if not zipfile.is_zipfile(path):
         raise ManifestError(f"{kind} is not a valid ZIP container: {path.name}")
-    with zipfile.ZipFile(path) as archive:
-        marker = _read_zip_json(archive, CONTAINER_MARKERS[kind], kind)
+    try:
+        with zipfile.ZipFile(path) as archive:
+            marker = _read_zip_json(archive, CONTAINER_MARKERS[kind], kind)
+    except ManifestError:
+        raise
+    except (
+        KeyError,
+        OSError,
+        RuntimeError,
+        UnicodeDecodeError,
+        ValueError,
+        struct.error,
+        zipfile.BadZipFile,
+    ) as error:
+        raise ManifestError(f"invalid {kind} ZIP container: {error}") from error
     _verify_binding_marker(
         marker,
         target=target,
@@ -581,7 +597,21 @@ def _read_abi_contract_bytes(
     return abi
 
 
-def _binary_architecture(data: bytes, label: str) -> str:
+def _cpu_architecture(bits: int, cpu_type: int, label: str) -> str:
+    architecture = {
+        (32, 7): "x86",
+        (64, 0x01000007): "x86_64",
+        (32, 12): "armv7",
+        (64, 0x0100000C): "aarch64",
+    }.get((bits, cpu_type))
+    if architecture is None:
+        raise ManifestError(
+            f"unsupported Mach-O architecture cputype={cpu_type} in {label}"
+        )
+    return architecture
+
+
+def _binary_architectures(data: bytes, label: str) -> set[str]:
     if data.startswith(b"\x7fELF"):
         if len(data) < 20 or data[4] not in {1, 2} or data[5] not in {1, 2}:
             raise ManifestError(f"invalid ELF architecture metadata in {label}")
@@ -597,7 +627,58 @@ def _binary_architecture(data: bytes, label: str) -> str:
             raise ManifestError(
                 f"unsupported ELF architecture class={data[4]} machine={machine} in {label}"
             )
-        return architecture
+        return {architecture}
+
+    fat_macho = {
+        b"\xca\xfe\xba\xbe": ("big", 32),
+        b"\xbe\xba\xfe\xca": ("little", 32),
+        b"\xca\xfe\xba\xbf": ("big", 64),
+        b"\xbf\xba\xfe\xca": ("little", 64),
+    }.get(data[:4])
+    if fat_macho is not None:
+        if len(data) < 8:
+            raise ManifestError(f"truncated fat Mach-O header in {label}")
+        byte_order, entry_bits = fat_macho
+        slice_count = int.from_bytes(data[4:8], byte_order)
+        entry_size = 32 if entry_bits == 64 else 20
+        table_end = 8 + slice_count * entry_size
+        if slice_count == 0 or table_end > len(data):
+            raise ManifestError(f"invalid fat Mach-O slice table in {label}")
+        architectures: set[str] = set()
+        ranges: list[tuple[int, int]] = []
+        for index in range(slice_count):
+            entry = 8 + index * entry_size
+            cpu_type = int.from_bytes(data[entry : entry + 4], byte_order)
+            if entry_bits == 64:
+                slice_offset = int.from_bytes(data[entry + 8 : entry + 16], byte_order)
+                slice_size = int.from_bytes(data[entry + 16 : entry + 24], byte_order)
+            else:
+                slice_offset = int.from_bytes(data[entry + 8 : entry + 12], byte_order)
+                slice_size = int.from_bytes(data[entry + 12 : entry + 16], byte_order)
+            slice_end = slice_offset + slice_size
+            if (
+                slice_size == 0
+                or slice_offset < table_end
+                or slice_end > len(data)
+                or any(slice_offset < end and start < slice_end for start, end in ranges)
+            ):
+                raise ManifestError(f"invalid fat Mach-O slice bounds in {label}")
+            declared = _cpu_architecture(
+                64 if cpu_type & 0x01000000 else 32,
+                cpu_type,
+                f"{label}:fat[{index}]",
+            )
+            actual = _binary_architectures(
+                data[slice_offset:slice_end], f"{label}:fat[{index}]"
+            )
+            if actual != {declared}:
+                raise ManifestError(
+                    f"fat Mach-O slice architecture mismatch in {label}: "
+                    f"declared {declared}, got {sorted(actual)}"
+                )
+            architectures.update(actual)
+            ranges.append((slice_offset, slice_end))
+        return architectures
 
     macho = {
         b"\xce\xfa\xed\xfe": ("little", 32),
@@ -610,17 +691,7 @@ def _binary_architecture(data: bytes, label: str) -> str:
             raise ManifestError(f"truncated Mach-O header in {label}")
         byte_order, bits = macho
         cpu_type = int.from_bytes(data[4:8], byte_order)
-        architecture = {
-            (32, 7): "x86",
-            (64, 0x01000007): "x86_64",
-            (32, 12): "armv7",
-            (64, 0x0100000C): "aarch64",
-        }.get((bits, cpu_type))
-        if architecture is None:
-            raise ManifestError(
-                f"unsupported Mach-O architecture cputype={cpu_type} in {label}"
-            )
-        return architecture
+        return {_cpu_architecture(bits, cpu_type, label)}
 
     if data.startswith(b"MZ"):
         if len(data) < 64:
@@ -634,15 +705,17 @@ def _binary_architecture(data: bytes, label: str) -> str:
         )
         if architecture is None:
             raise ManifestError(f"unsupported PE architecture {machine} in {label}")
-        return architecture
+        return {architecture}
 
     raise ManifestError(f"unrecognized native architecture format in {label}")
 
 
-def _archive_architecture(data: bytes, label: str) -> str:
+def _archive_architectures(data: bytes, label: str) -> set[str]:
     if not data.startswith(b"!<arch>\n"):
         raise ManifestError(f"invalid static archive in {label}")
     offset = 8
+    string_table: bytes | None = None
+    architectures: set[str] = set()
     while offset < len(data):
         if offset + 60 > len(data):
             raise ManifestError(f"truncated static archive member in {label}")
@@ -653,26 +726,67 @@ def _archive_architecture(data: bytes, label: str) -> str:
             size = int(header[48:58].decode("ascii").strip())
         except (UnicodeDecodeError, ValueError) as error:
             raise ManifestError(f"invalid static archive member size in {label}") from error
-        name = header[:16].decode("ascii", errors="replace").strip().rstrip("/")
+        try:
+            raw_name = header[:16].decode("ascii").strip()
+        except UnicodeDecodeError as error:
+            raise ManifestError(f"invalid static archive member name in {label}") from error
         start = offset + 60
         end = start + size
         if end > len(data):
             raise ManifestError(f"truncated static archive member body in {label}")
         member = data[start:end]
-        if name.startswith("#1/"):
+        name = raw_name.rstrip("/")
+        if raw_name == "//":
+            string_table = member
+            name = "//"
+        elif raw_name.startswith("#1/"):
             try:
-                extended_name_size = int(name[3:])
+                extended_name_size = int(raw_name[3:])
             except ValueError as error:
                 raise ManifestError(f"invalid BSD archive member name in {label}") from error
-            member = member[extended_name_size:]
-        if name not in {"", "/", "//", "SYM64", "__.SYMDEF", "__.SYMDEF SORTED"}:
+            if extended_name_size <= 0 or extended_name_size > len(member):
+                raise ManifestError(f"invalid BSD archive member name size in {label}")
             try:
-                return _binary_architecture(member, f"{label}:{name}")
+                name = member[:extended_name_size].decode("utf-8").rstrip("\0")
+            except UnicodeDecodeError as error:
+                raise ManifestError(f"invalid BSD archive member name in {label}") from error
+            member = member[extended_name_size:]
+        elif raw_name.startswith("/") and raw_name[1:].rstrip("/").isdigit():
+            if string_table is None:
+                raise ManifestError(f"static archive long name has no string table in {label}")
+            name_offset = int(raw_name[1:].rstrip("/"))
+            if name_offset >= len(string_table):
+                raise ManifestError(f"static archive long name offset is invalid in {label}")
+            name_end = string_table.find(b"/\n", name_offset)
+            if name_end < 0:
+                raise ManifestError(f"static archive long name is unterminated in {label}")
+            try:
+                name = string_table[name_offset:name_end].decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise ManifestError(f"invalid static archive long name in {label}") from error
+        is_metadata = raw_name in {"/", "/SYM64/", "//"} or name in {
+            "__.SYMDEF",
+            "__.SYMDEF SORTED",
+        }
+        if not is_metadata:
+            if not member:
+                raise ManifestError(f"empty static archive object member in {label}:{name}")
+            try:
+                architectures.update(
+                    _binary_architectures(member, f"{label}:{name}")
+                )
             except ManifestError as error:
-                if "unrecognized native architecture format" not in str(error):
-                    raise
-        offset = end + (size % 2)
-    raise ManifestError(f"static archive contains no native object architecture in {label}")
+                raise ManifestError(
+                    f"invalid static archive object member in {label}:{name}: {error}"
+                ) from error
+        offset = end
+        if size % 2:
+            if offset >= len(data):
+                raise ManifestError(f"missing static archive member padding in {label}")
+            offset += 1
+    if not architectures:
+        raise ManifestError(f"static archive contains no native object architecture in {label}")
+    return architectures
 
 
 def _assert_binary_target(
@@ -682,13 +796,14 @@ def _assert_binary_target(
     if expected is None:
         raise ManifestError(f"no architecture mapping for target {target}")
     actual = (
-        _archive_architecture(data, label)
+        _archive_architectures(data, label)
         if static_archive
-        else _binary_architecture(data, label)
+        else _binary_architectures(data, label)
     )
-    if actual != expected:
+    if actual != {expected}:
         raise ManifestError(
-            f"native architecture mismatch in {label}: expected {expected}, got {actual}"
+            f"native architecture mismatch in {label}: expected {expected}, "
+            f"got {', '.join(sorted(actual))}"
         )
 
 
@@ -704,6 +819,51 @@ def _wheel_platform_matches_target(platform: str, target: str) -> bool:
     if target == "aarch64-unknown-linux-gnu":
         return platform.startswith("manylinux_") and platform.endswith("_aarch64")
     return False
+
+
+def _required_header(message: Message, name: str, label: str) -> str:
+    values = message.get_all(name, failobj=[])
+    if len(values) != 1 or not isinstance(values[0], str) or not values[0].strip():
+        raise ManifestError(f"{label} requires exactly one non-empty {name} header")
+    return values[0].strip()
+
+
+def _parse_package_headers(raw: bytes, label: str) -> Message:
+    try:
+        source = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise ManifestError(f"{label} is not valid UTF-8") from error
+    message = Parser(policy=policy.default).parsestr(source, headersonly=True)
+    if message.defects:
+        raise ManifestError(f"{label} contains malformed RFC headers")
+    return message
+
+
+def _safe_zip_entries(
+    archive: zipfile.ZipFile, kind: str
+) -> tuple[list[zipfile.ZipInfo], set[str]]:
+    entries = archive.infolist()
+    raw_names = [info.orig_filename for info in entries]
+    names = [info.filename for info in entries]
+    if len(set(raw_names)) != len(raw_names) or len(set(names)) != len(names):
+        raise ManifestError(f"{kind} contains duplicate ZIP members")
+    for info in entries:
+        raw_name = info.orig_filename
+        name = info.filename
+        if "\0" in raw_name or "\\" in raw_name:
+            raise ManifestError(f"{kind} contains unsafe ZIP path: {raw_name!r}")
+        if raw_name != name:
+            raise ManifestError(f"{kind} contains non-canonical ZIP path: {raw_name!r}")
+        path_name = name[:-1] if info.is_dir() else name
+        pure = PurePosixPath(path_name)
+        if (
+            not path_name
+            or pure.is_absolute()
+            or re.match(r"^[A-Za-z]:", path_name)
+            or any(part in {"", ".", ".."} for part in path_name.split("/"))
+        ):
+            raise ManifestError(f"{kind} contains unsafe ZIP path: {name}")
+    return entries, {info.filename for info in entries if not info.is_dir()}
 
 
 def _verify_wheel_record(
@@ -896,7 +1056,7 @@ def _inspect_xcframework(
         )
 
 
-def _inspect_container(
+def _inspect_container_contents(
     path: Path,
     *,
     kind: str,
@@ -910,16 +1070,7 @@ def _inspect_container(
         raise ManifestError(f"{kind} is not a valid ZIP container: {path.name}")
     marker_name = CONTAINER_MARKERS[kind]
     with zipfile.ZipFile(path) as archive:
-        file_names = [
-            info.filename for info in archive.infolist() if not info.is_dir()
-        ]
-        names = set(file_names)
-        if len(names) != len(file_names):
-            raise ManifestError(f"{kind} contains duplicate ZIP members")
-        for name in names:
-            pure = PurePosixPath(name)
-            if pure.is_absolute() or ".." in pure.parts:
-                raise ManifestError(f"{kind} contains unsafe ZIP path: {name}")
+        _, names = _safe_zip_entries(archive, kind)
         marker = _read_zip_json(archive, marker_name, kind)
         _verify_binding_marker(
             marker,
@@ -944,8 +1095,22 @@ def _inspect_container(
             }
             if len(dist_info_dirs) != 1:
                 raise ManifestError("python wheel dist-info files do not share one directory")
-            metadata = archive.read(metadata_names[0]).decode("utf-8", errors="strict")
-            if f"Version: {sdk_version}\n" not in metadata.replace("\r\n", "\n"):
+            metadata = _parse_package_headers(
+                archive.read(metadata_names[0]), "python wheel METADATA"
+            )
+            metadata_version = _required_header(
+                metadata, "Metadata-Version", "python wheel METADATA"
+            )
+            if not re.fullmatch(r"\d+\.\d+", metadata_version):
+                raise ManifestError("python wheel METADATA has invalid Metadata-Version")
+            metadata_name = _required_header(
+                metadata, "Name", "python wheel METADATA"
+            )
+            if re.sub(r"[-_.]+", "-", metadata_name).lower() != "notemeld-agent-sdk":
+                raise ManifestError("python wheel METADATA name mismatch")
+            if _required_header(
+                metadata, "Version", "python wheel METADATA"
+            ) != sdk_version:
                 raise ManifestError("python wheel METADATA version mismatch")
             if not path.name.endswith(".whl"):
                 raise ManifestError("python wheel filename must end in .whl")
@@ -957,34 +1122,64 @@ def _inspect_container(
                 raise ManifestError("python wheel filename is malformed") from error
             if not distribution_version.endswith(f"-{sdk_version}"):
                 raise ManifestError("python wheel filename version mismatch")
+            filename_distribution = distribution_version[: -len(f"-{sdk_version}")]
+            if (
+                re.sub(r"[-_.]+", "-", filename_distribution).lower()
+                != "notemeld-agent-sdk"
+            ):
+                raise ManifestError("python wheel filename distribution mismatch")
+            python_tags = python_tag.split(".")
+            abi_tags = abi_tag.split(".")
             filename_platforms = platform_tag.split(".")
-            if not filename_platforms or not all(
+            if (
+                not all((python_tags, abi_tags, filename_platforms))
+                or any(
+                    not re.fullmatch(r"[A-Za-z0-9_]+", item)
+                    for item in (*python_tags, *abi_tags, *filename_platforms)
+                )
+                or not all(
                 _wheel_platform_matches_target(item, target)
                 for item in filename_platforms
+                )
             ):
                 raise ManifestError(
-                    f"python wheel filename platform tag is incompatible with {target}"
+                    f"python wheel filename tags are incompatible with {target}"
                 )
-            wheel_metadata = archive.read(wheel_names[0]).decode(
-                "utf-8", errors="strict"
+            filename_tags = {
+                f"{python}-{abi}-{platform}"
+                for python in python_tags
+                for abi in abi_tags
+                for platform in filename_platforms
+            }
+            wheel_metadata = _parse_package_headers(
+                archive.read(wheel_names[0]), "python wheel WHEEL"
             )
-            declared_tags = [
-                line[5:].strip()
-                for line in wheel_metadata.replace("\r\n", "\n").splitlines()
-                if line.startswith("Tag:")
-            ]
+            wheel_version = _required_header(
+                wheel_metadata, "Wheel-Version", "python wheel WHEEL"
+            )
+            if not re.fullmatch(r"\d+\.\d+", wheel_version):
+                raise ManifestError("python wheel WHEEL has invalid Wheel-Version")
+            _required_header(wheel_metadata, "Generator", "python wheel WHEEL")
+            root_is_purelib = _required_header(
+                wheel_metadata, "Root-Is-Purelib", "python wheel WHEEL"
+            ).lower()
+            if root_is_purelib not in {"true", "false"}:
+                raise ManifestError(
+                    "python wheel WHEEL Root-Is-Purelib must be true or false"
+                )
+            if root_is_purelib != "false":
+                raise ManifestError("python native wheel must set Root-Is-Purelib: false")
+            declared_tags = wheel_metadata.get_all("Tag", failobj=[])
             if not declared_tags:
                 raise ManifestError("python wheel WHEEL metadata has no Tag")
             for declared_tag in declared_tags:
-                parts = declared_tag.split("-", 2)
                 if (
-                    len(parts) != 3
-                    or parts[0] not in python_tag.split(".")
-                    or parts[1] not in abi_tag.split(".")
-                    or not _wheel_platform_matches_target(parts[2], target)
+                    not isinstance(declared_tag, str)
+                    or declared_tag.strip() not in filename_tags
                 ):
                     raise ManifestError(
-                        f"python wheel tag is incompatible with filename/target: {declared_tag}"
+                        "python wheel tag is incompatible with filename/target: "
+                        f"{declared_tag}"
                     )
             _verify_wheel_record(archive, names, record_names[0])
             runtime_name = "notemeld_agent_sdk/runtime.py"
@@ -1180,6 +1375,40 @@ def _inspect_container(
             raise ManifestError(f"{kind} is missing internal ABI contract {abi_name}") from error
         if internal_abi != abi_contract:
             raise ManifestError(f"{kind} internal ABI contract mismatch")
+
+
+def _inspect_container(
+    path: Path,
+    *,
+    kind: str,
+    target: str,
+    sdk_version: str,
+    schema_version: str,
+    binding_version: str,
+    abi_contract: dict[str, object],
+) -> None:
+    try:
+        _inspect_container_contents(
+            path,
+            kind=kind,
+            target=target,
+            sdk_version=sdk_version,
+            schema_version=schema_version,
+            binding_version=binding_version,
+            abi_contract=abi_contract,
+        )
+    except ManifestError:
+        raise
+    except (
+        KeyError,
+        OSError,
+        RuntimeError,
+        UnicodeDecodeError,
+        ValueError,
+        struct.error,
+        zipfile.BadZipFile,
+    ) as error:
+        raise ManifestError(f"invalid {kind} ZIP container: {error}") from error
 
 
 def _inspect_non_container(

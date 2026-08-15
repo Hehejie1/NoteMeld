@@ -183,7 +183,8 @@ def _write_complete_linux_bundle(root: Path) -> None:
             "Metadata-Version: 2.1\nName: notemeld-agent-sdk\nVersion: 0.1.0\n"
         ),
         "notemeld_agent_sdk-0.1.0.dist-info/WHEEL": (
-            "Wheel-Version: 1.0\nRoot-Is-Purelib: false\n"
+            "Wheel-Version: 1.0\nGenerator: notemeld-agent-sdk\n"
+            "Root-Is-Purelib: false\n"
             "Tag: py3-none-manylinux_2_28_x86_64\n"
         ),
     }
@@ -247,18 +248,56 @@ def _macho_arm64() -> bytes:
     return struct.pack("<IIIIIIII", 0xFEEDFACF, 0x0100000C, 0, 1, 0, 0, 0, 0)
 
 
+def _macho_x86_64() -> bytes:
+    return struct.pack("<IIIIIIII", 0xFEEDFACF, 0x01000007, 0, 1, 0, 0, 0, 0)
+
+
+def _archive_members(*members: bytes) -> bytes:
+    output = bytearray(b"!<arch>\n")
+    for index, member in enumerate(members):
+        name = f"member{index}.o/".encode().ljust(16)
+        output.extend(
+            name
+            + b"0".ljust(12)
+            + b"0".ljust(6)
+            + b"0".ljust(6)
+            + b"100644".ljust(8)
+            + str(len(member)).encode().ljust(10)
+            + b"`\n"
+        )
+        output.extend(member)
+        if len(member) % 2:
+            output.extend(b"\n")
+    return bytes(output)
+
+
 def _archive(member: bytes) -> bytes:
-    name = b"member.o/".ljust(16)
-    header = (
-        name
-        + b"0".ljust(12)
-        + b"0".ljust(6)
-        + b"0".ljust(6)
-        + b"100644".ljust(8)
-        + str(len(member)).encode().ljust(10)
-        + b"`\n"
+    return _archive_members(member)
+
+
+def _rewrite_wheel(root: Path, members: dict[str, bytes | str]) -> Path:
+    wheel = next(root.glob("*.whl"))
+    record_path = "notemeld_agent_sdk-0.1.0.dist-info/RECORD"
+    members.pop(record_path, None)
+    _add_wheel_record(members, record_path)
+    _write_zip(wheel, members)
+    manifest_path = root / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
     )
-    return b"!<arch>\n" + header + member + (b"\n" if len(member) % 2 else b"")
+    wheel_entry["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return wheel
+
+
+def _read_wheel_payload_members(wheel: Path) -> dict[str, bytes | str]:
+    with zipfile.ZipFile(wheel) as archive:
+        return {
+            info.filename: archive.read(info)
+            for info in archive.infolist()
+            if not info.is_dir() and not info.filename.endswith(".dist-info/RECORD")
+        }
 
 
 def _write_complete_swift_bundle(root: Path) -> None:
@@ -744,6 +783,118 @@ def test_manifest_validator_rejects_wheel_without_wheel_or_record(
 
     assert result.returncode != 0
     assert "wheel" in result.stderr.lower() and "record" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_wheel_tag_not_declared_by_filename(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    wheel_metadata = "notemeld_agent_sdk-0.1.0.dist-info/WHEEL"
+    members[wheel_metadata] = (
+        "Wheel-Version: 1.0\nGenerator: notemeld-agent-sdk\n"
+        "Root-Is-Purelib: false\nTag: py3-none-manylinux_2_17_x86_64\n"
+    )
+    _rewrite_wheel(tmp_path, members)
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "wheel tag" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_incomplete_metadata_and_wheel_headers(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["notemeld_agent_sdk-0.1.0.dist-info/METADATA"] = "Version: 0.1.0\n"
+    members["notemeld_agent_sdk-0.1.0.dist-info/WHEEL"] = (
+        "Tag: py3-none-manylinux_2_28_x86_64\n"
+    )
+    _rewrite_wheel(tmp_path, members)
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "metadata" in result.stderr.lower() or "wheel" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_duplicate_zip_directory_entry(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(wheel, "a") as archive:
+            archive.writestr("notemeld_agent_sdk/native/", b"")
+            archive.writestr("notemeld_agent_sdk/native/", b"")
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
+    )
+    wheel_entry["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode != 0
+    assert "duplicate zip" in result.stderr.lower()
+
+
+def test_manifest_validator_reports_invalid_utf8_wheel_without_traceback(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["notemeld_agent_sdk-0.1.0.dist-info/WHEEL"] = b"\xff\xfe"
+    _rewrite_wheel(tmp_path, members)
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "wheel" in result.stderr.lower()
+
+
+def test_manifest_validator_rejects_mixed_architecture_swift_archives(
+    tmp_path: Path,
+) -> None:
+    _write_complete_swift_bundle(tmp_path)
+    mixed_archive = _archive_members(_macho_arm64(), _macho_x86_64())
+    static = tmp_path / "libnotemeld_agent.a"
+    static.write_bytes(mixed_archive)
+    for container_name in (
+        "NoteMeldAgentNative.xcframework.zip",
+        "NoteMeldAgentSwiftPackage.zip",
+    ):
+        container = tmp_path / container_name
+        with zipfile.ZipFile(container) as archive:
+            members = {
+                info.filename: (
+                    mixed_archive
+                    if info.filename.endswith("/libnotemeld_agent.a")
+                    else archive.read(info)
+                )
+                for info in archive.infolist()
+                if not info.is_dir()
+            }
+        _write_zip(container, members)
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest["artifacts"]:
+        artifact = tmp_path / entry["path"]
+        entry["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "aarch64-apple-ios")
+
+    assert result.returncode != 0
+    assert "architecture" in result.stderr.lower()
 
 
 def test_manifest_validator_rejects_swift_runtime_version_drift(
