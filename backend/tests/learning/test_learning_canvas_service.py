@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 from app.models.learning_canvas import (
     LearningEdge,
     LearningNode,
@@ -203,6 +206,61 @@ def test_create_canvas_writes_one_compact_conversation_message(tmp_path) -> None
     assert seed_service.calls == [("conv_canvas", "lc_canvas")]
 
 
+def test_seed_metadata_merge_preserves_concurrent_canvas_update(tmp_path) -> None:
+    class BlockingSeedService(_SeedService):
+        def __init__(self):
+            super().__init__()
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def ensure_from_learning_canvas(self, conversation_id: str, canvas_id: str):
+            self.started.set()
+            assert self.release.wait(timeout=2)
+            return super().ensure_from_learning_canvas(conversation_id, canvas_id)
+
+    messages: list[tuple[str, dict]] = []
+    store = LearningCanvasStore(root=tmp_path)
+    seed_service = BlockingSeedService()
+    service = LearningCanvasService(
+        store=store,
+        local_search=local_results,
+        research_search=_ExternalSearch(ResearchSearchBundle()),
+        message_writer=lambda conversation_id, payload: messages.append(
+            (conversation_id, payload)
+        ),
+        note_importer=_NoteImporter(),
+        whiteboard_seed_service=seed_service,
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        created = pool.submit(
+            service.create_canvas,
+            "conv_canvas",
+            goal="学习解码",
+            external_scopes=[],
+            canvas_id="lc_canvas",
+        )
+        assert seed_service.started.wait(timeout=2)
+
+        store.update(
+            "conv_canvas",
+            "lc_canvas",
+            lambda current: setattr(
+                current.nodes[0],
+                "user_label",
+                "并发保留的用户标题",
+            ),
+        )
+        seed_service.release.set()
+        canvas = created.result(timeout=2)
+
+    restored = store.load("conv_canvas", "lc_canvas")
+    assert restored.nodes[0].user_label == "并发保留的用户标题"
+    assert restored.whiteboard_id == "wb_research"
+    assert canvas.nodes[0].user_label == "并发保留的用户标题"
+    assert messages[0][1]["meta"]["recommended_node_label"] == "并发保留的用户标题"
+
+
 def test_seed_failure_preserves_successful_note_and_canvas(tmp_path) -> None:
     messages: list[tuple[str, dict]] = []
     store = LearningCanvasStore(root=tmp_path)
@@ -237,18 +295,18 @@ def test_seed_failure_preserves_successful_note_and_canvas(tmp_path) -> None:
 
 
 def test_whiteboard_metadata_save_failure_does_not_misreport_seed_failure(tmp_path) -> None:
-    class FailSecondSaveStore(LearningCanvasStore):
+    class FailFirstUpdateStore(LearningCanvasStore):
         def __init__(self, root):
             super().__init__(root=root)
-            self.save_count = 0
+            self.update_count = 0
 
-        def save(self, canvas):
-            self.save_count += 1
-            if self.save_count == 2:
+        def update(self, conversation_id, canvas_id, mutate):
+            self.update_count += 1
+            if self.update_count == 1:
                 raise OSError("metadata save failed")
-            return super().save(canvas)
+            return super().update(conversation_id, canvas_id, mutate)
 
-    store = FailSecondSaveStore(root=tmp_path)
+    store = FailFirstUpdateStore(root=tmp_path)
     service = LearningCanvasService(
         store=store,
         local_search=local_results,
@@ -272,6 +330,12 @@ def test_whiteboard_metadata_save_failure_does_not_misreport_seed_failure(tmp_pa
     assert not any(
         error["code"] == "whiteboard_seed_failed"
         for error in canvas.external_errors
+    )
+    restored = store.load("conv_canvas", "lc_canvas")
+    assert restored.whiteboard_id == "wb_research"
+    assert any(
+        error["code"] == "whiteboard_link_save_failed"
+        for error in restored.external_errors
     )
 
 

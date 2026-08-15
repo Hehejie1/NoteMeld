@@ -225,33 +225,59 @@ class LearningCanvasService:
                     canvas.canvas_id,
                 )
             except Exception:
-                canvas.external_errors.append(
-                    {
-                        "provider": "notemeld",
-                        "code": "whiteboard_seed_failed",
-                        "message": "研究笔记和原白板已保存，可编辑白板暂时无法生成",
-                    }
-                )
+                diagnostic = {
+                    "provider": "notemeld",
+                    "code": "whiteboard_seed_failed",
+                    "message": "研究笔记和原白板已保存，可编辑白板暂时无法生成",
+                }
                 try:
-                    self.store.save(canvas)
-                except Exception:
-                    pass
-            else:
-                canvas.whiteboard_id = board.id
-                try:
-                    self.store.save(canvas)
-                except Exception:
-                    canvas.external_errors.append(
-                        {
-                            "provider": "notemeld",
-                            "code": "whiteboard_link_save_failed",
-                            "message": "可编辑白板已生成，原白板索引暂时无法更新",
-                        }
+                    canvas, _ = self.store.update(
+                        conversation_id,
+                        canvas.canvas_id,
+                        lambda current: self._merge_whiteboard_metadata(
+                            current,
+                            diagnostic=diagnostic,
+                        ),
                     )
+                except Exception:
+                    canvas = self._latest_canvas_for_message(
+                        conversation_id,
+                        canvas,
+                        diagnostic=diagnostic,
+                    )
+            else:
+                try:
+                    canvas, _ = self.store.update(
+                        conversation_id,
+                        canvas.canvas_id,
+                        lambda current: self._merge_whiteboard_metadata(
+                            current,
+                            whiteboard_id=board.id,
+                        ),
+                    )
+                except Exception:
+                    diagnostic = {
+                        "provider": "notemeld",
+                        "code": "whiteboard_link_save_failed",
+                        "message": "可编辑白板已生成，原白板索引暂时无法更新",
+                    }
                     try:
-                        self.store.save(canvas)
+                        canvas, _ = self.store.update(
+                            conversation_id,
+                            canvas.canvas_id,
+                            lambda current: self._merge_whiteboard_metadata(
+                                current,
+                                whiteboard_id=board.id,
+                                diagnostic=diagnostic,
+                            ),
+                        )
                     except Exception:
-                        pass
+                        canvas = self._latest_canvas_for_message(
+                            conversation_id,
+                            canvas,
+                            whiteboard_id=board.id,
+                            diagnostic=diagnostic,
+                        )
         if self.message_writer is not None and projection_saved:
             source_types = list(
                 dict.fromkeys(source.source_type for source in canvas.sources)
@@ -304,6 +330,40 @@ class LearningCanvasService:
                     }
                 )
         return canvas
+
+    @staticmethod
+    def _merge_whiteboard_metadata(
+        canvas: LearningCanvas,
+        *,
+        whiteboard_id: str | None = None,
+        diagnostic: dict | None = None,
+    ) -> None:
+        if whiteboard_id is not None:
+            canvas.whiteboard_id = whiteboard_id
+        if diagnostic is not None and not any(
+            error.get("code") == diagnostic["code"]
+            for error in canvas.external_errors
+        ):
+            canvas.external_errors.append(dict(diagnostic))
+
+    def _latest_canvas_for_message(
+        self,
+        conversation_id: str,
+        fallback: LearningCanvas,
+        *,
+        whiteboard_id: str | None = None,
+        diagnostic: dict | None = None,
+    ) -> LearningCanvas:
+        try:
+            latest = self.store.load(conversation_id, fallback.canvas_id)
+        except Exception:
+            latest = fallback
+        self._merge_whiteboard_metadata(
+            latest,
+            whiteboard_id=whiteboard_id,
+            diagnostic=diagnostic,
+        )
+        return latest
 
     @staticmethod
     def _recommended_node(canvas: LearningCanvas) -> LearningNode | None:
