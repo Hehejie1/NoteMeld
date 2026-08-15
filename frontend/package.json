@@ -34,6 +34,7 @@
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.0.0",
+    "@xyflow/react": "12.11.3",
     "antd": "^5.24.8",
     "axios": "^1.8.4",
     "class-variance-authority": "^0.7.1",

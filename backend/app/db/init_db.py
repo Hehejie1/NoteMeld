@@ -6,6 +6,7 @@ from app.db.models.video_tasks import VideoTask
 from app.db.models.note_style import NoteStyle
 from app.db.models.template_extraction_task import TemplateExtractionTask
 from app.db.models.conversation import Conversation, ConversationMessage, NoteDocument
+from app.db.models.whiteboard import Whiteboard, WhiteboardCard, WhiteboardNoteLink, WhiteboardRelation
 from app.db.engine import get_engine, Base, DATABASE_URL, migrate_legacy_sqlite_if_needed
 from app.db.conversation_schema import ensure_conversation_columns
 from app.db.note_style_dao import ensure_note_style_columns
