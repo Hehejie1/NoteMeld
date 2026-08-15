@@ -264,6 +264,56 @@ fn expected_semantics(scenario: &str) -> Vec<String> {
         .collect()
 }
 
+fn expected_tool_results(scenario: &str) -> Vec<(String, Value)> {
+    fs::read_to_string(fixture_path(scenario))
+        .expect("checked-in Python oracle fixture must exist")
+        .lines()
+        .flat_map(|line| {
+            let row: Value = serde_json::from_str(line).expect("fixture row must be JSON");
+            if row["type"] != "turn_end" {
+                return Vec::new();
+            }
+            row["payload"]["tool_results"]
+                .as_array()
+                .expect("turn_end tool_results must be an array")
+                .iter()
+                .map(|result| {
+                    (
+                        result["call_id"]
+                            .as_str()
+                            .expect("oracle tool result must have a call id")
+                            .to_owned(),
+                        json!({
+                            "content": result["content"],
+                            "details": result["details"],
+                        }),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn expected_final_assistant_content(scenario: &str) -> Option<String> {
+    fs::read_to_string(fixture_path(scenario))
+        .expect("checked-in Python oracle fixture must exist")
+        .lines()
+        .find_map(|line| {
+            let row: Value = serde_json::from_str(line).expect("fixture row must be JSON");
+            if row["type"] != "agent_end" {
+                return None;
+            }
+            row["payload"]["final_state"]["messages"]
+                .as_array()
+                .expect("oracle final messages must be an array")
+                .iter()
+                .rev()
+                .find(|message| message["role"] == "assistant")
+                .and_then(|message| message["content"].as_str())
+                .map(str::to_owned)
+        })
+}
+
 fn normalize_role(role: &str) -> &str {
     if role == "toolResult" {
         "tool"
@@ -304,6 +354,26 @@ fn actual_semantics(events: &[AgentEvent]) -> Vec<String> {
         .collect()
 }
 
+fn actual_tool_results(events: &[AgentEvent]) -> Vec<(String, Value)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::ToolCompleted(payload) => Some((
+                payload
+                    .call_id
+                    .as_deref()
+                    .expect("Rust tool result must have a call id")
+                    .to_owned(),
+                payload
+                    .result_summary
+                    .clone()
+                    .expect("Rust tool result must have a safe summary"),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
 fn tool_result_ids(outcome: &TurnOutcome) -> Vec<&str> {
     outcome
         .messages
@@ -314,7 +384,7 @@ fn tool_result_ids(outcome: &TurnOutcome) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn five_python_oracles_match_the_canonical_rust_loop() {
+async fn normalized_python_oracle_event_traces_match_the_run_turn_boundary() {
     for scenario in ["simple_answer", "parallel_tools", "steer", "max_turns"] {
         let observed = Arc::new(Mutex::new(Vec::new()));
         let observer = Arc::clone(&observed);
@@ -352,7 +422,17 @@ async fn five_python_oracles_match_the_canonical_rust_loop() {
             if scenario == "parallel_tools" {
                 assert_eq!(tool_result_ids(&outcome), ["slow-call", "fast-call"]);
             }
+            assert_eq!(
+                Some(outcome.content),
+                expected_final_assistant_content(scenario),
+                "final assistant content diverged for {scenario}"
+            );
         }
+        assert_eq!(
+            actual_tool_results(&observed.lock().unwrap()),
+            expected_tool_results(scenario),
+            "stable tool identity/result order diverged for {scenario}"
+        );
         assert_eq!(
             actual_semantics(&observed.lock().unwrap()),
             expected_semantics(scenario),
@@ -362,7 +442,7 @@ async fn five_python_oracles_match_the_canonical_rust_loop() {
 }
 
 #[tokio::test]
-async fn abort_oracle_matches_when_cancellation_reaches_an_active_tool() {
+async fn abort_normalized_event_trace_matches_at_the_active_tool_boundary() {
     let observed = Arc::new(Mutex::new(Vec::new()));
     let observer = Arc::clone(&observed);
     let sink = AgentEventSink::new(move |event| {
@@ -398,6 +478,10 @@ async fn abort_oracle_matches_when_cancellation_reaches_an_active_tool() {
     let error = task.await.unwrap().unwrap_err();
 
     assert_eq!(error.code, agent_events::AgentErrorCode::Cancelled);
+    assert_eq!(
+        actual_tool_results(&observed.lock().unwrap()),
+        expected_tool_results("abort")
+    );
     assert_eq!(
         actual_semantics(&observed.lock().unwrap()),
         expected_semantics("abort")

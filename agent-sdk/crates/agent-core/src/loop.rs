@@ -15,6 +15,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{AgentEventSink, AgentMessage, TurnOutcome};
 
+const MAX_SUMMARY_DEPTH: usize = 4;
+const MAX_SUMMARY_COLLECTION_ITEMS: usize = 16;
+const MAX_SUMMARY_TOTAL_ITEMS: usize = 64;
+const MAX_SUMMARY_STRING_CHARS: usize = 256;
+const MAX_SUMMARY_KEY_CHARS: usize = 128;
+const MAX_SUMMARY_SERIALIZED_BYTES: usize = 4096;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentRuntimeConfig {
     pub max_turns: usize,
@@ -101,6 +108,7 @@ impl AgentRuntime {
         cancel: CancellationToken,
         events: AgentEventSink,
     ) -> Result<TurnOutcome, AgentError> {
+        validate_max_turns(self.config.max_turns)?;
         validate_request(&request)?;
         messages.push(AgentMessage::user(input_content(&request)));
 
@@ -151,8 +159,10 @@ impl AgentRuntime {
                     .collect(),
             );
             model_request.cancellation = cancel.clone();
-            let completion = invoke_model(self.model.as_ref(), model_request, chunk_sink).await?;
+            let completion_result =
+                invoke_model(self.model.as_ref(), model_request, chunk_sink).await;
             check_cancelled(&cancel)?;
+            let completion = completion_result?;
 
             add_usage(&mut usage, completion.usage);
             let streamed_content = accumulated.lock().unwrap().clone();
@@ -164,9 +174,20 @@ impl AgentRuntime {
             let completed_content = if completion.tool_calls.is_empty() {
                 Value::String(content.clone())
             } else {
+                let tool_calls = completion
+                    .tool_calls
+                    .iter()
+                    .map(|call| {
+                        json!({
+                            "call_id": call.call_id,
+                            "tool_name": call.tool_name,
+                            "arguments_summary": safe_event_summary(&call.arguments),
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 json!({
                     "content": content,
-                    "tool_calls": completion.tool_calls,
+                    "tool_calls": tool_calls,
                 })
             };
             messages.push(AgentMessage::assistant(
@@ -185,10 +206,11 @@ impl AgentRuntime {
                 .emit(AgentEvent::UsageUpdated(UsageUpdatedPayload {
                     input_tokens: Some(usage.input_tokens),
                     output_tokens: Some(usage.output_tokens),
-                    total_tokens: Some(usage.total_tokens()),
+                    total_tokens: Some(saturating_total_tokens(usage)),
                     ..UsageUpdatedPayload::default()
                 }))
                 .await;
+            check_cancelled(&cancel)?;
 
             if completion.tool_calls.is_empty() {
                 return Ok(TurnOutcome {
@@ -218,7 +240,9 @@ impl AgentRuntime {
                     .emit(AgentEvent::ToolStarted(ToolStartedPayload {
                         call_id: Some(call.id().to_owned()),
                         tool_name: Some(call.name().to_owned()),
-                        arguments_summary: Some(Value::Object(call.arguments().clone())),
+                        arguments_summary: Some(safe_event_summary(&Value::Object(
+                            call.arguments().clone(),
+                        ))),
                         ..ToolStartedPayload::default()
                     }))
                     .await;
@@ -247,9 +271,14 @@ impl AgentRuntime {
                 TurnId(request.request_id.0.clone()),
             );
             tool_context.cancellation = cancel.clone();
-            let results =
+            let tool_round_result =
                 execute_tool_round(Arc::clone(&self.tools), calls, tool_context, progress_sink)
-                    .await?;
+                    .await;
+            let cancellation_error = cancellation_error(&cancel);
+            let results = match tool_round_result {
+                Ok(results) => results,
+                Err(error) => return Err(cancellation_error.unwrap_or(error)),
+            };
 
             for (tool_call, result) in completion.tool_calls.iter().zip(&results) {
                 events
@@ -257,7 +286,7 @@ impl AgentRuntime {
                         call_id: Some(result.call_id().to_owned()),
                         tool_name: Some(tool_call.tool_name.clone()),
                         status: Some("succeeded".to_owned()),
-                        result_summary: Some(result.output.clone()),
+                        result_summary: Some(safe_event_summary(&result.output)),
                         ..ToolCompletedPayload::default()
                     }))
                     .await;
@@ -279,12 +308,14 @@ impl AgentRuntime {
                     .emit(AgentEvent::MessageCompleted(MessageCompletedPayload {
                         message_id: Some(tool_message_id),
                         role: Some("tool".to_owned()),
-                        content: Some(result.output),
+                        content: Some(safe_event_summary(&result.output)),
                         ..MessageCompletedPayload::default()
                     }))
                     .await;
             }
-            check_cancelled(&cancel)?;
+            if let Some(error) = cancellation_error {
+                return Err(error);
+            }
         }
     }
 }
@@ -306,6 +337,24 @@ fn validate_request(request: &TurnRequest) -> Result<(), AgentError> {
         ));
     }
     Ok(())
+}
+
+fn validate_max_turns(max_turns: usize) -> Result<(), AgentError> {
+    if max_turns > 0 {
+        return Ok(());
+    }
+    let mut error = AgentError::new(
+        AgentErrorCode::InvalidInput,
+        "max_turns must be greater than zero",
+    );
+    error.details.insert(
+        "reason".to_owned(),
+        Value::String("max_turns_must_be_positive".to_owned()),
+    );
+    error
+        .details
+        .insert("max_turns".to_owned(), json!(max_turns));
+    Err(error)
 }
 
 fn input_content(request: &TurnRequest) -> Value {
@@ -331,12 +380,124 @@ fn add_usage(total: &mut ModelUsage, next: ModelUsage) {
         .saturating_add(next.cache_write_tokens);
 }
 
-fn check_cancelled(cancel: &CancellationToken) -> Result<(), AgentError> {
-    if cancel.is_cancelled() {
-        Err(AgentError::new(AgentErrorCode::Cancelled, "turn cancelled"))
-    } else {
-        Ok(())
+fn saturating_total_tokens(usage: ModelUsage) -> u64 {
+    usage.input_tokens.saturating_add(usage.output_tokens)
+}
+
+fn safe_event_summary(value: &Value) -> Value {
+    let mut remaining_items = MAX_SUMMARY_TOTAL_ITEMS;
+    let summary = summarize_value(value, 0, &mut remaining_items);
+    match serde_json::to_vec(&summary) {
+        Ok(serialized) if serialized.len() <= MAX_SUMMARY_SERIALIZED_BYTES => summary,
+        _ => json!({
+            "truncated": true,
+            "reason": "size_limit",
+            "value_type": value_type(value),
+        }),
     }
+}
+
+fn summarize_value(value: &Value, depth: usize, remaining_items: &mut usize) -> Value {
+    match value {
+        Value::Null | Value::Bool(_) | Value::Number(_) => value.clone(),
+        Value::String(text) => Value::String(truncate_chars(text, MAX_SUMMARY_STRING_CHARS)),
+        Value::Array(items) => {
+            if depth >= MAX_SUMMARY_DEPTH {
+                return truncation_marker("depth_limit", Some(items.len()));
+            }
+            let mut summary = Vec::new();
+            let mut consumed = 0usize;
+            for item in items.iter().take(MAX_SUMMARY_COLLECTION_ITEMS) {
+                if *remaining_items == 0 {
+                    break;
+                }
+                *remaining_items -= 1;
+                consumed += 1;
+                summary.push(summarize_value(item, depth + 1, remaining_items));
+            }
+            if consumed < items.len() {
+                summary.push(truncation_marker(
+                    "item_limit",
+                    Some(items.len() - consumed),
+                ));
+            }
+            Value::Array(summary)
+        }
+        Value::Object(fields) => {
+            if depth >= MAX_SUMMARY_DEPTH {
+                return truncation_marker("depth_limit", Some(fields.len()));
+            }
+            let mut summary = serde_json::Map::new();
+            let mut consumed = 0usize;
+            for (key, field) in fields.iter().take(MAX_SUMMARY_COLLECTION_ITEMS) {
+                if *remaining_items == 0 {
+                    break;
+                }
+                *remaining_items -= 1;
+                consumed += 1;
+                let safe_key = truncate_chars(key, MAX_SUMMARY_KEY_CHARS);
+                let safe_value = if is_secret_key(key) {
+                    Value::String("[REDACTED]".to_owned())
+                } else {
+                    summarize_value(field, depth + 1, remaining_items)
+                };
+                summary.insert(safe_key, safe_value);
+            }
+            if consumed < fields.len() {
+                summary.insert(
+                    "__notemeld_truncated__".to_owned(),
+                    truncation_marker("item_limit", Some(fields.len() - consumed)),
+                );
+            }
+            Value::Object(summary)
+        }
+    }
+}
+
+fn is_secret_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "api_key" | "authorization" | "cookie" | "token" | "secret" | "password"
+    )
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let prefix = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{prefix}…[truncated]")
+    } else {
+        prefix
+    }
+}
+
+fn truncation_marker(reason: &str, omitted_items: Option<usize>) -> Value {
+    json!({
+        "truncated": true,
+        "reason": reason,
+        "omitted_items": omitted_items,
+    })
+}
+
+fn value_type(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn check_cancelled(cancel: &CancellationToken) -> Result<(), AgentError> {
+    cancellation_error(cancel).map_or(Ok(()), Err)
+}
+
+fn cancellation_error(cancel: &CancellationToken) -> Option<AgentError> {
+    cancel
+        .is_cancelled()
+        .then(|| AgentError::new(AgentErrorCode::Cancelled, "turn cancelled"))
 }
 
 fn max_turns_error(max_turns: usize) -> AgentError {
