@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
+import json
 import threading
 import time
 
@@ -205,6 +206,72 @@ def test_invalid_llm_output_falls_back_without_inventing_sources(publishing, mod
     assert wiki_calls == []
 
 
+@pytest.mark.parametrize(
+    "untrusted_fragment",
+    [
+        "Untrusted citation [来源:paper:invented]",
+        "Protocol-relative source //invented.invalid/paper",
+        "Foreign board notemeld://whiteboard/wb_not_selected",
+    ],
+)
+def test_llm_output_rejects_untrusted_citations_and_resource_uris(
+    publishing,
+    untrusted_fragment,
+):
+    repository, base_service, *_ = publishing
+    board, _child, _ = seed_board(repository)
+    candidate = (
+        "# Model-only marker\n\n"
+        "Known [来源:note:alpha] and [来源:paper:beta].\n\n"
+        f"{untrusted_fragment}"
+    )
+    service = WhiteboardNotePublishService(
+        repository=repository,
+        note_importer=base_service.note_importer,
+        llm_compiler=lambda **_kwargs: candidate,
+    )
+
+    markdown = service.compile_markdown(
+        board,
+        scope="all",
+        card_ids=[],
+        relation_ids=[],
+        provider_id="provider_1",
+        model_name="model_1",
+    )
+
+    assert "# Model-only marker" not in markdown
+    assert untrusted_fragment not in markdown
+    assert "# Main topic" in markdown
+
+
+def test_llm_output_keeps_only_authoritative_citations_and_nested_board_uri(publishing):
+    repository, base_service, *_ = publishing
+    board, child, _ = seed_board(repository)
+    candidate = (
+        "# Model-only marker\n\n"
+        "Known [来源:note:alpha] and [来源:paper:beta].\n\n"
+        f"Nested notemeld://whiteboard/{child.id}"
+    )
+    service = WhiteboardNotePublishService(
+        repository=repository,
+        note_importer=base_service.note_importer,
+        llm_compiler=lambda **_kwargs: candidate,
+    )
+
+    markdown = service.compile_markdown(
+        board,
+        scope="all",
+        card_ids=[],
+        relation_ids=[],
+        provider_id="provider_1",
+        model_name="model_1",
+    )
+
+    assert "# Model-only marker" in markdown
+    assert f"notemeld://whiteboard/{child.id}" in markdown
+
+
 def test_selection_scope_is_resolved_from_authoritative_board(publishing):
     repository, service, *_ = publishing
     board, _child, _ = seed_board(repository)
@@ -248,6 +315,41 @@ def test_republish_keeps_note_id_and_advances_only_after_success(publishing):
     assert len(documents.rows) == 1
     assert vector.calls == [first.note_task_id, first.note_task_id]
     assert [call["task_id"] for call in wiki_calls] == [first.note_task_id, first.note_task_id]
+
+
+def test_publish_persists_saved_model_config_for_wiki_retry(publishing):
+    repository, base_service, _documents, _vector, _wiki_calls = publishing
+    board, child, _ = seed_board(repository)
+    candidate = (
+        "# Model-authored note\n\n"
+        "Known [来源:note:alpha] and [来源:paper:beta].\n\n"
+        f"Nested notemeld://whiteboard/{child.id}"
+    )
+    service = WhiteboardNotePublishService(
+        repository=repository,
+        note_importer=base_service.note_importer,
+        llm_compiler=lambda **_kwargs: candidate,
+    )
+
+    result = service.publish(
+        "conv_1",
+        board.id,
+        board.revision,
+        "all",
+        [],
+        [],
+        "provider_saved",
+        "model_saved",
+    )
+
+    sidecar = json.loads(
+        (
+            base_service.note_importer.output_dir
+            / f"{result.note_task_id}_summary_input.json"
+        ).read_text("utf-8")
+    )
+    assert sidecar["user_options"]["provider_id"] == "provider_saved"
+    assert sidecar["user_options"]["model_name"] == "model_saved"
 
 
 def test_same_board_publications_are_serialized_to_prevent_file_document_split(publishing):

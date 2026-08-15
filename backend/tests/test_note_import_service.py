@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
 from app.services.note_import_service import ImportNoteRequest, NoteImportService
+from app.models.summary_input import SummaryInput
 
 
 class MemoryDocuments:
@@ -98,12 +102,37 @@ def test_publish_revision_updates_same_note_with_atomic_unique_temp_file(tmp_pat
     assert not list(tmp_path.glob(f".{first.note_id}.*.tmp"))
 
 
+def test_publish_revision_persists_retry_resolvable_summary_input_sidecar(tmp_path):
+    documents = MemoryDocuments()
+    importer = service(tmp_path, documents)
+    publish_request = request().model_copy(
+        update={
+            "metadata": {
+                "whiteboard_id": "wb_1",
+                "revision": 1,
+                "provider_id": "provider_saved",
+                "model_name": "model_saved",
+            }
+        }
+    )
+
+    result = importer.publish_revision(publish_request, "conv_1")
+
+    sidecar_path = tmp_path / f"{result.note_id}_summary_input.json"
+    summary_input = SummaryInput(**json.loads(sidecar_path.read_text("utf-8")))
+    # Equivalent to routers.note.retry_wiki_extraction's resolver contract.
+    assert summary_input.user_options["provider_id"] == "provider_saved"
+    assert summary_input.user_options["model_name"] == "model_saved"
+
+
 def test_document_failure_restores_previous_file_and_document(tmp_path):
     documents = MemoryDocuments()
     importer = service(tmp_path, documents)
     first = importer.publish_revision(request(), "conv_1")
     note_path = tmp_path / f"{first.note_id}.json"
     previous_bytes = note_path.read_bytes()
+    sidecar_path = tmp_path / f"{first.note_id}_summary_input.json"
+    previous_sidecar = sidecar_path.read_bytes()
     previous_document = documents.read(first.note_id)
     documents.fail_after_write = True
 
@@ -115,6 +144,7 @@ def test_document_failure_restores_previous_file_and_document(tmp_path):
         )
 
     assert note_path.read_bytes() == previous_bytes
+    assert sidecar_path.read_bytes() == previous_sidecar
     assert documents.read(first.note_id) == previous_document
 
 
@@ -148,6 +178,38 @@ def test_file_replace_failure_does_not_change_document_or_previous_result(
     assert not list(tmp_path.glob(f".{first.note_id}.*.tmp"))
 
 
+def test_summary_sidecar_replace_failure_restores_previous_note_artifacts(
+    tmp_path, monkeypatch
+):
+    documents = MemoryDocuments()
+    importer = service(tmp_path, documents)
+    first = importer.publish_revision(request(), "conv_1")
+    note_path = tmp_path / f"{first.note_id}.json"
+    sidecar_path = tmp_path / f"{first.note_id}_summary_input.json"
+    previous_note = note_path.read_bytes()
+    previous_sidecar = sidecar_path.read_bytes()
+    previous_document = documents.read(first.note_id)
+    original_replace = Path.replace
+
+    def fail_sidecar_replace(path: Path, target: Path):
+        if Path(target) == sidecar_path and Path(path) != sidecar_path:
+            raise OSError("sidecar replace failed")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_sidecar_replace)
+
+    with pytest.raises(OSError, match="sidecar replace failed"):
+        importer.publish_revision(
+            request("# Draft\n\nNot durable"),
+            "conv_1",
+            note_id=first.note_id,
+        )
+
+    assert note_path.read_bytes() == previous_note
+    assert sidecar_path.read_bytes() == previous_sidecar
+    assert documents.read(first.note_id) == previous_document
+
+
 def test_commit_hook_failure_compensates_new_note_before_postprocessing(tmp_path):
     documents = MemoryDocuments()
     vector = VectorStore()
@@ -170,8 +232,54 @@ def test_commit_hook_failure_compensates_new_note_before_postprocessing(tmp_path
 
     assert documents.rows == {}
     assert list(tmp_path.glob("note_*.json")) == []
+    assert list(tmp_path.glob("note_*_summary_input.json")) == []
     assert vector.calls == []
     assert wiki_calls == []
+
+
+def test_publish_revision_serializes_same_note_across_service_instances(tmp_path):
+    class TrackingDocuments(MemoryDocuments):
+        def __init__(self) -> None:
+            super().__init__()
+            self.active = 0
+            self.max_active = 0
+            self.lock = threading.Lock()
+
+        def write(self, payload: dict) -> dict:
+            with self.lock:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            try:
+                time.sleep(0.05)
+                return super().write(payload)
+            finally:
+                with self.lock:
+                    self.active -= 1
+
+    documents = TrackingDocuments()
+    first_importer = service(tmp_path, documents)
+    second_importer = service(tmp_path, documents)
+    initial = first_importer.publish_revision(request(), "conv_1")
+    documents.max_active = 0
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda item: item[0].publish_revision(
+                    request(f"# Draft\n\nVersion {item[1]}"),
+                    "conv_1",
+                    note_id=initial.note_id,
+                ),
+                [(first_importer, "A"), (second_importer, "B")],
+            )
+        )
+
+    assert documents.max_active == 1
+    assert {result.note_id for result in results} == {initial.note_id}
+    result_markdown = json.loads(
+        (tmp_path / f"{initial.note_id}.json").read_text("utf-8")
+    )["markdown"]
+    assert documents.rows[initial.note_id]["content"] == result_markdown
 
 
 @pytest.mark.parametrize(

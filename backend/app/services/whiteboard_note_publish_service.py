@@ -29,6 +29,12 @@ from app.services.whiteboard_repository import (
 
 PublishScope = Literal["all", "selection"]
 _URL_PATTERN = re.compile(r"https?://[^\s<>()\]]+")
+_URI_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>()\]]+")
+_PROTOCOL_RELATIVE_URL_PATTERN = re.compile(r"(?<!:)//[^\s<>()\]]+")
+_SOURCE_CITATION_PATTERN = re.compile(r"\[来源[:：]\s*([^\]]+?)\]")
+_SOURCE_TOKEN_PATTERN = re.compile(
+    r"(?<![\w/])([A-Za-z][A-Za-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.:-]*)"
+)
 _WHOLE_DOCUMENT_FENCE = re.compile(
     r"\A```(?:markdown|md|html)?[ \t]*\r?\n[\s\S]*\r?\n```[ \t]*\Z",
     re.IGNORECASE,
@@ -126,6 +132,8 @@ class WhiteboardNotePublishService:
                     "revision": board.revision,
                     "scope": scope,
                     "source_ids": source_ids,
+                    "provider_id": provider_id,
+                    "model_name": model_name,
                 },
             ),
             conversation_id,
@@ -355,11 +363,39 @@ class WhiteboardNotePublishService:
         if not normalized or not re.search(r"(?m)^#\s+\S", normalized):
             return False
         sources = cls._deduplicated_sources(cards, relations)
+        allowed_source_ids = {source.source_id for source in sources}
+        citations = {
+            citation.strip()
+            for citation in _SOURCE_CITATION_PATTERN.findall(normalized)
+        }
+        if citations != allowed_source_ids:
+            return False
+        source_tokens = set(_SOURCE_TOKEN_PATTERN.findall(normalized))
+        if not source_tokens.issubset(allowed_source_ids):
+            return False
+
+        if _PROTOCOL_RELATIVE_URL_PATTERN.search(normalized):
+            return False
         allowed_urls = {source.url.rstrip("/.,);]") for source in sources if source.url}
         seen_urls = {url.rstrip("/.,);]") for url in _URL_PATTERN.findall(normalized)}
         if not seen_urls.issubset(allowed_urls):
             return False
-        return all(source.source_id in normalized for source in sources)
+        allowed_nested_uris = {
+            f"notemeld://whiteboard/{card.content['child_whiteboard_id']}"
+            for card in cards
+            if card.type == "whiteboard"
+        }
+        for raw_uri in _URI_PATTERN.findall(normalized):
+            uri = raw_uri.rstrip("/.,);]")
+            if uri.startswith(("http://", "https://")):
+                if uri not in allowed_urls:
+                    return False
+            elif uri.startswith("notemeld://whiteboard/"):
+                if uri not in allowed_nested_uris:
+                    return False
+            else:
+                return False
+        return True
 
     @staticmethod
     def _compile_with_saved_model(
@@ -398,7 +434,8 @@ class WhiteboardNotePublishService:
                     "role": "system",
                     "content": (
                         "你是 NoteMeld 白板笔记编译器。只输出裸 Markdown，不要代码围栏。"
-                        "必须保留输入 source id，不得补造来源、URL 或事实；关系要保留方向、名称和备注。"
+                        "每个来源必须且只能用 [来源:source_id] 引用；不得补造来源、URL、"
+                        "子白板 URI 或事实；关系要保留方向、名称和备注。"
                     ),
                 },
                 {

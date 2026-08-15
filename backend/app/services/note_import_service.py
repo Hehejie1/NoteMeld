@@ -4,8 +4,10 @@ import json
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from copy import deepcopy
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -135,6 +137,9 @@ def _default_document_reader(title: str) -> Optional[dict[str, Any]]:
 
 
 class NoteImportService:
+    _revision_locks_guard = threading.Lock()
+    _revision_locks: dict[str, threading.RLock] = {}
+
     def __init__(
         self,
         output_dir: Path | None = None,
@@ -182,10 +187,37 @@ class NoteImportService:
         note_id = str(note_id or f"note_{uuid.uuid4().hex}").strip()
         if not note_id or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-" for character in note_id):
             raise ValueError("note_id contains unsafe characters")
+
+        with self._revision_lock(note_id):
+            return self._publish_revision_locked(
+                request,
+                conversation_id,
+                note_id,
+                title,
+                content,
+                commit_hook,
+            )
+
+    def _publish_revision_locked(
+        self,
+        request: ImportNoteRequest,
+        conversation_id: Optional[str],
+        note_id: str,
+        title: str,
+        content: str,
+        commit_hook: Callable[[str], None] | None,
+    ) -> ImportNoteResult:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         note_path = self.output_dir / f"{note_id}.json"
-        previous_result = note_path.read_bytes() if note_path.is_file() else None
+        summary_input_path = self.output_dir / f"{note_id}_summary_input.json"
+        previous_artifacts = {
+            note_path: note_path.read_bytes() if note_path.is_file() else None,
+            summary_input_path: (
+                summary_input_path.read_bytes() if summary_input_path.is_file() else None
+            ),
+        }
         previous_document = deepcopy(self.document_by_id_reader(note_id))
+        summary_input = self._build_summary_input(note_id, request, title, content)
         document_payload = self._document_payload(
             note_id,
             request,
@@ -193,7 +225,20 @@ class NoteImportService:
             content,
             conversation_id,
         )
-        self._write_note_result(note_id, request, title, content)
+        written_artifacts: list[Path] = []
+        try:
+            self._write_note_result(note_id, request, title, content)
+            written_artifacts.append(note_path)
+            self._write_summary_input(summary_input_path, summary_input)
+            written_artifacts.append(summary_input_path)
+        except Exception:
+            self._restore_artifacts(
+                {
+                    path: previous_artifacts[path]
+                    for path in written_artifacts
+                }
+            )
+            raise
         try:
             self.document_writer(document_payload)
             if commit_hook is not None:
@@ -201,8 +246,7 @@ class NoteImportService:
         except Exception:
             self._compensate_revision(
                 note_id,
-                note_path,
-                previous_result,
+                previous_artifacts,
                 previous_document,
             )
             raise
@@ -219,7 +263,7 @@ class NoteImportService:
                 }
             )
         wiki_status = "pending"
-        if not self._schedule_wiki(note_id, request, title, content):
+        if not self._schedule_wiki(note_id, summary_input, content):
             diagnostics.append("wiki_schedule_failed")
             retry_actions.append(
                 {
@@ -252,6 +296,15 @@ class NoteImportService:
             diagnostics=diagnostics,
             retry_actions=retry_actions,
         )
+
+    @classmethod
+    def _revision_lock(cls, note_id: str) -> threading.RLock:
+        with cls._revision_locks_guard:
+            lock = cls._revision_locks.get(note_id)
+            if lock is None:
+                lock = threading.RLock()
+                cls._revision_locks[note_id] = lock
+            return lock
 
     def search_notes(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         normalized_query = query.strip()
@@ -313,11 +366,39 @@ class NoteImportService:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)
 
+    def _write_summary_input(
+        self,
+        destination: Path,
+        summary_input: SummaryInput,
+    ) -> None:
+        encoded = json.dumps(
+            asdict(summary_input),
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
+        self._atomic_replace_bytes(destination, encoded)
+
+    def _restore_artifacts(
+        self,
+        previous_artifacts: dict[Path, bytes | None],
+    ) -> None:
+        errors: list[Exception] = []
+        for path, previous in previous_artifacts.items():
+            try:
+                if previous is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    self._atomic_replace_bytes(path, previous)
+            except Exception as exc:
+                errors.append(exc)
+                logger.error("补偿恢复 Note 文件失败: path=%s", path)
+        if errors:
+            raise RuntimeError("note artifact compensation failed") from errors[0]
+
     def _compensate_revision(
         self,
         note_id: str,
-        note_path: Path,
-        previous_result: bytes | None,
+        previous_artifacts: dict[Path, bytes | None],
         previous_document: Optional[dict[str, Any]],
     ) -> None:
         errors: list[Exception] = []
@@ -327,13 +408,10 @@ class NoteImportService:
             errors.append(exc)
             logger.error("补偿恢复 NoteDocument 失败: note_id=%s", note_id)
         try:
-            if previous_result is None:
-                note_path.unlink(missing_ok=True)
-            else:
-                self._atomic_replace_bytes(note_path, previous_result)
+            self._restore_artifacts(previous_artifacts)
         except Exception as exc:
             errors.append(exc)
-            logger.error("补偿恢复 Note 结果文件失败: note_id=%s", note_id)
+            logger.error("补偿恢复 Note 持久化文件失败: note_id=%s", note_id)
         if errors:
             raise RuntimeError("note revision compensation failed") from errors[0]
 
@@ -366,12 +444,17 @@ class NoteImportService:
             logger.warning("导入笔记向量索引失败（不影响导入）: note_id=%s error=%s", note_id, exc)
             return False
 
-    def _schedule_wiki(self, note_id: str, request: ImportNoteRequest, title: str, content: str) -> bool:
+    def _schedule_wiki(
+        self,
+        note_id: str,
+        summary_input: SummaryInput,
+        content: str,
+    ) -> bool:
         try:
             self.wiki_scheduler(
                 output_dir=self.output_dir,
                 task_id=note_id,
-                summary_input=self._build_summary_input(note_id, request, title, content),
+                summary_input=summary_input,
                 markdown=content,
                 gpt=self.gpt,
                 update_status=self._update_wiki_status,
@@ -395,7 +478,13 @@ class NoteImportService:
             platform=request.source_type,
             title=title,
             user_goal=None,
-            user_options={"format": request.format, "tags": request.tags, "metadata": request.metadata},
+            user_options={
+                "format": request.format,
+                "tags": request.tags,
+                "metadata": request.metadata,
+                "provider_id": request.metadata.get("provider_id"),
+                "model_name": request.metadata.get("model_name"),
+            },
             page_context=PageContext(
                 title=title,
                 url=request.source_url or "",
