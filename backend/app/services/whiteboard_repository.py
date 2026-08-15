@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable, Iterator
+from urllib.parse import urlparse
 
 from pydantic import TypeAdapter
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models.whiteboard import (
@@ -33,6 +36,8 @@ from app.models.whiteboard import (
     WhiteboardSummary,
     WhiteboardViewport,
 )
+from app.services.conversation_asset_store import ConversationAssetStore
+from app.utils.storage_paths import upload_dir
 
 
 _OPERATIONS_ADAPTER = TypeAdapter(list[WhiteboardOperation])
@@ -44,9 +49,58 @@ class WhiteboardRevisionConflict(ValueError):
         super().__init__(f"whiteboard revision conflict; current revision is {current_revision}")
 
 
+class ConversationFileAssetResolver:
+    def __init__(
+        self,
+        asset_store: ConversationAssetStore | None = None,
+        uploads_root: str | Path | None = None,
+    ) -> None:
+        self._asset_store = asset_store if asset_store is not None else ConversationAssetStore()
+        self._uploads_root = Path(
+            uploads_root if uploads_root is not None else upload_dir()
+        ).resolve()
+
+    def __call__(self, conversation_id: str, upload_id: str) -> bool:
+        owned_asset = any(
+            self._upload_id_from_source_url(str(asset.get("source_url") or ""))
+            == upload_id
+            for asset in self._asset_store.list_assets(conversation_id)
+        )
+        if not owned_asset or not self._uploads_root.is_dir():
+            return False
+        return any(
+            candidate.is_file()
+            and (
+                candidate.name == upload_id
+                or candidate.name.startswith(f"{upload_id}.")
+            )
+            for candidate in self._uploads_root.iterdir()
+        )
+
+    @staticmethod
+    def _upload_id_from_source_url(source_url: str) -> str | None:
+        path = urlparse(source_url.strip()).path
+        for prefix in ("/api/note/uploads/", "/api/uploads/"):
+            if not path.startswith(prefix):
+                continue
+            upload_id = path[len(prefix) :].strip("/")
+            if upload_id and "/" not in upload_id:
+                return upload_id
+        return None
+
+
 class WhiteboardRepository:
-    def __init__(self, session_factory: sessionmaker):
+    def __init__(
+        self,
+        session_factory: sessionmaker,
+        file_asset_resolver: Callable[[str, str], bool] | None = None,
+    ):
         self._session_factory = session_factory
+        self._file_asset_resolver = (
+            file_asset_resolver
+            if file_asset_resolver is not None
+            else ConversationFileAssetResolver()
+        )
 
     def create(
         self,
@@ -102,7 +156,7 @@ class WhiteboardRepository:
         if not parsed_operations:
             raise ValueError("at least one whiteboard operation is required")
 
-        with self._session_factory.begin() as session:
+        with self._write_session() as session:
             board = self._active_board(session, conversation_id, whiteboard_id)
             if board.revision != base_revision:
                 raise WhiteboardRevisionConflict(board.revision)
@@ -195,11 +249,52 @@ class WhiteboardRepository:
             )
 
     def soft_delete(self, conversation_id: str, whiteboard_id: str) -> None:
-        with self._session_factory.begin() as session:
+        with self._write_session() as session:
             board = self._active_board(session, conversation_id, whiteboard_id)
+            self._ensure_not_referenced_by_active_board(session, board)
             board.status = "archived"
             board.deleted_at = datetime.now(timezone.utc)
             board.updated_at = datetime.now(timezone.utc)
+
+    @contextmanager
+    def _write_session(self) -> Iterator[Session]:
+        session = self._session_factory()
+        try:
+            if session.get_bind().dialect.name == "sqlite":
+                session.execute(text("BEGIN IMMEDIATE"))
+            else:
+                session.begin()
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _ensure_not_referenced_by_active_board(
+        self,
+        session: Session,
+        board: WhiteboardRow,
+    ) -> None:
+        nested_rows = session.scalars(
+            select(WhiteboardCardRow)
+            .join(
+                WhiteboardRow,
+                WhiteboardCardRow.whiteboard_id == WhiteboardRow.id,
+            )
+            .where(
+                WhiteboardRow.conversation_id == board.conversation_id,
+                WhiteboardRow.deleted_at.is_(None),
+                WhiteboardRow.status == "active",
+                WhiteboardRow.id != board.id,
+                WhiteboardCardRow.card_type == "whiteboard",
+            )
+        ).all()
+        for nested_row in nested_rows:
+            content = self._load_json(nested_row.content_json)
+            if content.get("child_whiteboard_id") == board.id:
+                raise ValueError("whiteboard is referenced by an active nested card")
 
     def _simulate_card_create(
         self,
@@ -210,6 +305,7 @@ class WhiteboardRepository:
     ) -> None:
         if operation.card.id in cards or session.get(WhiteboardCardRow, operation.card.id) is not None:
             raise ValueError(f"card already exists: {operation.card.id}")
+        self._validate_file_asset(board.conversation_id, operation.card)
         cards[operation.card.id] = operation.card.model_copy(deep=True)
         if operation.card.type == "whiteboard":
             self._validate_nested_board_graph(session, board, cards)
@@ -227,9 +323,29 @@ class WhiteboardRepository:
         candidate = current.model_dump()
         candidate.update(operation.patch.model_dump(exclude_unset=True))
         updated_card = WhiteboardCard.model_validate(candidate)
+        self._validate_file_asset(board.conversation_id, updated_card)
         cards[operation.card_id] = updated_card
         if current.type == "whiteboard" or updated_card.type == "whiteboard":
             self._validate_nested_board_graph(session, board, cards)
+
+    def _validate_file_asset(
+        self,
+        conversation_id: str,
+        card: WhiteboardCard,
+    ) -> None:
+        if card.type != "file":
+            return
+        try:
+            is_valid = bool(
+                self._file_asset_resolver(
+                    conversation_id,
+                    str(card.content["upload_id"]),
+                )
+            )
+        except Exception:
+            raise ValueError("file asset could not be verified") from None
+        if not is_valid:
+            raise ValueError("file asset is missing or belongs to another conversation")
 
     @staticmethod
     def _simulate_card_delete(

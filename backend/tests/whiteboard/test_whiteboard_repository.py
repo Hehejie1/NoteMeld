@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import math
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -14,6 +17,7 @@ from app.models.whiteboard import (
     WhiteboardOperation,
     WhiteboardRelation,
 )
+from app.services.conversation_asset_store import ConversationAssetStore
 from app.services.whiteboard_repository import (
     WhiteboardRepository,
     WhiteboardRevisionConflict,
@@ -61,6 +65,14 @@ def create_relation_op(
     return {"op": "relation.create", "relation": relation | overrides}
 
 
+def create_file_card_op(card_id: str, upload_id: str) -> dict:
+    return create_card_op(
+        card_id,
+        type="file",
+        content={"upload_id": upload_id},
+    )
+
+
 @pytest.fixture
 def repository(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-repository.db'}")
@@ -71,6 +83,46 @@ def repository(tmp_path):
         yield repo
     finally:
         engine.dispose()
+
+
+@pytest.fixture
+def authoritative_file_repository(tmp_path, monkeypatch):
+    output_root = tmp_path / "note-results"
+    uploads_root = tmp_path / "uploads"
+    monkeypatch.setenv("NOTE_OUTPUT_DIR", str(output_root))
+    monkeypatch.setenv("UPLOAD_DIR", str(uploads_root))
+    engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-files.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    repo = WhiteboardRepository(factory)
+    store = ConversationAssetStore()
+    try:
+        yield repo, store, uploads_root, factory
+    finally:
+        engine.dispose()
+
+
+def create_conversation_upload_asset(
+    store: ConversationAssetStore,
+    uploads_root,
+    *,
+    conversation_id: str,
+    upload_id: str,
+    create_upload: bool = True,
+) -> None:
+    store.create_asset(
+        {
+            "asset_id": f"asset_{upload_id}",
+            "conversation_id": conversation_id,
+            "title": "Uploaded reference",
+            "content": "Extracted upload content",
+            "source_url": f"/api/note/uploads/{upload_id}",
+            "source_type": "uploaded_file",
+        }
+    )
+    if create_upload:
+        uploads_root.mkdir(parents=True, exist_ok=True)
+        (uploads_root / f"{upload_id}.pdf").write_bytes(b"%PDF-test")
 
 
 @pytest.mark.parametrize(
@@ -197,6 +249,130 @@ def test_create_get_and_list_are_conversation_scoped(repository):
     assert {item.id for item in summaries} == {first.id, second.id}
     with pytest.raises(LookupError):
         repository.get("conv_2", first.id)
+
+
+def test_file_card_accepts_an_owned_asset_with_an_existing_upload(
+    authoritative_file_repository,
+):
+    repository, asset_store, uploads_root, _ = authoritative_file_repository
+    create_conversation_upload_asset(
+        asset_store,
+        uploads_root,
+        conversation_id="conv_1",
+        upload_id="upload_valid",
+    )
+    board = repository.create("conv_1", "Files")
+
+    repository.apply_mutations(
+        "conv_1",
+        board.id,
+        1,
+        [create_file_card_op("card_file", "upload_valid")],
+    )
+
+    assert repository.get("conv_1", board.id).cards[0].content == {
+        "upload_id": "upload_valid"
+    }
+
+
+def test_file_card_rejects_an_asset_whose_upload_is_missing(
+    authoritative_file_repository,
+):
+    repository, asset_store, uploads_root, _ = authoritative_file_repository
+    create_conversation_upload_asset(
+        asset_store,
+        uploads_root,
+        conversation_id="conv_1",
+        upload_id="upload_missing",
+        create_upload=False,
+    )
+    board = repository.create("conv_1", "Files")
+
+    with pytest.raises(ValueError, match="file asset"):
+        repository.apply_mutations(
+            "conv_1",
+            board.id,
+            1,
+            [create_file_card_op("card_file", "upload_missing")],
+        )
+
+    assert repository.get("conv_1", board.id).cards == []
+
+
+def test_file_card_rejects_an_asset_owned_by_another_conversation(
+    authoritative_file_repository,
+):
+    repository, asset_store, uploads_root, _ = authoritative_file_repository
+    create_conversation_upload_asset(
+        asset_store,
+        uploads_root,
+        conversation_id="conv_2",
+        upload_id="upload_foreign",
+    )
+    board = repository.create("conv_1", "Files")
+
+    with pytest.raises(ValueError, match="file asset"):
+        repository.apply_mutations(
+            "conv_1",
+            board.id,
+            1,
+            [create_file_card_op("card_file", "upload_foreign")],
+        )
+
+    assert repository.get("conv_1", board.id).cards == []
+
+
+def test_file_card_fails_closed_when_the_injected_resolver_raises(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-resolver-error.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def failing_resolver(_conversation_id: str, _upload_id: str) -> bool:
+        raise RuntimeError("private resolver detail")
+
+    try:
+        repository = WhiteboardRepository(factory, file_asset_resolver=failing_resolver)
+        board = repository.create("conv_1", "Files")
+        with pytest.raises(ValueError, match="could not be verified") as error:
+            repository.apply_mutations(
+                "conv_1",
+                board.id,
+                1,
+                [create_file_card_op("card_file", "upload_error")],
+            )
+        assert "private resolver detail" not in str(error.value)
+        assert repository.get("conv_1", board.id).cards == []
+    finally:
+        engine.dispose()
+
+
+def test_invalid_file_asset_rolls_back_the_whole_batch(
+    authoritative_file_repository,
+):
+    repository, asset_store, uploads_root, _ = authoritative_file_repository
+    create_conversation_upload_asset(
+        asset_store,
+        uploads_root,
+        conversation_id="conv_1",
+        upload_id="upload_missing",
+        create_upload=False,
+    )
+    board = repository.create("conv_1", "Files")
+
+    with pytest.raises(ValueError, match="file asset"):
+        repository.apply_mutations(
+            "conv_1",
+            board.id,
+            1,
+            [
+                create_card_op("card_markdown"),
+                create_file_card_op("card_file", "upload_missing"),
+            ],
+        )
+
+    snapshot = repository.get("conv_1", board.id)
+    assert snapshot.revision == 1
+    assert snapshot.cards == []
 
 
 def test_batch_create_increments_revision_once_and_snapshot_order_is_deterministic(repository):
@@ -397,6 +573,94 @@ def test_nested_whiteboard_must_belong_to_same_conversation(repository):
         )
 
     assert repository.get("conv_1", parent.id).cards == []
+
+
+def test_concurrent_nested_whiteboard_mutations_cannot_persist_a_cycle(tmp_path, monkeypatch):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'whiteboard-concurrency.db'}",
+        connect_args={"check_same_thread": False, "timeout": 5},
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    repository = WhiteboardRepository(factory)
+    first = repository.create("conv_1", "First")
+    second = repository.create("conv_1", "Second")
+    start = threading.Barrier(2)
+    original_validate = repository._validate_nested_board_graph
+
+    def slow_validation(session, board, cards):
+        original_validate(session, board, cards)
+        time.sleep(0.15)
+
+    monkeypatch.setattr(repository, "_validate_nested_board_graph", slow_validation)
+
+    def link(parent_id: str, child_id: str, card_id: str):
+        start.wait(timeout=2)
+        try:
+            repository.apply_mutations(
+                "conv_1",
+                parent_id,
+                1,
+                [
+                    create_card_op(
+                        card_id,
+                        type="whiteboard",
+                        content={"child_whiteboard_id": child_id},
+                    )
+                ],
+            )
+            return "success"
+        except Exception as exc:  # capture the actual cross-session outcome
+            return exc
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(
+                executor.map(
+                    lambda args: link(*args),
+                    [
+                        (first.id, second.id, "card_first_to_second"),
+                        (second.id, first.id, "card_second_to_first"),
+                    ],
+                )
+            )
+
+        assert outcomes.count("success") == 1
+        failures = [outcome for outcome in outcomes if outcome != "success"]
+        assert len(failures) == 1
+        assert isinstance(failures[0], ValueError)
+        assert "cycle" in str(failures[0])
+        assert sum(
+            len(repository.get("conv_1", board_id).cards)
+            for board_id in (first.id, second.id)
+        ) == 1
+    finally:
+        engine.dispose()
+
+
+def test_soft_delete_rejects_a_child_referenced_by_an_active_board(repository):
+    parent = repository.create("conv_1", "Parent")
+    child = repository.create("conv_1", "Child")
+    repository.apply_mutations(
+        "conv_1",
+        parent.id,
+        1,
+        [
+            create_card_op(
+                "card_child",
+                type="whiteboard",
+                content={"child_whiteboard_id": child.id},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="referenced"):
+        repository.soft_delete("conv_1", child.id)
+
+    assert {board.id for board in repository.list_for_conversation("conv_1")} == {
+        parent.id,
+        child.id,
+    }
 
 
 def test_mid_batch_failure_rolls_back_every_operation_and_revision(repository):
