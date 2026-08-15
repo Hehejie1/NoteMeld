@@ -24,6 +24,8 @@ class MigrationMergeService:
         current_conn = sqlite3.connect(self.current_db_path)
         source_conn = sqlite3.connect(source_path)
         try:
+            current_conn.execute("PRAGMA foreign_keys=ON")
+            source_conn.execute("PRAGMA foreign_keys=ON")
             for table_name in self._shared_tables(current_conn, source_conn):
                 columns = self._shared_columns(current_conn, source_conn, table_name)
                 if not columns:
@@ -82,24 +84,31 @@ class MigrationMergeService:
         if table_name == "whiteboards" and {"id", "conversation_id"} <= row.keys():
             source_id = str(row["id"])
             owner_id = str(row["conversation_id"])
-            target_id = self._ownership_aware_id(
-                conn,
-                table_name="whiteboards",
-                id_column="id",
-                source_id=source_id,
-                owner_column="conversation_id",
-                owner_id=owner_id,
-                prefix="wb_import",
-            )
+            legacy_canvas_id = row.get("legacy_canvas_id")
+            legacy_binding = None
+            if legacy_canvas_id is not None:
+                legacy_binding = conn.execute(
+                    "SELECT id, conversation_id FROM whiteboards "
+                    "WHERE legacy_canvas_id IS ? LIMIT 1",
+                    (legacy_canvas_id,),
+                ).fetchone()
+
+            if legacy_binding is not None and str(legacy_binding[1]) == owner_id:
+                target_id = str(legacy_binding[0])
+            else:
+                target_id = self._ownership_aware_id(
+                    conn,
+                    table_name="whiteboards",
+                    id_column="id",
+                    source_id=source_id,
+                    owner_column="conversation_id",
+                    owner_id=owner_id,
+                    prefix="wb_import",
+                )
+                if legacy_binding is not None:
+                    row["legacy_canvas_id"] = None
             whiteboard_id_map[source_id] = target_id
             row["id"] = target_id
-            if target_id != source_id and row.get("legacy_canvas_id"):
-                conflict = conn.execute(
-                    "SELECT id FROM whiteboards WHERE legacy_canvas_id IS ? LIMIT 1",
-                    (row["legacy_canvas_id"],),
-                ).fetchone()
-                if conflict is not None and conflict[0] != target_id:
-                    row["legacy_canvas_id"] = None
             return row, False
 
         if table_name == "whiteboard_cards" and {"id", "whiteboard_id"} <= row.keys():

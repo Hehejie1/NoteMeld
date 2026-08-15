@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from app.db.engine import Base
@@ -18,6 +18,11 @@ from app.services.migration.merge_service import MigrationMergeService
 
 def _database(path: Path):
     engine = create_engine(f"sqlite:///{path}")
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(bind=engine)
     return engine, sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -35,7 +40,14 @@ def _conversation(session, conversation_id: str, note_ids: tuple[str, ...]) -> N
         )
 
 
-def _board(session, board_id: str, conversation_id: str, title: str) -> Whiteboard:
+def _board(
+    session,
+    board_id: str,
+    conversation_id: str,
+    title: str,
+    *,
+    legacy_canvas_id: str | None = None,
+) -> Whiteboard:
     row = Whiteboard(
         id=board_id,
         conversation_id=conversation_id,
@@ -44,6 +56,7 @@ def _board(session, board_id: str, conversation_id: str, title: str) -> Whiteboa
         schema_version=1,
         revision=1,
         viewport_json='{"x":0,"y":0,"zoom":1}',
+        legacy_canvas_id=legacy_canvas_id,
         status="active",
     )
     session.add(row)
@@ -107,6 +120,7 @@ def test_merge_remaps_cross_owner_graph_collisions_and_skips_unique_note_link(
         _conversation(session, "conv-local", ("note-local",))
         _conversation(session, "conv-owner", ("note-shared",))
         _board(session, "wb-shared", "conv-local", "Local collision board")
+        _board(session, "wb-child-shared", "conv-local", "Local child collision")
         _card(session, "card-shared", "wb-shared", "Local collision card")
         _card(session, "card-local-target", "wb-shared", "Local target")
         _relation(
@@ -132,8 +146,12 @@ def test_merge_remaps_cross_owner_graph_collisions_and_skips_unique_note_link(
         _conversation(session, "conv-import", ("note-import",))
         _conversation(session, "conv-owner", ("note-shared",))
         _board(session, "wb-shared", "conv-import", "Imported collision board")
+        _board(session, "wb-child-shared", "conv-import", "Imported child collision")
         _card(session, "card-shared", "wb-shared", "Imported collision card")
         _card(session, "card-import-target", "wb-shared", "Imported target")
+        nested = _card(session, "card-nested", "wb-shared", "Imported nested board")
+        nested.card_type = "whiteboard"
+        nested.content_json = '{"child_whiteboard_id":"wb-child-shared"}'
         _relation(
             session,
             "rel-shared",
@@ -174,6 +192,11 @@ def test_merge_remaps_cross_owner_graph_collisions_and_skips_unique_note_link(
         assert imported_board is not None
         assert imported_board.id != "wb-shared"
         assert imported_board.conversation_id == "conv-import"
+        imported_child = session.scalar(
+            select(Whiteboard).where(Whiteboard.title == "Imported child collision")
+        )
+        assert imported_child is not None
+        assert imported_child.id != "wb-child-shared"
 
         local_card = session.get(WhiteboardCard, "card-shared")
         assert local_card.whiteboard_id == "wb-shared"
@@ -190,6 +213,16 @@ def test_merge_remaps_cross_owner_graph_collisions_and_skips_unique_note_link(
         assert imported_card.id != "card-shared"
         assert imported_card.whiteboard_id == imported_board.id
         assert imported_target.whiteboard_id == imported_board.id
+        imported_nested = session.scalar(
+            select(WhiteboardCard).where(
+                WhiteboardCard.title == "Imported nested board"
+            )
+        )
+        assert imported_nested is not None
+        assert imported_nested.whiteboard_id == imported_board.id
+        assert imported_nested.content_json == (
+            '{"child_whiteboard_id":"' + imported_child.id + '"}'
+        )
 
         local_relation = session.get(WhiteboardRelation, "rel-shared")
         assert local_relation.whiteboard_id == "wb-shared"
@@ -215,8 +248,96 @@ def test_merge_remaps_cross_owner_graph_collisions_and_skips_unique_note_link(
         ).all()
         assert [link.whiteboard_id for link in shared_links] == ["wb-note-local"]
 
-    assert summary["whiteboards"]["inserted"] == 2
+    with current_engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
+        assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+
+    assert summary["whiteboards"]["inserted"] == 3
     assert summary["whiteboards"]["overwritten"] == 1
     assert summary["whiteboard_note_links"]["skipped"] == 1
+    current_engine.dispose()
+    source_engine.dispose()
+
+
+def test_merge_resolves_legacy_canvas_binding_by_logical_ownership(
+    tmp_path: Path,
+) -> None:
+    current_path = tmp_path / "current.db"
+    source_path = tmp_path / "source.db"
+    current_engine, current_factory = _database(current_path)
+    source_engine, source_factory = _database(source_path)
+
+    with current_factory.begin() as session:
+        _conversation(session, "conv-owner", ())
+        _conversation(session, "conv-local", ())
+        _board(
+            session,
+            "wb-current-logical",
+            "conv-owner",
+            "Old logical board",
+            legacy_canvas_id="canvas-logical",
+        )
+        _board(
+            session,
+            "wb-current-cross-owner",
+            "conv-local",
+            "Local binding owner",
+            legacy_canvas_id="canvas-cross-owner",
+        )
+
+    with source_factory.begin() as session:
+        _conversation(session, "conv-owner", ())
+        _conversation(session, "conv-import", ())
+        _board(
+            session,
+            "wb-source-logical",
+            "conv-owner",
+            "New logical board",
+            legacy_canvas_id="canvas-logical",
+        )
+        _card(
+            session,
+            "card-source-logical",
+            "wb-source-logical",
+            "Logical child",
+        )
+        _board(
+            session,
+            "wb-source-cross-owner",
+            "conv-import",
+            "Imported independent board",
+            legacy_canvas_id="canvas-cross-owner",
+        )
+
+    summary = MigrationMergeService(current_db_path=current_path).merge_database(
+        source_path
+    )
+
+    with current_factory() as session:
+        logical = session.get(Whiteboard, "wb-current-logical")
+        assert logical.title == "New logical board"
+        assert logical.legacy_canvas_id == "canvas-logical"
+        assert session.get(Whiteboard, "wb-source-logical") is None
+        assert (
+            session.get(WhiteboardCard, "card-source-logical").whiteboard_id
+            == "wb-current-logical"
+        )
+
+        local = session.get(Whiteboard, "wb-current-cross-owner")
+        assert local.title == "Local binding owner"
+        assert local.legacy_canvas_id == "canvas-cross-owner"
+        imported = session.get(Whiteboard, "wb-source-cross-owner")
+        assert imported is not None
+        assert imported.conversation_id == "conv-import"
+        assert imported.legacy_canvas_id is None
+
+    with current_engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+
+    assert summary["whiteboards"] == {
+        "inserted": 1,
+        "overwritten": 1,
+        "skipped": 0,
+    }
     current_engine.dispose()
     source_engine.dispose()
