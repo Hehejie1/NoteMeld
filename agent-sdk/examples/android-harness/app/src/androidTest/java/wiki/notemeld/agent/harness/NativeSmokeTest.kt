@@ -16,7 +16,7 @@ class NativeSmokeTest {
         val terminal = CountDownLatch(1)
         val terminalType = AtomicReference<String>()
         Runtime("""{"schema_version":"1"}""", {
-            """{"schema_version":"1","ok":true,"chunks":[{"type":"content_delta","delta":"你好😀"}],"completion":{"content":"你好😀","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}"""
+            """{"schema_version":"1","ok":true,"result":{"chunks":[{"type":"content_delta","delta":"你好😀"}],"completion":{"content":"你好😀","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}}"""
         }, { event ->
             if (event.contains("\"type\":\"turn.succeeded\"")) {
                 terminalType.set("turn.succeeded"); terminal.countDown()

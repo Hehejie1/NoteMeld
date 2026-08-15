@@ -15,16 +15,18 @@ def fake_driver(request):
     assert request["kind"] == "model.stream"
     return {
         "ok": True,
-        "chunks": [{"type": "content_delta", "delta": "native hello"}],
-        "completion": {
-            "content": "native hello",
-            "tool_calls": [],
-            "finish_reason": "stop",
-            "usage": {
-                "input_tokens": 2,
-                "output_tokens": 2,
-                "cache_read_tokens": 0,
-                "cache_write_tokens": 0,
+        "result": {
+            "chunks": [{"type": "content_delta", "delta": "native hello"}],
+            "completion": {
+                "content": "native hello",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "usage": {
+                    "input_tokens": 2,
+                    "output_tokens": 2,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0,
+                },
             },
         },
     }

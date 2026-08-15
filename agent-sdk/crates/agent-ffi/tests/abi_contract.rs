@@ -66,13 +66,13 @@ unsafe extern "C-unwind" fn driver_callback(
     if DRIVER_MODE.load(Ordering::SeqCst) == 2 {
         let stage = TOOL_STAGE.fetch_add(1, Ordering::SeqCst);
         let result = match (stage, request["kind"].as_str()) {
-            (0, Some("model.stream")) => json!({"schema_version":"1","ok":true,
-                "completion":{"content":"","tool_calls":[{"call_id":"ffi-tool-1","tool_name":"lookup","arguments":{"q":"hello"}}],"finish_reason":"tool_calls","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}),
+            (0, Some("model.stream")) => json!({"schema_version":"1","ok":true,"result":{
+                "completion":{"content":"","tool_calls":[{"call_id":"ffi-tool-1","tool_name":"lookup","arguments":{"q":"hello"}}],"finish_reason":"tool_calls","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}}),
             (1, Some("tool.invoke")) => {
-                json!({"schema_version":"1","ok":true,"output":{"answer":42}})
+                json!({"schema_version":"1","ok":true,"result":{"output":{"answer":42}}})
             }
-            (2, Some("model.stream")) => json!({"schema_version":"1","ok":true,
-                "completion":{"content":"tool complete","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}),
+            (2, Some("model.stream")) => json!({"schema_version":"1","ok":true,"result":{
+                "completion":{"content":"tool complete","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}}),
             _ => {
                 json!({"schema_version":"1","ok":false,"error":{"code":"sdk_internal_error","message":"unexpected harness sequence"}})
             }
@@ -85,17 +85,70 @@ unsafe extern "C-unwind" fn driver_callback(
             result.as_ptr(),
         );
     }
+    if DRIVER_MODE.load(Ordering::SeqCst) == 3 {
+        let result = CString::new(json!({
+            "schema_version":"1", "ok":true,
+            "result":{"chunks":[],"completion":{"content":"must reject","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}},
+            "error":{"code":"model_unavailable","message":"must not coexist"}
+        }).to_string()).unwrap();
+        let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
+        return notemeld_agent_complete_driver_call(
+            handle as *mut AgentRuntimeHandle,
+            call_id,
+            result.as_ptr(),
+        );
+    }
+    if DRIVER_MODE.load(Ordering::SeqCst) == 4 {
+        let stage = TOOL_STAGE.fetch_add(1, Ordering::SeqCst);
+        let result = match stage {
+            0 => {
+                json!({"schema_version":"1","ok":true,"result":{"completion":{"content":"","tool_calls":[{"call_id":"conflict-tool","tool_name":"lookup","arguments":{}}],"finish_reason":"tool_calls","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}})
+            }
+            1 => {
+                json!({"schema_version":"1","ok":true,"result":{"output":{"answer":42}},"error":{"code":"tool_failed","message":"must not coexist"}})
+            }
+            _ => {
+                json!({"schema_version":"1","ok":true,"result":{"completion":{"content":"old validator wrongly continued","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}})
+            }
+        };
+        let result = CString::new(result.to_string()).unwrap();
+        let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
+        return notemeld_agent_complete_driver_call(
+            handle as *mut AgentRuntimeHandle,
+            call_id,
+            result.as_ptr(),
+        );
+    }
+    if DRIVER_MODE.load(Ordering::SeqCst) == 5 {
+        let result = CString::new(
+            json!({
+                "schema_version":"1", "ok":false,
+                "result":{"completion":{"content":"must reject"}},
+                "error":{"code":"model_unavailable","message":"must not propagate"}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
+        return notemeld_agent_complete_driver_call(
+            handle as *mut AgentRuntimeHandle,
+            call_id,
+            result.as_ptr(),
+        );
+    }
     let result = CString::new(
         json!({
             "schema_version": "1",
             "ok": true,
-            "chunks": [{"type": "content_delta", "delta": "hello"}],
-            "completion": {
-                "content": "hello",
-                "tool_calls": [],
-                "finish_reason": "stop",
-                "usage": {"input_tokens": 1, "output_tokens": 1,
-                    "cache_read_tokens": 0, "cache_write_tokens": 0}
+            "result": {
+                "chunks": [{"type": "content_delta", "delta": "hello"}],
+                "completion": {
+                    "content": "hello",
+                    "tool_calls": [],
+                    "finish_reason": "stop",
+                    "usage": {"input_tokens": 1, "output_tokens": 1,
+                        "cache_read_tokens": 0, "cache_write_tokens": 0}
+                }
             }
         })
         .to_string(),
@@ -103,6 +156,82 @@ unsafe extern "C-unwind" fn driver_callback(
     .unwrap();
     let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
     notemeld_agent_complete_driver_call(handle as *mut AgentRuntimeHandle, call_id, result.as_ptr())
+}
+
+fn run_driver_mode(mode: usize, request_id: &str) -> (Vec<Value>, Value) {
+    EVENTS.get_or_init(Default::default).lock().unwrap().clear();
+    DRIVER_MODE.store(mode, Ordering::SeqCst);
+    TOOL_STAGE.store(0, Ordering::SeqCst);
+    let config = CString::new(r#"{"schema_version":"1","max_turns":4}"#).unwrap();
+    let handle = notemeld_agent_runtime_new(config.as_ptr());
+    *HANDLE.get_or_init(Default::default).lock().unwrap() = handle as usize;
+    assert_eq!(
+        notemeld_agent_runtime_set_callbacks(
+            handle,
+            Some(event_callback),
+            std::ptr::null_mut(),
+            Some(driver_callback),
+            std::ptr::null_mut(),
+            Some(noop_release),
+            std::ptr::null_mut()
+        ),
+        FFI_OK
+    );
+    let turn = notemeld_agent_submit_turn(handle, request(request_id).as_ptr());
+    assert_eq!(notemeld_agent_wait_turn(handle, turn, 5_000), FFI_OK);
+    let events = EVENTS.get().unwrap().lock().unwrap().clone();
+    let pointer = notemeld_agent_last_error_json(handle);
+    assert!(!pointer.is_null());
+    let error: Value =
+        unsafe { serde_json::from_str(CStr::from_ptr(pointer).to_str().unwrap()).unwrap() };
+    notemeld_agent_string_free(pointer);
+    DRIVER_MODE.store(0, Ordering::SeqCst);
+    notemeld_agent_runtime_free(handle);
+    (events, error)
+}
+
+fn assert_conflicting_driver_envelope_failed(events: &[Value], error: &Value) {
+    assert_eq!(error["code"], "invalid_input");
+    assert_eq!(
+        error["message"],
+        "driver completion must contain exactly one result or error"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(
+                event["type"].as_str(),
+                Some("turn.failed")
+                    | Some("turn.succeeded")
+                    | Some("turn.cancelled")
+                    | Some("turn.interrupted")
+            ))
+            .count(),
+        1
+    );
+    assert_eq!(events.last().unwrap()["type"], "turn.failed");
+    assert!(!events.iter().any(|event| event["type"] == "turn.succeeded"));
+}
+
+#[test]
+fn model_success_envelope_rejects_coexisting_error_on_the_real_ffi_path() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    let (events, error) = run_driver_mode(3, "10101010-1010-4010-8010-101010101010");
+    assert_conflicting_driver_envelope_failed(&events, &error);
+}
+
+#[test]
+fn tool_success_envelope_rejects_coexisting_error_on_the_real_ffi_path() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    let (events, error) = run_driver_mode(4, "20202020-2020-4020-8020-202020202020");
+    assert_conflicting_driver_envelope_failed(&events, &error);
+}
+
+#[test]
+fn error_envelope_rejects_coexisting_result_before_provider_error_parsing() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    let (events, error) = run_driver_mode(5, "30303030-3030-4030-8030-303030303030");
+    assert_conflicting_driver_envelope_failed(&events, &error);
 }
 
 #[test]
@@ -597,8 +726,13 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(android_test.contains("turn.succeeded"));
     let harmony =
         std::fs::read_to_string(root.join("bindings/harmony/src/main/ets/index.ets")).unwrap();
-    assert!(harmony.contains("waitForTerminal(timeoutMs: number = 30000): Promise<string>"));
-    assert!(!harmony.contains("agentNative.waitTurn"));
+    let harmony_code = harmony
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(harmony_code.contains("waitForTerminal(timeoutMs: number = 30000): Promise<string>"));
+    assert!(!harmony_code.contains("agentNative.waitTurn"));
     let harmony_native =
         std::fs::read_to_string(root.join("bindings/harmony/src/main/cpp/napi_init.cpp")).unwrap();
     assert!(harmony_native.contains("ReleaseBridge"));
@@ -608,20 +742,34 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(!harmony_native.contains("retired_bridges"));
     assert!(!harmony_native.contains("napi_tsfn_abort"));
 
-    let parse = harmony.find("JSON.parse(eventJson)").unwrap();
-    let user = harmony.find("this.userEvent(eventJson)").unwrap();
+    let parse = harmony_code.find("JSON.parse(eventJson)").unwrap();
+    let user = harmony_code.find("this.userEvent(eventJson)").unwrap();
     assert!(
         parse < user,
         "terminal state must settle before user callback"
     );
-    assert!(harmony.contains("event['turn_id'] === this.activeTurnId"));
-    assert!(harmony.contains(
+    assert!(harmony_code.contains("event['turn_id'] === this.activeTurnId"));
+    assert!(harmony_code.contains(
         "this.resolveTerminal = null\n        this.rejectTerminal = null\n        this.activeToken = 0n"
     ));
-    assert!(harmony.contains("agent_runtime_busy"));
-    assert!(harmony.contains("callback registration failed"));
-    assert!(harmony.contains("terminal wait timed out"));
-    assert!(harmony.contains("const pendingReject = this.rejectTerminal"));
+    assert!(harmony_code.contains("agent_runtime_busy"));
+    assert!(harmony_code.contains("callback registration failed"));
+    assert!(harmony_code.contains("terminal wait timed out"));
+    assert!(harmony_code.contains("const pendingReject = this.rejectTerminal"));
+    assert_eq!(
+        harmony_code.matches("private activeToken: bigint").count(),
+        1
+    );
+    assert_eq!(
+        harmony_code.matches("private activeTurnId: string").count(),
+        1
+    );
+    assert_eq!(
+        harmony_code
+            .matches("private terminalPromise: Promise<string>")
+            .count(),
+        1
+    );
 
     let kotlin = std::fs::read_to_string(
         root.join("bindings/kotlin/src/main/kotlin/wiki/notemeld/agent/Runtime.kt"),

@@ -488,8 +488,8 @@ impl ModelDriver for FfiModelDriver {
             request.cancellation,
         )
         .await?;
-        validate_driver_response(&response)?;
-        if let Some(chunks) = response.get("chunks").and_then(Value::as_array) {
+        let result = validate_driver_response(&response)?;
+        if let Some(chunks) = result.get("chunks").and_then(Value::as_array) {
             for chunk in chunks {
                 if chunk.get("type").and_then(Value::as_str) == Some("content_delta") {
                     let delta = chunk
@@ -504,7 +504,7 @@ impl ModelDriver for FfiModelDriver {
             }
         }
         serde_json::from_value(
-            response
+            result
                 .get("completion")
                 .cloned()
                 .ok_or_else(|| invalid_input("model completion is missing"))?,
@@ -546,26 +546,49 @@ impl ToolDriver for FfiToolDriver {
             context.cancellation,
         )
         .await?;
-        validate_driver_response(&response)?;
+        let result = validate_driver_response(&response)?;
         Ok(ToolResult::new(
             call.id(),
-            response.get("output").cloned().unwrap_or(Value::Null),
+            result.get("output").cloned().unwrap_or(Value::Null),
         ))
     }
 }
 
-fn validate_driver_response(response: &Value) -> Result<(), AgentError> {
+fn validate_driver_response(response: &Value) -> Result<&Value, AgentError> {
+    if response.get("schema_version").and_then(Value::as_str) != Some(SCHEMA_VERSION) {
+        return Err(AgentError::new(
+            AgentErrorCode::AgentSchemaMismatch,
+            "driver completion schema version mismatch",
+        ));
+    }
+    let object = response
+        .as_object()
+        .ok_or_else(|| invalid_input("driver completion must be an object"))?;
     match response.get("ok") {
         Some(Value::Bool(true)) => {
-            if response.get("schema_version").and_then(Value::as_str) != Some(SCHEMA_VERSION) {
-                return Err(AgentError::new(
-                    AgentErrorCode::AgentSchemaMismatch,
-                    "driver completion schema version mismatch",
+            if object.contains_key("error") || !object.contains_key("result") {
+                return Err(invalid_input(
+                    "driver completion must contain exactly one result or error",
                 ));
             }
-            Ok(())
+            response
+                .get("result")
+                .filter(|result| result.is_object())
+                .ok_or_else(|| invalid_input("driver completion result must be an object"))
         }
-        Some(Value::Bool(false)) => parse_driver_error(response),
+        Some(Value::Bool(false)) => {
+            if object.contains_key("result") || !object.contains_key("error") {
+                return Err(invalid_input(
+                    "driver completion must contain exactly one result or error",
+                ));
+            }
+            match parse_driver_error(response) {
+                Err(error) => Err(error),
+                Ok(()) => Err(internal_error(
+                    "driver error parser returned without an error",
+                )),
+            }
+        }
         _ => Err(invalid_input("driver completion ok must be a boolean")),
     }
 }

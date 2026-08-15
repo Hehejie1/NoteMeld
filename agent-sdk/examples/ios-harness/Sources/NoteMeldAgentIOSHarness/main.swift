@@ -6,11 +6,13 @@ let runtime = try NoteMeldAgentRuntime(driver: { request in
     precondition(request["schema_version"] as? String == "1")
     return [
         "schema_version": "1", "ok": true,
-        "chunks": [["type": "content_delta", "delta": "swift hello"]],
-        "completion": [
-            "content": "swift hello", "tool_calls": [], "finish_reason": "stop",
-            "usage": ["input_tokens": 1, "output_tokens": 1,
-                      "cache_read_tokens": 0, "cache_write_tokens": 0]
+        "result": [
+            "chunks": [["type": "content_delta", "delta": "swift hello"]],
+            "completion": [
+                "content": "swift hello", "tool_calls": [], "finish_reason": "stop",
+                "usage": ["input_tokens": 1, "output_tokens": 1,
+                          "cache_read_tokens": 0, "cache_write_tokens": 0]
+            ]
         ]
     ]
 }, onEvent: { event in terminal = event["type"] as? String })

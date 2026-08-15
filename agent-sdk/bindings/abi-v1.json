@@ -3,7 +3,7 @@
   "sdk_version": "0.1.0",
   "schema_version": "1",
   "calling_convention": "C",
-  "json_semantics": {"turn_request":"schemas/turn-request.v1.json","event":"schemas/agent-event.v1.json","errors":"schemas/errors.v1.json"},
+  "json_semantics": {"turn_request":"schemas/turn-request.v1.json","event":"schemas/agent-event.v1.json","errors":"schemas/errors.v1.json","driver_completion":"ok=true requires exactly one object result and no error key; ok=false requires exactly one AgentError and no result key"},
   "callbacks": [
     {"name":"NotemeldAgentEventCallback","return":"int32_t","params":[{"name":"context","type":"void *"},{"name":"event_json","type":"const char *"}]},
     {"name":"NotemeldAgentDriverCallback","return":"int32_t","params":[{"name":"context","type":"void *"},{"name":"request_json","type":"const char *"}]},

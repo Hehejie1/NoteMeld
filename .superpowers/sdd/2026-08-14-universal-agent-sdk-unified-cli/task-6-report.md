@@ -58,10 +58,10 @@ All extern entries are panic-contained. Rust-host callbacks use the ABI-permitte
 | Python | real ctypes load + fake model + terminal assertion | local GREEN (pytest runtime available; target wrapper remains Python 3.11-compatible) |
 | Swift/macOS | Swift 6.3.2 package build and executable native fake Turn | local GREEN |
 | iOS device/simulator | same Swift package/harness source; no simulator/device target run | CI-only |
-| Android | Gradle/Kotlin/JNI project present; Gradle/Android SDK unavailable on host | CI-only, not claimed passed |
+| Android | SDK, NDK, `adb`, and Gradle cache present; `adb devices -l` found no connected target | `connectedAndroidTest` not run; CI-only target execution |
 | OpenHarmony | ArkTS/N-API TSFN project present; `hvigor`/`ohpm` unavailable | CI-only, not claimed passed |
 
-The Android and OpenHarmony target builds belong to Task 7's artifact matrix; this Task deliberately does not turn missing local toolchains into a skip-pass.
+The Android and OpenHarmony target builds belong to Task 7's artifact matrix. This round had no usable connected Android target, while the OpenHarmony build tools were absent; neither condition is reported as a passing target run.
 
 ## Dependency, license and lock review
 
@@ -115,7 +115,7 @@ All externally supplied driver messages/details/extra fields are discarded befor
 - Native ABI now runs both a model-error path and the real canonical `model.stream → tool.invoke → model.stream → turn.succeeded` path. Steer remains uniformly typed `FFI_UNSUPPORTED`; no binding pretends it applied.
 - Python: real local dylib load and terminal smoke passed; the callback context stays in a global retained registry until native release. The default Python 3.14 lacked pytest, so the smoke function was executed directly with Python 3.11 against the real dylib. Task 1 oracle was separately run with pyenv Python 3.10.13 and passed 27/27.
 - Swift/macOS: package build and real dylib harness passed, printing `swift harness: turn.succeeded`.
-- Android: JNI now uses `GetStringChars`/`NewString` and explicit standard UTF-8 conversion, rejecting invalid surrogate sequences and embedded NUL. A host C++ test passes emoji round-trip plus invalid-surrogate/NUL cases. The harness is a real `androidTest` instrumentation test using `CountDownLatch`/`AtomicReference`, native load, submit, fake completion, terminal assertion and close. Gradle/Android SDK are unavailable locally, so `connectedAndroidTest` is CI-only; assemble is not claimed as execution.
+- Android: JNI now uses `GetStringChars`/`NewString` and explicit standard UTF-8 conversion, rejecting invalid surrogate sequences and embedded NUL. A host C++ test passes emoji round-trip plus invalid-surrogate/NUL cases. The harness is a real `androidTest` instrumentation test using `CountDownLatch`/`AtomicReference`, native load, submit, fake completion, terminal assertion and close. The SDK, NDK, `adb`, and Gradle cache exist locally, but `adb devices -l` found no usable connected target; `connectedAndroidTest` was not run and no assemble result is presented as device execution.
 - OpenHarmony: no synchronous native wait is exported to ArkTS. Terminal delivery is a Promise resolved by the terminal TSFN event; async close cancels/awaits an active terminal before native free. Invalid/throwing JS driver callbacks complete the pending call with a safe error. Release acknowledgement normally drains TSFNs and deletes the bridge after both finalizers. `hvigor`/DevEco are unavailable locally, so this remains static-contract/CI-only.
 
 ### Fix-round verification
@@ -128,7 +128,7 @@ All externally supplied driver messages/details/extra fields are discarded befor
 - Python real native smoke: GREEN; Task 1 Python oracle: **27 passed**.
 - Swift package and native harness: GREEN.
 - Host C++ UTF codec test with `-Wall -Wextra -Werror`: GREEN.
-- Android and OpenHarmony target execution: CI-only due missing local toolchains; static lifecycle/Promise/instrumentation contracts are checked by the Rust ABI suite.
+- Android target execution: CI-only because no usable connected target was available; `connectedAndroidTest` was not run. OpenHarmony target execution: CI-only because `hvigor`/DevEco/`ohpm` were unavailable. Static lifecycle/Promise/instrumentation contracts are checked by the Rust ABI suite.
 
 No new Rust dependency or lockfile entry was added. MSRV and license inventory are unchanged. Remaining release work is target CI execution/package generation in Task 7; this fix round does not claim unavailable mobile target builds.
 
@@ -154,4 +154,29 @@ No new Rust dependency or lockfile entry was added. MSRV and license inventory a
 - Swift package build and real native harness GREEN.
 - Workspace tests, workspace clippy with warnings denied, rustfmt check and diff check GREEN.
 - Python oracle remains 27/27; UTF codec host test and native symbol inventory remain GREEN.
-- Android connected instrumentation and Harmony target compilation remain explicitly CI-only because their local toolchains are unavailable.
+- Android connected instrumentation remains explicitly CI-only because no usable connected target was available, despite the local SDK/NDK/`adb` and Gradle cache being present; `connectedAndroidTest` was not run. Harmony target compilation remains CI-only because its local build tools are unavailable.
+
+## Fix Round 3 (2026-08-15)
+
+### Strict driver envelope RED → GREEN
+
+- **Real model RED:** the production FFI path received a syntactically valid `ok=true` completion containing both a valid `result` and valid `error`. The old validator ignored `error`, then failed later with `model completion is missing` instead of rejecting the mutually exclusive envelope at the trust boundary.
+- **Real tool RED:** the production `model.stream → tool.invoke` path received `ok=true` with both valid `result` and valid `error`. The old validator accepted the tool completion, continued to the next model request and could end in `turn.succeeded`.
+- **Error RED:** `ok=false` with both a valid provider error and a `result` propagated the provider code instead of classifying the malformed envelope as `invalid_input`.
+- **GREEN:** `ok` must be a Boolean. `true` requires one object `result` and forbids the `error` key even when its value is null; `false` requires one valid shared `AgentError` and forbids the `result` key. Missing, duplicate, or wrong-typed alternatives are stable `invalid_input`. Each of the three real FFI regressions now emits exactly one `turn.failed`, never `turn.succeeded`. A well-formed `ok=false` still preserves the stable provider code after safe-message sanitization.
+
+### Binding and platform contract closure
+
+- The Python callback ABI test independently maps the manifest callback return and parameter types to ctypes, then verifies `_CALLBACK` and `_RELEASE_CALLBACK` metadata. It does not use either wrapper callback type as its expected-value oracle; the complete 12-function signature comparison remains enforced.
+- The OpenHarmony static gate strips line comments before matching, verifies that terminal JSON parsing/matching occurs before the user observer, checks the state-clear sequence, and requires exactly one declaration for each active token/turn/Promise field. This is a source contract only; real target behavior remains a Task 7 CI ledger item.
+- Android probe evidence is precise: SDK/NDK/`adb` and Gradle cache are present, `adb devices -l` returned no connected target, and `connectedAndroidTest` was not executed. OpenHarmony `hvigor`/DevEco/`ohpm` remain unavailable.
+
+### Round 3 verification
+
+- Focused real-FFI conflict tests: three RED failures observed against the prior validator, then all three GREEN.
+- Native `agent-ffi`: **5 unit + 13 ABI** tests GREEN; the ABI renderer/header/UDL exact comparison is included.
+- Rust workspace: **86 tests** GREEN; workspace clippy with warnings denied, rustfmt check, and Task 6 diff check GREEN.
+- Python: two independent manifest/signature unittests GREEN; real dylib smoke GREEN with terminal `turn.succeeded`; syntax compilation GREEN; Task 1 oracle **27/27** GREEN.
+- Swift: package build and real native harness GREEN with terminal `turn.succeeded`.
+- Android UTF converter: host C++ emoji/invalid-surrogate/NUL test GREEN under `-Wall -Wextra -Werror`; no connected instrumentation result is claimed.
+- Native symbol inventory: all **12** manifest functions exported by the dylib.
