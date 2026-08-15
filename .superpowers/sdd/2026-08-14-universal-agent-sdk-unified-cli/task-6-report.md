@@ -195,3 +195,19 @@ No new Rust dependency or lockfile entry was added. MSRV and license inventory a
 - Native `agent-ffi`: **5 unit + 14 ABI** tests GREEN.
 - Rust workspace: **87 tests** GREEN; clippy with warnings denied, rustfmt, and Task 6 diff checks GREEN.
 - No production runtime or binding source changed in this round, so the existing Round 3 Python native and Swift native evidence remains applicable.
+
+## Fix Round 5 (2026-08-15)
+
+### Harmony lexical-decoy RED → GREEN
+
+- **RED:** a syntactically valid mutation placed every Round 4 parse/match/resolve/reject marker inside an ordinary string before `userEvent`, then moved and equivalently rewrote the real control-plane block after `userEvent`. The Round 4 string-preserving validator returned no errors, so the new regression assertion failed with `string contents must not satisfy executable ordering markers`.
+- **GREEN:** the test helper now builds a position-preserving lexical code mask. Bytes belonging to `//` comments, `/* ... */` comments, single/double-quoted strings, and template strings are replaced with spaces; CR/LF bytes and total byte length are preserved. Template interpolation is conservatively masked with the whole template. Escaped quotes, braces/comment delimiters inside strings, CRLF, UTF-8, unterminated comment/string edges, and a trailing slash/backslash are covered without index drift or an unbounded loop.
+- Function-signature discovery and brace matching run only on masked code, so signatures or braces hidden in comments/strings cannot alter the selected `receiveEvent` range. Ordering markers contain code tokens only; their uniqueness, positions, and the resolve/reject settlement checks are evaluated exclusively within the masked function body.
+- The retained regression demonstrates the Round 4 gate's false GREEN. The original source and comment/string-decoy source are GREEN; all three prior ordering mutations plus the new string-decoy mutation are RED.
+
+### Round 5 verification
+
+- Focused lexical-decoy/original/ordering-mutation contract: GREEN.
+- Native `agent-ffi`: **5 unit + 14 ABI** tests GREEN.
+- Rust workspace: **87 tests** GREEN; workspace clippy with warnings denied, rustfmt, and Task 6 diff checks GREEN.
+- No production runtime or binding source changed; prior Python/Swift native execution evidence remains unchanged.

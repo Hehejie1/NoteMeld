@@ -675,13 +675,13 @@ fn concurrent_completion_has_one_atomic_winner_and_wait_timeout_is_typed() {
     notemeld_agent_runtime_free(handle);
 }
 
-fn strip_typescript_comments(source: &str) -> String {
+fn mask_typescript_code(source: &str) -> String {
     #[derive(Clone, Copy)]
     enum State {
         Code,
         LineComment,
         BlockComment,
-        Quoted(u8),
+        String(u8),
     }
 
     let bytes = source.as_bytes();
@@ -702,15 +702,15 @@ fn strip_typescript_comments(source: &str) -> String {
                 state = State::BlockComment;
             }
             State::Code if matches!(current, b'\'' | b'"' | b'`') => {
-                output.push(current);
+                output.push(b' ');
                 index += 1;
-                state = State::Quoted(current);
+                state = State::String(current);
             }
             State::Code => {
                 output.push(current);
                 index += 1;
             }
-            State::LineComment if current == b'\n' => {
+            State::LineComment if matches!(current, b'\r' | b'\n') => {
                 output.push(current);
                 index += 1;
                 state = State::Code;
@@ -725,24 +725,36 @@ fn strip_typescript_comments(source: &str) -> String {
                 state = State::Code;
             }
             State::BlockComment => {
-                output.push(if current == b'\n' { b'\n' } else { b' ' });
+                output.push(if matches!(current, b'\r' | b'\n') {
+                    current
+                } else {
+                    b' '
+                });
                 index += 1;
             }
-            State::Quoted(_quote) if current == b'\\' => {
-                output.push(current);
+            State::String(_quote) if current == b'\\' => {
+                output.push(b' ');
                 index += 1;
                 if let Some(escaped) = bytes.get(index) {
-                    output.push(*escaped);
+                    output.push(if matches!(*escaped, b'\r' | b'\n') {
+                        *escaped
+                    } else {
+                        b' '
+                    });
                     index += 1;
                 }
             }
-            State::Quoted(quote) if current == quote => {
-                output.push(current);
+            State::String(quote) if current == quote => {
+                output.push(b' ');
                 index += 1;
                 state = State::Code;
             }
-            State::Quoted(_) => {
-                output.push(current);
+            State::String(_) => {
+                output.push(if matches!(current, b'\r' | b'\n') {
+                    current
+                } else {
+                    b' '
+                });
                 index += 1;
             }
         }
@@ -758,22 +770,8 @@ fn extract_typescript_method_body<'a>(source: &'a str, signature: &str) -> Optio
     let open = signature_start + source[signature_start..].find('{')?;
     let bytes = source.as_bytes();
     let mut depth = 0usize;
-    let mut quote = None;
-    let mut escaped = false;
     for (index, current) in bytes.iter().copied().enumerate().skip(open) {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if current == b'\\' {
-                escaped = true;
-            } else if current == active_quote {
-                quote = None;
-            }
-            continue;
-        }
-        if matches!(current, b'\'' | b'"' | b'`') {
-            quote = Some(current);
-        } else if current == b'{' {
+        if current == b'{' {
             depth += 1;
         } else if current == b'}' {
             depth = depth.checked_sub(1)?;
@@ -786,7 +784,7 @@ fn extract_typescript_method_body<'a>(source: &'a str, signature: &str) -> Optio
 }
 
 fn harmony_terminal_ordering_errors(source: &str) -> Vec<String> {
-    let code = strip_typescript_comments(source);
+    let code = mask_typescript_code(source);
     let signature = "private receiveEvent(eventJson: string): void";
     let Some(body) = extract_typescript_method_body(&code, signature) else {
         return vec!["receiveEvent must have one structurally complete function body".into()];
@@ -796,9 +794,9 @@ fn harmony_terminal_ordering_errors(source: &str) -> Vec<String> {
         ("parse", "const event = JSON.parse(eventJson)"),
         (
             "active match",
-            "const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId",
+            "const matchesActive = this.activeTurnId.length > 0 && event[",
         ),
-        ("settle", "if (type === 'turn.succeeded') {"),
+        ("settle", "if (type ==="),
         ("user callback", "try { this.userEvent(eventJson) }"),
     ];
     let mut positions = Vec::new();
@@ -822,10 +820,7 @@ fn harmony_terminal_ordering_errors(source: &str) -> Vec<String> {
         let settlement = &body[positions[2].1..positions[3].1];
         for (label, marker) in [
             ("terminal resolve", "if (resolve !== null) resolve(type)"),
-            (
-                "terminal reject",
-                "reject(new AgentRuntimeError(type, `agent turn terminated: ${type}`))",
-            ),
+            ("terminal reject", "reject(new AgentRuntimeError(type,"),
         ] {
             if code.matches(marker).count() != 1 || settlement.matches(marker).count() != 1 {
                 errors.push(format!("{label} must occur once before the user callback"));
@@ -852,6 +847,45 @@ fn move_receive_event_fragment_after_user_callback(source: &str, fragment: &str)
     without_fragment.replacen(handler_end, &format!("\n{fragment}{handler_end}"), 1)
 }
 
+fn receive_event_string_decoy_mutation(source: &str) -> String {
+    let control_start = "    try {\n      const event = JSON.parse(eventJson)";
+    let user_block = "    try { this.userEvent(eventJson) } catch (_) {\n      // User observers are isolated from terminal settlement.\n    }\n";
+    let start = source.find(control_start).unwrap();
+    let user = source.find(user_block).unwrap();
+    assert!(start < user);
+    let control_block = &source[start..user];
+    let rewritten_control = control_block
+        .replace(
+            "const event = JSON.parse(eventJson)",
+            "const event = (JSON.parse)(eventJson)",
+        )
+        .replace(
+            "const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId",
+            "const matchesActive = (this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId)",
+        )
+        .replace(
+            "if (type === 'turn.succeeded') {",
+            "if ((type === 'turn.succeeded')) {",
+        )
+        .replace(
+            "if (resolve !== null) resolve(type)",
+            "if (resolve !== null) { resolve(type) }",
+        )
+        .replace(
+            "reject(new AgentRuntimeError(type, `agent turn terminated: ${type}`))",
+            "reject(\n            new AgentRuntimeError(type, `agent turn terminated: ${type}`)\n          )",
+        );
+    let without_control = source.replacen(control_block, "", 1);
+    let decoy = "const event = JSON.parse(eventJson) | const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId | if (type === 'turn.succeeded') { | if (resolve !== null) resolve(type) | reject(new AgentRuntimeError(type, `agent turn terminated: ${type}`))";
+    without_control.replacen(
+        user_block,
+        &format!(
+            "    const orderingMarkers = \"{decoy}\"\n    orderingMarkers.length\n{user_block}{rewritten_control}"
+        ),
+        1,
+    )
+}
+
 fn legacy_harmony_ordering_gate(source: &str) -> bool {
     let code = source
         .lines()
@@ -869,6 +903,41 @@ fn legacy_harmony_ordering_gate(source: &str) -> bool {
         && code.contains(
             "this.resolveTerminal = null\n        this.rejectTerminal = null\n        this.activeToken = 0n",
         )
+}
+
+fn legacy_round4_harmony_gate(source: &str) -> bool {
+    let signature = "private receiveEvent(eventJson: string): void";
+    let Some(start) = source.find(signature) else {
+        return false;
+    };
+    let Some(end_offset) = source[start..].find("\n  }\n\n  private ensureOpen") else {
+        return false;
+    };
+    let body = &source[start..start + end_offset];
+    let markers = [
+        "const event = JSON.parse(eventJson)",
+        "const matchesActive = this.activeTurnId.length > 0 && event['turn_id'] === this.activeTurnId",
+        "if (type === 'turn.succeeded') {",
+        "try { this.userEvent(eventJson) }",
+    ];
+    if markers
+        .iter()
+        .any(|marker| source.matches(marker).count() != 1 || body.matches(marker).count() != 1)
+    {
+        return false;
+    }
+    let positions = markers.map(|marker| body.find(marker).unwrap());
+    if !(positions[0] < positions[1] && positions[1] < positions[2] && positions[2] < positions[3])
+    {
+        return false;
+    }
+    let settlement = &body[positions[2]..positions[3]];
+    [
+        "if (resolve !== null) resolve(type)",
+        "reject(new AgentRuntimeError(type, `agent turn terminated: ${type}`))",
+    ]
+    .iter()
+    .all(|marker| source.matches(marker).count() == 1 && settlement.matches(marker).count() == 1)
 }
 
 #[test]
@@ -906,9 +975,46 @@ fn harmony_terminal_ordering_rejects_control_plane_mutations() {
          if (type === 'turn.succeeded') {{ if (resolve !== null) resolve(type) }} */\n{source}"
     );
     assert!(harmony_terminal_ordering_errors(&comment_decoys).is_empty());
+    let lexical_prefix = r#"const doubleDecoy = "escaped \" quote, braces { }, private receiveEvent(eventJson: string): void { }";
+const singleDecoy = 'escaped \' quote, // and /* are string bytes } {';
+const templateDecoy = `template braces ${"}"} and fake private receiveEvent(eventJson: string): void { }`;
+"#;
+    let lexical_decoys = format!("{lexical_prefix}\n{source}");
+    let masked_decoys = mask_typescript_code(&lexical_decoys);
+    assert_eq!(masked_decoys.len(), lexical_decoys.len());
+    for (index, byte) in lexical_decoys.bytes().enumerate() {
+        if matches!(byte, b'\r' | b'\n') {
+            assert_eq!(masked_decoys.as_bytes()[index], byte);
+        }
+    }
+    assert!(harmony_terminal_ordering_errors(&lexical_decoys).is_empty());
+    for lexical_edge in [
+        "const 名称 = \"emoji 😀, escaped \\\" quote and } {\";\r\nconst ok = 1\r\n",
+        "const trailing = \"unterminated\\",
+        "/* unterminated 😀",
+        "// line 😀\r\n/* block\r\ncomment */\r\n",
+        "/",
+    ] {
+        let masked = mask_typescript_code(lexical_edge);
+        assert_eq!(masked.len(), lexical_edge.len());
+        for (index, byte) in lexical_edge.bytes().enumerate() {
+            if matches!(byte, b'\r' | b'\n') {
+                assert_eq!(masked.as_bytes()[index], byte);
+            }
+        }
+    }
     for mutation in mutations {
         assert!(!harmony_terminal_ordering_errors(&mutation).is_empty());
     }
+    let string_decoy = receive_event_string_decoy_mutation(&source);
+    assert!(
+        legacy_round4_harmony_gate(&string_decoy),
+        "the Round 4 string-preserving gate must reproduce its false GREEN"
+    );
+    assert!(
+        !harmony_terminal_ordering_errors(&string_decoy).is_empty(),
+        "string contents must not satisfy executable ordering markers"
+    );
 }
 
 #[test]
@@ -962,7 +1068,7 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(android_test.contains("turn.succeeded"));
     let harmony =
         std::fs::read_to_string(root.join("bindings/harmony/src/main/ets/index.ets")).unwrap();
-    let harmony_code = strip_typescript_comments(&harmony);
+    let harmony_code = mask_typescript_code(&harmony);
     assert!(harmony_code.contains("waitForTerminal(timeoutMs: number = 30000): Promise<string>"));
     assert!(!harmony_code.contains("agentNative.waitTurn"));
     let harmony_native =
@@ -981,9 +1087,9 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     assert!(harmony_code.contains(
         "this.resolveTerminal = null\n        this.rejectTerminal = null\n        this.activeToken = 0n"
     ));
-    assert!(harmony_code.contains("agent_runtime_busy"));
-    assert!(harmony_code.contains("callback registration failed"));
-    assert!(harmony_code.contains("terminal wait timed out"));
+    assert!(harmony.contains("'agent_runtime_busy'"));
+    assert!(harmony.contains("'callback registration failed'"));
+    assert!(harmony.contains("'terminal wait timed out'"));
     assert!(harmony_code.contains("const pendingReject = this.rejectTerminal"));
 
     let kotlin = std::fs::read_to_string(
