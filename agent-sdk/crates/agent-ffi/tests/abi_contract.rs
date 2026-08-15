@@ -1,8 +1,8 @@
 use std::{
     ffi::{c_char, c_void, CStr, CString},
     sync::{
-        atomic::{AtomicU64, Ordering},
-        mpsc, Mutex, OnceLock,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        mpsc, Arc, Barrier, Mutex, OnceLock,
     },
 };
 
@@ -13,6 +13,8 @@ static EVENTS: OnceLock<Mutex<Vec<Value>>> = OnceLock::new();
 static HANDLE: OnceLock<Mutex<usize>> = OnceLock::new();
 static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static LAST_CALL: AtomicU64 = AtomicU64::new(0);
+static DRIVER_MODE: AtomicUsize = AtomicUsize::new(0);
+static TOOL_STAGE: AtomicUsize = AtomicUsize::new(0);
 type BlockedCallSender = mpsc::Sender<(usize, u64)>;
 static BLOCKED_CALL: OnceLock<Mutex<Option<BlockedCallSender>>> = OnceLock::new();
 
@@ -29,6 +31,8 @@ unsafe extern "C-unwind" fn event_callback(
     FFI_OK
 }
 
+unsafe extern "C-unwind" fn noop_release(_context: *mut c_void) {}
+
 unsafe extern "C-unwind" fn driver_callback(
     _context: *mut c_void,
     request_json: *const c_char,
@@ -38,6 +42,49 @@ unsafe extern "C-unwind" fn driver_callback(
     assert_eq!(request["schema_version"], "1");
     let call_id = request["call_id"].as_u64().unwrap();
     LAST_CALL.store(call_id, Ordering::SeqCst);
+    if DRIVER_MODE.load(Ordering::SeqCst) == 1 {
+        let result = CString::new(
+            json!({
+                "schema_version": "1",
+                "ok": false,
+                "error": {
+                    "code": "model_unavailable",
+                    "message": "provider rejected sk-live-secret",
+                    "details": {"authorization": "Bearer sk-live-secret"}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
+        return notemeld_agent_complete_driver_call(
+            handle as *mut AgentRuntimeHandle,
+            call_id,
+            result.as_ptr(),
+        );
+    }
+    if DRIVER_MODE.load(Ordering::SeqCst) == 2 {
+        let stage = TOOL_STAGE.fetch_add(1, Ordering::SeqCst);
+        let result = match (stage, request["kind"].as_str()) {
+            (0, Some("model.stream")) => json!({"schema_version":"1","ok":true,
+                "completion":{"content":"","tool_calls":[{"call_id":"ffi-tool-1","tool_name":"lookup","arguments":{"q":"hello"}}],"finish_reason":"tool_calls","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}),
+            (1, Some("tool.invoke")) => {
+                json!({"schema_version":"1","ok":true,"output":{"answer":42}})
+            }
+            (2, Some("model.stream")) => json!({"schema_version":"1","ok":true,
+                "completion":{"content":"tool complete","tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}}),
+            _ => {
+                json!({"schema_version":"1","ok":false,"error":{"code":"sdk_internal_error","message":"unexpected harness sequence"}})
+            }
+        };
+        let result = CString::new(result.to_string()).unwrap();
+        let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
+        return notemeld_agent_complete_driver_call(
+            handle as *mut AgentRuntimeHandle,
+            call_id,
+            result.as_ptr(),
+        );
+    }
     let result = CString::new(
         json!({
             "schema_version": "1",
@@ -56,6 +103,82 @@ unsafe extern "C-unwind" fn driver_callback(
     .unwrap();
     let handle = *HANDLE.get_or_init(Default::default).lock().unwrap();
     notemeld_agent_complete_driver_call(handle as *mut AgentRuntimeHandle, call_id, result.as_ptr())
+}
+
+#[test]
+fn native_driver_roundtrip_runs_model_tool_and_model_to_success() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    EVENTS.get_or_init(Default::default).lock().unwrap().clear();
+    DRIVER_MODE.store(2, Ordering::SeqCst);
+    TOOL_STAGE.store(0, Ordering::SeqCst);
+    let config = CString::new(r#"{"schema_version":"1","max_turns":4}"#).unwrap();
+    let handle = notemeld_agent_runtime_new(config.as_ptr());
+    *HANDLE.get_or_init(Default::default).lock().unwrap() = handle as usize;
+    assert_eq!(
+        notemeld_agent_runtime_set_callbacks(
+            handle,
+            Some(event_callback),
+            std::ptr::null_mut(),
+            Some(driver_callback),
+            std::ptr::null_mut(),
+            Some(noop_release),
+            std::ptr::null_mut()
+        ),
+        FFI_OK
+    );
+    let turn = notemeld_agent_submit_turn(
+        handle,
+        request("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee").as_ptr(),
+    );
+    assert_eq!(notemeld_agent_wait_turn(handle, turn, 5_000), FFI_OK);
+    assert_eq!(TOOL_STAGE.load(Ordering::SeqCst), 3);
+    let events = EVENTS.get().unwrap().lock().unwrap().clone();
+    assert!(events.iter().any(|event| event["type"] == "tool.started"));
+    assert_eq!(events.last().unwrap()["type"], "turn.succeeded");
+    DRIVER_MODE.store(0, Ordering::SeqCst);
+    notemeld_agent_runtime_free(handle);
+}
+
+#[test]
+fn driver_errors_preserve_stable_code_without_leaking_untrusted_payloads() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    EVENTS.get_or_init(Default::default).lock().unwrap().clear();
+    DRIVER_MODE.store(1, Ordering::SeqCst);
+    let config = CString::new(r#"{"schema_version":"1"}"#).unwrap();
+    let handle = notemeld_agent_runtime_new(config.as_ptr());
+    *HANDLE.get_or_init(Default::default).lock().unwrap() = handle as usize;
+    assert_eq!(
+        notemeld_agent_runtime_set_callbacks(
+            handle,
+            Some(event_callback),
+            std::ptr::null_mut(),
+            Some(driver_callback),
+            std::ptr::null_mut(),
+            Some(noop_release),
+            std::ptr::null_mut(),
+        ),
+        FFI_OK
+    );
+    let turn = notemeld_agent_submit_turn(
+        handle,
+        request("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").as_ptr(),
+    );
+    assert_eq!(notemeld_agent_wait_turn(handle, turn, 5_000), FFI_OK);
+    let events = EVENTS.get().unwrap().lock().unwrap().clone();
+    let failed = events
+        .iter()
+        .find(|event| event["type"] == "turn.failed")
+        .expect("driver failure must produce turn.failed");
+    assert_eq!(failed["payload"]["error"]["code"], "model_unavailable");
+    assert!(!failed.to_string().contains("sk-live-secret"));
+    let pointer = notemeld_agent_last_error_json(handle);
+    assert!(!pointer.is_null());
+    let last_error = unsafe { CStr::from_ptr(pointer).to_string_lossy().into_owned() };
+    assert!(last_error.contains("model_unavailable"));
+    assert!(!last_error.contains("sk-live-secret"));
+    notemeld_agent_string_free(pointer);
+    DRIVER_MODE.store(0, Ordering::SeqCst);
+    notemeld_agent_runtime_free(handle);
 }
 
 fn request(id: &str) -> CString {
@@ -102,6 +225,8 @@ fn version_lifecycle_driver_event_cancel_steer_and_stale_handle_contract() {
             Some(event_callback),
             std::ptr::null_mut(),
             Some(driver_callback),
+            std::ptr::null_mut(),
+            Some(noop_release),
             std::ptr::null_mut(),
         ),
         FFI_OK
@@ -175,6 +300,8 @@ fn callback_unwind_is_contained_by_the_ffi_boundary() {
             std::ptr::null_mut(),
             Some(driver_callback),
             std::ptr::null_mut(),
+            Some(noop_release),
+            std::ptr::null_mut(),
         ),
         FFI_OK
     );
@@ -219,6 +346,8 @@ fn cancel_completion_and_free_races_have_typed_bounded_outcomes() {
             Some(event_callback),
             std::ptr::null_mut(),
             Some(blocked_driver_callback),
+            std::ptr::null_mut(),
+            Some(noop_release),
             std::ptr::null_mut(),
         ),
         FFI_OK
@@ -267,6 +396,8 @@ fn driver_call_ids_are_process_unique_and_cannot_cross_runtime_boundaries() {
                 std::ptr::null_mut(),
                 Some(blocked_driver_callback),
                 context as *mut c_void,
+                Some(noop_release),
+                std::ptr::null_mut(),
             ),
             FFI_OK
         );
@@ -303,6 +434,118 @@ fn driver_call_ids_are_process_unique_and_cannot_cross_runtime_boundaries() {
     notemeld_agent_runtime_free(second);
 }
 
+struct DelayedCallbackContext {
+    entered: mpsc::Sender<()>,
+    resume: Mutex<mpsc::Receiver<()>>,
+    released: mpsc::Sender<()>,
+}
+
+unsafe extern "C-unwind" fn delayed_driver_callback(
+    context: *mut c_void,
+    _request_json: *const c_char,
+) -> i32 {
+    let context = &*(context as *const DelayedCallbackContext);
+    context.entered.send(()).unwrap();
+    context.resume.lock().unwrap().recv().unwrap();
+    FFI_INTERNAL_ERROR
+}
+
+unsafe extern "C-unwind" fn release_delayed_context(context: *mut c_void) {
+    let context = Box::from_raw(context as *mut DelayedCallbackContext);
+    context.released.send(()).unwrap();
+}
+
+#[test]
+fn free_is_nonblocking_and_releases_callback_context_after_inflight_callback() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (resume_tx, resume_rx) = mpsc::channel();
+    let (released_tx, released_rx) = mpsc::channel();
+    let context = Box::into_raw(Box::new(DelayedCallbackContext {
+        entered: entered_tx,
+        resume: Mutex::new(resume_rx),
+        released: released_tx,
+    }));
+    let config = CString::new(r#"{"schema_version":"1"}"#).unwrap();
+    let handle = notemeld_agent_runtime_new(config.as_ptr());
+    assert_eq!(
+        notemeld_agent_runtime_set_callbacks(
+            handle,
+            None,
+            context.cast(),
+            Some(delayed_driver_callback),
+            context.cast(),
+            Some(release_delayed_context),
+            context.cast(),
+        ),
+        FFI_OK
+    );
+    let turn = notemeld_agent_submit_turn(
+        handle,
+        request("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").as_ptr(),
+    );
+    assert_ne!(turn, 0);
+    entered_rx.recv().unwrap();
+    notemeld_agent_runtime_free(handle);
+    assert!(released_rx.try_recv().is_err());
+    resume_tx.send(()).unwrap();
+    released_rx.recv().unwrap();
+    assert!(
+        released_rx.try_recv().is_err(),
+        "release must run exactly once"
+    );
+    notemeld_agent_runtime_free(handle);
+}
+
+#[test]
+fn concurrent_completion_has_one_atomic_winner_and_wait_timeout_is_typed() {
+    let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
+    let (call_tx, call_rx) = mpsc::channel();
+    *BLOCKED_CALL.get_or_init(Default::default).lock().unwrap() = Some(call_tx);
+    let config = CString::new(r#"{"schema_version":"1"}"#).unwrap();
+    let handle = notemeld_agent_runtime_new(config.as_ptr());
+    assert_eq!(
+        notemeld_agent_runtime_set_callbacks(
+            handle,
+            None,
+            std::ptr::null_mut(),
+            Some(blocked_driver_callback),
+            std::ptr::null_mut(),
+            Some(noop_release),
+            std::ptr::null_mut()
+        ),
+        FFI_OK
+    );
+    let turn = notemeld_agent_submit_turn(
+        handle,
+        request("dddddddd-dddd-4ddd-8ddd-dddddddddddd").as_ptr(),
+    );
+    let (_, call_id) = call_rx.recv().unwrap();
+    assert_eq!(notemeld_agent_wait_turn(handle, turn, 0), FFI_TIMEOUT);
+
+    let barrier = Arc::new(Barrier::new(3));
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let barrier = Arc::clone(&barrier);
+        let raw = handle as usize;
+        workers.push(std::thread::spawn(move || {
+            let completion = CString::new(r#"{"schema_version":"1","ok":false,"error":{"code":"tool_failed","message":"raw"}}"#).unwrap();
+            barrier.wait();
+            notemeld_agent_complete_driver_call(
+                raw as *mut AgentRuntimeHandle, call_id, completion.as_ptr())
+        }));
+    }
+    barrier.wait();
+    let mut results = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect::<Vec<_>>();
+    results.sort_unstable();
+    assert_eq!(results, vec![FFI_DUPLICATE_COMPLETION, FFI_OK]);
+    assert_eq!(notemeld_agent_wait_turn(handle, turn, 5_000), FFI_OK);
+    notemeld_agent_runtime_free(handle);
+}
+
 #[test]
 fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
     let _guard = TEST_LOCK.get_or_init(Default::default).lock().unwrap();
@@ -312,21 +555,14 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
             .unwrap();
     assert_eq!(manifest["sdk_version"], "0.1.0");
     assert_eq!(manifest["schema_version"], "1");
-    let functions = manifest["functions"].as_array().unwrap();
     let header = std::fs::read_to_string(root.join("include/notemeld_agent.h")).unwrap();
     let udl =
         std::fs::read_to_string(root.join("crates/agent-ffi/src/notemeld_agent.udl")).unwrap();
-    for function in functions {
-        assert!(header.contains(function.as_str().unwrap()));
-    }
-    for semantic_method in [
-        "submit_turn",
-        "complete_driver_call",
-        "cancel_turn",
-        "steer_turn",
-    ] {
-        assert!(udl.contains(semantic_method));
-    }
+    assert_eq!(header, notemeld_agent::abi_render::render_header(&manifest));
+    assert_eq!(
+        udl,
+        notemeld_agent::abi_render::render_semantic_udl(&manifest)
+    );
     for binding in [
         "bindings/python/notemeld_agent_sdk/runtime.py",
         "bindings/swift/Sources/NoteMeldAgentSDK/Runtime.swift",
@@ -337,4 +573,33 @@ fn shared_declarations_and_bindings_cannot_drift_from_the_c_abi() {
         assert!(source.contains("0.1.0"));
         assert!(source.contains("\"1\"") || source.contains("'1'") || source.contains("= \"1\""));
     }
+    let python =
+        std::fs::read_to_string(root.join("bindings/python/notemeld_agent_sdk/runtime.py"))
+            .unwrap();
+    assert!(python.contains("_RELEASE_CALLBACK"));
+    assert!(python.contains("FFI_TIMEOUT = -10"));
+    let swift =
+        std::fs::read_to_string(root.join("bindings/swift/Sources/NoteMeldAgentSDK/Runtime.swift"))
+            .unwrap();
+    assert!(swift.contains("passRetained"));
+    assert!(swift.contains("takeRetainedValue"));
+    assert!(!swift.contains("passUnretained"));
+    let jni =
+        std::fs::read_to_string(root.join("bindings/kotlin/src/main/cpp/runtime_jni.cpp")).unwrap();
+    assert!(jni.contains("GetStringChars"));
+    assert!(jni.contains("ReleaseBridge"));
+    assert!(!jni.contains("GetStringUTFChars"));
+    assert!(!jni.contains("retired"));
+    let android_test = std::fs::read_to_string(root.join("examples/android-harness/app/src/androidTest/java/wiki/notemeld/agent/harness/NativeSmokeTest.kt")).unwrap();
+    assert!(android_test.contains("CountDownLatch"));
+    assert!(android_test.contains("turn.succeeded"));
+    let harmony =
+        std::fs::read_to_string(root.join("bindings/harmony/src/main/ets/index.ets")).unwrap();
+    assert!(harmony.contains("waitForTerminal(): Promise<string>"));
+    assert!(!harmony.contains("agentNative.waitTurn"));
+    let harmony_native =
+        std::fs::read_to_string(root.join("bindings/harmony/src/main/cpp/napi_init.cpp")).unwrap();
+    assert!(harmony_native.contains("ReleaseBridge"));
+    assert!(!harmony_native.contains("retired_bridges"));
+    assert!(!harmony_native.contains("napi_tsfn_abort"));
 }

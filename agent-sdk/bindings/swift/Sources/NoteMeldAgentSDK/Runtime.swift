@@ -12,14 +12,55 @@ public enum NoteMeldAgentError: Error {
 
 private func eventBridge(_ context: UnsafeMutableRawPointer?, _ json: UnsafePointer<CChar>?) -> Int32 {
     guard let context, let json else { return -2 }
-    return Unmanaged<NoteMeldAgentRuntime>.fromOpaque(context)
+    return Unmanaged<CallbackBox>.fromOpaque(context)
         .takeUnretainedValue().receiveEvent(String(cString: json))
 }
 
 private func driverBridge(_ context: UnsafeMutableRawPointer?, _ json: UnsafePointer<CChar>?) -> Int32 {
     guard let context, let json else { return -2 }
-    return Unmanaged<NoteMeldAgentRuntime>.fromOpaque(context)
+    return Unmanaged<CallbackBox>.fromOpaque(context)
         .takeUnretainedValue().receiveDriverRequest(String(cString: json))
+}
+
+private func releaseBridge(_ context: UnsafeMutableRawPointer?) {
+    guard let context else { return }
+    _ = Unmanaged<CallbackBox>.fromOpaque(context).takeRetainedValue()
+}
+
+private final class CallbackBox {
+    typealias Driver = ([String: Any]) throws -> [String: Any]
+    private var handle: OpaquePointer?
+    private let driver: Driver
+    private let eventHandler: ([String: Any]) -> Void
+    private let lock = NSLock()
+    private(set) var events: [[String: Any]] = []
+
+    init(handle: OpaquePointer, driver: @escaping Driver, eventHandler: @escaping ([String: Any]) -> Void) {
+        self.handle = handle; self.driver = driver; self.eventHandler = eventHandler
+    }
+
+    func receiveEvent(_ wire: String) -> Int32 {
+        guard let data = wire.data(using: .utf8),
+              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              event["schema_version"] as? String == noteMeldAgentSchemaVersion else { return -2 }
+        lock.lock(); events.append(event); lock.unlock()
+        eventHandler(event)
+        return 0
+    }
+
+    func receiveDriverRequest(_ wire: String) -> Int32 {
+        guard let handle, let data = wire.data(using: .utf8),
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let callId = request["call_id"] as? UInt64 else { return -2 }
+        let result: [String: Any]
+        do { result = try driver(request) }
+        catch { result = ["schema_version": noteMeldAgentSchemaVersion, "ok": false,
+                          "error": ["code": "sdk_internal_error", "message": "host driver failed"]] }
+        guard let resultData = try? JSONSerialization.data(withJSONObject: result) else { return -2 }
+        return String(decoding: resultData, as: UTF8.self).withCString {
+            notemeld_agent_complete_driver_call(handle, callId, $0)
+        }
+    }
 }
 
 public final class NoteMeldAgentRuntime {
@@ -27,18 +68,14 @@ public final class NoteMeldAgentRuntime {
     public typealias EventHandler = ([String: Any]) -> Void
 
     private var handle: OpaquePointer?
-    private let driver: Driver
-    private let eventHandler: EventHandler
-    private let lock = NSLock()
-    public private(set) var events: [[String: Any]] = []
+    private var callbackBox: CallbackBox?
+    public var events: [[String: Any]] { callbackBox?.events ?? [] }
 
     public init(maxTurns: Int = 16, driver: @escaping Driver, onEvent: @escaping EventHandler = { _ in }) throws {
         guard String(cString: notemeld_agent_sdk_version()) == noteMeldAgentSdkVersion,
               String(cString: notemeld_agent_schema_version()) == noteMeldAgentSchemaVersion else {
             throw NoteMeldAgentError.versionMismatch
         }
-        self.driver = driver
-        self.eventHandler = onEvent
         let config = try JSONSerialization.data(withJSONObject: [
             "schema_version": noteMeldAgentSchemaVersion, "max_turns": maxTurns
         ])
@@ -48,9 +85,15 @@ public final class NoteMeldAgentRuntime {
         }
         guard let created else { throw NoteMeldAgentError.native(-9) }
         handle = created
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        let code = notemeld_agent_runtime_set_callbacks(created, eventBridge, context, driverBridge, context)
-        guard code == 0 else { close(); throw NoteMeldAgentError.native(code) }
+        let box = CallbackBox(handle: created, driver: driver, eventHandler: onEvent)
+        callbackBox = box
+        let context = Unmanaged.passRetained(box).toOpaque()
+        let code = notemeld_agent_runtime_set_callbacks(
+            created, eventBridge, context, driverBridge, context, releaseBridge, context)
+        guard code == 0 else {
+            Unmanaged<CallbackBox>.fromOpaque(context).release()
+            callbackBox = nil; close(); throw NoteMeldAgentError.native(code)
+        }
     }
 
     public func submit(_ request: [String: Any]) throws -> UInt64 {
@@ -84,33 +127,8 @@ public final class NoteMeldAgentRuntime {
         guard code == 0 else { throw NoteMeldAgentError.native(code) }
     }
 
-    fileprivate func receiveEvent(_ wire: String) -> Int32 {
-        guard let data = wire.data(using: .utf8),
-              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              event["schema_version"] as? String == noteMeldAgentSchemaVersion else { return -2 }
-        lock.lock(); events.append(event); lock.unlock()
-        eventHandler(event)
-        return 0
-    }
-
-    fileprivate func receiveDriverRequest(_ wire: String) -> Int32 {
-        guard let handle, let data = wire.data(using: .utf8),
-              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let callId = request["call_id"] as? UInt64 else { return -2 }
-        let result: [String: Any]
-        do { result = try driver(request) }
-        catch {
-            result = ["schema_version": noteMeldAgentSchemaVersion, "ok": false,
-                      "error": ["code": "sdk_internal_error", "message": "host driver failed"]]
-        }
-        guard let resultData = try? JSONSerialization.data(withJSONObject: result) else { return -2 }
-        return String(decoding: resultData, as: UTF8.self).withCString {
-            notemeld_agent_complete_driver_call(handle, callId, $0)
-        }
-    }
-
     public func close() {
-        if let handle { notemeld_agent_runtime_free(handle); self.handle = nil }
+        if let handle { notemeld_agent_runtime_free(handle); self.handle = nil; callbackBox = nil }
     }
 
     deinit { close() }

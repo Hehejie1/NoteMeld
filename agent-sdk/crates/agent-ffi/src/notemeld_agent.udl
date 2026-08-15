@@ -1,21 +1,16 @@
-namespace notemeld_agent {
-    string sdk_version();
-    string schema_version();
-};
-
-callback interface EventSink {
-    void on_event(string event_json);
-};
-
-callback interface DriverSink {
-    void on_driver_request(string request_json);
-};
-
-interface Runtime {
-    constructor(string config_json, EventSink events, DriverSink drivers);
-    u64 submit_turn(string request_json);
-    void complete_driver_call(u64 call_id, string result_json);
-    void cancel_turn(u64 turn_token);
-    void steer_turn(u64 turn_token, string steer_json);
-    void close();
-};
+// Generated semantic declaration of the NoteMeld C ABI.
+// This file is intentionally not presented as UniFFI input.
+namespace notemeld_agent_abi_v1 {
+    // const char * notemeld_agent_sdk_version(void);
+    // const char * notemeld_agent_schema_version(void);
+    // AgentRuntimeHandle * notemeld_agent_runtime_new(const char * config_json);
+    // int32_t notemeld_agent_runtime_set_callbacks(AgentRuntimeHandle * handle, NotemeldAgentEventCallback event_callback, void * event_context, NotemeldAgentDriverCallback driver_callback, void * driver_context, NotemeldAgentContextReleaseCallback release_callback, void * release_context);
+    // uint64_t notemeld_agent_submit_turn(AgentRuntimeHandle * handle, const char * request_json);
+    // int32_t notemeld_agent_complete_driver_call(AgentRuntimeHandle * handle, uint64_t call_id, const char * result_json);
+    // int32_t notemeld_agent_cancel_turn(AgentRuntimeHandle * handle, uint64_t turn_token);
+    // int32_t notemeld_agent_steer_turn(AgentRuntimeHandle * handle, uint64_t turn_token, const char * steer_json);
+    // int32_t notemeld_agent_wait_turn(AgentRuntimeHandle * handle, uint64_t turn_token, uint64_t timeout_ms);
+    // char * notemeld_agent_last_error_json(AgentRuntimeHandle * handle);
+    // void notemeld_agent_string_free(char * value);
+    // void notemeld_agent_runtime_free(AgentRuntimeHandle * handle);
+}

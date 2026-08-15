@@ -6,6 +6,7 @@ import ctypes
 import json
 import os
 import queue
+import threading
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -14,6 +15,7 @@ SCHEMA_VERSION = "1"
 
 FFI_OK = 0
 FFI_UNSUPPORTED = -6
+FFI_TIMEOUT = -10
 
 
 class AgentSdkError(RuntimeError):
@@ -23,6 +25,70 @@ class AgentSdkError(RuntimeError):
 
 
 _CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p)
+_RELEASE_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+_CONTEXTS: dict[int, "_CallbackBox"] = {}
+_CONTEXTS_LOCK = threading.Lock()
+
+
+class _CallbackBox:
+    def __init__(self, lib: ctypes.CDLL, handle: int, driver: Callable[..., Any], on_event: Callable[..., Any] | None) -> None:
+        self.lib = lib
+        self.handle = handle
+        self.driver = driver
+        self.on_event = on_event
+        self.events: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=1024)
+
+
+def _box(context: int | None) -> _CallbackBox | None:
+    with _CONTEXTS_LOCK:
+        return _CONTEXTS.get(int(context or 0))
+
+
+@_CALLBACK
+def _receive_event(context: int, payload: bytes) -> int:
+    try:
+        box = _box(context)
+        if box is None:
+            return -1
+        event = json.loads(payload.decode("utf-8"))
+        if event.get("schema_version") != SCHEMA_VERSION:
+            return -2
+        try:
+            box.events.put_nowait(event)
+        except queue.Full:
+            if event.get("type") not in {"turn.succeeded", "turn.failed", "turn.cancelled", "turn.interrupted"}:
+                return FFI_OK
+            box.events.get_nowait()
+            box.events.put_nowait(event)
+        if box.on_event is not None:
+            box.on_event(event)
+        return FFI_OK
+    except Exception:
+        return -9
+
+
+@_CALLBACK
+def _receive_driver_request(context: int, payload: bytes) -> int:
+    box = _box(context)
+    if box is None:
+        return -1
+    try:
+        request = json.loads(payload.decode("utf-8"))
+        call_id = int(request["call_id"])
+        result = dict(box.driver(request))
+        result.setdefault("schema_version", SCHEMA_VERSION)
+    except Exception:
+        if "call_id" not in locals():
+            return -2
+        result = {"schema_version": SCHEMA_VERSION, "ok": False,
+                  "error": {"code": "sdk_internal_error", "message": "host driver failed"}}
+    return int(box.lib.notemeld_agent_complete_driver_call(box.handle, call_id, _json_bytes(result)))
+
+
+@_RELEASE_CALLBACK
+def _release_context(context: int) -> None:
+    with _CONTEXTS_LOCK:
+        _CONTEXTS.pop(int(context or 0), None)
 
 
 def _json_bytes(value: Mapping[str, Any]) -> bytes:
@@ -50,24 +116,31 @@ class Runtime:
             raise AgentSdkError(-2, "SDK version mismatch")
         if self._lib.notemeld_agent_schema_version().decode() != SCHEMA_VERSION:
             raise AgentSdkError(-2, "schema version mismatch")
-        self._driver = driver
-        self._on_event = on_event
-        self.events: queue.Queue[dict[str, Any]] = queue.Queue()
         self._closed = False
-        self._event_callback = _CALLBACK(self._receive_event)
-        self._driver_callback = _CALLBACK(self._receive_driver_request)
         config = _json_bytes({"schema_version": SCHEMA_VERSION, "max_turns": max_turns})
         self._handle = self._lib.notemeld_agent_runtime_new(config)
         if not self._handle:
             raise AgentSdkError(-9, "native runtime creation failed")
+        box = _CallbackBox(self._lib, self._handle, driver, on_event)
+        self.events = box.events
+        self._context = id(box)
+        with _CONTEXTS_LOCK:
+            _CONTEXTS[self._context] = box
         code = self._lib.notemeld_agent_runtime_set_callbacks(
             self._handle,
-            self._event_callback,
-            None,
-            self._driver_callback,
-            None,
+            _receive_event,
+            self._context,
+            _receive_driver_request,
+            self._context,
+            _release_context,
+            self._context,
         )
-        self._check(code, "callback registration failed")
+        if code != FFI_OK:
+            with _CONTEXTS_LOCK:
+                _CONTEXTS.pop(self._context, None)
+            self._lib.notemeld_agent_runtime_free(self._handle)
+            self._handle = None
+            self._check(code, "callback registration failed")
 
     def _configure_abi(self) -> None:
         lib = self._lib
@@ -80,6 +153,8 @@ class Runtime:
             _CALLBACK,
             ctypes.c_void_p,
             _CALLBACK,
+            ctypes.c_void_p,
+            _RELEASE_CALLBACK,
             ctypes.c_void_p,
         ]
         lib.notemeld_agent_runtime_set_callbacks.restype = ctypes.c_int32
@@ -101,38 +176,6 @@ class Runtime:
         lib.notemeld_agent_last_error_json.restype = ctypes.c_void_p
         lib.notemeld_agent_string_free.argtypes = [ctypes.c_void_p]
         lib.notemeld_agent_runtime_free.argtypes = [ctypes.c_void_p]
-
-    def _receive_event(self, _context: int, payload: bytes) -> int:
-        try:
-            event = json.loads(payload.decode("utf-8"))
-            if event.get("schema_version") != SCHEMA_VERSION:
-                return -2
-            self.events.put(event)
-            if self._on_event is not None:
-                self._on_event(event)
-            return FFI_OK
-        except Exception:
-            return -9
-
-    def _receive_driver_request(self, _context: int, payload: bytes) -> int:
-        try:
-            request = json.loads(payload.decode("utf-8"))
-            call_id = int(request["call_id"])
-            result = dict(self._driver(request))
-            result.setdefault("schema_version", SCHEMA_VERSION)
-        except Exception:
-            if "request" not in locals() or "call_id" not in locals():
-                return -2
-            result = {
-                "schema_version": SCHEMA_VERSION,
-                "ok": False,
-                "error": {"code": "sdk_internal_error", "message": "host driver failed"},
-            }
-        return int(
-            self._lib.notemeld_agent_complete_driver_call(
-                self._handle, call_id, _json_bytes(result)
-            )
-        )
 
     def submit_turn(self, request: Mapping[str, Any]) -> int:
         self._ensure_open()

@@ -10,14 +10,16 @@
 // is still the caller's C-ABI precondition and cannot be proven by Rust.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+pub mod abi_render;
+
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet, VecDeque},
     ffi::{c_char, c_void, CString},
     panic::{catch_unwind, AssertUnwindSafe},
     ptr,
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc, Condvar, Mutex, OnceLock, RwLock, Weak,
+        Arc, Condvar, Mutex, OnceLock, Weak,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -26,8 +28,8 @@ use agent_core::{
     AgentEventSink, AgentMessage, AgentRuntime, AgentRuntimeConfig, CancellationToken,
 };
 use agent_events::{
-    AgentError, AgentErrorCode, AgentEvent, AgentEventEnvelope, EventId, TurnId, TurnRequest,
-    SCHEMA_VERSION, SDK_VERSION,
+    AgentError, AgentErrorCode, AgentEvent, AgentEventEnvelope, EventId, TurnFailedPayload, TurnId,
+    TurnRequest, SCHEMA_VERSION, SDK_VERSION,
 };
 use agent_model::{ModelChunk, ModelChunkSink, ModelCompletion, ModelDriver, ModelRequest};
 use agent_tools::{
@@ -50,6 +52,7 @@ pub const FFI_UNSUPPORTED: i32 = -6;
 pub const FFI_TURN_NOT_FOUND: i32 = -7;
 pub const FFI_TURN_TERMINAL: i32 = -8;
 pub const FFI_INTERNAL_ERROR: i32 = -9;
+pub const FFI_TIMEOUT: i32 = -10;
 
 const MAX_CONFIG_BYTES: usize = 64 * 1024;
 const MAX_TURN_REQUEST_BYTES: usize = 1024 * 1024;
@@ -66,6 +69,7 @@ pub struct AgentRuntimeHandle {
 
 pub type EventCallback = unsafe extern "C-unwind" fn(*mut c_void, *const c_char) -> i32;
 pub type DriverCallback = unsafe extern "C-unwind" fn(*mut c_void, *const c_char) -> i32;
+pub type ContextReleaseCallback = unsafe extern "C-unwind" fn(*mut c_void);
 
 #[derive(Clone, Copy, Default)]
 struct Callbacks {
@@ -73,6 +77,26 @@ struct Callbacks {
     event_context: usize,
     driver: Option<DriverCallback>,
     driver_context: usize,
+    release: Option<ContextReleaseCallback>,
+    release_context: usize,
+}
+
+#[derive(Default)]
+struct CallbackGate {
+    callbacks: Option<Callbacks>,
+    closing: bool,
+    active: usize,
+}
+
+struct CallbackLease {
+    state: Arc<RuntimeState>,
+    callbacks: Callbacks,
+}
+
+impl Drop for CallbackLease {
+    fn drop(&mut self) {
+        self.state.finish_callback();
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,25 +110,80 @@ const fn default_max_turns() -> usize {
     16
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SettledCall {
+#[derive(Debug)]
+enum DriverCallState {
+    Pending(oneshot::Sender<Value>),
     Completed,
     Late,
+}
+
+#[derive(Default)]
+struct DriverCalls {
+    states: HashMap<u64, DriverCallState>,
+    tombstones: VecDeque<u64>,
+}
+
+const MAX_CALL_TOMBSTONES: usize = 256;
+const MAX_TURN_TOMBSTONES: usize = 256;
+
+impl DriverCalls {
+    fn settle(&mut self, call_id: u64, state: DriverCallState) {
+        if let Some(index) = self.tombstones.iter().position(|id| *id == call_id) {
+            self.tombstones.remove(index);
+        }
+        self.states.insert(call_id, state);
+        self.tombstones.push_back(call_id);
+        while self.tombstones.len() > MAX_CALL_TOMBSTONES {
+            if let Some(evicted) = self.tombstones.pop_front() {
+                if matches!(
+                    self.states.get(&evicted),
+                    Some(DriverCallState::Completed | DriverCallState::Late)
+                ) {
+                    self.states.remove(&evicted);
+                }
+            }
+        }
+    }
+
+    fn mark_all_pending_late(&mut self) {
+        let pending = self
+            .states
+            .iter()
+            .filter_map(|(id, state)| matches!(state, DriverCallState::Pending(_)).then_some(*id))
+            .collect::<Vec<_>>();
+        for id in pending {
+            self.mark_pending_late(id);
+        }
+    }
+
+    fn mark_pending_late(&mut self, call_id: u64) -> bool {
+        if matches!(self.states.get(&call_id), Some(DriverCallState::Pending(_))) {
+            self.settle(call_id, DriverCallState::Late);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 struct TurnControl {
     cancellation: CancellationToken,
-    terminal: bool,
+}
+
+#[derive(Default)]
+struct Turns {
+    active: HashMap<u64, TurnControl>,
+    terminal: HashSet<u64>,
+    terminal_order: VecDeque<u64>,
 }
 
 struct RuntimeState {
     id: usize,
     max_turns: usize,
-    callbacks: RwLock<Callbacks>,
-    pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
-    settled: Mutex<HashMap<u64, SettledCall>>,
-    turns: Mutex<HashMap<u64, TurnControl>>,
+    callbacks: Mutex<CallbackGate>,
+    calls: Mutex<DriverCalls>,
+    turns: Mutex<Turns>,
     turns_changed: Condvar,
     next_turn_token: AtomicU64,
     stopping: AtomicBool,
@@ -116,10 +195,9 @@ impl RuntimeState {
         Self {
             id,
             max_turns,
-            callbacks: RwLock::new(Callbacks::default()),
-            pending: Mutex::new(HashMap::new()),
-            settled: Mutex::new(HashMap::new()),
-            turns: Mutex::new(HashMap::new()),
+            callbacks: Mutex::new(CallbackGate::default()),
+            calls: Mutex::new(DriverCalls::default()),
+            turns: Mutex::new(Turns::default()),
             turns_changed: Condvar::new(),
             next_turn_token: AtomicU64::new(1),
             stopping: AtomicBool::new(false),
@@ -135,11 +213,70 @@ impl RuntimeState {
 
     fn mark_terminal(&self, turn_token: u64) {
         if let Ok(mut turns) = self.turns.lock() {
-            if let Some(turn) = turns.get_mut(&turn_token) {
-                turn.terminal = true;
+            if turns.active.remove(&turn_token).is_some() {
+                turns.terminal.insert(turn_token);
+                turns.terminal_order.push_back(turn_token);
+                while turns.terminal_order.len() > MAX_TURN_TOMBSTONES {
+                    if let Some(evicted) = turns.terminal_order.pop_front() {
+                        turns.terminal.remove(&evicted);
+                    }
+                }
             }
             self.turns_changed.notify_all();
         }
+    }
+
+    fn acquire_callback(self: &Arc<Self>) -> Result<CallbackLease, AgentError> {
+        let mut gate = self
+            .callbacks
+            .lock()
+            .map_err(|_| internal_error("callback registry unavailable"))?;
+        if gate.closing {
+            return Err(AgentError::new(AgentErrorCode::Cancelled, "runtime closed"));
+        }
+        let callbacks = gate
+            .callbacks
+            .ok_or_else(|| internal_error("callbacks are not configured"))?;
+        gate.active = gate
+            .active
+            .checked_add(1)
+            .ok_or_else(|| internal_error("callback lease space exhausted"))?;
+        Ok(CallbackLease {
+            state: Arc::clone(self),
+            callbacks,
+        })
+    }
+
+    fn finish_callback(&self) {
+        let release = self.callbacks.lock().ok().and_then(|mut gate| {
+            gate.active = gate.active.saturating_sub(1);
+            if gate.closing && gate.active == 0 {
+                gate.callbacks.take().and_then(|callbacks| {
+                    callbacks
+                        .release
+                        .map(|release| (release, callbacks.release_context))
+                })
+            } else {
+                None
+            }
+        });
+        invoke_release(release);
+    }
+
+    fn close_callbacks(&self) {
+        let release = self.callbacks.lock().ok().and_then(|mut gate| {
+            gate.closing = true;
+            if gate.active == 0 {
+                gate.callbacks.take().and_then(|callbacks| {
+                    callbacks
+                        .release
+                        .map(|release| (release, callbacks.release_context))
+                })
+            } else {
+                None
+            }
+        });
+        invoke_release(release);
     }
 }
 
@@ -180,9 +317,28 @@ fn runtime_for(handle: *mut AgentRuntimeHandle) -> Result<Arc<RuntimeState>, i32
         .ok_or(FFI_INVALID_HANDLE)
 }
 
-fn next_nonzero(counter: &AtomicU64) -> Option<u64> {
-    let value = counter.fetch_add(1, Ordering::Relaxed);
-    (value != 0 && value != u64::MAX).then_some(value)
+fn next_u64(counter: &AtomicU64) -> Option<u64> {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            (current != 0).then(|| current.checked_add(1)).flatten()
+        })
+        .ok()
+}
+
+fn next_usize(counter: &AtomicUsize) -> Option<usize> {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            (current != 0).then(|| current.checked_add(1)).flatten()
+        })
+        .ok()
+}
+
+fn invoke_release(release: Option<(ContextReleaseCallback, usize)>) {
+    if let Some((callback, context)) = release {
+        let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+            callback(context as *mut c_void)
+        }));
+    }
 }
 
 /// Reads at most `max` bytes and therefore never performs an unbounded C
@@ -193,7 +349,7 @@ unsafe fn read_bounded_c_string(pointer: *const c_char, max: usize) -> Result<St
         return Err(invalid_input("input pointer must not be null"));
     }
     let mut bytes = Vec::new();
-    for index in 0..=max {
+    for index in 0..max {
         let byte = pointer.cast::<u8>().add(index).read();
         if byte == 0 {
             return std::str::from_utf8(&bytes)
@@ -215,6 +371,10 @@ fn internal_error(message: &str) -> AgentError {
 
 fn panic_error() -> AgentError {
     internal_error("agent FFI operation failed")
+}
+
+fn guard_worker<T>(work: impl FnOnce() -> Result<T, AgentError>) -> Result<T, AgentError> {
+    catch_unwind(AssertUnwindSafe(work)).unwrap_or_else(|_| Err(panic_error()))
 }
 
 fn invoke_json_callback(
@@ -244,25 +404,29 @@ async fn dispatch_driver_call(
     }
     // Process-global call ids prevent a completion from runtime A from ever
     // matching a numerically-colliding pending call in runtime B.
-    let call_id = next_nonzero(&NEXT_DRIVER_CALL_ID)
+    let call_id = next_u64(&NEXT_DRIVER_CALL_ID)
         .ok_or_else(|| internal_error("driver call id space exhausted"))?;
     let (sender, receiver) = oneshot::channel();
     state
-        .pending
+        .calls
         .lock()
         .map_err(|_| internal_error("driver registry unavailable"))?
-        .insert(call_id, sender);
+        .states
+        .insert(call_id, DriverCallState::Pending(sender));
 
-    let callbacks = *state
-        .callbacks
-        .read()
-        .map_err(|_| internal_error("callback registry unavailable"))?;
-    let Some(callback) = callbacks.driver else {
-        state
-            .pending
-            .lock()
-            .ok()
-            .and_then(|mut calls| calls.remove(&call_id));
+    let lease = match state.acquire_callback() {
+        Ok(lease) => lease,
+        Err(error) => {
+            if let Ok(mut calls) = state.calls.lock() {
+                calls.mark_pending_late(call_id);
+            }
+            return Err(error);
+        }
+    };
+    let Some(callback) = lease.callbacks.driver else {
+        if let Ok(mut calls) = state.calls.lock() {
+            calls.mark_pending_late(call_id);
+        }
         return Err(AgentError::new(
             AgentErrorCode::AgentRuntimeUnavailable,
             "model/tool driver callback is not configured",
@@ -275,28 +439,28 @@ async fn dispatch_driver_call(
         "kind": kind,
         "payload": payload,
     });
-    if let Err(error) = invoke_json_callback(callback, callbacks.driver_context, &request) {
-        state
-            .pending
-            .lock()
-            .ok()
-            .and_then(|mut calls| calls.remove(&call_id));
-        state
-            .settled
-            .lock()
-            .ok()
-            .map(|mut settled| settled.insert(call_id, SettledCall::Late));
+    if let Err(error) = invoke_json_callback(callback, lease.callbacks.driver_context, &request) {
+        if let Ok(mut calls) = state.calls.lock() {
+            calls.mark_pending_late(call_id);
+        }
         return Err(error);
     }
+    drop(lease);
 
+    let mut receiver = receiver;
     tokio::select! {
         biased;
         _ = cancellation.cancelled() => {
-            state.pending.lock().ok().and_then(|mut calls| calls.remove(&call_id));
-            state.settled.lock().ok().map(|mut settled| settled.insert(call_id, SettledCall::Late));
-            Err(AgentError::new(AgentErrorCode::Cancelled, "turn cancelled"))
+            let was_pending = state.calls.lock().ok().map(|mut calls| {
+                calls.mark_pending_late(call_id)
+            }).unwrap_or(false);
+            if was_pending {
+                Err(AgentError::new(AgentErrorCode::Cancelled, "turn cancelled"))
+            } else {
+                (&mut receiver).await.map_err(|_| internal_error("driver completion channel closed"))
+            }
         }
-        response = receiver => response.map_err(|_| internal_error("driver completion channel closed")),
+        response = &mut receiver => response.map_err(|_| internal_error("driver completion channel closed")),
     }
 }
 
@@ -404,7 +568,27 @@ fn parse_driver_error(response: &Value) -> Result<(), AgentError> {
         .get("error")
         .cloned()
         .ok_or_else(|| invalid_input("driver completion error is missing"))?;
-    serde_json::from_value(error).map_err(|_| invalid_input("driver error schema is invalid"))
+    let error = serde_json::from_value::<AgentError>(error)
+        .map_err(|_| invalid_input("driver error schema is invalid"))?;
+    Err(sanitize_driver_error(error))
+}
+
+fn sanitize_driver_error(error: AgentError) -> AgentError {
+    let message = match error.code {
+        AgentErrorCode::ModelUnavailable => "model unavailable",
+        AgentErrorCode::ToolFailed => "tool failed",
+        AgentErrorCode::Cancelled => "turn cancelled",
+        AgentErrorCode::ModelNotConfigured => "model not configured",
+        AgentErrorCode::ContextBudgetExceeded => "context budget exceeded",
+        AgentErrorCode::ApprovalRequired => "approval required",
+        AgentErrorCode::ApprovalExpired => "approval expired",
+        AgentErrorCode::AgentSchemaMismatch => "driver schema mismatch",
+        AgentErrorCode::InvalidInput => "driver returned invalid input",
+        _ => "driver operation failed",
+    };
+    // Driver messages, details and flattened fields cross a host trust boundary.
+    // Preserve only the stable code; raw provider payloads may contain secrets.
+    AgentError::new(error.code, message)
 }
 
 fn emit_envelope(
@@ -424,12 +608,9 @@ fn emit_envelope(
     };
     let value = serde_json::to_value(envelope)
         .map_err(|_| internal_error("event envelope encoding failed"))?;
-    let callbacks = *state
-        .callbacks
-        .read()
-        .map_err(|_| internal_error("callback registry unavailable"))?;
-    if let Some(callback) = callbacks.event {
-        invoke_json_callback(callback, callbacks.event_context, &value)?;
+    let lease = state.acquire_callback()?;
+    if let Some(callback) = lease.callbacks.event {
+        invoke_json_callback(callback, lease.callbacks.event_context, &value)?;
     }
     Ok(())
 }
@@ -447,7 +628,7 @@ fn utc_now() -> Result<String, AgentError> {
 
 fn run_submitted_turn(state: Arc<RuntimeState>, turn_token: u64, request: TurnRequest) {
     let cancellation = match state.turns.lock() {
-        Ok(turns) => match turns.get(&turn_token) {
+        Ok(turns) => match turns.active.get(&turn_token) {
             Some(turn) => turn.cancellation.clone(),
             None => return,
         },
@@ -466,23 +647,72 @@ fn run_submitted_turn(state: Arc<RuntimeState>, turn_token: u64, request: TurnRe
         },
     );
     let sequence = Arc::new(AtomicU64::new(1));
+    let terminal_emitted = Arc::new(AtomicBool::new(false));
     let event_state = Arc::clone(&state);
     let event_request = request.clone();
+    let event_terminal = Arc::clone(&terminal_emitted);
+    let event_sequence = Arc::clone(&sequence);
     let sink = AgentEventSink::new(move |event| {
         let state = Arc::clone(&event_state);
         let request = event_request.clone();
-        let sequence = sequence.fetch_add(1, Ordering::Relaxed);
+        if matches!(
+            event,
+            AgentEvent::TurnSucceeded(_)
+                | AgentEvent::TurnFailed(_)
+                | AgentEvent::TurnCancelled(_)
+                | AgentEvent::TurnInterrupted(_)
+        ) {
+            event_terminal.store(true, Ordering::Release);
+        }
+        let sequence = event_sequence.fetch_add(1, Ordering::Relaxed);
         async move { emit_envelope(&state, &request, sequence, event) }
     });
-    let result = async_runtime().and_then(|executor| {
-        executor.block_on(async {
-            runtime
-                .run_turn(request, Vec::<AgentMessage>::new(), cancellation, sink)
-                .await
+    let run_request = request.clone();
+    let result = guard_worker(|| {
+        async_runtime().and_then(|executor| {
+            executor.block_on(async {
+                runtime
+                    .run_turn(run_request, Vec::<AgentMessage>::new(), cancellation, sink)
+                    .await
+            })
         })
     });
+    finish_turn(
+        &state,
+        turn_token,
+        &request,
+        &sequence,
+        &terminal_emitted,
+        result.map(|_| ()),
+    );
+}
+
+fn finish_turn(
+    state: &Arc<RuntimeState>,
+    turn_token: u64,
+    request: &TurnRequest,
+    sequence: &AtomicU64,
+    terminal_emitted: &AtomicBool,
+    result: Result<(), AgentError>,
+) {
     if let Err(error) = result {
-        state.set_error(error);
+        let safe = if error.code == AgentErrorCode::SdkInternalError {
+            panic_error()
+        } else {
+            error
+        };
+        if !terminal_emitted.swap(true, Ordering::AcqRel) {
+            let _ = emit_envelope(
+                state,
+                request,
+                sequence.fetch_add(1, Ordering::Relaxed),
+                AgentEvent::TurnFailed(TurnFailedPayload {
+                    error: safe.clone(),
+                    ..TurnFailedPayload::default()
+                }),
+            );
+        }
+        state.set_error(safe);
     }
     state.mark_terminal(turn_token);
 }
@@ -508,10 +738,7 @@ pub extern "C" fn notemeld_agent_runtime_new(
             return None;
         }
         async_runtime().ok()?;
-        let id = NEXT_RUNTIME_ID.fetch_add(1, Ordering::Relaxed);
-        if id == 0 || id == usize::MAX {
-            return None;
-        }
+        let id = next_usize(&NEXT_RUNTIME_ID)?;
         let state = Arc::new(RuntimeState::new(id, config.max_turns));
         registry().lock().ok()?.insert(id, state);
         Some(id as *mut AgentRuntimeHandle)
@@ -528,16 +755,23 @@ pub extern "C" fn notemeld_agent_runtime_set_callbacks(
     event_context: *mut c_void,
     driver_callback: Option<DriverCallback>,
     driver_context: *mut c_void,
+    release_callback: Option<ContextReleaseCallback>,
+    release_context: *mut c_void,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         let state = runtime_for(handle)?;
-        let mut callbacks = state.callbacks.write().map_err(|_| FFI_INTERNAL_ERROR)?;
-        *callbacks = Callbacks {
+        let mut gate = state.callbacks.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
+        if gate.closing || gate.callbacks.is_some() || release_callback.is_none() {
+            return Err(FFI_INVALID_INPUT);
+        }
+        gate.callbacks = Some(Callbacks {
             event: event_callback,
             event_context: event_context as usize,
             driver: driver_callback,
             driver_context: driver_context as usize,
-        };
+            release: release_callback,
+            release_context: release_context as usize,
+        });
         Ok::<_, i32>(FFI_OK)
     }))
     .unwrap_or(Err(FFI_INTERNAL_ERROR))
@@ -560,15 +794,17 @@ pub extern "C" fn notemeld_agent_submit_turn(
         let request: TurnRequest = serde_json::from_str(&wire)
             .map_err(|_| state.set_error(invalid_input("turn request JSON is invalid")))
             .ok()?;
-        let turn_token = next_nonzero(&state.next_turn_token)?;
+        let turn_token = next_u64(&state.next_turn_token).or_else(|| {
+            state.set_error(internal_error("turn token space exhausted"));
+            None
+        })?;
         let cancellation = CancellationToken::new();
-        state.turns.lock().ok()?.insert(
-            turn_token,
-            TurnControl {
-                cancellation,
-                terminal: false,
-            },
-        );
+        state
+            .turns
+            .lock()
+            .ok()?
+            .active
+            .insert(turn_token, TurnControl { cancellation });
         let executor = async_runtime().ok()?;
         executor.spawn_blocking({
             let state = Arc::clone(&state);
@@ -601,29 +837,30 @@ pub extern "C" fn notemeld_agent_complete_driver_call(
         if !value.is_object() {
             return Err(FFI_INVALID_INPUT);
         }
-        let sender = state
-            .pending
-            .lock()
-            .map_err(|_| FFI_INTERNAL_ERROR)?
-            .remove(&call_id);
-        let Some(sender) = sender else {
-            return match state
-                .settled
-                .lock()
-                .map_err(|_| FFI_INTERNAL_ERROR)?
-                .get(&call_id)
-            {
-                Some(SettledCall::Completed) => Err(FFI_DUPLICATE_COMPLETION),
-                Some(SettledCall::Late) => Err(FFI_LATE_COMPLETION),
-                None => Err(FFI_UNKNOWN_CALL),
-            };
+        let sender = {
+            let mut calls = state.calls.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
+            match calls.states.remove(&call_id) {
+                Some(DriverCallState::Pending(sender)) => {
+                    calls.settle(call_id, DriverCallState::Completed);
+                    sender
+                }
+                Some(DriverCallState::Completed) => {
+                    calls.states.insert(call_id, DriverCallState::Completed);
+                    return Err(FFI_DUPLICATE_COMPLETION);
+                }
+                Some(DriverCallState::Late) => {
+                    calls.states.insert(call_id, DriverCallState::Late);
+                    return Err(FFI_LATE_COMPLETION);
+                }
+                None => return Err(FFI_UNKNOWN_CALL),
+            }
         };
-        state
-            .settled
-            .lock()
-            .map_err(|_| FFI_INTERNAL_ERROR)?
-            .insert(call_id, SettledCall::Completed);
-        sender.send(value).map_err(|_| FFI_LATE_COMPLETION)?;
+        if sender.send(value).is_err() {
+            if let Ok(mut calls) = state.calls.lock() {
+                calls.settle(call_id, DriverCallState::Late);
+            }
+            return Err(FFI_LATE_COMPLETION);
+        }
         Ok(FFI_OK)
     }))
     .unwrap_or(Err(FFI_INTERNAL_ERROR))
@@ -638,12 +875,12 @@ pub extern "C" fn notemeld_agent_cancel_turn(
     catch_unwind(AssertUnwindSafe(|| {
         let state = runtime_for(handle)?;
         let turns = state.turns.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
-        let Some(turn) = turns.get(&turn_token) else {
-            return Err(FFI_TURN_NOT_FOUND);
-        };
-        if turn.terminal {
+        if turns.terminal.contains(&turn_token) {
             return Ok(FFI_OK);
         }
+        let Some(turn) = turns.active.get(&turn_token) else {
+            return Err(FFI_TURN_NOT_FOUND);
+        };
         turn.cancellation.cancel();
         Ok(FFI_OK)
     }))
@@ -660,9 +897,10 @@ pub extern "C" fn notemeld_agent_steer_turn(
     catch_unwind(AssertUnwindSafe(|| {
         let state = runtime_for(handle)?;
         let turns = state.turns.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
-        let Some(_turn) = turns.get(&turn_token) else {
+        let exists = turns.active.contains_key(&turn_token) || turns.terminal.contains(&turn_token);
+        if !exists {
             return Err(FFI_TURN_NOT_FOUND);
-        };
+        }
         let wire = unsafe { read_bounded_c_string(steer_json, MAX_STEER_BYTES) }
             .map_err(|_| FFI_INVALID_INPUT)?;
         let value: Value = serde_json::from_str(&wire).map_err(|_| FFI_INVALID_INPUT)?;
@@ -690,14 +928,15 @@ pub extern "C" fn notemeld_agent_wait_turn(
             .ok_or(FFI_INVALID_INPUT)?;
         let mut turns = state.turns.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
         loop {
-            match turns.get(&turn_token) {
-                Some(turn) if turn.terminal => return Ok(FFI_OK),
-                Some(_) => {}
-                None => return Err(FFI_TURN_NOT_FOUND),
+            if turns.terminal.contains(&turn_token) {
+                return Ok(FFI_OK);
+            }
+            if !turns.active.contains_key(&turn_token) {
+                return Err(FFI_TURN_NOT_FOUND);
             }
             let now = Instant::now();
             if now >= deadline {
-                return Err(FFI_INTERNAL_ERROR);
+                return Err(FFI_TIMEOUT);
             }
             let remaining = deadline.saturating_duration_since(now);
             let (next, timeout) = state
@@ -706,7 +945,7 @@ pub extern "C" fn notemeld_agent_wait_turn(
                 .map_err(|_| FFI_INTERNAL_ERROR)?;
             turns = next;
             if timeout.timed_out() {
-                return Err(FFI_INTERNAL_ERROR);
+                return Err(FFI_TIMEOUT);
             }
         }
     }))
@@ -749,18 +988,115 @@ pub extern "C" fn notemeld_agent_runtime_free(handle: *mut AgentRuntimeHandle) {
         if let Some(state) = state {
             debug_assert_eq!(state.id, id);
             state.stopping.store(true, Ordering::Release);
-            if let Ok(mut callbacks) = state.callbacks.write() {
-                *callbacks = Callbacks::default();
-            }
+            state.close_callbacks();
             if let Ok(turns) = state.turns.lock() {
-                for turn in turns.values() {
+                for turn in turns.active.values() {
                     turn.cancellation.cancel();
                 }
             }
-            if let Ok(mut pending) = state.pending.lock() {
-                pending.clear();
+            if let Ok(mut calls) = state.calls.lock() {
+                calls.mark_all_pending_late();
             }
             state.turns_changed.notify_all();
         }
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn monotonic_counters_stop_before_wraparound() {
+        let u64_counter = AtomicU64::new(u64::MAX - 1);
+        assert_eq!(next_u64(&u64_counter), Some(u64::MAX - 1));
+        assert_eq!(next_u64(&u64_counter), None);
+        assert_eq!(next_u64(&u64_counter), None);
+
+        let usize_counter = AtomicUsize::new(usize::MAX - 1);
+        assert_eq!(next_usize(&usize_counter), Some(usize::MAX - 1));
+        assert_eq!(next_usize(&usize_counter), None);
+        assert_eq!(next_usize(&usize_counter), None);
+    }
+
+    #[test]
+    fn driver_and_turn_tombstones_are_bounded() {
+        let mut calls = DriverCalls::default();
+        for id in 1..=(MAX_CALL_TOMBSTONES as u64 + 2) {
+            calls.settle(id, DriverCallState::Late);
+        }
+        assert_eq!(calls.states.len(), MAX_CALL_TOMBSTONES);
+        assert!(!calls.states.contains_key(&1));
+
+        let state = RuntimeState::new(1, 1);
+        for id in 1..=(MAX_TURN_TOMBSTONES as u64 + 2) {
+            state.turns.lock().unwrap().active.insert(
+                id,
+                TurnControl {
+                    cancellation: CancellationToken::new(),
+                },
+            );
+            state.mark_terminal(id);
+        }
+        let turns = state.turns.lock().unwrap();
+        assert_eq!(turns.terminal.len(), MAX_TURN_TOMBSTONES);
+        assert!(!turns.terminal.contains(&1));
+    }
+
+    #[test]
+    fn worker_panic_is_mapped_to_a_stable_internal_error() {
+        let result = guard_worker::<()>(|| panic!("secret worker panic"));
+        let error = result.unwrap_err();
+        assert_eq!(error.code, AgentErrorCode::SdkInternalError);
+        assert_eq!(error.message, "agent FFI operation failed");
+        assert!(!error.message.contains("secret"));
+    }
+
+    #[test]
+    fn worker_panic_result_finishes_with_one_safe_failed_terminal() {
+        unsafe extern "C-unwind" fn capture(context: *mut c_void, wire: *const c_char) -> i32 {
+            let events = &*(context as *const Mutex<Vec<Value>>);
+            let wire = std::ffi::CStr::from_ptr(wire).to_str().unwrap();
+            events
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str(wire).unwrap());
+            FFI_OK
+        }
+        let events = Box::new(Mutex::new(Vec::<Value>::new()));
+        let context = (&*events as *const Mutex<Vec<Value>>) as usize;
+        let state = Arc::new(RuntimeState::new(1, 1));
+        state.callbacks.lock().unwrap().callbacks = Some(Callbacks {
+            event: Some(capture),
+            event_context: context,
+            ..Callbacks::default()
+        });
+        state.turns.lock().unwrap().active.insert(
+            1,
+            TurnControl {
+                cancellation: CancellationToken::new(),
+            },
+        );
+        let request: TurnRequest = serde_json::from_value(json!({
+            "schema_version":"1", "request_id":"ffffffff-ffff-4fff-8fff-ffffffffffff",
+            "session_id":"panic-test", "input":{"text":"x","attachments":[],"context_refs":[]},
+            "model_override":null, "approval_mode":"interactive"
+        }))
+        .unwrap();
+        finish_turn(
+            &state,
+            1,
+            &request,
+            &AtomicU64::new(1),
+            &AtomicBool::new(false),
+            Err(panic_error()),
+        );
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "turn.failed");
+        assert_eq!(
+            events[0]["payload"]["error"]["message"],
+            "agent FFI operation failed"
+        );
+    }
 }

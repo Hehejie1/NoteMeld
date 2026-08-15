@@ -2,11 +2,10 @@
 #include <napi/native_node_api.h>
 
 #include <cstdint>
-#include <memory>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "notemeld_agent.h"
 
@@ -18,13 +17,24 @@ struct CallbackBridge {
     AgentRuntimeHandle *handle = nullptr;
     napi_threadsafe_function events = nullptr;
     napi_threadsafe_function drivers = nullptr;
+    std::atomic<unsigned> finalized{0};
 };
 
 std::mutex bridges_mutex;
-std::unordered_map<AgentRuntimeHandle *, std::shared_ptr<CallbackBridge>> bridges;
-// A callback may already be crossing the C ABI when runtimeFree begins. Keep
-// bridge storage alive until process teardown; TSFNs themselves are aborted.
-std::vector<std::shared_ptr<CallbackBridge>> retired_bridges;
+std::unordered_map<AgentRuntimeHandle *, CallbackBridge *> bridges;
+
+void FinalizeTsfn(napi_env, void *data, void *) {
+    auto *bridge = static_cast<CallbackBridge *>(data);
+    if (bridge != nullptr && bridge->finalized.fetch_add(1) + 1 == 2) delete bridge;
+}
+
+void ReleaseBridge(void *context) {
+    auto *bridge = static_cast<CallbackBridge *>(context);
+    if (!bridge) return;
+    { std::lock_guard<std::mutex> guard(bridges_mutex); bridges.erase(bridge->handle); }
+    if (bridge->events) napi_release_threadsafe_function(bridge->events, napi_tsfn_release);
+    if (bridge->drivers) napi_release_threadsafe_function(bridge->drivers, napi_tsfn_release);
+}
 
 uint64_t CallId(const std::string &wire) {
     const std::string marker = "\"call_id\":";
@@ -51,9 +61,18 @@ void CallDriverJs(napi_env env, napi_value callback, void *, void *data) {
     napi_value global, argument, result;
     napi_get_global(env, &global);
     napi_create_string_utf8(env, payload->wire.c_str(), payload->wire.size(), &argument);
-    if (napi_call_function(env, global, callback, 1, &argument, &result) != napi_ok) return;
-    auto result_wire = String(env, result);
     const auto call_id = CallId(payload->wire);
+    std::string result_wire = R"({"schema_version":"1","ok":false,"error":{"code":"sdk_internal_error","message":"host driver failed"}})";
+    napi_valuetype type = napi_undefined;
+    if (napi_call_function(env, global, callback, 1, &argument, &result) == napi_ok &&
+        napi_typeof(env, result, &type) == napi_ok && type == napi_string) {
+        result_wire = String(env, result);
+    } else {
+        bool pending = false;
+        if (napi_is_exception_pending(env, &pending) == napi_ok && pending) {
+            napi_value ignored; napi_get_and_clear_last_exception(env, &ignored);
+        }
+    }
     if (call_id != 0) {
         notemeld_agent_complete_driver_call(payload->bridge->handle, call_id, result_wire.c_str());
     }
@@ -84,7 +103,7 @@ int32_t DriverCallback(void *context, const char *request_json) {
 AgentRuntimeHandle *HandleFromBigInt(napi_env env, napi_value value) {
     uint64_t raw = 0;
     bool lossless = false;
-    napi_get_value_bigint_uint64(env, value, &raw, &lossless);
+    if (napi_get_value_bigint_uint64(env, value, &raw, &lossless) != napi_ok) return nullptr;
     return lossless ? reinterpret_cast<AgentRuntimeHandle *>(raw) : nullptr;
 }
 
@@ -95,6 +114,8 @@ napi_value BigInt(napi_env env, uint64_t value) {
 }
 
 std::string String(napi_env env, napi_value value) {
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok || type != napi_string) return {};
     size_t size = 0;
     napi_get_value_string_utf8(env, value, nullptr, 0, &size);
     std::string result(size + 1, '\0');
@@ -124,7 +145,7 @@ napi_value SchemaVersion(napi_env env, napi_callback_info) {
 napi_value RuntimeNew(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value argv[1];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 1) return BigInt(env, 0);
     auto config = String(env, argv[0]);
     return BigInt(env, reinterpret_cast<uint64_t>(notemeld_agent_runtime_new(config.c_str())));
 }
@@ -132,7 +153,7 @@ napi_value RuntimeNew(napi_env env, napi_callback_info info) {
 napi_value SubmitTurn(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value argv[2];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 2) return BigInt(env, 0);
     auto request = String(env, argv[1]);
     return BigInt(env, notemeld_agent_submit_turn(HandleFromBigInt(env, argv[0]), request.c_str()));
 }
@@ -140,7 +161,7 @@ napi_value SubmitTurn(napi_env env, napi_callback_info info) {
 napi_value CompleteDriverCall(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value argv[3];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 3) return Int(env, -2);
     uint64_t call_id = 0;
     bool lossless = false;
     napi_get_value_bigint_uint64(env, argv[1], &call_id, &lossless);
@@ -152,7 +173,7 @@ napi_value CompleteDriverCall(napi_env env, napi_callback_info info) {
 napi_value CancelTurn(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value argv[2];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 2) return Int(env, -2);
     uint64_t token = 0;
     bool lossless = false;
     napi_get_value_bigint_uint64(env, argv[1], &token, &lossless);
@@ -162,7 +183,7 @@ napi_value CancelTurn(napi_env env, napi_callback_info info) {
 napi_value SteerTurn(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value argv[3];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 3) return Int(env, -2);
     uint64_t token = 0;
     bool lossless = false;
     napi_get_value_bigint_uint64(env, argv[1], &token, &lossless);
@@ -171,32 +192,14 @@ napi_value SteerTurn(napi_env env, napi_callback_info info) {
         HandleFromBigInt(env, argv[0]), token, steer.c_str()) : -2);
 }
 
-napi_value WaitTurn(napi_env env, napi_callback_info info) {
-    size_t argc = 3;
-    napi_value argv[3];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
-    uint64_t token = 0, timeout = 0;
-    bool token_ok = false, timeout_ok = false;
-    napi_get_value_bigint_uint64(env, argv[1], &token, &token_ok);
-    napi_get_value_bigint_uint64(env, argv[2], &timeout, &timeout_ok);
-    return Int(env, token_ok && timeout_ok ? notemeld_agent_wait_turn(
-        HandleFromBigInt(env, argv[0]), token, timeout) : -2);
-}
-
 napi_value RuntimeFree(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value argv[1];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 1) {
+        napi_value result; napi_get_undefined(env, &result); return result;
+    }
     auto *handle = HandleFromBigInt(env, argv[0]);
     notemeld_agent_runtime_free(handle);
-    std::lock_guard<std::mutex> guard(bridges_mutex);
-    auto found = bridges.find(handle);
-    if (found != bridges.end()) {
-        napi_release_threadsafe_function(found->second->events, napi_tsfn_abort);
-        napi_release_threadsafe_function(found->second->drivers, napi_tsfn_abort);
-        retired_bridges.push_back(found->second);
-        bridges.erase(found);
-    }
     napi_value result;
     napi_get_undefined(env, &result);
     return result;
@@ -205,26 +208,30 @@ napi_value RuntimeFree(napi_env env, napi_callback_info info) {
 napi_value SetCallbacks(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value argv[3];
-    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 3) return Int(env, -2);
     auto *handle = HandleFromBigInt(env, argv[0]);
     if (handle == nullptr || argc != 3) return Int(env, -2);
-    auto bridge = std::make_shared<CallbackBridge>();
+    auto *bridge = new CallbackBridge();
     bridge->handle = handle;
     napi_value resource_name;
     napi_create_string_utf8(env, "notemeld-agent-events", NAPI_AUTO_LENGTH, &resource_name);
     if (napi_create_threadsafe_function(env, argv[1], nullptr, resource_name, 0, 1,
-        nullptr, nullptr, nullptr, CallEventJs, &bridge->events) != napi_ok) return Int(env, -9);
+        bridge, FinalizeTsfn, nullptr, CallEventJs, &bridge->events) != napi_ok) { delete bridge; return Int(env, -9); }
     napi_create_string_utf8(env, "notemeld-agent-drivers", NAPI_AUTO_LENGTH, &resource_name);
     if (napi_create_threadsafe_function(env, argv[2], nullptr, resource_name, 0, 1,
-        nullptr, nullptr, nullptr, CallDriverJs, &bridge->drivers) != napi_ok) {
-        napi_release_threadsafe_function(bridge->events, napi_tsfn_abort);
+        bridge, FinalizeTsfn, nullptr, CallDriverJs, &bridge->drivers) != napi_ok) {
+        bridge->finalized.store(1);
+        napi_release_threadsafe_function(bridge->events, napi_tsfn_release);
         return Int(env, -9);
     }
     const auto code = notemeld_agent_runtime_set_callbacks(
-        handle, EventCallback, bridge.get(), DriverCallback, bridge.get());
+        handle, EventCallback, bridge, DriverCallback, bridge, ReleaseBridge, bridge);
     if (code == 0) {
         std::lock_guard<std::mutex> guard(bridges_mutex);
         bridges[handle] = bridge;
+    } else {
+        napi_release_threadsafe_function(bridge->events, napi_tsfn_release);
+        napi_release_threadsafe_function(bridge->drivers, napi_tsfn_release);
     }
     return Int(env, code);
 }
@@ -239,7 +246,6 @@ napi_value Init(napi_env env, napi_value exports) {
         {"completeDriverCall", nullptr, CompleteDriverCall, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"cancelTurn", nullptr, CancelTurn, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"steerTurn", nullptr, SteerTurn, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"waitTurn", nullptr, WaitTurn, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"runtimeFree", nullptr, RuntimeFree, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
