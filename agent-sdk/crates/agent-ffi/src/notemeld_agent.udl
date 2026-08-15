@@ -1,0 +1,21 @@
+namespace notemeld_agent {
+    string sdk_version();
+    string schema_version();
+};
+
+callback interface EventSink {
+    void on_event(string event_json);
+};
+
+callback interface DriverSink {
+    void on_driver_request(string request_json);
+};
+
+interface Runtime {
+    constructor(string config_json, EventSink events, DriverSink drivers);
+    u64 submit_turn(string request_json);
+    void complete_driver_call(u64 call_id, string result_json);
+    void cancel_turn(u64 turn_token);
+    void steer_turn(u64 turn_token, string steer_json);
+    void close();
+};

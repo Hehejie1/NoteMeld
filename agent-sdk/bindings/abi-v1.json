@@ -1,0 +1,33 @@
+{
+  "abi_version": 1,
+  "sdk_version": "0.1.0",
+  "schema_version": "1",
+  "json_semantics": {
+    "turn_request": "schemas/turn-request.v1.json",
+    "event": "schemas/agent-event.v1.json",
+    "errors": "schemas/errors.v1.json"
+  },
+  "ownership": {
+    "runtime_handle": "opaque monotonic registry token; runtime_free is idempotent",
+    "callback_json": "borrowed UTF-8 NUL-terminated string valid only during callback",
+    "last_error_json": "owned string; release with notemeld_agent_string_free"
+  },
+  "threading": {
+    "callbacks": "may run on SDK worker threads; never invoked while the global runtime registry is locked",
+    "runtime_free": "non-blocking cancellation; callbacks already in progress may finish"
+  },
+  "functions": [
+    "notemeld_agent_sdk_version",
+    "notemeld_agent_schema_version",
+    "notemeld_agent_runtime_new",
+    "notemeld_agent_runtime_set_callbacks",
+    "notemeld_agent_submit_turn",
+    "notemeld_agent_complete_driver_call",
+    "notemeld_agent_cancel_turn",
+    "notemeld_agent_steer_turn",
+    "notemeld_agent_wait_turn",
+    "notemeld_agent_last_error_json",
+    "notemeld_agent_string_free",
+    "notemeld_agent_runtime_free"
+  ]
+}

@@ -1,0 +1,4 @@
+module CNotemeldAgent {
+    header "include/notemeld_agent_swift.h"
+    export *
+}

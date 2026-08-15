@@ -39,6 +39,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-ffi"
+version = "0.1.0"
+dependencies = [
+ "agent-core",
+ "agent-events",
+ "agent-model",
+ "agent-tools",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "agent-model"
 version = "0.1.0"
 dependencies = [

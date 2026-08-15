@@ -3,6 +3,7 @@ members = [
     "crates/agent-capabilities",
     "crates/agent-core",
     "crates/agent-events",
+    "crates/agent-ffi",
     "crates/agent-model",
     "crates/agent-session",
     "crates/agent-storage",

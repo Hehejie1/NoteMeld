@@ -1,0 +1,6 @@
+{
+  name: '@notemeld/agent-sdk',
+  version: '0.1.0',
+  description: 'Thin OpenHarmony binding for NoteMeld Agent C ABI',
+  main: 'src/main/ets/index.ets'
+}
