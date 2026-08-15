@@ -74,6 +74,64 @@ test('legacy seed waits for backend readiness before claim and request', async (
   assert.match(panel, /checkNow/)
 })
 
+test('StrictMode seed setup cleanup setup keeps the only in-flight result', async () => {
+  const registry = panelStateModule.createSeedAttemptRegistry()
+  const requestKey = '["conv_a","message_a","canvas_a"]'
+  let activeKey = requestKey
+  let requestCalls = 0
+  let resolveRequest
+  const request = new Promise(resolve => { resolveRequest = resolve })
+  const applied = []
+  const setup = () => panelStateModule.runLegacyWhiteboardSeed({
+    backendReady: true,
+    conversationId: 'conv_a',
+    messageId: 'message_a',
+    canvasId: 'canvas_a',
+    registry,
+    request: () => {
+      requestCalls += 1
+      return request
+    },
+  }).then(result => {
+    if (activeKey === requestKey && result.status === 'seeded') applied.push(result.value.id)
+  })
+
+  const firstSetup = setup()
+  const cleanup = () => undefined
+  cleanup()
+  const secondSetup = setup()
+  assert.equal(requestCalls, 1)
+  resolveRequest({ id: 'wb_seeded' })
+  await Promise.all([firstSetup, secondSetup])
+  assert.deepEqual(applied, ['wb_seeded'])
+
+  activeKey = '["conv_b","message_b","canvas_b"]'
+  registry.release('conv_a', 'message_a')
+  let resolveStale
+  const staleRequest = new Promise(resolve => { resolveStale = resolve })
+  const stale = panelStateModule.runLegacyWhiteboardSeed({
+    backendReady: true,
+    conversationId: 'conv_a',
+    messageId: 'message_a',
+    canvasId: 'canvas_a',
+    registry,
+    request: () => staleRequest,
+  }).then(result => {
+    if (activeKey === requestKey && result.status === 'seeded') applied.push(result.value.id)
+  })
+  resolveStale({ id: 'wb_stale' })
+  await stale
+  assert.deepEqual(applied, ['wb_seeded'])
+
+  const seedEffectStart = home.indexOf('runLegacyWhiteboardSeed({')
+  const seedEffectEnd = home.indexOf('const retryWhiteboardSeed', seedEffectStart)
+  assert.notEqual(seedEffectStart, -1)
+  assert.notEqual(seedEffectEnd, -1)
+  const seedEffect = home.slice(seedEffectStart, seedEffectEnd)
+  assert.doesNotMatch(seedEffect, /let active = true/)
+  assert.match(seedEffect, /activeSeedKeyRef\.current !== seedRequestKey/)
+})
+
 test('Note view resolves only the current board linked document', () => {
   assert.equal(typeof panelStateModule.resolveWhiteboardNoteDocument, 'function')
   const documents = [
@@ -208,6 +266,61 @@ test('durable publish survives Note refresh rejection and retries delivery witho
   assert.match(panel, /重试刷新/)
 })
 
+test('published Note link survives board reload failure and reload retry never republishes', async () => {
+  assert.equal(typeof panelStateModule.createPublishedNoteOverride, 'function')
+  assert.equal(typeof panelStateModule.resolvePublishedWhiteboardSnapshot, 'function')
+  assert.equal(typeof panelStateModule.runPublishedWhiteboardReload, 'function')
+  let publishCalls = 0
+  let reloadCalls = 0
+  const result = await panelStateModule.runDurableWhiteboardPublish({
+    publish: async () => {
+      publishCalls += 1
+      return { whiteboard_id: 'wb_a', note_task_id: 'note_a', published_revision: 4 }
+    },
+  })
+  const snapshot = {
+    id: 'wb_a',
+    revision: 4,
+    note_link: null,
+  }
+  const override = panelStateModule.createPublishedNoteOverride('conv_a:wb_a', result.result)
+  const effective = panelStateModule.resolvePublishedWhiteboardSnapshot(
+    snapshot,
+    'conv_a:wb_a',
+    override,
+  )
+  assert.deepEqual(effective.note_link, {
+    note_task_id: 'note_a',
+    published_revision: 4,
+  })
+  assert.equal(panelStateModule.getWhiteboardPublishPresentation({
+    revision: effective.revision,
+    noteLink: effective.note_link,
+  }).state, 'synced')
+
+  const failed = await panelStateModule.runPublishedWhiteboardReload(async () => {
+    reloadCalls += 1
+    throw new Error('reload failed')
+  })
+  assert.deepEqual(failed, {
+    status: 'failed',
+    message: '笔记已发布，白板状态刷新失败：reload failed',
+  })
+  const retried = await panelStateModule.runPublishedWhiteboardReload(async () => {
+    reloadCalls += 1
+  })
+  assert.deepEqual(retried, { status: 'reloaded' })
+  assert.equal(publishCalls, 1)
+  assert.equal(reloadCalls, 2)
+  assert.match(panel, /createPublishedNoteOverride/)
+  assert.match(panel, /resolvePublishedWhiteboardSnapshot/)
+  assert.match(panel, /const snapshot = useMemo\(\(\) => resolvePublishedWhiteboardSnapshot/)
+  assert.match(panel, /publishBlocked = Boolean\([^]*?currentPublishedNoteOverride/)
+  assert.match(panel, /currentPublishedReloadFailure/)
+  assert.match(panel, /笔记已发布，白板状态刷新失败/)
+  assert.match(panel, /重试白板刷新/)
+})
+
 test('Note-only snapshot load is single-flight, race guarded, and recoverable', async () => {
   assert.equal(typeof panelStateModule.createWhiteboardSnapshotLoader, 'function')
   assert.equal(typeof panelStateModule.loadWhiteboardSnapshotForTarget, 'function')
@@ -270,4 +383,9 @@ test('Note-only snapshot load is single-flight, race guarded, and recoverable', 
     workspace.indexOf('showLegacyFallback && legacyCanvasId ?') < workspace.indexOf("view === 'note' ?"),
     '移动端受控 Note 视图也必须能优先进入 legacy fallback',
   )
+  assert.match(panel, /const retryLegacyFallback/)
+  const retryStart = panel.indexOf('const retryLegacyFallback')
+  const retryEnd = panel.indexOf('\n  const ', retryStart + 10)
+  assert.match(panel.slice(retryStart, retryEnd), /retryNoteSnapshotLoad/)
+  assert.match(panel, /onRetryConversion=\{retryLegacyFallback\}/)
 })

@@ -146,7 +146,6 @@ export const HomePage: FC = () => {
     if (!latestLearningCanvasId || !conversationId) {
       return
     }
-    let active = true
     runLegacyWhiteboardSeed({
       backendReady,
       conversationId,
@@ -156,19 +155,18 @@ export const HomePage: FC = () => {
       request: () => seedLearningCanvasWhiteboard(conversationId, latestLearningCanvasId),
     })
       .then(result => {
-        if (!active || result.status !== 'seeded') return
+        if (activeSeedKeyRef.current !== seedRequestKey || result.status !== 'seeded') return
         setSeededWhiteboard({ key: seedRequestKey, id: result.value.id })
         setWhiteboardSeedError({ key: '', message: '' })
       })
       .catch(error => {
-        if (!active) return
+        if (activeSeedKeyRef.current !== seedRequestKey) return
         const candidate = error as { msg?: string } | undefined
         setWhiteboardSeedError({
           key: seedRequestKey,
           message: candidate?.msg || '转换可编辑白板失败，仍可查看原图',
         })
       })
-    return () => { active = false }
   }, [backendReady, compactWhiteboardId, conversationId, latestLearningCanvasId, latestLearningMessageId, seedRequestKey])
 
   const retryWhiteboardSeed = () => {

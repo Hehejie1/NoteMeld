@@ -216,8 +216,10 @@ assert.match(home, /WhiteboardPanel/, 'Home 必须优先挂载语义白板工作
 assert.match(home, /resolveLatestLearningWorkspace/, 'Home 必须按最新 compact message 恢复白板')
 assert.match(home, /seedLearningCanvasWhiteboard/, 'legacy canvas 必须幂等转换为语义白板')
 assert.match(home, /LearningCanvasCard/, 'seed 或 feature flag 失败时必须保留 Sigma fallback')
-const automaticSeedStart = home.indexOf('let active = true\n    runLegacyWhiteboardSeed')
+const automaticSeedCall = home.indexOf('runLegacyWhiteboardSeed({')
+const automaticSeedStart = home.lastIndexOf('useEffect(() => {', automaticSeedCall)
 const automaticSeedEnd = home.indexOf('const retryWhiteboardSeed')
+assert.notEqual(automaticSeedCall, -1)
 assert.notEqual(
   automaticSeedStart,
   -1,

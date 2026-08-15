@@ -134,6 +134,52 @@ export async function runDurableWhiteboardPublish<T>({
   return { status: 'published', result, noteRefresh }
 }
 
+export interface PublishedNoteOverride {
+  targetKey: string
+  noteLink: {
+    note_task_id: string
+    published_revision: number
+  }
+}
+
+export function createPublishedNoteOverride(
+  targetKey: string,
+  result: { note_task_id: string; published_revision: number },
+): PublishedNoteOverride {
+  return {
+    targetKey,
+    noteLink: {
+      note_task_id: result.note_task_id,
+      published_revision: result.published_revision,
+    },
+  }
+}
+
+export function resolvePublishedWhiteboardSnapshot<
+  T extends { note_link: { note_task_id: string; published_revision: number } | null },
+>(
+  snapshot: T | null,
+  targetKey: string,
+  override: PublishedNoteOverride | null,
+): T | null {
+  if (!snapshot || !override || override.targetKey !== targetKey) return snapshot
+  return { ...snapshot, note_link: override.noteLink }
+}
+
+export async function runPublishedWhiteboardReload(
+  reload: () => void | Promise<void>,
+): Promise<{ status: 'reloaded' } | { status: 'failed'; message: string }> {
+  try {
+    await reload()
+    return { status: 'reloaded' }
+  } catch (error) {
+    return {
+      status: 'failed',
+      message: `笔记已发布，白板状态刷新失败：${errorMessage(error, '请重试')}`,
+    }
+  }
+}
+
 export function createWhiteboardSnapshotLoader<T>() {
   let inFlight: { key: string; promise: Promise<T> } | null = null
   return {
