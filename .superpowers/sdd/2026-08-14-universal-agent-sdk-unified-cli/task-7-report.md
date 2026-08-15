@@ -185,3 +185,47 @@ Root causes were isolated to three boundaries: wheel tags were checked independe
 - Real x86_64 macOS wheel rebuild used cached locked dependencies: 114-component license closure, six-artifact manifest create/verify, clean-venv install, and fake turn ending in `turn.succeeded` all passed with the stricter metadata/tag parser.
 - Real cached Swift rebuild produced both arm64 iOS archives; the stricter all-member archive parser accepted them, and extracted release consumers linked for generic iOS device and arm64 simulator. Both target manifests passed. This remains build/link evidence, not a device runtime claim.
 - No GitHub Actions, Android, or OpenHarmony runtime is claimed; no large SDK was downloaded. Source Swift `.build` was moved to `/tmp/notemeld-task7-round3-source-swift-build`, and no generated SDK payload is staged.
+
+## Fix Round 4 (2026-08-16)
+
+Status: **THREE_IMPORTANT_FINDINGS_CLOSED; TWO_EXISTING_MINORS_DEFERRED**
+
+Scope remained limited to the Task 7 artifact validator, its behavioral contracts, and this append-only report. The two existing Minor items—workflow command-dispatch mutation strength and historical report wording outside the prior appended correction—remain deferred and were not expanded into this round. No workflow, build script, Task 6 binding/runtime, database, API, UI, desktop, MCP, or user-data behavior changed.
+
+### Root cause, impact, and minimal change
+
+1. **Wheel semantic identity:** the previous parser used `rsplit("-", 3)`, accepted any numeric-looking metadata version, accepted any platform with a broad prefix/suffix, and only required the three dist-info files to share a directory. It therefore accepted unsupported `Metadata-Version: 0.0`/`9.9`, incompatible `Wheel-Version: 2.0`, `manylinux_garbage_x86_64`, mismatched or nested dist-info, and rejected a legal optional build tag. The validator now parses the PEP 427 filename fields including an optional digit-leading ASCII build tag, normalizes distribution identity across filename/METADATA/root dist-info, requires exact version and root-level dist-info, freezes supported Core Metadata versions to `1.0/1.1/1.2/2.1–2.5`, accepts only Wheel major version 1, uses target-specific full platform regexes, and requires the WHEEL Tag set to equal the filename's expanded compressed-tag Cartesian product.
+2. **ZIP canonical namespace:** per-entry path checks did not model the archive as a tree. A file and directory could occupy the same node, or a file could become another entry's ancestor. `_safe_zip_entries()` now builds one case-sensitive canonical namespace. Explicit and implicit directories are equivalent, case-distinct names remain distinct, and file/directory or file-ancestor conflicts fail before RECORD/content inspection. Existing duplicate, absolute/drive, backslash, NUL, dot/dot-dot, double-slash, RECORD coverage/hash/size, and closed-world checks remain active.
+3. **BSD/GNU `ar`:** BSD 64-bit symbol-table names were treated as object members, and odd-member padding was skipped without checking its value. The archive walker now recognizes GNU `/`, `/SYM64/`, `//` and BSD `__.SYMDEF*` including `_64`/`SORTED`, requires every odd member's pad byte to be newline, rejects non-decimal/truncated sizes safely, and still validates every real object and every fat Mach-O slice against the target.
+
+All container parsing failures remain controlled `ManifestError` exit code 2. Independent review found that corrupt compressed members could still leak `zlib.error` as rc 1 and that legacy uppercase/dotted wheel filenames could be rejected despite normalized identity. Fresh regressions reproduced both. Both marker-only and full ZIP boundaries now convert `zlib.error`/`lzma.LZMAError`, and dist-info distribution comparison is normalized while its version/root placement stays exact.
+
+Impact is limited to SDK artifact acceptance/rejection. There is no local-data, online-service, schema, migration, public API, or release-state mutation. Rollback is the validator/test/report commit only; no data recovery is needed.
+
+### Strict TDD evidence
+
+- Initial Round 4 selected RED against `f9075c4`: **12 failed, 53 deselected**. The failures independently covered unsupported Metadata versions (two cases), Wheel 2.0, garbage manylinux, mismatched and nested dist-info, legal build tag rejection, two ZIP namespace collisions, both BSD 64-bit symbol-table forms, and a non-newline archive pad byte.
+- A separate compressed multi-Tag RED was **1 failed, 65 deselected** because the old validator accepted a declared Tag subset instead of the expanded filename set.
+- Initial implementation selected GREEN: **16 passed, 53 deselected**; focused suite: **69 passed**.
+- Independent review RED: **2 failed, 69 deselected** for normalized legacy wheel filename/dist-info identity and corrupt deflate rc1 traceback. After the two minimal fixes, the same selection was **2 passed, 69 deselected**.
+- Independent re-review verdict: **Ready**, with no remaining Critical or Important finding in Task 7 scope.
+- Final focused suite before this report append: **71 passed in 10.89s**.
+
+### Verification and evidence boundaries
+
+- Fresh pre-commit gates: Round 4 selection **18 passed, 53 deselected**; complete Task 7 contracts **71 passed in 10.89s**; Task 6 ABI **2 passed**; YAML, four `bash -n` checks, `py_compile`, three cached-real manifest validations, and `git diff --check` all exited 0.
+- Task 6 Python ABI oracle: **2 passed**.
+- PyYAML `BaseLoader` parse with exact job set and final `needs`: passed.
+- `bash -n` over all four Task 7 build scripts: passed.
+- `py_compile` over validator and workflow contracts: passed.
+- Current validator reverified cached, previously real-built artifacts: macOS x86_64 wheel, iOS arm64 device, and iOS arm64 simulator each reported **1 manifest / 6 artifacts**. The cached real wheel installed in a clean venv and completed a fake turn with terminal `turn.succeeded`.
+- A fresh real `build-python.sh` replay was attempted with outputs redirected to `/private/tmp/notemeld-task7-round4-*`, but Cargo stopped before compilation: the inherited user Tuna offline index only had `async-trait 0.1.89` while the lock requires `0.1.92`. No fresh Python/Swift build is claimed from that environment failure. Existing real artifacts were used only as compatibility evidence, not represented as a new build.
+- No GitHub Actions, Android, or OpenHarmony run is claimed. No large SDK was downloaded, and no production artifact was published.
+
+### Self-review and residual concerns
+
+- Distribution identity normalization is deliberate; version and root-level dist-info placement remain exact. The accepted platform subset is deliberately limited to project targets: `win_amd64`, versioned `macosx_*_{x86_64,arm64}`, and PEP 600 `manylinux_<major>_<minor>_{x86_64,aarch64}`.
+- Wheel 1.x is the explicit compatibility policy: unknown 1.x minor versions remain compatible, while 0.x/2.x fail closed. Core Metadata support is an explicit finite set rather than any `digits.digits` value.
+- ZIP paths are case-sensitive by policy, matching ZIP member semantics; implicit/explicit directory coexistence is accepted, but a file can never alias or parent another node.
+- `ar` integer operations are bounds-checked against the byte buffer and Python integers do not overflow; existing GNU long-name, BSD `#1/`, all-object architecture, and fat-slice regressions remain green.
+- The Cargo source configuration issue is environmental and was not worked around by editing user config or project build scripts. Generated test/build payloads remain outside the repository and are cleaned before commit.

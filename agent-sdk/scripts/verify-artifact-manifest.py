@@ -13,6 +13,7 @@ from email.parser import Parser
 import hashlib
 import io
 import json
+import lzma
 import os
 from pathlib import Path, PurePosixPath
 import plistlib
@@ -21,6 +22,7 @@ import struct
 import sys
 from typing import Iterable
 import zipfile
+import zlib
 
 try:
     import tomllib
@@ -132,6 +134,20 @@ TARGET_ARCHITECTURES = {
     "x86_64-linux-android": "x86_64",
     "aarch64-unknown-linux-ohos": "aarch64",
 }
+SUPPORTED_METADATA_VERSIONS = frozenset(
+    {"1.0", "1.1", "1.2", "2.1", "2.2", "2.3", "2.4", "2.5"}
+)
+AR_SPECIAL_MEMBERS = frozenset(
+    {
+        "/",
+        "/SYM64/",
+        "//",
+        "__.SYMDEF",
+        "__.SYMDEF SORTED",
+        "__.SYMDEF_64",
+        "__.SYMDEF_64 SORTED",
+    }
+)
 
 
 class ManifestError(ValueError):
@@ -547,8 +563,10 @@ def _verify_container_marker_only(
         RuntimeError,
         UnicodeDecodeError,
         ValueError,
+        lzma.LZMAError,
         struct.error,
         zipfile.BadZipFile,
+        zlib.error,
     ) as error:
         raise ManifestError(f"invalid {kind} ZIP container: {error}") from error
     _verify_binding_marker(
@@ -723,7 +741,10 @@ def _archive_architectures(data: bytes, label: str) -> set[str]:
         if header[58:60] != b"`\n":
             raise ManifestError(f"invalid static archive member header in {label}")
         try:
-            size = int(header[48:58].decode("ascii").strip())
+            size_text = header[48:58].decode("ascii").strip()
+            if not size_text.isdigit():
+                raise ValueError
+            size = int(size_text)
         except (UnicodeDecodeError, ValueError) as error:
             raise ManifestError(f"invalid static archive member size in {label}") from error
         try:
@@ -764,10 +785,7 @@ def _archive_architectures(data: bytes, label: str) -> set[str]:
                 name = string_table[name_offset:name_end].decode("utf-8")
             except UnicodeDecodeError as error:
                 raise ManifestError(f"invalid static archive long name in {label}") from error
-        is_metadata = raw_name in {"/", "/SYM64/", "//"} or name in {
-            "__.SYMDEF",
-            "__.SYMDEF SORTED",
-        }
+        is_metadata = raw_name in AR_SPECIAL_MEMBERS or name in AR_SPECIAL_MEMBERS
         if not is_metadata:
             if not member:
                 raise ManifestError(f"empty static archive object member in {label}:{name}")
@@ -783,6 +801,8 @@ def _archive_architectures(data: bytes, label: str) -> set[str]:
         if size % 2:
             if offset >= len(data):
                 raise ManifestError(f"missing static archive member padding in {label}")
+            if data[offset : offset + 1] != b"\n":
+                raise ManifestError(f"invalid static archive member padding in {label}")
             offset += 1
     if not architectures:
         raise ManifestError(f"static archive contains no native object architecture in {label}")
@@ -807,17 +827,60 @@ def _assert_binary_target(
         )
 
 
+def _normalize_distribution_name(value: str) -> str:
+    return re.sub(r"[-_.]+", "-", value).lower()
+
+
+def _parse_wheel_filename(
+    filename: str,
+) -> tuple[str, str, str | None, list[str], list[str], list[str]]:
+    if not filename.endswith(".whl"):
+        raise ManifestError("python wheel filename must end in .whl")
+    parts = filename[:-4].split("-")
+    if len(parts) not in {5, 6}:
+        raise ManifestError("python wheel filename is malformed")
+    distribution, version = parts[:2]
+    if len(parts) == 6:
+        build_tag = parts[2]
+        python_tag, abi_tag, platform_tag = parts[3:]
+        if not re.fullmatch(r"[0-9][A-Za-z0-9]*", build_tag):
+            raise ManifestError("python wheel filename has invalid build tag")
+    else:
+        build_tag = None
+        python_tag, abi_tag, platform_tag = parts[2:]
+    if not re.fullmatch(r"[A-Za-z0-9_.]+", distribution):
+        raise ManifestError("python wheel filename has invalid distribution")
+    if not re.fullmatch(r"[A-Za-z0-9_.!+]+", version):
+        raise ManifestError("python wheel filename has invalid version")
+    python_tags = python_tag.split(".")
+    abi_tags = abi_tag.split(".")
+    platform_tags = platform_tag.split(".")
+    if not all((python_tags, abi_tags, platform_tags)) or any(
+        not re.fullmatch(r"[A-Za-z0-9_]+", item)
+        for item in (*python_tags, *abi_tags, *platform_tags)
+    ):
+        raise ManifestError("python wheel filename has invalid compatibility tags")
+    return (
+        distribution,
+        version,
+        build_tag,
+        python_tags,
+        abi_tags,
+        platform_tags,
+    )
+
+
 def _wheel_platform_matches_target(platform: str, target: str) -> bool:
     if target == "x86_64-pc-windows-msvc":
         return platform == "win_amd64"
     if target == "x86_64-apple-darwin":
-        return platform.startswith("macosx_") and platform.endswith("_x86_64")
+        return re.fullmatch(r"macosx_[0-9]+_[0-9]+_x86_64", platform) is not None
     if target == "aarch64-apple-darwin":
-        return platform.startswith("macosx_") and platform.endswith("_arm64")
+        return re.fullmatch(r"macosx_[0-9]+_[0-9]+_arm64", platform) is not None
     if target == "x86_64-unknown-linux-gnu":
-        return platform.startswith("manylinux_") and platform.endswith("_x86_64")
+        return re.fullmatch(r"manylinux_[0-9]+_[0-9]+_x86_64", platform) is not None
     if target == "aarch64-unknown-linux-gnu":
-        return platform.startswith("manylinux_") and platform.endswith("_aarch64")
+        return re.fullmatch(r"manylinux_[0-9]+_[0-9]+_aarch64", platform) is not None
     return False
 
 
@@ -847,6 +910,9 @@ def _safe_zip_entries(
     names = [info.filename for info in entries]
     if len(set(raw_names)) != len(raw_names) or len(set(names)) != len(names):
         raise ManifestError(f"{kind} contains duplicate ZIP members")
+    # ZIP member names are case-sensitive. Implicit and explicit directories
+    # share one canonical namespace; a file may never occupy a directory node.
+    namespace: dict[str, str] = {}
     for info in entries:
         raw_name = info.orig_filename
         name = info.filename
@@ -863,6 +929,21 @@ def _safe_zip_entries(
             or any(part in {"", ".", ".."} for part in path_name.split("/"))
         ):
             raise ManifestError(f"{kind} contains unsafe ZIP path: {name}")
+        parts = path_name.split("/")
+        for index in range(1, len(parts)):
+            ancestor = "/".join(parts[:index])
+            if namespace.get(ancestor) == "file":
+                raise ManifestError(
+                    f"{kind} ZIP namespace has file ancestor collision: {ancestor}"
+                )
+            namespace.setdefault(ancestor, "directory")
+        node_kind = "directory" if info.is_dir() else "file"
+        existing_kind = namespace.get(path_name)
+        if existing_kind is not None and existing_kind != node_kind:
+            raise ManifestError(
+                f"{kind} ZIP namespace has file/directory collision: {path_name}"
+            )
+        namespace[path_name] = node_kind
     return entries, {info.filename for info in entries if not info.is_dir()}
 
 
@@ -1080,6 +1161,34 @@ def _inspect_container_contents(
             binding_version=binding_version,
         )
         if kind == "python-wheel":
+            (
+                filename_distribution,
+                filename_version,
+                _build_tag,
+                python_tags,
+                abi_tags,
+                filename_platforms,
+            ) = _parse_wheel_filename(path.name)
+            if filename_version != sdk_version:
+                raise ManifestError("python wheel filename version mismatch")
+            if (
+                _normalize_distribution_name(filename_distribution)
+                != "notemeld-agent-sdk"
+            ):
+                raise ManifestError("python wheel filename distribution mismatch")
+            if not all(
+                _wheel_platform_matches_target(item, target)
+                for item in filename_platforms
+            ):
+                raise ManifestError(
+                    f"python wheel filename platform tags are incompatible with {target}"
+                )
+            filename_tags = {
+                f"{python}-{abi}-{platform}"
+                for python in python_tags
+                for abi in abi_tags
+                for platform in filename_platforms
+            }
             metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
             wheel_names = [name for name in names if name.endswith(".dist-info/WHEEL")]
             record_names = [name for name in names if name.endswith(".dist-info/RECORD")]
@@ -1095,70 +1204,60 @@ def _inspect_container_contents(
             }
             if len(dist_info_dirs) != 1:
                 raise ManifestError("python wheel dist-info files do not share one directory")
+            dist_info_dir = next(iter(dist_info_dirs))
+            dist_info_suffix = f"-{filename_version}.dist-info"
+            if (
+                "/" in dist_info_dir
+                or not dist_info_dir.endswith(dist_info_suffix)
+                or not dist_info_dir[: -len(dist_info_suffix)]
+                or _normalize_distribution_name(
+                    dist_info_dir[: -len(dist_info_suffix)]
+                )
+                != _normalize_distribution_name(filename_distribution)
+            ):
+                raise ManifestError(
+                    "python wheel dist-info directory must be root-level and match "
+                    "the filename distribution/version"
+                )
             metadata = _parse_package_headers(
                 archive.read(metadata_names[0]), "python wheel METADATA"
             )
             metadata_version = _required_header(
                 metadata, "Metadata-Version", "python wheel METADATA"
             )
-            if not re.fullmatch(r"\d+\.\d+", metadata_version):
-                raise ManifestError("python wheel METADATA has invalid Metadata-Version")
+            if metadata_version not in SUPPORTED_METADATA_VERSIONS:
+                raise ManifestError(
+                    "python wheel METADATA has unsupported Metadata-Version"
+                )
             metadata_name = _required_header(
                 metadata, "Name", "python wheel METADATA"
             )
-            if re.sub(r"[-_.]+", "-", metadata_name).lower() != "notemeld-agent-sdk":
-                raise ManifestError("python wheel METADATA name mismatch")
-            if _required_header(
-                metadata, "Version", "python wheel METADATA"
-            ) != sdk_version:
-                raise ManifestError("python wheel METADATA version mismatch")
-            if not path.name.endswith(".whl"):
-                raise ManifestError("python wheel filename must end in .whl")
-            try:
-                distribution_version, python_tag, abi_tag, platform_tag = path.name[
-                    :-4
-                ].rsplit("-", 3)
-            except ValueError as error:
-                raise ManifestError("python wheel filename is malformed") from error
-            if not distribution_version.endswith(f"-{sdk_version}"):
-                raise ManifestError("python wheel filename version mismatch")
-            filename_distribution = distribution_version[: -len(f"-{sdk_version}")]
             if (
-                re.sub(r"[-_.]+", "-", filename_distribution).lower()
+                _normalize_distribution_name(metadata_name)
+                != _normalize_distribution_name(filename_distribution)
+                or _normalize_distribution_name(metadata_name)
                 != "notemeld-agent-sdk"
             ):
-                raise ManifestError("python wheel filename distribution mismatch")
-            python_tags = python_tag.split(".")
-            abi_tags = abi_tag.split(".")
-            filename_platforms = platform_tag.split(".")
+                raise ManifestError("python wheel METADATA name mismatch")
+            metadata_package_version = _required_header(
+                metadata, "Version", "python wheel METADATA"
+            )
             if (
-                not all((python_tags, abi_tags, filename_platforms))
-                or any(
-                    not re.fullmatch(r"[A-Za-z0-9_]+", item)
-                    for item in (*python_tags, *abi_tags, *filename_platforms)
-                )
-                or not all(
-                _wheel_platform_matches_target(item, target)
-                for item in filename_platforms
-                )
+                metadata_package_version != filename_version
+                or metadata_package_version != sdk_version
             ):
-                raise ManifestError(
-                    f"python wheel filename tags are incompatible with {target}"
-                )
-            filename_tags = {
-                f"{python}-{abi}-{platform}"
-                for python in python_tags
-                for abi in abi_tags
-                for platform in filename_platforms
-            }
+                raise ManifestError("python wheel METADATA version mismatch")
             wheel_metadata = _parse_package_headers(
                 archive.read(wheel_names[0]), "python wheel WHEEL"
             )
             wheel_version = _required_header(
                 wheel_metadata, "Wheel-Version", "python wheel WHEEL"
             )
-            if not re.fullmatch(r"\d+\.\d+", wheel_version):
-                raise ManifestError("python wheel WHEEL has invalid Wheel-Version")
+            wheel_version_match = re.fullmatch(r"([0-9]+)\.([0-9]+)", wheel_version)
+            if wheel_version_match is None or int(wheel_version_match.group(1)) != 1:
+                raise ManifestError(
+                    "python wheel WHEEL has incompatible Wheel-Version; only 1.x is supported"
+                )
             _required_header(wheel_metadata, "Generator", "python wheel WHEEL")
             root_is_purelib = _required_header(
                 wheel_metadata, "Root-Is-Purelib", "python wheel WHEEL"
@@ -1169,10 +1268,11 @@ def _inspect_container_contents(
                 )
             if root_is_purelib != "false":
                 raise ManifestError("python native wheel must set Root-Is-Purelib: false")
-            declared_tags = wheel_metadata.get_all("Tag", failobj=[])
-            if not declared_tags:
+            raw_declared_tags = wheel_metadata.get_all("Tag", failobj=[])
+            if not raw_declared_tags:
                 raise ManifestError("python wheel WHEEL metadata has no Tag")
-            for declared_tag in declared_tags:
+            declared_tags: set[str] = set()
+            for declared_tag in raw_declared_tags:
                 if (
                     not isinstance(declared_tag, str)
                     or declared_tag.strip() not in filename_tags
@@ -1181,6 +1281,14 @@ def _inspect_container_contents(
                         "python wheel tag is incompatible with filename/target: "
                         f"{declared_tag}"
                     )
+                normalized_tag = declared_tag.strip()
+                if normalized_tag in declared_tags:
+                    raise ManifestError("python wheel WHEEL contains duplicate Tag")
+                declared_tags.add(normalized_tag)
+            if declared_tags != filename_tags:
+                raise ManifestError(
+                    "python wheel WHEEL Tag set does not match the filename tag set"
+                )
             _verify_wheel_record(archive, names, record_names[0])
             runtime_name = "notemeld_agent_sdk/runtime.py"
             if runtime_name not in names:
@@ -1405,8 +1513,10 @@ def _inspect_container(
         RuntimeError,
         UnicodeDecodeError,
         ValueError,
+        lzma.LZMAError,
         struct.error,
         zipfile.BadZipFile,
+        zlib.error,
     ) as error:
         raise ManifestError(f"invalid {kind} ZIP container: {error}") from error
 

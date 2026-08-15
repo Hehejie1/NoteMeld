@@ -271,13 +271,51 @@ def _archive_members(*members: bytes) -> bytes:
     return bytes(output)
 
 
+def _archive_named_members(
+    *members: tuple[str, bytes, bytes]
+) -> bytes:
+    output = bytearray(b"!<arch>\n")
+    for name, payload, padding in members:
+        encoded_name = name.encode("ascii")
+        if len(encoded_name) > 15:
+            raw_name = f"#1/{len(encoded_name)}".encode("ascii")
+            body = encoded_name + payload
+        else:
+            raw_name = f"{name}/".encode("ascii")
+            body = payload
+        output.extend(
+            raw_name.ljust(16)
+            + b"0".ljust(12)
+            + b"0".ljust(6)
+            + b"0".ljust(6)
+            + b"100644".ljust(8)
+            + str(len(body)).encode().ljust(10)
+            + b"`\n"
+        )
+        output.extend(body)
+        if len(body) % 2:
+            output.extend(padding)
+    return bytes(output)
+
+
 def _archive(member: bytes) -> bytes:
     return _archive_members(member)
 
 
 def _rewrite_wheel(root: Path, members: dict[str, bytes | str]) -> Path:
+    return _write_wheel_members(
+        root,
+        members,
+        "notemeld_agent_sdk-0.1.0.dist-info/RECORD",
+    )
+
+
+def _write_wheel_members(
+    root: Path,
+    members: dict[str, bytes | str],
+    record_path: str,
+) -> Path:
     wheel = next(root.glob("*.whl"))
-    record_path = "notemeld_agent_sdk-0.1.0.dist-info/RECORD"
     members.pop(record_path, None)
     _add_wheel_record(members, record_path)
     _write_zip(wheel, members)
@@ -298,6 +336,49 @@ def _read_wheel_payload_members(wheel: Path) -> dict[str, bytes | str]:
             for info in archive.infolist()
             if not info.is_dir() and not info.filename.endswith(".dist-info/RECORD")
         }
+
+
+def _rename_wheel(root: Path, new_name: str) -> Path:
+    wheel = next(root.glob("*.whl"))
+    renamed = wheel.with_name(new_name)
+    wheel.rename(renamed)
+    manifest_path = root / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
+    )
+    wheel_entry["path"] = renamed.name
+    wheel_entry["sha256"] = hashlib.sha256(renamed.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return renamed
+
+
+def _corrupt_compressed_zip_member(path: Path, member_name: str) -> None:
+    with zipfile.ZipFile(path) as archive:
+        members = {
+            info.filename: archive.read(info)
+            for info in archive.infolist()
+            if not info.is_dir()
+        }
+    with zipfile.ZipFile(
+        path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name, payload in members.items():
+            archive.writestr(name, payload)
+    with zipfile.ZipFile(path) as archive:
+        info = archive.getinfo(member_name)
+        header_offset = info.header_offset
+        compressed_size = info.compress_size
+    raw = bytearray(path.read_bytes())
+    name_size = int.from_bytes(raw[header_offset + 26 : header_offset + 28], "little")
+    extra_size = int.from_bytes(raw[header_offset + 28 : header_offset + 30], "little")
+    payload_offset = header_offset + 30 + name_size + extra_size
+    assert compressed_size > 0
+    raw[payload_offset : payload_offset + compressed_size] = b"\xff" * compressed_size
+    path.write_bytes(raw)
 
 
 def _write_complete_swift_bundle(root: Path) -> None:
@@ -376,6 +457,32 @@ def _write_complete_swift_bundle(root: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _replace_swift_archives(root: Path, archive_payload: bytes) -> None:
+    (root / "libnotemeld_agent.a").write_bytes(archive_payload)
+    for container_name in (
+        "NoteMeldAgentNative.xcframework.zip",
+        "NoteMeldAgentSwiftPackage.zip",
+    ):
+        container = root / container_name
+        with zipfile.ZipFile(container) as archive:
+            members = {
+                info.filename: (
+                    archive_payload
+                    if info.filename.endswith("/libnotemeld_agent.a")
+                    else archive.read(info)
+                )
+                for info in archive.infolist()
+                if not info.is_dir()
+            }
+        _write_zip(container, members)
+    manifest_path = root / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest["artifacts"]:
+        artifact = root / entry["path"]
+        entry["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
 
 def _binding_marker(*targets: str, sdk_version: str = "0.1.0") -> str:
@@ -822,6 +929,259 @@ def test_manifest_validator_rejects_incomplete_metadata_and_wheel_headers(
     assert "metadata" in result.stderr.lower() or "wheel" in result.stderr.lower()
 
 
+@pytest.mark.parametrize("metadata_version", ["0.0", "9.9"])
+def test_round4_manifest_validator_rejects_unsupported_metadata_version(
+    tmp_path: Path,
+    metadata_version: str,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["notemeld_agent_sdk-0.1.0.dist-info/METADATA"] = (
+        f"Metadata-Version: {metadata_version}\n"
+        "Name: notemeld-agent-sdk\nVersion: 0.1.0\n"
+    )
+    _rewrite_wheel(tmp_path, members)
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "metadata-version" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_rejects_incompatible_wheel_version(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["notemeld_agent_sdk-0.1.0.dist-info/WHEEL"] = (
+        "Wheel-Version: 2.0\nGenerator: notemeld-agent-sdk\n"
+        "Root-Is-Purelib: false\n"
+        "Tag: py3-none-manylinux_2_28_x86_64\n"
+    )
+    _rewrite_wheel(tmp_path, members)
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "wheel-version" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_rejects_garbage_manylinux_platform(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["notemeld_agent_sdk-0.1.0.dist-info/WHEEL"] = (
+        "Wheel-Version: 1.0\nGenerator: notemeld-agent-sdk\n"
+        "Root-Is-Purelib: false\n"
+        "Tag: py3-none-manylinux_garbage_x86_64\n"
+    )
+    _rewrite_wheel(tmp_path, members)
+    _rename_wheel(
+        tmp_path,
+        "notemeld_agent_sdk-0.1.0-py3-none-manylinux_garbage_x86_64.whl",
+    )
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "platform" in result.stderr.lower() or "wheel tag" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_rejects_mismatched_dist_info_identity(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    metadata = members.pop("notemeld_agent_sdk-0.1.0.dist-info/METADATA")
+    wheel_headers = members.pop("notemeld_agent_sdk-0.1.0.dist-info/WHEEL")
+    members["other_project-9.9.dist-info/METADATA"] = metadata
+    members["other_project-9.9.dist-info/WHEEL"] = wheel_headers
+    _write_wheel_members(tmp_path, members, "other_project-9.9.dist-info/RECORD")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "dist-info" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_rejects_nested_dist_info_directory(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    metadata = members.pop("notemeld_agent_sdk-0.1.0.dist-info/METADATA")
+    wheel_headers = members.pop("notemeld_agent_sdk-0.1.0.dist-info/WHEEL")
+    prefix = "nested/notemeld_agent_sdk-0.1.0.dist-info"
+    members[f"{prefix}/METADATA"] = metadata
+    members[f"{prefix}/WHEEL"] = wheel_headers
+    _write_wheel_members(tmp_path, members, f"{prefix}/RECORD")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "dist-info" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_accepts_normalized_dist_info_identity(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    _rename_wheel(
+        tmp_path,
+        "NoteMeld.Agent.SDK-0.1.0-py3-none-manylinux_2_28_x86_64.whl",
+    )
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_round4_manifest_validator_accepts_valid_wheel_build_tag(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    _rename_wheel(
+        tmp_path,
+        "notemeld_agent_sdk-0.1.0-1-py3-none-manylinux_2_28_x86_64.whl",
+    )
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_round4_manifest_validator_rejects_invalid_wheel_build_tag(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    _rename_wheel(
+        tmp_path,
+        "notemeld_agent_sdk-0.1.0-preview-py3-none-manylinux_2_28_x86_64.whl",
+    )
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "build tag" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_rejects_incomplete_compressed_tag_set(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    _rename_wheel(
+        tmp_path,
+        "notemeld_agent_sdk-0.1.0-py2.py3-none-manylinux_2_28_x86_64.whl",
+    )
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "tag" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_accepts_complete_compressed_tag_set(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["notemeld_agent_sdk-0.1.0.dist-info/WHEEL"] = (
+        "Wheel-Version: 1.0\nGenerator: notemeld-agent-sdk\n"
+        "Root-Is-Purelib: false\n"
+        "Tag: py2-none-manylinux_2_28_x86_64\n"
+        "Tag: py3-none-manylinux_2_28_x86_64\n"
+    )
+    _rewrite_wheel(tmp_path, members)
+    _rename_wheel(
+        tmp_path,
+        "notemeld_agent_sdk-0.1.0-py2.py3-none-manylinux_2_28_x86_64.whl",
+    )
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_round4_manifest_validator_rejects_file_directory_name_collision(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["collision"] = b"file"
+    _rewrite_wheel(tmp_path, members)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("collision/", b"")
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
+    )
+    wheel_entry["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "namespace" in result.stderr.lower() or "collision" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_rejects_file_as_entry_ancestor(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["collision"] = b"file"
+    members["collision/child"] = b"child"
+    _rewrite_wheel(tmp_path, members)
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "ancestor" in result.stderr.lower() or "collision" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_accepts_explicit_implicit_directories_and_case_distinctions(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    members = _read_wheel_payload_members(wheel)
+    members["Case/child"] = b"upper"
+    members["case/child"] = b"lower"
+    _rewrite_wheel(tmp_path, members)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("Case/", b"")
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
+    )
+    wheel_entry["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_manifest_validator_rejects_duplicate_zip_directory_entry(
     tmp_path: Path,
 ) -> None:
@@ -861,6 +1221,30 @@ def test_manifest_validator_reports_invalid_utf8_wheel_without_traceback(
     assert "wheel" in result.stderr.lower()
 
 
+def test_round4_manifest_validator_reports_corrupt_deflate_without_traceback(
+    tmp_path: Path,
+) -> None:
+    _write_complete_linux_bundle(tmp_path)
+    wheel = next(tmp_path.glob("*.whl"))
+    _corrupt_compressed_zip_member(
+        wheel,
+        "notemeld_agent_sdk/notemeld-agent-sdk.json",
+    )
+    manifest_path = tmp_path / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    wheel_entry = next(
+        entry for entry in manifest["artifacts"] if entry["kind"] == "python-wheel"
+    )
+    wheel_entry["sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = _run_validator(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "zip" in result.stderr.lower() or "wheel" in result.stderr.lower()
+
+
 def test_manifest_validator_rejects_mixed_architecture_swift_archives(
     tmp_path: Path,
 ) -> None:
@@ -895,6 +1279,52 @@ def test_manifest_validator_rejects_mixed_architecture_swift_archives(
 
     assert result.returncode != 0
     assert "architecture" in result.stderr.lower()
+
+
+def test_round4_manifest_validator_accepts_bsd_symdef64_archive(
+    tmp_path: Path,
+) -> None:
+    _write_complete_swift_bundle(tmp_path)
+    archive_payload = _archive_named_members(
+        ("__.SYMDEF_64", b"\0\0\0\0", b"\n"),
+        ("member.o", _macho_arm64(), b"\n"),
+    )
+    _replace_swift_archives(tmp_path, archive_payload)
+
+    result = _run_validator(tmp_path, "aarch64-apple-ios")
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_round4_manifest_validator_accepts_bsd_symdef64_sorted_archive(
+    tmp_path: Path,
+) -> None:
+    _write_complete_swift_bundle(tmp_path)
+    archive_payload = _archive_named_members(
+        ("__.SYMDEF_64 SORTED", b"\0\0\0\0", b"\n"),
+        ("member.o", _macho_arm64(), b"\n"),
+    )
+    _replace_swift_archives(tmp_path, archive_payload)
+
+    result = _run_validator(tmp_path, "aarch64-apple-ios")
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_round4_manifest_validator_rejects_non_newline_archive_padding(
+    tmp_path: Path,
+) -> None:
+    _write_complete_swift_bundle(tmp_path)
+    archive_payload = _archive_named_members(
+        ("member.o", _macho_arm64() + b"\0", b"X"),
+    )
+    _replace_swift_archives(tmp_path, archive_payload)
+
+    result = _run_validator(tmp_path, "aarch64-apple-ios")
+
+    assert result.returncode == 2
+    assert "traceback" not in result.stderr.lower()
+    assert "padding" in result.stderr.lower()
 
 
 def test_manifest_validator_rejects_swift_runtime_version_drift(
