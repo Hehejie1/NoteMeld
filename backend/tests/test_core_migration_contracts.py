@@ -215,6 +215,79 @@ class TestCoreMigrationContracts(unittest.TestCase):
             self.assertTrue(manifest["includes"]["static"])
             self.assertFalse(manifest["includes"]["vector_index"])
 
+    def test_export_manifest_counts_all_whiteboard_tables(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = pathlib.Path(tmp_dir)
+            current_db = root / "notemeld.db"
+            self._prepare_conversation_tables(current_db)
+            self._prepare_whiteboard_tables(current_db)
+            self._insert_conversation(current_db, title="Published board")
+            self._insert_whiteboard_graph(current_db, "conv-1", "task-1", "wb-export")
+
+            service = MigrationExportService(
+                current_db_path=current_db,
+                note_output_root=root / "note_results",
+                uploads_root=root / "uploads",
+                static_root=root / "static",
+                packages_dir=root / "packages",
+                job_store=MigrationJobStore(root / "jobs"),
+            )
+
+            result = service.start_export(
+                {"job_id": "job-export-whiteboard", "package_name": "backup-whiteboard"}
+            )
+            archive_path = root / "packages" / "backup-whiteboard.zip"
+
+            self.assertEqual(
+                {
+                    name: result["summary"]["counts"][name]
+                    for name in (
+                        "whiteboards",
+                        "whiteboard_cards",
+                        "whiteboard_relations",
+                        "whiteboard_note_links",
+                    )
+                },
+                {
+                    "whiteboards": 1,
+                    "whiteboard_cards": 2,
+                    "whiteboard_relations": 1,
+                    "whiteboard_note_links": 1,
+                },
+            )
+            with zipfile.ZipFile(archive_path) as archive:
+                exported_db = root / "exported-notemeld.db"
+                exported_db.write_bytes(archive.read("database/notemeld.db"))
+            conn = sqlite3.connect(exported_db)
+            exported_rows = {
+                "whiteboards": conn.execute(
+                    "SELECT id, conversation_id FROM whiteboards"
+                ).fetchall(),
+                "whiteboard_cards": conn.execute(
+                    "SELECT id, whiteboard_id FROM whiteboard_cards ORDER BY id"
+                ).fetchall(),
+                "whiteboard_relations": conn.execute(
+                    "SELECT id, whiteboard_id FROM whiteboard_relations"
+                ).fetchall(),
+                "whiteboard_note_links": conn.execute(
+                    "SELECT whiteboard_id, note_task_id FROM whiteboard_note_links"
+                ).fetchall(),
+            }
+            conn.close()
+            self.assertEqual(exported_rows["whiteboards"], [("wb-export", "conv-1")])
+            self.assertEqual(
+                exported_rows["whiteboard_cards"],
+                [("wb-export-a", "wb-export"), ("wb-export-b", "wb-export")],
+            )
+            self.assertEqual(
+                exported_rows["whiteboard_relations"],
+                [("wb-export-relation", "wb-export")],
+            )
+            self.assertEqual(
+                exported_rows["whiteboard_note_links"],
+                [("wb-export", "task-1")],
+            )
+
     def test_merge_service_overwrites_same_id_rows(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = pathlib.Path(tmp_dir)
@@ -404,6 +477,150 @@ class TestCoreMigrationContracts(unittest.TestCase):
             self.assertEqual(summary["items"]["overwritten"], 1)
             self.assertEqual(title, "新标题")
             self.assertEqual(rowid, original_rowid)
+
+    def test_merge_imports_whiteboard_graph_parent_before_child_and_preserves_unrelated_board(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = pathlib.Path(tmp_dir)
+            current_db = root / "current.db"
+            import_db = root / "import.db"
+            for db_path in (current_db, import_db):
+                self._prepare_conversation_tables(db_path)
+                self._prepare_whiteboard_tables(db_path)
+
+            self._insert_conversation(current_db, title="Local conversation")
+            self._insert_whiteboard_graph(current_db, "conv-1", "task-1", "wb-local")
+            self._insert_named_conversation(import_db, "conv-import", "task-import")
+            self._insert_whiteboard_graph(
+                import_db,
+                "conv-import",
+                "task-import",
+                "wb-import",
+            )
+            self._add_whiteboard_insert_log(current_db)
+
+            summary = MigrationMergeService(current_db_path=current_db).merge_database(import_db)
+
+            conn = sqlite3.connect(current_db)
+            imported_rows = {
+                table: conn.execute(f"SELECT COUNT(*) FROM {table} WHERE whiteboard_id = ?", ("wb-import",)).fetchone()[0]
+                for table in ("whiteboard_cards", "whiteboard_relations", "whiteboard_note_links")
+            }
+            board_ids = {
+                row[0] for row in conn.execute("SELECT id FROM whiteboards").fetchall()
+            }
+            insert_order = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT table_name FROM whiteboard_insert_log ORDER BY position"
+                ).fetchall()
+            ]
+            conn.close()
+
+            self.assertEqual(board_ids, {"wb-local", "wb-import"})
+            self.assertEqual(imported_rows, {
+                "whiteboard_cards": 2,
+                "whiteboard_relations": 1,
+                "whiteboard_note_links": 1,
+            })
+            self.assertEqual(
+                insert_order,
+                [
+                    "whiteboards",
+                    "whiteboard_cards",
+                    "whiteboard_cards",
+                    "whiteboard_relations",
+                    "whiteboard_note_links",
+                ],
+            )
+            self.assertEqual(summary["whiteboards"]["inserted"], 1)
+
+    def test_merge_old_package_without_whiteboard_tables_is_compatible(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = pathlib.Path(tmp_dir)
+            current_db = root / "current.db"
+            old_package_db = root / "old-package.db"
+            self._prepare_conversation_tables(current_db)
+            self._prepare_whiteboard_tables(current_db)
+            self._prepare_conversation_tables(old_package_db)
+            self._insert_named_conversation(old_package_db, "conv-old", "task-old")
+
+            summary = MigrationMergeService(current_db_path=current_db).merge_database(
+                old_package_db
+            )
+
+            self.assertEqual(summary["conversations"]["inserted"], 1)
+            self.assertNotIn("whiteboards", summary)
+
+    def test_merge_uses_shared_columns_for_old_whiteboard_schema(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = pathlib.Path(tmp_dir)
+            current_db = root / "current.db"
+            old_package_db = root / "old-package.db"
+            self._prepare_conversation_tables(current_db)
+            self._prepare_whiteboard_tables(current_db)
+            self._prepare_conversation_tables(old_package_db)
+            self._insert_named_conversation(old_package_db, "conv-old", "task-old")
+            conn = sqlite3.connect(old_package_db)
+            conn.execute(
+                """
+                CREATE TABLE whiteboards (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    revision INTEGER NOT NULL DEFAULT 1,
+                    viewport_json TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}'
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO whiteboards (id, conversation_id, title) VALUES (?, ?, ?)",
+                ("wb-old", "conv-old", "Old schema board"),
+            )
+            conn.commit()
+            conn.close()
+
+            summary = MigrationMergeService(current_db_path=current_db).merge_database(
+                old_package_db
+            )
+
+            conn = sqlite3.connect(current_db)
+            row = conn.execute(
+                "SELECT title, schema_version, status FROM whiteboards WHERE id = ?",
+                ("wb-old",),
+            ).fetchone()
+            conn.close()
+            self.assertEqual(summary["whiteboards"]["inserted"], 1)
+            self.assertEqual(row, ("Old schema board", 1, "active"))
+
+    def test_merge_whiteboard_primary_key_conflict_updates_only_matching_board(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = pathlib.Path(tmp_dir)
+            current_db = root / "current.db"
+            import_db = root / "import.db"
+            for db_path in (current_db, import_db):
+                self._prepare_conversation_tables(db_path)
+                self._prepare_whiteboard_tables(db_path)
+                self._insert_conversation(db_path, title="Shared conversation")
+            self._insert_whiteboard_graph(current_db, "conv-1", "task-1", "wb-conflict")
+            self._insert_whiteboard_graph(current_db, "conv-1", "task-1", "wb-unrelated")
+            self._insert_whiteboard_graph(import_db, "conv-1", "task-1", "wb-conflict")
+            conn = sqlite3.connect(import_db)
+            conn.execute(
+                "UPDATE whiteboards SET title = ? WHERE id = ?",
+                ("Imported conflict winner", "wb-conflict"),
+            )
+            conn.commit()
+            conn.close()
+
+            summary = MigrationMergeService(current_db_path=current_db).merge_database(import_db)
+
+            conn = sqlite3.connect(current_db)
+            rows = dict(conn.execute("SELECT id, title FROM whiteboards").fetchall())
+            conn.close()
+            self.assertEqual(summary["whiteboards"]["overwritten"], 1)
+            self.assertEqual(rows["wb-conflict"], "Imported conflict winner")
+            self.assertEqual(rows["wb-unrelated"], "Board wb-unrelated")
 
     def test_import_service_reindex_ignores_note_auxiliary_json_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -615,6 +832,183 @@ class TestCoreMigrationContracts(unittest.TestCase):
                 id TEXT PRIMARY KEY,
                 title TEXT
             )
+            """
+        )
+        conn.commit()
+        conn.close()
+
+    def _prepare_whiteboard_tables(self, db_path: pathlib.Path) -> None:
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE whiteboards (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                schema_version INTEGER NOT NULL DEFAULT 1,
+                revision INTEGER NOT NULL DEFAULT 1,
+                viewport_json TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}',
+                legacy_canvas_id TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
+            );
+            CREATE TABLE whiteboard_cards (
+                id TEXT PRIMARY KEY,
+                whiteboard_id TEXT NOT NULL,
+                card_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                content_json TEXT NOT NULL,
+                source_refs_json TEXT NOT NULL DEFAULT '[]',
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                width REAL NOT NULL,
+                height REAL NOT NULL,
+                z_index INTEGER NOT NULL DEFAULT 0,
+                collapsed INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE whiteboard_relations (
+                id TEXT PRIMARY KEY,
+                whiteboard_id TEXT NOT NULL,
+                source_card_id TEXT NOT NULL,
+                target_card_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL DEFAULT 'related',
+                label TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                line_type TEXT NOT NULL DEFAULT 'bezier',
+                direction TEXT NOT NULL DEFAULT 'forward',
+                source_refs_json TEXT NOT NULL DEFAULT '[]',
+                style_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE whiteboard_note_links (
+                whiteboard_id TEXT PRIMARY KEY,
+                note_task_id TEXT NOT NULL,
+                published_revision INTEGER NOT NULL,
+                published_at TEXT,
+                updated_at TEXT
+            );
+            """
+        )
+        conn.commit()
+        conn.close()
+
+    def _insert_named_conversation(
+        self,
+        db_path: pathlib.Path,
+        conversation_id: str,
+        note_task_id: str,
+    ) -> None:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO conversations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                conversation_id,
+                "note",
+                conversation_id,
+                "SUCCESS",
+                "",
+                "web",
+                note_task_id,
+                "ready",
+                "{}",
+                "{}",
+                "{}",
+                '"# Note"',
+                "2026-06-02T00:00:00+00:00",
+                "2026-06-02T00:00:00+00:00",
+                None,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO note_documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                note_task_id,
+                conversation_id,
+                note_task_id,
+                "# Imported",
+                "https://example.com",
+                "web",
+                "gpt-4",
+                "default",
+                "SUCCESS",
+                "pending",
+                "2026-06-02T00:00:00+00:00",
+                "2026-06-02T00:00:00+00:00",
+                None,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def _insert_whiteboard_graph(
+        self,
+        db_path: pathlib.Path,
+        conversation_id: str,
+        note_task_id: str,
+        whiteboard_id: str,
+    ) -> None:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO whiteboards (id, conversation_id, title) VALUES (?, ?, ?)",
+            (whiteboard_id, conversation_id, f"Board {whiteboard_id}"),
+        )
+        for index, card_id in enumerate((f"{whiteboard_id}-a", f"{whiteboard_id}-b")):
+            conn.execute(
+                """
+                INSERT INTO whiteboard_cards (
+                    id, whiteboard_id, card_type, title, content_json,
+                    x, y, width, height, z_index
+                ) VALUES (?, ?, 'markdown', ?, ?, ?, 0, 320, 220, ?)
+                """,
+                (card_id, whiteboard_id, card_id, '{"markdown":"body"}', index * 360, index),
+            )
+        conn.execute(
+            """
+            INSERT INTO whiteboard_relations (
+                id, whiteboard_id, source_card_id, target_card_id
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (
+                f"{whiteboard_id}-relation",
+                whiteboard_id,
+                f"{whiteboard_id}-a",
+                f"{whiteboard_id}-b",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO whiteboard_note_links (
+                whiteboard_id, note_task_id, published_revision
+            ) VALUES (?, ?, 1)
+            """,
+            (whiteboard_id, note_task_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def _add_whiteboard_insert_log(self, db_path: pathlib.Path) -> None:
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE whiteboard_insert_log (
+                position INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL
+            );
+            CREATE TRIGGER log_whiteboards AFTER INSERT ON whiteboards
+            BEGIN INSERT INTO whiteboard_insert_log(table_name) VALUES ('whiteboards'); END;
+            CREATE TRIGGER log_whiteboard_cards AFTER INSERT ON whiteboard_cards
+            BEGIN INSERT INTO whiteboard_insert_log(table_name) VALUES ('whiteboard_cards'); END;
+            CREATE TRIGGER log_whiteboard_relations AFTER INSERT ON whiteboard_relations
+            BEGIN INSERT INTO whiteboard_insert_log(table_name) VALUES ('whiteboard_relations'); END;
+            CREATE TRIGGER log_whiteboard_note_links AFTER INSERT ON whiteboard_note_links
+            BEGIN INSERT INTO whiteboard_insert_log(table_name) VALUES ('whiteboard_note_links'); END;
             """
         )
         conn.commit()

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_db
@@ -450,6 +451,7 @@ def delete_conversation_note_document(conversation_id: str, task_id: str) -> dic
     if not deleted:
         return None
 
+    clear_whiteboard_note_links_for_task(task_id)
     delete_note_task_artifacts(task_id)
     cancel_note_task(task_id, "笔记已删除，任务已取消")
     _delete_note_messages_for_task(conversation_id, task_id)
@@ -485,6 +487,63 @@ def delete_conversation_note_document(conversation_id: str, task_id: str) -> dic
             "transcript": {},
         }
     )
+
+
+def clear_whiteboard_note_links_for_task(task_id: str) -> int:
+    if not task_id:
+        return 0
+
+    from app.db.models.whiteboard import WhiteboardNoteLink
+
+    db = _db()
+    try:
+        deleted = (
+            db.query(WhiteboardNoteLink)
+            .filter(WhiteboardNoteLink.note_task_id == task_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return int(deleted or 0)
+    finally:
+        db.close()
+
+
+def soft_delete_whiteboards_by_conversation(
+    conversation_id: str,
+    *,
+    db=None,
+) -> int:
+    if not conversation_id:
+        return 0
+
+    from app.db.models.whiteboard import Whiteboard
+
+    owns_session = db is None
+    session = db or _db()
+    try:
+        rows = (
+            session.query(Whiteboard)
+            .filter(
+                Whiteboard.conversation_id == conversation_id,
+                Whiteboard.deleted_at.is_(None),
+            )
+            .all()
+        )
+        now = datetime.now(timezone.utc)
+        for board in rows:
+            board.status = "archived"
+            board.deleted_at = now
+            board.updated_at = now
+        if owns_session:
+            session.commit()
+        return len(rows)
+    except Exception:
+        if owns_session:
+            session.rollback()
+        raise
+    finally:
+        if owns_session:
+            session.close()
 
 
 def upsert_conversation(data: dict) -> dict:
@@ -712,10 +771,13 @@ def append_note_result_message(conversation_id: str, task_id: str, payload: dict
 def soft_delete_conversation(conversation_id: str) -> bool:
     db = _db()
     try:
+        if db.get_bind().dialect.name == "sqlite":
+            db.execute(text("BEGIN IMMEDIATE"))
         row = db.query(Conversation).filter(Conversation.id == conversation_id).first()
         if row is None:
             return False
         row.deleted_at = datetime.now(timezone.utc)
+        soft_delete_whiteboards_by_conversation(conversation_id, db=db)
         db.commit()
         try:
             from app.services.note_document_store import soft_delete_note_documents_by_conversation

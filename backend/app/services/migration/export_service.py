@@ -133,6 +133,10 @@ class MigrationExportService:
             "conversations": 0,
             "conversation_messages": 0,
             "note_documents": 0,
+            "whiteboards": 0,
+            "whiteboard_cards": 0,
+            "whiteboard_relations": 0,
+            "whiteboard_note_links": 0,
             "note_result_files": self._file_count(self.note_output_root, skip_names={"wiki"}),
             "upload_files": self._file_count(self.uploads_root),
             "static_files": self._file_count(self.static_root),
@@ -143,7 +147,15 @@ class MigrationExportService:
 
         conn = sqlite3.connect(self.current_db_path)
         try:
-            for table_name in ("conversations", "conversation_messages", "note_documents"):
+            for table_name in (
+                "conversations",
+                "conversation_messages",
+                "note_documents",
+                "whiteboards",
+                "whiteboard_cards",
+                "whiteboard_relations",
+                "whiteboard_note_links",
+            ):
                 try:
                     counts[table_name] = int(conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0])
                 except Exception:

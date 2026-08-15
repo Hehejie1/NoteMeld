@@ -54,7 +54,21 @@ class MigrationMergeService:
 
     def _shared_tables(self, current_conn: sqlite3.Connection, source_conn: sqlite3.Connection) -> list[str]:
         current_tables = set(self._table_names(current_conn))
-        return [name for name in self._table_names(source_conn) if name in current_tables]
+        shared_tables = [
+            name for name in self._table_names(source_conn) if name in current_tables
+        ]
+        preferred_order = (
+            "conversations",
+            "conversation_messages",
+            "note_documents",
+            "whiteboards",
+            "whiteboard_cards",
+            "whiteboard_relations",
+            "whiteboard_note_links",
+        )
+        preferred = [name for name in preferred_order if name in shared_tables]
+        preferred_set = set(preferred)
+        return preferred + [name for name in shared_tables if name not in preferred_set]
 
     def _table_names(self, conn: sqlite3.Connection) -> list[str]:
         rows = conn.execute(
