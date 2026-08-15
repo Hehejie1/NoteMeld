@@ -67,6 +67,7 @@ assert.match(commands, /createWhiteboardCommand/)
 assert.match(commands, /applyWhiteboardOperations/)
 assert.match(commands, /copyWhiteboardSelection/)
 assert.match(commands, /buildPasteOperations/)
+assert.match(commands, /rebaseWhiteboardCommand/)
 
 assert.match(controller, /base_revision:\s*revision/)
 assert.match(controller, /WhiteboardRevisionConflict/)
@@ -88,6 +89,7 @@ assert.match(controller, /setPendingCount\(0\)/)
 assert.match(controller, /setPendingCommand\(null\)/)
 assert.match(controller, /await\s+reload\(\)/)
 assert.match(controller, /applyWhiteboardOperations\([^]*command\.inverse/s)
+assert.match(controller, /rebaseWhiteboardCommand\(current, entry\.command\)/)
 
 assert.match(taskStore, /\.slice\(-8\)/, '引用 chip 数量必须继续限制为 8')
 assert.match(taskStore, /reference\.type === 'whiteboard_selection' \? 12000 : 2000/)
@@ -163,5 +165,34 @@ const pasted = commandsModule.buildPasteOperations(copied, {
 })
 assert.equal(pasted.filter(operation => operation.op === 'card.create').length, 2)
 assert.equal(pasted.filter(operation => operation.op === 'relation.create').length, 1)
+
+const retryInitial = {
+  ...sampleBoard,
+  cards: sampleBoard.cards.map(card => card.id === 'card_a' ? { ...card, title: '0' } : card),
+}
+const failedA = commandsModule.createWhiteboardCommand(
+  retryInitial,
+  [{ op: 'card.update', card_id: 'card_a', patch: { title: '1' } }],
+  'A',
+  'A-1',
+)
+const afterAFailure = commandsModule.applyWhiteboardOperations(
+  commandsModule.applyWhiteboardOperations(retryInitial, failedA.forward),
+  failedA.inverse,
+)
+const successfulB = commandsModule.createWhiteboardCommand(
+  afterAFailure,
+  [{ op: 'card.update', card_id: 'card_a', patch: { title: '2' } }],
+  'B',
+  'B-1',
+)
+const afterBSuccess = commandsModule.applyWhiteboardOperations(afterAFailure, successfulB.forward)
+const rebasedA = commandsModule.rebaseWhiteboardCommand(afterBSuccess, failedA)
+const afterRetryFailure = commandsModule.applyWhiteboardOperations(
+  commandsModule.applyWhiteboardOperations(afterBSuccess, rebasedA.forward),
+  rebasedA.inverse,
+)
+assert.equal(afterRetryFailure.cards.find(card => card.id === 'card_a').title, '2')
+assert.equal(afterRetryFailure.revision, retryInitial.revision)
 
 console.log('whiteboard frontend contracts passed')

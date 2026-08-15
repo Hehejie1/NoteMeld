@@ -158,6 +158,116 @@ def test_domain_mutation_error_uses_safe_400_wrapper(api, seeded_board) -> None:
     assert response == {"code": 400, "msg": "白板操作无效", "data": None}
 
 
+def test_context_endpoint_returns_one_authoritative_wrapped_selection(api, seeded_board) -> None:
+    client, _repository = api
+
+    response = client.post(
+        f"/api/conversations/conv_1/whiteboards/{seeded_board.id}/context",
+        json={
+            "revision": seeded_board.revision,
+            "card_ids": ["card_seed"],
+            "relation_ids": [],
+            "label": "Agent evidence",
+        },
+    ).json()
+
+    assert response["code"] == 0
+    assert response["data"]["type"] == "whiteboard_selection"
+    assert response["data"]["whiteboard_id"] == seeded_board.id
+    assert response["data"]["revision"] == seeded_board.revision
+    assert response["data"]["card_ids"] == ["card_seed"]
+    assert response["data"]["relation_ids"] == []
+    assert response["data"]["label"] == "Agent evidence"
+    assert "[卡片] Agent loop" in response["data"]["snapshot"]
+    assert "## Agent loop" in response["data"]["snapshot"]
+    assert response["data"]["source_ids"] == []
+
+
+def test_context_endpoint_rejects_client_snapshot_and_source_ids(api, seeded_board) -> None:
+    client, _repository = api
+
+    response = client.post(
+        f"/api/conversations/conv_1/whiteboards/{seeded_board.id}/context",
+        json={
+            "revision": seeded_board.revision,
+            "card_ids": ["card_seed"],
+            "relation_ids": [],
+            "label": "Agent evidence",
+            "snapshot": "FORGED",
+            "source_ids": ["forged"],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("revision_delta", "card_ids", "label"),
+    [
+        (-1, ["card_seed"], "Stale"),
+        (0, [], "Empty"),
+        (0, ["missing"], "Missing"),
+    ],
+)
+def test_context_endpoint_rejects_stale_or_invalid_selection_with_safe_400(
+    api,
+    seeded_board,
+    revision_delta,
+    card_ids,
+    label,
+) -> None:
+    client, _repository = api
+
+    response = client.post(
+        f"/api/conversations/conv_1/whiteboards/{seeded_board.id}/context",
+        json={
+            "revision": seeded_board.revision + revision_delta,
+            "card_ids": card_ids,
+            "relation_ids": [],
+            "label": label,
+        },
+    ).json()
+
+    assert response == {"code": 400, "msg": "白板操作无效", "data": None}
+
+
+def test_context_endpoint_foreign_and_absent_boards_are_indistinguishable(api, seeded_board) -> None:
+    client, _repository = api
+    payload = {
+        "revision": seeded_board.revision,
+        "card_ids": ["card_seed"],
+        "relation_ids": [],
+        "label": "Agent evidence",
+    }
+
+    foreign = client.post(
+        f"/api/conversations/conv_2/whiteboards/{seeded_board.id}/context",
+        json=payload,
+    ).json()
+    absent = client.post(
+        "/api/conversations/conv_2/whiteboards/wb_absent/context",
+        json=payload,
+    ).json()
+
+    assert foreign == absent == {"code": 404, "msg": "白板不存在", "data": None}
+
+
+def test_context_endpoint_enforces_selection_bounds(api, seeded_board) -> None:
+    client, _repository = api
+
+    response = client.post(
+        f"/api/conversations/conv_1/whiteboards/{seeded_board.id}/context",
+        json={
+            "revision": seeded_board.revision,
+            "card_ids": [f"card_{index}" for index in range(21)],
+            "relation_ids": [],
+            "label": "Too many",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_foreign_and_absent_whiteboards_are_indistinguishable(api, seeded_board) -> None:
     client, _repository = api
 

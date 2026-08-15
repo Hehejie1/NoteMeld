@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 from typing import Callable, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.engine import SessionLocal
-from app.models.whiteboard import WhiteboardOperation
+from app.models.whiteboard import SafeId, WhiteboardOperation
+from app.services.conversation_context_refs import resolve_context_refs
 from app.services.whiteboard_repository import (
     WhiteboardRepository,
     WhiteboardRevisionConflict,
@@ -45,6 +47,21 @@ class PublishWhiteboardPayload(_StrictPayload):
     relation_ids: list[str] = Field(default_factory=list, max_length=40)
     provider_id: str | None = Field(default=None, max_length=200)
     model_name: str | None = Field(default=None, max_length=500)
+
+
+class WhiteboardContextPayload(_StrictPayload):
+    revision: int = Field(ge=1)
+    card_ids: list[SafeId] = Field(max_length=20)
+    relation_ids: list[SafeId] = Field(max_length=40)
+    label: str = Field(min_length=1, max_length=200)
+
+    @field_validator("label")
+    @classmethod
+    def normalize_label(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("label must not be blank")
+        return normalized
 
 
 def _wrapped(action: Callable[[], object], *, not_found_msg: str = "白板不存在"):
@@ -125,6 +142,40 @@ def mutate_whiteboard(
         )
 
     return _wrapped(mutate)
+
+
+@router.post(
+    "/conversations/{conversation_id}/whiteboards/{whiteboard_id}/context"
+)
+def create_whiteboard_context(
+    conversation_id: str,
+    whiteboard_id: str,
+    data: WhiteboardContextPayload,
+):
+    def resolve():
+        current = repository.get(conversation_id, whiteboard_id)
+        if current.revision != data.revision:
+            raise ValueError("stale whiteboard revision")
+        resolved = resolve_context_refs(
+            conversation_id,
+            [
+                {
+                    "id": f"whiteboard-selection-{uuid4().hex}",
+                    "type": "whiteboard_selection",
+                    "whiteboard_id": whiteboard_id,
+                    "revision": data.revision,
+                    "card_ids": data.card_ids,
+                    "relation_ids": data.relation_ids,
+                    "label": data.label,
+                }
+            ],
+            repository,
+        )
+        if len(resolved) != 1:
+            raise ValueError("invalid whiteboard selection")
+        return resolved[0]
+
+    return _wrapped(resolve)
 
 
 @router.post(

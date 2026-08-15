@@ -135,7 +135,7 @@ export function createWhiteboardCommand(
   snapshot: WhiteboardSnapshot,
   forward: WhiteboardOperation[],
   label = '白板操作',
-  id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+  id: string = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
 ): WhiteboardCommand {
   let working = snapshot
   const inverse: WhiteboardOperation[] = []
@@ -144,6 +144,18 @@ export function createWhiteboardCommand(
     working = applyWhiteboardOperations(working, [operation])
   }
   return { id, label, forward: clone(forward), inverse }
+}
+
+export function rebaseWhiteboardCommand(
+  snapshot: WhiteboardSnapshot,
+  command: WhiteboardCommand,
+): WhiteboardCommand {
+  return createWhiteboardCommand(
+    snapshot,
+    command.forward,
+    command.label,
+    command.id,
+  )
 }
 
 export interface WhiteboardClipboard {

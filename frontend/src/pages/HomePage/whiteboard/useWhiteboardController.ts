@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getWhiteboard, mutateWhiteboard } from '@/services/whiteboard'
-import { applyWhiteboardOperations, createWhiteboardCommand } from './whiteboardCommands'
+import {
+  applyWhiteboardOperations,
+  createWhiteboardCommand,
+  rebaseWhiteboardCommand,
+} from './whiteboardCommands'
 import type {
   WhiteboardCommand,
   WhiteboardConflictState,
@@ -288,8 +292,16 @@ export function useWhiteboardController({
   const retry = useCallback(() => {
     const entry = retryEntriesRef.current[0]
     if (!entry || pendingCount > 0) return Promise.resolve(null)
-    applyOptimistic(entry.command.forward)
-    return runCommand(entry)
+    const current = snapshotRef.current
+    if (!current) return Promise.reject(new Error('白板尚未加载'))
+    const rebasedEntry = {
+      ...entry,
+      command: rebaseWhiteboardCommand(current, entry.command),
+    }
+    retryEntriesRef.current = [rebasedEntry, ...retryEntriesRef.current.slice(1)]
+    setRetryCommand(rebasedEntry.command)
+    applyOptimistic(rebasedEntry.command.forward)
+    return runCommand(rebasedEntry)
   }, [applyOptimistic, pendingCount, runCommand])
 
   const discardRetry = useCallback(() => {
