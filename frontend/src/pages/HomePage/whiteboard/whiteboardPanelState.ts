@@ -142,14 +142,31 @@ export interface PublishedNoteOverride {
   }
 }
 
-export function selectWhiteboardPanelSnapshot<T>(
+type WhiteboardPanelSnapshotLike = {
+  revision: number
+  note_link: { note_task_id: string; published_revision: number } | null
+}
+
+export function selectWhiteboardPanelSnapshot<T extends WhiteboardPanelSnapshotLike>(
   view: 'whiteboard' | 'note',
   noteSnapshot: T | null,
   canvasSnapshot: T | null,
 ): T | null {
-  return view === 'note'
-    ? noteSnapshot ?? canvasSnapshot
-    : canvasSnapshot ?? noteSnapshot
+  if (!noteSnapshot) return canvasSnapshot
+  if (!canvasSnapshot) return noteSnapshot
+  if (noteSnapshot.revision > canvasSnapshot.revision) return noteSnapshot
+  if (canvasSnapshot.revision > noteSnapshot.revision) return canvasSnapshot
+
+  const preferred = view === 'note' ? noteSnapshot : canvasSnapshot
+  const fallback = view === 'note' ? canvasSnapshot : noteSnapshot
+  const noteLink = !preferred.note_link
+    || (fallback.note_link
+      && fallback.note_link.published_revision > preferred.note_link.published_revision)
+    ? fallback.note_link
+    : preferred.note_link
+  return noteLink === preferred.note_link
+    ? preferred
+    : { ...preferred, note_link: noteLink }
 }
 
 export function isPublishedNoteOverrideConfirmed(

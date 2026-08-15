@@ -203,6 +203,62 @@ test('panel snapshot selection follows the live view and confirms published over
   assert.match(panel, /isPublishedNoteOverrideConfirmed/)
 })
 
+test('panel snapshot selection preserves the newest revision before merging note links', () => {
+  const olderNote = {
+    id: 'wb_a',
+    revision: 4,
+    note_link: { note_task_id: 'note_a', published_revision: 4 },
+    source: 'note',
+  }
+  const newerCanvas = {
+    id: 'wb_a',
+    revision: 5,
+    note_link: { note_task_id: 'note_a', published_revision: 4 },
+    source: 'canvas',
+  }
+
+  const selectedNewer = panelStateModule.selectWhiteboardPanelSnapshot(
+    'note',
+    olderNote,
+    newerCanvas,
+  )
+  assert.equal(selectedNewer.source, 'canvas')
+  assert.equal(selectedNewer.revision, 5)
+  assert.equal(panelStateModule.getWhiteboardPublishPresentation({
+    revision: selectedNewer.revision,
+    noteLink: selectedNewer.note_link,
+  }).state, 'stale')
+
+  const sameRevisionCanvas = {
+    ...newerCanvas,
+    revision: 4,
+    note_link: null,
+  }
+  const selectedSameRevisionNote = panelStateModule.selectWhiteboardPanelSnapshot(
+    'note',
+    olderNote,
+    sameRevisionCanvas,
+  )
+  assert.equal(selectedSameRevisionNote.source, 'note')
+  assert.deepEqual(selectedSameRevisionNote.note_link, olderNote.note_link)
+
+  const selectedSameRevisionCanvas = panelStateModule.selectWhiteboardPanelSnapshot(
+    'whiteboard',
+    olderNote,
+    sameRevisionCanvas,
+  )
+  assert.equal(selectedSameRevisionCanvas.source, 'canvas')
+  assert.deepEqual(selectedSameRevisionCanvas.note_link, olderNote.note_link)
+
+  const lowerRevisionLinkMustNotLeak = panelStateModule.selectWhiteboardPanelSnapshot(
+    'note',
+    olderNote,
+    { ...newerCanvas, note_link: null },
+  )
+  assert.equal(lowerRevisionLinkMustNotLeak.revision, 5)
+  assert.equal(lowerRevisionLinkMustNotLeak.note_link, null)
+})
+
 test('publish completion cannot reactivate an old conversation', async () => {
   assert.equal(typeof panelStateModule.completePublishedConversationRefresh, 'function')
   let currentConversationId = 'conv_a'
