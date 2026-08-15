@@ -472,7 +472,10 @@ def test_postprocessing_failure_is_partial_and_published_revision_is_durable(
     assert result.published_revision == board.revision
     assert repository.get("conv_1", board.id).note_link.published_revision == board.revision
     assert result.note_task_id in documents.rows
-    assert result.retry_actions
+    if postprocessor == "vector":
+        assert result.retry_actions[0]["kind"] == "vector_reindex"
+    else:
+        assert result.retry_actions == []
 
 
 def test_ordinary_mutation_never_publishes_or_schedules_wiki(publishing):

@@ -265,13 +265,14 @@ class NoteImportService:
         wiki_status = "pending"
         if not self._schedule_wiki(note_id, summary_input, content):
             diagnostics.append("wiki_schedule_failed")
-            retry_actions.append(
-                {
-                    "kind": "wiki_retry",
-                    "endpoint": f"/api/wiki/retry/{note_id}",
-                    "task_id": note_id,
-                }
-            )
+            if self._has_saved_model_for_wiki_retry(summary_input):
+                retry_actions.append(
+                    {
+                        "kind": "wiki_retry",
+                        "endpoint": f"/api/wiki/retry/{note_id}",
+                        "task_id": note_id,
+                    }
+                )
             wiki_status = "partial"
             try:
                 self.document_writer({**document_payload, "wiki_status": wiki_status})
@@ -462,6 +463,24 @@ class NoteImportService:
             return True
         except Exception as exc:
             logger.warning("导入笔记 Wiki 调度失败（不影响导入）: note_id=%s error=%s", note_id, exc)
+            return False
+
+    @staticmethod
+    def _has_saved_model_for_wiki_retry(summary_input: SummaryInput) -> bool:
+        provider_id = str(summary_input.user_options.get("provider_id") or "").strip()
+        model_name = str(summary_input.user_options.get("model_name") or "").strip()
+        if not provider_id or not model_name:
+            return False
+        try:
+            from app.services.model import ModelService
+            from app.services.provider import ProviderService
+
+            provider = ProviderService.get_provider_by_id(provider_id)
+            if not provider:
+                return False
+            ModelService.build_saved_model_config(provider, model_name)
+            return True
+        except Exception:
             return False
 
     def _build_summary_input(

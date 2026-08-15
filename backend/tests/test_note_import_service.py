@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import threading
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import BackgroundTasks
 
+from app.routers import note as note_router
 from app.services.note_import_service import ImportNoteRequest, NoteImportService
 from app.models.summary_input import SummaryInput
+from app.services.wiki_job_store import WikiJobStore
 
 
 class MemoryDocuments:
@@ -282,6 +287,145 @@ def test_publish_revision_serializes_same_note_across_service_instances(tmp_path
     assert documents.rows[initial.note_id]["content"] == result_markdown
 
 
+def test_wiki_failure_without_model_config_has_no_fake_retry_endpoint(tmp_path):
+    documents = MemoryDocuments()
+    importer = service(
+        tmp_path,
+        documents,
+        wiki=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("wiki unavailable")),
+    )
+
+    result = importer.publish_revision(request(), "conv_1")
+
+    assert result.status == "partial"
+    assert result.diagnostics == ["wiki_schedule_failed"]
+    assert result.retry_actions == []
+
+
+def test_wiki_failure_with_missing_saved_model_has_no_fake_retry_endpoint(
+    tmp_path, monkeypatch
+):
+    from app.services.model import ModelService
+    from app.services.provider import ProviderService
+
+    provider = {
+        "id": "provider_saved",
+        "name": "Saved provider",
+        "base_url": "https://provider.invalid/v1",
+        "api_key": "test-key",
+    }
+    monkeypatch.setattr(
+        ProviderService,
+        "get_provider_by_id",
+        lambda _provider_id: provider,
+    )
+    monkeypatch.setattr(
+        ModelService,
+        "get_saved_model",
+        lambda _provider_id, _model_name: None,
+    )
+    documents = MemoryDocuments()
+    importer = service(
+        tmp_path,
+        documents,
+        wiki=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("wiki unavailable")),
+    )
+    publish_request = request().model_copy(
+        update={
+            "metadata": {
+                "whiteboard_id": "wb_1",
+                "revision": 1,
+                "provider_id": "provider_saved",
+                "model_name": "model_missing",
+            }
+        }
+    )
+
+    result = importer.publish_revision(publish_request, "conv_1")
+
+    assert result.status == "partial"
+    assert result.diagnostics == ["wiki_schedule_failed"]
+    assert result.retry_actions == []
+
+
+def test_valid_saved_model_retry_action_runs_existing_retry_handler(
+    tmp_path, monkeypatch
+):
+    from app.services.model import ModelService
+    from app.services.provider import ProviderService
+
+    provider = {
+        "id": "provider_saved",
+        "name": "Saved provider",
+        "base_url": "https://provider.invalid/v1",
+        "api_key": "test-key",
+    }
+    saved_model = {
+        "provider_id": "provider_saved",
+        "model_name": "model_saved",
+        "context_window_tokens": 32768,
+        "supports_vision": False,
+        "supports_stream": False,
+    }
+    monkeypatch.setattr(
+        ProviderService,
+        "get_provider_by_id",
+        lambda _provider_id: provider,
+    )
+    monkeypatch.setattr(
+        ModelService,
+        "get_saved_model",
+        lambda _provider_id, _model_name: saved_model,
+    )
+    monkeypatch.setattr(note_router, "NOTE_OUTPUT_DIR", str(tmp_path))
+    documents = MemoryDocuments()
+    importer = service(
+        tmp_path,
+        documents,
+        wiki=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("wiki unavailable")),
+    )
+    publish_request = request().model_copy(
+        update={
+            "metadata": {
+                "whiteboard_id": "wb_1",
+                "revision": 1,
+                "provider_id": "provider_saved",
+                "model_name": "model_saved",
+            }
+        }
+    )
+
+    result = importer.publish_revision(publish_request, "conv_1")
+
+    assert result.retry_actions == [
+        {
+            "kind": "wiki_retry",
+            "endpoint": f"/api/wiki/retry/{result.note_id}",
+            "task_id": result.note_id,
+        }
+    ]
+    pipeline = MagicMock()
+    pipeline.extract_contribution.return_value = {"status": "success"}
+    fake_gpt = MagicMock()
+    background_tasks = BackgroundTasks()
+    with patch(
+        "app.services.note_document_store.update_note_document_wiki_status"
+    ), patch(
+        "app.gpt.notemeld_gpt.NotemeldGPT.from_config",
+        return_value=fake_gpt,
+    ), patch(
+        "app.services.wiki_pipeline.WikiPipeline",
+        return_value=pipeline,
+    ), patch(
+        "app.services.wiki_rebuild_service.request_wiki_rebuild"
+    ):
+        note_router.retry_wiki_extraction(result.note_id, background_tasks)
+        asyncio.run(background_tasks())
+
+    pipeline.extract_contribution.assert_called_once()
+    assert WikiJobStore(output_dir=tmp_path).read(result.note_id)["status"] == "success"
+
+
 @pytest.mark.parametrize(
     ("vector_fails", "wiki_fails", "expected_diagnostic", "expected_wiki"),
     [
@@ -310,17 +454,15 @@ def test_postprocessing_failure_is_partial_but_note_remains_durable(
     assert result.status == "partial"
     assert expected_diagnostic in result.diagnostics
     assert result.wiki_status == expected_wiki
-    expected_kind = "vector_reindex" if vector_fails else "wiki_retry"
-    assert result.retry_actions == [
-        {
-            "kind": expected_kind,
-            "endpoint": (
-                "/api/migration/reindex"
-                if vector_fails
-                else f"/api/wiki/retry/{result.note_id}"
-            ),
-            "task_id": result.note_id,
-        }
-    ]
+    if vector_fails:
+        assert result.retry_actions == [
+            {
+                "kind": "vector_reindex",
+                "endpoint": "/api/migration/reindex",
+                "task_id": result.note_id,
+            }
+        ]
+    else:
+        assert result.retry_actions == []
     assert result.note_id in documents.rows
     assert (tmp_path / f"{result.note_id}.json").is_file()
