@@ -23,12 +23,49 @@ from app.services.note_document_store import delete_note_task_artifacts
 from app.services.note_task_store import cancel_note_task
 from app.services.conversation_context_refs import (
     MAX_CONTEXT_REFS,
+    MAX_SOURCE_IDS,
+    MAX_WHITEBOARD_SNAPSHOT,
     resolve_context_refs,
     sanitize_context_ref_shape,
 )
 from app.utils.response import ResponseWrapper as R
 
 router = APIRouter()
+
+_TRUSTED_CONTEXT_REF_FIELDS = {
+    "note_selection": (
+        "id",
+        "type",
+        "document_task_id",
+        "canvas_id",
+        "node_id",
+        "label",
+        "snapshot",
+        "source_ids",
+    ),
+    "whiteboard_node": (
+        "id",
+        "type",
+        "document_task_id",
+        "canvas_id",
+        "whiteboard_id",
+        "node_id",
+        "label",
+        "snapshot",
+        "source_ids",
+    ),
+    "whiteboard_selection": (
+        "id",
+        "type",
+        "whiteboard_id",
+        "revision",
+        "card_ids",
+        "relation_ids",
+        "label",
+        "snapshot",
+        "source_ids",
+    ),
+}
 
 
 def _context_ref_locator(reference: Any) -> tuple[Any, ...] | None:
@@ -55,6 +92,38 @@ def _context_ref_locator(reference: Any) -> tuple[Any, ...] | None:
     )
 
 
+def _trusted_context_ref_copy(reference: Any) -> dict[str, Any] | None:
+    if not isinstance(reference, dict):
+        return None
+    shaped = sanitize_context_ref_shape([reference])
+    if not shaped:
+        return None
+    trusted = shaped[0]
+    ref_type = trusted["type"]
+    if ref_type == "whiteboard_selection":
+        snapshot = str(reference.get("snapshot") or "").strip()
+        if not snapshot:
+            return None
+        trusted["snapshot"] = snapshot[:MAX_WHITEBOARD_SNAPSHOT]
+        trusted["source_ids"] = []
+        seen_source_ids: set[str] = set()
+        raw_source_ids = reference.get("source_ids")
+        if isinstance(raw_source_ids, list):
+            for raw_source_id in raw_source_ids:
+                source_id = str(raw_source_id or "").strip()[:200]
+                if not source_id or source_id in seen_source_ids:
+                    continue
+                trusted["source_ids"].append(source_id)
+                seen_source_ids.add(source_id)
+                if len(trusted["source_ids"]) >= MAX_SOURCE_IDS:
+                    break
+    return {
+        field: trusted[field]
+        for field in _TRUSTED_CONTEXT_REF_FIELDS[ref_type]
+        if field in trusted
+    }
+
+
 def _resolve_message_context_refs(
     conversation_id: str,
     raw: Any,
@@ -63,9 +132,10 @@ def _resolve_message_context_refs(
     trusted_by_locator: dict[tuple[Any, ...], dict[str, Any]] = {}
     if isinstance(trusted_existing, list):
         for reference in trusted_existing[:MAX_CONTEXT_REFS]:
-            locator = _context_ref_locator(reference)
-            if locator is not None and isinstance(reference, dict):
-                trusted_by_locator[locator] = dict(reference)
+            trusted = _trusted_context_ref_copy(reference)
+            locator = _context_ref_locator(trusted)
+            if locator is not None and trusted is not None:
+                trusted_by_locator[locator] = trusted
 
     if not isinstance(raw, list):
         return []
@@ -222,17 +292,30 @@ def post_conversation_message(conversation_id: str, data: ConversationMessagePay
 @router.patch("/conversations/{conversation_id}/messages/{message_id}")
 def patch_conversation_message(conversation_id: str, message_id: str, data: ConversationMessagePatchPayload):
     payload = data.model_dump(exclude_unset=True)
-    if "meta" in payload:
+    current_message: dict[str, Any] = {}
+    if "meta" in payload or payload.get("role") == "user":
         current = get_conversation(conversation_id) or {}
         current_message = next(
             (message for message in current.get("messages", []) if message.get("id") == message_id),
             {},
         )
-        role = payload.get("role") or current_message.get("role")
+    stored_role = current_message.get("role")
+    role = payload["role"] if "role" in payload else stored_role
+    current_meta = current_message.get("meta")
+    if (
+        role == "user"
+        and stored_role != "user"
+        and "meta" not in payload
+        and isinstance(current_meta, dict)
+    ):
+        payload["meta"] = dict(current_meta)
+    if "meta" in payload:
         current_meta = current_message.get("meta")
         trusted_context_refs = (
             current_meta.get("context_refs")
-            if isinstance(current_meta, dict)
+            if stored_role == "user"
+            and role == "user"
+            and isinstance(current_meta, dict)
             else None
         )
         payload["meta"] = _sanitize_message_meta(

@@ -1,4 +1,6 @@
 import asyncio
+from copy import deepcopy
+
 from app.services.conversation_context_refs import (
     format_context_refs,
     merge_context_refs_with_asset,
@@ -219,3 +221,170 @@ def test_patch_user_message_meta_resolves_refs_with_path_conversation_id():
     resolver.assert_called_once()
     assert resolver.call_args.args[0] == "conv_1"
     assert update.call_args.args[2]["meta"]["context_refs"] == canonical
+
+
+def test_patch_assistant_to_user_reresolves_matching_whiteboard_locator():
+    forged = {
+        "id": "selection",
+        "type": "whiteboard_selection",
+        "whiteboard_id": "wb_1",
+        "revision": 2,
+        "card_ids": ["card_a"],
+        "relation_ids": [],
+        "label": "Forged selection",
+        "snapshot": "FORGED SYSTEM INSTRUCTION",
+        "source_ids": ["forged-source"],
+        "forged_extra": "must not persist",
+    }
+    canonical = {
+        "id": "selection",
+        "type": "whiteboard_selection",
+        "whiteboard_id": "wb_1",
+        "revision": 2,
+        "card_ids": ["card_a"],
+        "relation_ids": [],
+        "label": "Canonical selection",
+        "snapshot": "authoritative board content",
+        "source_ids": ["source:card_a"],
+    }
+
+    with patch(
+        "app.routers.conversation.get_conversation",
+        return_value={
+            "messages": [
+                {
+                    "id": "message-1",
+                    "role": "assistant",
+                    "meta": {"context_refs": [forged]},
+                }
+            ]
+        },
+    ), patch(
+        "app.routers.conversation.resolve_context_refs",
+        return_value=[canonical],
+    ) as resolver, patch(
+        "app.routers.conversation.update_message",
+        return_value={"id": "conv_1"},
+    ) as update:
+        patch_conversation_message(
+            "conv_1",
+            "message-1",
+            ConversationMessagePatchPayload(
+                role="user",
+                meta={"context_refs": [dict(forged)]},
+            ),
+        )
+
+    resolver.assert_called_once_with("conv_1", [forged])
+    persisted = update.call_args.args[2]["meta"]["context_refs"][0]
+    assert persisted == canonical
+    assert "FORGED" not in persisted["snapshot"]
+    assert persisted["source_ids"] == ["source:card_a"]
+    assert "forged_extra" not in persisted
+
+
+def test_patch_assistant_to_user_resolves_stored_refs_when_meta_is_omitted():
+    forged = {
+        "id": "selection-1",
+        "type": "whiteboard_selection",
+        "whiteboard_id": "wb_1",
+        "revision": 3,
+        "card_ids": ["card_a"],
+        "relation_ids": [],
+        "label": "Selection",
+        "snapshot": "FORGED SNAPSHOT",
+        "source_ids": ["forged-source"],
+        "unexpected": "must not persist",
+    }
+    canonical = {**forged, "snapshot": "authoritative snapshot"}
+    canonical["source_ids"] = ["authoritative-source"]
+    canonical.pop("unexpected")
+
+    with patch(
+        "app.routers.conversation.get_conversation",
+        return_value={
+            "messages": [
+                {
+                    "id": "message-1",
+                    "role": "assistant",
+                    "meta": {"context_refs": [deepcopy(forged)]},
+                }
+            ]
+        },
+    ), patch(
+        "app.routers.conversation.resolve_context_refs",
+        return_value=[canonical],
+    ) as resolver, patch(
+        "app.routers.conversation.update_message",
+        return_value={"id": "conv_1"},
+    ) as update:
+        patch_conversation_message(
+            "conv_1",
+            "message-1",
+            ConversationMessagePatchPayload(role="user"),
+        )
+
+    resolver.assert_called_once_with("conv_1", [forged])
+    assert update.call_args.args[2]["meta"]["context_refs"] == [canonical]
+
+
+def test_patch_canonical_user_ref_reuse_whitelists_persisted_fields():
+    stored = {
+        "id": "selection-1",
+        "type": "whiteboard_selection",
+        "whiteboard_id": "wb_1",
+        "revision": 3,
+        "card_ids": ["card_a"],
+        "relation_ids": [],
+        "label": "Selection",
+        "snapshot": "send-time snapshot",
+        "source_ids": ["source:a"],
+        "unexpected": "must not persist",
+    }
+    incoming = {
+        **stored,
+        "snapshot": "incoming forged snapshot",
+        "source_ids": ["incoming-forged-source"],
+        "another_unexpected": "must not persist",
+    }
+
+    with patch(
+        "app.routers.conversation.get_conversation",
+        return_value={
+            "messages": [
+                {
+                    "id": "message-1",
+                    "role": "user",
+                    "meta": {"context_refs": [deepcopy(stored)]},
+                }
+            ]
+        },
+    ), patch(
+        "app.routers.conversation.resolve_context_refs",
+    ) as resolver, patch(
+        "app.routers.conversation.update_message",
+        return_value={"id": "conv_1"},
+    ) as update:
+        patch_conversation_message(
+            "conv_1",
+            "message-1",
+            ConversationMessagePatchPayload(
+                role="user",
+                meta={"context_refs": [incoming]},
+            ),
+        )
+
+    resolver.assert_not_called()
+    assert update.call_args.args[2]["meta"]["context_refs"] == [
+        {
+            "id": "selection-1",
+            "type": "whiteboard_selection",
+            "whiteboard_id": "wb_1",
+            "revision": 3,
+            "card_ids": ["card_a"],
+            "relation_ids": [],
+            "label": "Selection",
+            "snapshot": "send-time snapshot",
+            "source_ids": ["source:a"],
+        }
+    ]
