@@ -63,11 +63,19 @@ class AgentSdkRuntime:
         if requested not in {"development", "packaged"}:
             candidate = Path(requested)
             if candidate.is_dir():
-                os.environ.setdefault("NOTEMELD_AGENT_SDK_LIBRARY", str(candidate))
+                python_root = candidate / "bindings" / "python"
+                if (python_root / "notemeld_agent_sdk").is_dir():
+                    os.environ.setdefault("NOTEMELD_AGENT_SDK_PYTHON_PATH", str(python_root))
+                else:
+                    os.environ.setdefault("NOTEMELD_AGENT_SDK_LIBRARY", str(candidate))
         if requested == "development":
-            source_root = Path(__file__).resolve().parents[3] / "agent-sdk" / "bindings" / "python"
-            if source_root.is_dir() and str(source_root) not in sys.path:
-                sys.path.insert(0, str(source_root))
+            configured_root = os.getenv("NOTEMELD_AGENT_SDK_PYTHON_PATH", "").strip()
+            if configured_root:
+                source_root = Path(configured_root).expanduser().resolve()
+                if not (source_root / "notemeld_agent_sdk").is_dir():
+                    raise AgentSdkUnavailable("external SDK Python path is invalid")
+                if str(source_root) not in sys.path:
+                    sys.path.insert(0, str(source_root))
         # The package is installed in production and is importable in the sidecar.
         return importlib.import_module("notemeld_agent_sdk.runtime")
 
