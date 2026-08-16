@@ -4,12 +4,12 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_db
 from app.db.models import AgentEvent, AgentPreference, AgentTurn
+from app.db.models.conversation import Conversation
 
 
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "interrupted", "cancelled"})
@@ -54,6 +54,19 @@ def _json_loads(payload: str | None) -> Any:
         return None
 
 
+def _ensure_session_exists(db: Session, session_id: str) -> None:
+    if not session_id:
+        raise TurnNotFoundError("会话ID不能为空")
+
+    exists = (
+        db.query(Conversation)
+        .filter(Conversation.id == session_id, Conversation.deleted_at.is_(None))
+        .first()
+    )
+    if exists is None:
+        raise TurnNotFoundError(f"会话不存在: {session_id}")
+
+
 def _serialize_turn(turn: AgentTurn) -> dict[str, Any]:
     return {
         "turn_id": turn.turn_id,
@@ -89,6 +102,22 @@ def _serialize_preference(preference: AgentPreference) -> dict[str, Any]:
     }
 
 
+def _is_sequence_conflict(error: IntegrityError) -> bool:
+    message = str(error.orig)
+    return (
+        "uq_agent_events_turn_sequence" in message
+        or "agent_events.turn_id, agent_events.sequence" in message
+    )
+
+
+def _is_idempotency_conflict(error: IntegrityError) -> bool:
+    message = str(error.orig)
+    return (
+        "uq_agent_turns_session_idempotency_key" in message
+        or "agent_turns.session_id, agent_turns.idempotency_key" in message
+    )
+
+
 def _next_event_sequence(session: Session, turn_id: str) -> int:
     row = (
         session.query(AgentEvent.sequence)
@@ -114,6 +143,8 @@ def create_turn(
 ) -> dict[str, Any]:
     db = _db()
     try:
+        _ensure_session_exists(db, session_id)
+
         if idempotency_key is not None:
             existing = (
                 db.query(AgentTurn)
@@ -135,9 +166,9 @@ def create_turn(
             db.commit()
         except IntegrityError as error:
             db.rollback()
-            if "uq_agent_turns_session_idempotency_key" in str(error.orig):
+            if _is_idempotency_conflict(error):
                 raise TurnAlreadyExistsError("同一会话的幂等键已存在") from error
-            raise TurnNotFoundError(f"会话不存在: {session_id}") from error
+            raise
 
         db.refresh(turn)
         return _serialize_turn(turn)
@@ -193,7 +224,7 @@ def append_event(
             return event_payload
     except IntegrityError as error:
         db.rollback()
-        if "uq_agent_events_turn_sequence" in str(error.orig):
+        if _is_sequence_conflict(error):
             raise TurnStoreSequenceError("事件序列冲突") from error
         raise
     finally:
@@ -215,8 +246,12 @@ def transition_turn(
             turn = db.query(AgentTurn).filter_by(turn_id=turn_id).with_for_update().first()
             if turn is None:
                 raise TurnNotFoundError(f"Turn 未找到: {turn_id}")
+            if _is_terminal_status(turn.status):
+                raise TurnTerminalError(f"已终态 Turn 不允许变更状态: {turn_id}")
 
             if _is_terminal_status(status):
+                if turn.status == status:
+                    return _serialize_turn(turn)
                 if terminal_event is None:
                     raise TurnTerminalError("终态变更需要透出 terminal 事件")
                 _append_event(
@@ -236,7 +271,7 @@ def transition_turn(
             return _serialize_turn(turn)
     except IntegrityError as error:
         db.rollback()
-        if "uq_agent_events_turn_sequence" in str(error.orig):
+        if _is_sequence_conflict(error):
             raise TurnStoreSequenceError("事件序列冲突") from error
         raise
     finally:
@@ -296,32 +331,32 @@ def set_model_preference(
 
     db = _db()
     try:
-        with db.begin():
-            preference = db.query(AgentPreference).filter_by(session_id=session_id).first()
-            if preference is None:
-                preference = AgentPreference(
-                    session_id=session_id,
-                    default_model_id=default_model_id,
-                    fallback_models_json=_json_dumps(fallback_models or []),
-                )
-                db.add(preference)
-            else:
-                preference.default_model_id = default_model_id
-                preference.fallback_models_json = _json_dumps(fallback_models or [])
+        _ensure_session_exists(db, session_id)
+        preference = db.query(AgentPreference).filter_by(session_id=session_id).first()
+        if preference is None:
+            preference = AgentPreference(
+                session_id=session_id,
+                default_model_id=default_model_id,
+                fallback_models_json=_json_dumps(fallback_models or []),
+            )
+            db.add(preference)
+        else:
+            preference.default_model_id = default_model_id
+            preference.fallback_models_json = _json_dumps(fallback_models or [])
 
-            db.flush()
-            db.execute(text(
-                """
-                UPDATE sqlite_sequence SET seq = seq WHERE name = 'agent_preferences'
-                """
-            ))
-            return _serialize_preference(preference)
+        db.commit()
+        db.refresh(preference)
+        return _serialize_preference(preference)
+    except IntegrityError as error:
+        db.rollback()
+        if _is_idempotency_conflict(error):
+            raise PreferenceError("无法写入模型偏好") from error
+        raise
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
-
-
-class TurnStoreSequenceError(AgentStoreError):
-    """Raised when append/transition hit sequence uniqueness conflict."""
 
 
 class TurnStoreSequenceError(AgentStoreError):

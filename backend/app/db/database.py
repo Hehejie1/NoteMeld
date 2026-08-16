@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
 from app.db.engine import Base
+from app.db.models import agent as _agent_models  # noqa: F401
 
 
 def _has_unique_index(engine: Engine, table: str, index_name: str) -> bool:
@@ -38,9 +39,17 @@ def ensure_agent_schema(engine: Engine | None = None) -> None:
         engine = _engine
 
     # Keep schema upgrade minimal: only add agent tables/indexes when missing.
+    # Ensure metadata contains agent tables even in environments where module import
+    # order differs.
+    tables = {
+        name: table
+        for name, table in Base.metadata.tables.items()
+        if name in {"agent_turns", "agent_events", "agent_preferences"}
+    }
+
     Base.metadata.create_all(
         bind=engine,
-        tables={Base.metadata.tables["agent_turns"], Base.metadata.tables["agent_events"], Base.metadata.tables["agent_preferences"]},
+        tables=set(tables.values()),
     )
     _create_agent_indexes(engine)
 
