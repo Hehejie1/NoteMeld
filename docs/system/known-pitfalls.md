@@ -260,3 +260,9 @@
 - 不允许重新引入的错误做法：把上下文错误当网络抖动原样重发；因 payload 同时含 500/timeout/service unavailable 而先走通用重试；仅凭孤立或不可解析的 `n_ctx/n_prompt_tokens` 判超限；循环缩小预算；对用户或日志泄漏完整 Provider payload；重试前删除 transcript/frame/search cache 或原 checkpoint。
 - 检查方式：`backend/tests/ai/test_note_generator_migration.py`、`backend/tests/ai/test_provider.py` 的 6492/4096、结构化 code、正负错误变体、混合 500/timeout 调用次数、70% 预算、二次安全错误、日志脱敏和 checkpoint 保留测试。
 - 修复经验：统一 `is_context_limit_error()` 并优先解析结构化 code；成对数字必须满足 `n_prompt_tokens > n_ctx`。上下文错误在通用 retry 前排除，只用原输入预算的 70% 重分块一次，并给重试使用独立 checkpoint key；二次失败转换为专用安全 `ContextLimitExceededError`，日志也只记录安全归一化错误，已有缓存和 checkpoint 原样保留。
+## Agent Host 与 SDK 版本漂移
+
+- 运行时必须同时校验 SDK version 与 Agent Event schema version；不兼容时 fail-closed，错误不得包含 Provider key 或完整 payload。
+- UI/CLI 不得直接写 `conversation_messages` 或 Agent Event；应通过 Host，避免重复消息和事件序列断裂。
+- 回滚只能通过显式 `NOTEMELD_AGENT_MODE=python-oracle`，不能在模型调用失败时静默切回旧 Agent，避免同一 Turn 执行两次。
+- 检查方式：`backend/tests/agent_host/` 的 loader、driver、Turn、broker、preference 与 API 契约测试。

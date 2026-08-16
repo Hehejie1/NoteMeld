@@ -178,3 +178,6 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 - 视频平台、网页和外部下载器是内容来源，不是 NoteMeld 的持久化事实源。
 - MCP 远程访问只暴露经过授权的本地能力，不能绕过本地安全边界。
 - 桌面自动更新元数据来自远端 endpoint，但用户数据仍在本地 App Data。
+## Agent Host 数据边界
+
+Agent Host 使用 `agent_turns`, `agent_events`, `agent_preferences` 三张附加表。`agent_turns.session_id` 外键指向 `conversations.id`；消息历史仍来自 `conversation_messages`。UI-only 的 `note_progress`、`task_card`、`parameter_request` 等消息不会进入 SDK model history。模型选择顺序为显式 Turn 模型、会话偏好默认模型、偏好 fallback 第一项、用户可用模型第一项。

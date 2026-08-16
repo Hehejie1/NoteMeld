@@ -180,6 +180,10 @@ Wiki 文件位于 `note_results/wiki/`：
 
 ## 本地运行方式
 
+### Agent Host（增量迁移）
+
+`backend/app/agent_host/` 是 Rust Agent SDK 的 Python Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；`NOTEMELD_AGENT_MODE=python-oracle` 是显式回滚开关。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。当前仍处于 Host/API 增量阶段，旧 `/api/chat/free*` 未删除。
+
 源码启动：
 
 ```bash

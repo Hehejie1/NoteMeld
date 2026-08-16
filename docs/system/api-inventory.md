@@ -116,6 +116,19 @@
 
 ## Whiteboard / 语义白板接口
 
+## Agent v1 接口（增量迁移）
+
+| 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 错误语义 |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/api/agent/v1/sessions` | `session_id?/title` | `{data: Conversation}` | UI/CLI | 400 |
+| GET | `/api/agent/v1/sessions` | 无 | `{data: Conversation[]}` | UI/CLI | 空列表 |
+| GET | `/api/agent/v1/sessions/{session_id}` | path | `{data: Conversation}` | UI/CLI | `session_not_found` |
+| POST | `/api/agent/v1/sessions/{session_id}/turns` | `input/model?/idempotency_key?` | `{data: Turn}` | UI/CLI | 409 `session_busy` |
+| GET | `/api/agent/v1/turns/{turn_id}/events` | `after_sequence?` | `{data: AgentEvent[]}` | UI/CLI | `turn_not_found` |
+| GET/PUT | `/api/agent/v1/sessions/{session_id}/model-preference` | `default_model_id/fallback_models` | `{data: Preference}` | 设置/CLI | `invalid_input` |
+
+这些接口复用 `conversations` 作为 Session 主表；Agent 表只保存 Turn、Event 和模型偏好，不建立第二套历史。
+
 白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |
