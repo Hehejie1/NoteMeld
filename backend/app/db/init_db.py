@@ -12,6 +12,7 @@ from app.db.conversation_schema import ensure_conversation_columns
 from app.db.note_style_dao import ensure_note_style_columns
 from app.db.model_schema import ensure_model_runtime_schema
 from app.db.provider_schema import ensure_provider_schema
+from app.db.database import ensure_agent_schema
 from app.services.conversation_store import bootstrap_conversations_from_storage
 from app.utils.logger import get_logger
 
@@ -30,6 +31,7 @@ def init_db():
             model_runtime_schema["cleared_capabilities"],
         )
     ensure_provider_schema(engine)
+    ensure_agent_schema(engine)
     ensure_note_style_columns()
     ensure_conversation_columns(engine)
     migrated = migrate_legacy_sqlite_if_needed(DATABASE_URL)
