@@ -9,14 +9,18 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent_host.event_broker import EventBroker
+from app.agent_host.native_executor import NativeAgentExecutor
 from app.agent_host.preferences import ModelConfigurationRequired
+from app.agent_host.preferences import select_model
 from app.agent_host.turn_manager import SessionBusyError, TurnManager
+from app.db.model_dao import get_all_models
 from app.services import agent_store
 from app.services.conversation_store import get_conversation, list_conversations, upsert_conversation
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 _turns = TurnManager()
 _events = EventBroker()
+_executor = NativeAgentExecutor(finish_turn=_turns.finish_turn)
 
 
 class SessionRequest(BaseModel):
@@ -60,11 +64,19 @@ def get_session(session_id: str):
 @router.post("/sessions/{session_id}/turns", status_code=202)
 def create_turn(session_id: str, payload: TurnRequest):
     try:
-        turn = _turns.start_turn(session_id, payload.input, model_name=payload.model, idempotency_key=payload.idempotency_key)
+        selected_model = select_model(
+            payload.model,
+            session_id,
+            [str(row.get("model_name") or "") for row in get_all_models()],
+        )
+        turn = _turns.start_turn(session_id, payload.input, model_name=selected_model, idempotency_key=payload.idempotency_key)
     except SessionBusyError as error:
         raise HTTPException(status_code=409, detail={"code": error.code, "message": str(error)}) from error
+    except ModelConfigurationRequired as error:
+        raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)}) from error
     except agent_store.TurnNotFoundError as error:
         raise HTTPException(status_code=404, detail={"code": "session_not_found", "message": str(error)}) from error
+    _executor.start(session_id=session_id, turn_id=turn["turn_id"], content=payload.input, model_name=selected_model)
     return {"data": turn}
 
 

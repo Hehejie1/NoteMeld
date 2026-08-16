@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+import asyncio
+import threading
+from typing import Any, Callable
+
+from app.agent_host.drivers.model import NoteMeldModelDriver
+from app.agent_host.runtime import AgentSdkRuntime
+from app.ai import create_models
+from app.db.model_dao import get_all_models
+from app.services import agent_store
+
+
+_TERMINAL = {
+    "turn.succeeded": "succeeded",
+    "turn.failed": "failed",
+    "turn.cancelled": "cancelled",
+    "turn.interrupted": "interrupted",
+}
+
+
+def _resolve_saved_model(model_name: str | None) -> tuple[Any, Any]:
+    rows = get_all_models()
+    candidates = [row for row in rows if not model_name or row.get("model_name") == model_name]
+    if not candidates:
+        raise ValueError("请先配置可用模型")
+    row = candidates[0]
+    models = create_models()
+    model = models.get_model(str(row["provider_id"]), str(row["model_name"]))
+    if model is None:
+        raise ValueError("模型配置不存在或已失效")
+    return models, model
+
+
+class NativeAgentExecutor:
+    """Run one persisted Agent v1 turn through the standalone Rust SDK."""
+
+    def __init__(
+        self,
+        *,
+        event_sink: Callable[[dict[str, Any]], Any] | None = None,
+        finish_turn: Callable[..., Any] | None = None,
+        library: str | None = None,
+    ) -> None:
+        self.event_sink = event_sink
+        self.finish_turn = finish_turn
+        self.library = library
+
+    def start(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None) -> threading.Thread:
+        worker = threading.Thread(
+            target=self.run_sync,
+            args=(turn_id, session_id, content),
+            kwargs={"model_name": model_name},
+            name=f"notemeld-agent-{turn_id[:8]}",
+            daemon=True,
+        )
+        worker.start()
+        return worker
+
+    def run_sync(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None) -> None:
+        terminal: dict[str, Any] | None = None
+        try:
+            models, model = _resolve_saved_model(model_name)
+
+            async def call_driver(request: dict[str, Any]) -> dict[str, Any]:
+                kind = request.get("kind")
+                if kind == "model.stream":
+                    result = await NoteMeldModelDriver(models, model).stream(request)
+                    if result.get("ok"):
+                        return {"schema_version": "1", "ok": True, "result": {"completion": {
+                            "content": result.get("content", ""),
+                            "tool_calls": result.get("tool_calls", []),
+                            "finish_reason": result.get("finish_reason", "stop"),
+                            "usage": result.get("usage", {}),
+                        }}}
+                    return {"schema_version": "1", **result}
+                return {"schema_version": "1", "ok": False,
+                        "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
+
+            loaded = AgentSdkRuntime.load(binding_path="development" if self.library else "packaged")
+            if loaded.binding is None:
+                raise RuntimeError("Rust SDK binding unavailable")
+            Runtime = loaded.binding.Runtime
+
+            def on_event(event: dict[str, Any]) -> None:
+                nonlocal terminal
+                event_type = str(event.get("type") or "")
+                if self.event_sink is not None:
+                    self.event_sink(event)
+                if event_type in _TERMINAL:
+                    terminal = event
+                else:
+                    agent_store.append_event(
+                        turn_id,
+                        event,
+                        sequence=event.get("sequence"),
+                        event_type=event_type,
+                    )
+
+            def driver(request: dict[str, Any]) -> dict[str, Any]:
+                return asyncio.run(call_driver(request))
+
+            with Runtime(self.library, driver=driver, on_event=on_event) as runtime:
+                token = runtime.submit_turn({
+                    "schema_version": "1",
+                    "request_id": turn_id,
+                    "session_id": session_id,
+                    "input": {"text": content, "attachments": [], "context_refs": []},
+                    "model_override": model_name,
+                    "approval_mode": "interactive",
+                })
+                runtime.wait(token, 30_000)
+            if terminal is None:
+                raise RuntimeError("Agent SDK did not emit a terminal event")
+            status = _TERMINAL[str(terminal["type"])]
+            payload = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
+            error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+            self._finish(turn_id, session_id, status, terminal, error)
+        except Exception as error:  # noqa: BLE001 - terminal boundary
+            event = {"type": "turn.failed", "payload": {"error": {"code": "sdk_internal_error", "message": "Agent 执行失败"}}}
+            if self.event_sink is not None:
+                self.event_sink(event)
+            self._finish(turn_id, session_id, "failed", event, event["payload"]["error"])
+
+    def _finish(self, turn_id: str, session_id: str, status: str, event: dict[str, Any], error: dict[str, Any]) -> None:
+        callback = self.finish_turn
+        if callback is not None:
+            callback(
+                session_id,
+                turn_id,
+                status,
+                event,
+                error_code=error.get("code"),
+                error_message=error.get("message"),
+                terminal_event_type=event.get("type", "terminal"),
+            )
+        else:
+            agent_store.transition_turn(
+                turn_id,
+                status,
+                error_code=error.get("code"),
+                error_message=error.get("message"),
+                terminal_event=event,
+                terminal_event_type=event.get("type", "terminal"),
+            )
+
