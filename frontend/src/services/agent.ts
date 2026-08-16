@@ -14,6 +14,9 @@ export type AgentTurnRequest = {
   input: string
   model?: string
   idempotency_key?: string
+  linked_task_id?: string
+  asset_content?: string
+  context_refs?: unknown[]
 }
 
 const baseUrl = () => String(getRuntimeApiBaseUrl() || import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')

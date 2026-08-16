@@ -28,6 +28,9 @@ class TurnRequest(BaseModel):
     input: str = Field(min_length=1)
     model: str | None = None
     idempotency_key: str | None = None
+    linked_task_id: str | None = None
+    asset_content: str | None = None
+    context_refs: list[dict] = Field(default_factory=list)
 
 
 class PreferenceRequest(BaseModel):

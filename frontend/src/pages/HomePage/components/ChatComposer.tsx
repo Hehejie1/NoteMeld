@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { generateNote, type GenerateNotePayload } from '@/services/note'
-import { streamFreeChat } from '@/services/chat'
+import { startAgentTurn, streamAgentEvents } from '@/services/agent'
 import { createLearningCanvas } from '@/services/learning'
 import {
   appendConversationMessage,
@@ -556,14 +556,12 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
   const runChatRequest = async ({
     conversationId,
     question,
-    history,
     linkedTaskId,
     assetContent,
-    contextRefs = pendingContextRefs,
+    contextRefs,
   }: {
     conversationId: string
     question: string
-    history: Array<{ role: 'user' | 'assistant'; content: string }>
     linkedTaskId?: string
     assetContent?: string
     contextRefs?: typeof pendingContextRefs
@@ -589,100 +587,57 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     let finalSources: any[] = []
     let streamError = ''
 
-    await streamFreeChat(
-      {
-        question,
-        history,
-        provider_id: matchedModel.provider_id,
-        model_name: modelName,
-        conversation_id: conversationId,
-        linked_task_id: linkedTaskId,
-        use_wiki: true,
-        asset_content: assetContent,
-        context_refs: contextRefs,
-      },
-      {
-        onDelta: chunk => {
-          finalAnswer += chunk
-          updateMessage(conversationId, assistantMessageId, {
-            content: finalAnswer,
-            error: false,
-            isStreaming: true,
-          })
-        },
-        onDone: payload => {
-          finalAnswer = payload.answer
-          finalSources = payload.sources
-        },
-        onError: message => {
-          streamError = message
-        },
-        onTaskCard: event => {
-          const cardMessageId = `task-card-${event.card_id}`
-          const now = new Date().toISOString()
-          const existing = useTaskStore.getState().tasks
-            .find(t => t.id === conversationId)
-            ?.messages?.find(m => m.id === cardMessageId)
-          const cardMeta = {
-            card_id: event.card_id,
-            task_id: event.task_id,
-            kind: event.kind,
-            title: event.title,
-            status: event.status,
-            progress: event.progress,
-          }
-          if (existing) {
-            updateMessage(conversationId, cardMessageId, {
-              content: event.title,
-              meta: { ...(existing.meta || {}), ...cardMeta },
-              updatedAt: now,
-            })
-          } else {
-            appendMessage(conversationId, {
-              id: cardMessageId,
-              role: 'assistant',
-              message_type: 'task_card',
-              content: event.title,
-              meta: cardMeta,
-              createdAt: now,
-              updatedAt: now,
-            })
-          }
-        },
-        onTaskCardProgress: event => {
-          const cardMessageId = `task-card-${event.card_id}`
-          const existing = useTaskStore.getState().tasks
-            .find(t => t.id === conversationId)
-            ?.messages?.find(m => m.id === cardMessageId)
-          if (!existing) return
-          updateMessage(conversationId, cardMessageId, {
-            meta: {
-              ...(existing.meta || {}),
-              card_id: event.card_id,
-              status: event.status,
-              progress: event.progress,
-              details: event.details,
-            },
+    const turn = await startAgentTurn(conversationId, {
+      input: question,
+      model: modelName,
+      idempotency_key: assistantMessageId,
+      linked_task_id: linkedTaskId,
+      asset_content: assetContent,
+      context_refs: contextRefs,
+    })
+
+    for await (const event of streamAgentEvents(turn.data.turn_id)) {
+      const payload = event.payload || {}
+      if (event.type === 'message.delta' && typeof payload.delta === 'string') {
+        finalAnswer += payload.delta
+        updateMessage(conversationId, assistantMessageId, {
+          content: finalAnswer,
+          error: false,
+          isStreaming: true,
+        })
+      } else if (event.type === 'turn.succeeded') {
+        finalSources = Array.isArray(payload.sources) ? payload.sources : []
+      } else if (event.type === 'turn.failed' || event.type === 'turn.cancelled' || event.type === 'turn.interrupted') {
+        const error = payload.error
+        streamError = typeof error === 'object' && error && 'message' in error ? String(error.message) : 'Agent 执行失败'
+      } else if (event.type === 'tool.started' || event.type === 'tool.progress' || event.type === 'tool.completed') {
+        const toolName = String(payload.tool_name || payload.name || '工具执行')
+        const cardMessageId = `agent-tool-${event.turn_id}`
+        const existing = useTaskStore.getState().tasks
+          .find(t => t.id === conversationId)
+          ?.messages?.find(m => m.id === cardMessageId)
+        const cardMeta = { tool_name: toolName, event_type: event.type, progress: payload.progress }
+        if (existing) {
+          updateMessage(conversationId, cardMessageId, { meta: { ...(existing.meta || {}), ...cardMeta }, updatedAt: new Date().toISOString() })
+        } else {
+          appendMessage(conversationId, {
+            id: cardMessageId,
+            role: 'assistant',
+            message_type: 'task_card',
+            content: toolName,
+            meta: cardMeta,
+            createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           })
-        },
-      },
-    )
+        }
+      }
+    }
 
     if (streamError) {
       updateMessage(conversationId, assistantMessageId, {
         content: streamError,
         error: true,
         isStreaming: false,
-      })
-      await appendConversationMessage(conversationId, {
-        id: assistantMessageId,
-        role: 'assistant',
-        message_type: 'assistant_text',
-        content: streamError,
-        error: true,
-        createdAt: assistantMessage.createdAt,
-        updatedAt: new Date().toISOString(),
       })
       throw new Error(streamError)
     }
@@ -693,15 +648,8 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       error: false,
       isStreaming: false,
     })
-    await appendConversationMessage(conversationId, {
-      id: assistantMessageId,
-      role: 'assistant',
-      message_type: 'assistant_text',
-      content: finalAnswer,
-      sources: finalSources,
-      createdAt: assistantMessage.createdAt,
-      updatedAt: new Date().toISOString(),
-    })
+    // Assistant content is owned by the Host; the UI keeps this local until
+    // the canonical conversation reload endpoint returns it.
   }
 
   const submitChat = async (uploaded?: UploadFileResponse | null) => {
@@ -739,7 +687,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
 
     if (currentConversation) {
       appendMessage(conversationId, initialUserMessage)
-      await appendConversationMessage(conversationId, initialUserMessage)
+      // The Agent v1 Turn command persists the user message in the Host.
     } else {
       await upsertConversation(conversationId, {
         id: conversationId,
@@ -748,7 +696,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         status: 'SUCCESS',
         noteState: 'none',
       })
-      await appendConversationMessage(conversationId, initialUserMessage)
+      // The Agent v1 Turn command persists the user message in the Host.
     }
 
     try {
@@ -782,15 +730,6 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         }
       }
 
-      const history = (currentConversation?.messages || [])
-        .filter(
-          (m): m is typeof m & { role: 'user' | 'assistant' } =>
-            m.role === 'user' || m.role === 'assistant',
-        )
-        .map(m => ({
-          role: m.role,
-          content: m.content,
-        }))
       const linkedTaskId =
         currentConversation?.linkedNoteTaskId || currentConversation?.id
 
@@ -798,7 +737,6 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       await runChatRequest({
         conversationId,
         question,
-        history,
         linkedTaskId,
         assetContent,
         contextRefs: pendingContextRefs,
@@ -951,9 +889,9 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     runChatRequest({
       conversationId: retryPayload.conversationId,
       question: retryPayload.question,
-      history: retryPayload.history,
       linkedTaskId: currentConversation?.linkedNoteTaskId || currentConversation?.id,
       assetContent: conversationAssetContentMap[retryPayload.conversationId],
+      contextRefs: pendingContextRefs,
     })
       .catch((err: any) => {
         toast.error(err?.message || '聊天失败，请重试')
