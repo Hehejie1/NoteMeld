@@ -186,6 +186,8 @@ Wiki 文件位于 `note_results/wiki/`：
 
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和旧 free-chat 兼容层都基于同一事件信封工作。Host descriptor 计划以原子方式写入数据根目录的 `run/agent-runtime.json`，供 UI、CLI 和桌面进程复用。
 
+ChatComposer 的 `chat` 模式已改为只提交一次 Agent v1 Turn 并消费 SSE；`note`、`learn` 等非聊天分支继续使用原有链路。聊天用户消息由 TurnManager 写入 canonical conversation，前端不再直接写聊天用户/助手消息。
+
 源码启动：
 
 ```bash
