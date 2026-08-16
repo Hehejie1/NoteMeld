@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+import json
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent_host.event_broker import EventBroker
@@ -71,9 +74,50 @@ def get_turn(turn_id: str):
 
 
 @router.get("/turns/{turn_id}/events")
-def get_turn_events(turn_id: str, after_sequence: int = -1):
-    events = [event for event in agent_store.list_events(turn_id) if event["sequence"] > after_sequence]
-    return {"data": events}
+def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
+    """Replay persisted events as SSE with sequence-based reconnect support."""
+    cursor = request.headers.get("last-event-id")
+    if cursor is not None:
+        try:
+            after_sequence = max(after_sequence, int(cursor))
+        except ValueError:
+            raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": "Last-Event-ID must be an integer"})
+    events = [event for event in agent_store.list_events(turn_id) if int(event["sequence"]) > after_sequence]
+
+    async def stream():
+        for event in events:
+            payload = {
+                "event_id": event["event_id"],
+                "turn_id": event["turn_id"],
+                "sequence": event["sequence"],
+                "type": event.get("event_type") or (event.get("payload_json") or {}).get("type", "unknown"),
+                "payload": event.get("payload_json") if isinstance(event.get("payload_json"), dict) else {},
+            }
+            yield f"id: {event['sequence']}\nevent: {payload['type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/turns/{turn_id}/cancel")
+def cancel_turn(turn_id: str):
+    try:
+        return {"data": agent_store.transition_turn(turn_id, "cancelled", terminal_event={"type": "turn.cancelled"}, terminal_event_type="turn.cancelled")}
+    except agent_store.TurnNotFoundError as error:
+        raise HTTPException(status_code=404, detail={"code": "turn_not_found"}) from error
+    except agent_store.TurnTerminalError as error:
+        raise HTTPException(status_code=409, detail={"code": "turn_terminal", "message": str(error)}) from error
+
+
+@router.post("/turns/{turn_id}/steer")
+def steer_turn(turn_id: str):
+    if agent_store.get_turn(turn_id) is None:
+        raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
+    raise HTTPException(status_code=409, detail={"code": "steer_unsupported", "message": "当前 Host 尚未开放 mid-turn steer"})
+
+
+@router.post("/approvals/{approval_id}")
+def resolve_approval(approval_id: str):
+    raise HTTPException(status_code=501, detail={"code": "approval_not_ready", "message": "审批执行链尚未接入 Rust turn"})
 
 
 @router.get("/sessions/{session_id}/model-preference")
@@ -92,4 +136,3 @@ def put_preference(session_id: str, payload: PreferenceRequest):
     except (agent_store.PreferenceError, agent_store.TurnNotFoundError) as error:
         raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": str(error)}) from error
     return {"data": value}
-

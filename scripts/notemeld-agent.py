@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import argparse
 import urllib.error
 import urllib.request
 
@@ -24,8 +25,41 @@ def request(method: str, path: str, payload: dict | None = None) -> dict:
         raise RuntimeError(detail[:400]) from error
 
 
+def events(turn_id: str, output_format: str) -> None:
+    req = urllib.request.Request(BASE + f"/turns/{turn_id}/events", method="GET", headers={"Accept": "text/event-stream"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            for raw in response.read().decode().split("\n\n"):
+                data = next((line[6:] for line in raw.splitlines() if line.startswith("data: ")), None)
+                if not data:
+                    continue
+                value = json.loads(data)
+                if output_format == "jsonl":
+                    print(json.dumps(value, ensure_ascii=False))
+                elif output_format == "json":
+                    print(json.dumps(value, ensure_ascii=False))
+                else:
+                    event_type = value.get("type", "event")
+                    payload = value.get("payload", {})
+                    if event_type == "message.delta":
+                        print(payload.get("delta", ""), end="", flush=True)
+                    elif event_type.startswith("turn."):
+                        print(f"\n[{event_type}]")
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(error.read().decode(errors="replace")[:400]) from error
+
+
 def main() -> int:
-    session = request("POST", "/sessions", {"title": "CLI Agent"})["data"]["id"]
+    parser = argparse.ArgumentParser(prog="notemeld-agent")
+    parser.add_argument("--session")
+    parser.add_argument("--format", choices=("text", "json", "jsonl"), default="text")
+    parser.add_argument("prompt", nargs="?")
+    args = parser.parse_args()
+    session = args.session or request("POST", "/sessions", {"title": "CLI Agent"})["data"]["id"]
+    if args.prompt:
+        turn = request("POST", f"/sessions/{session}/turns", {"input": args.prompt})["data"]
+        events(turn["turn_id"], args.format)
+        return 0
     print(f"NoteMeld Agent session: {session}")
     print("输入 /exit 退出；/new 新建会话；其它内容提交到当前会话。")
     while True:
@@ -44,7 +78,9 @@ def main() -> int:
             continue
         try:
             turn = request("POST", f"/sessions/{session}/turns", {"input": text})["data"]
-            print(json.dumps(turn, ensure_ascii=False))
+            events(turn["turn_id"], args.format)
+            if args.format == "text":
+                print()
         except RuntimeError as error:
             print(f"error: {error}", file=sys.stderr)
 
