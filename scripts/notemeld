@@ -272,6 +272,15 @@ cmd_uninstall() {
   log "To remove everything manually, run: rm -rf ${NOTEMELD_HOME}"
 }
 
+cmd_agent() {
+  ensure_installed
+  require_cmd curl
+  prepare_dirs
+  export_runtime_env
+  start_backend
+  exec "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/notemeld-agent.py" "$@"
+}
+
 cmd_help() {
   cat <<EOF
 NoteMeld CLI
@@ -282,6 +291,7 @@ Usage:
   notemeld stop         Stop NoteMeld
   notemeld restart      Restart NoteMeld
   notemeld logs         Follow backend and frontend logs
+  notemeld agent        Open the shared Agent CLI session
   notemeld doctor       Check local dependencies and installation
   notemeld update       Pull latest code and refresh dependencies
   notemeld uninstall    Remove CLI only, keep user data
@@ -302,6 +312,7 @@ main() {
     stop) cmd_stop ;;
     restart) cmd_restart ;;
     logs) cmd_logs ;;
+    agent) shift; cmd_agent "$@" ;;
     doctor) cmd_doctor ;;
     update) cmd_update ;;
     uninstall) cmd_uninstall ;;
