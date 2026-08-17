@@ -9,7 +9,7 @@ from app.agent_host.host import AgentSdkHost, get_agent_sdk_host
 from app.ai import create_models
 from app.db.model_dao import get_all_models
 from app.services import agent_store
-from app.services.conversation_store import update_message
+from app.services.conversation_store import get_conversation, update_message
 
 
 _TERMINAL = {
@@ -114,6 +114,15 @@ class NativeAgentExecutor:
                 return asyncio.run(call_driver(request))
 
             host: AgentSdkHost = AgentSdkHost(binding_path=self.library) if self.library else get_agent_sdk_host()
+            conversation = get_conversation(session_id) or {}
+            history = [
+                {"role": str(message.get("role") or ""), "content": str(message.get("content") or "")}
+                for message in conversation.get("messages", [])
+                if str(message.get("role") or "") in {"user", "assistant", "tool"}
+                and str(message.get("content") or "")
+            ][-40:]
+            if history and history[-1] == {"role": "user", "content": content}:
+                history.pop()
             handle = host.submit(
                 turn_id,
                 {
@@ -121,6 +130,7 @@ class NativeAgentExecutor:
                     "request_id": turn_id,
                     "session_id": session_id,
                     "input": {"text": content, "attachments": [], "context_refs": []},
+                    "history": history,
                     "model_override": model_name,
                     "approval_mode": "interactive",
                 },
