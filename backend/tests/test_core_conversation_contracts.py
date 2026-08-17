@@ -3,7 +3,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -69,37 +69,14 @@ class TestCoreConversationContracts(unittest.TestCase):
         cancel_note_task.assert_any_call("task-2", "会话已删除，任务已取消")
         self.assertEqual(delete_artifacts.call_count, 2)
 
-    def test_cancel_task_rejects_card_from_another_conversation(self):
-        manager = type("Manager", (), {})()
-        manager.get_card = lambda _card_id: {"conversation_id": "conv-owner"}
-        manager.cancel_task = AsyncMock(return_value=True)
+    def test_cancel_task_fails_closed_without_legacy_agent_runtime(self):
+        response = self.client.post(
+            "/api/conversations/conv-owner/workspace/cancel_task",
+            json={"card_id": "card-owned"},
+        )
 
-        with patch(
-            "app.routers.conversation.find_manager_by_card", return_value=manager
-        ):
-            response = self.client.post(
-                "/api/conversations/conv-other/workspace/cancel_task",
-                json={"card_id": "card-private"},
-            )
-
-        self.assertEqual(response.json()["code"], 404)
-        manager.cancel_task.assert_not_awaited()
-
-    def test_cancel_task_accepts_card_owned_by_path_conversation(self):
-        manager = type("Manager", (), {})()
-        manager.get_card = lambda _card_id: {"conversation_id": "conv-owner"}
-        manager.cancel_task = AsyncMock(return_value=True)
-
-        with patch(
-            "app.routers.conversation.find_manager_by_card", return_value=manager
-        ):
-            response = self.client.post(
-                "/api/conversations/conv-owner/workspace/cancel_task",
-                json={"card_id": "card-owned"},
-            )
-
-        self.assertEqual(response.json()["code"], 0)
-        manager.cancel_task.assert_awaited_once_with("card-owned")
+        self.assertEqual(response.json()["code"], 501)
+        self.assertIn("Agent SDK", response.json()["msg"])
 
     def test_legacy_sqlite_migration_includes_conversation_tables(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

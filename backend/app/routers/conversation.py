@@ -417,20 +417,9 @@ async def cancel_long_task(conversation_id: str, data: CancelTaskPayload):
 
     根据 ``card_id`` 反查 LongTaskManager，并校验卡片属于路径中的会话后触发取消。
     """
-    from app.agent.long_task import find_manager_by_card
-
     if not data.card_id:
         return R.error("card_id 不能为空", code=400)
-    manager = find_manager_by_card(data.card_id)
-    if manager is None:
-        return R.error("卡片不存在或服务已重启", code=404)
-    card = manager.get_card(data.card_id)
-    if not isinstance(card, dict) or card.get("conversation_id") != conversation_id:
-        return R.error("卡片不存在或服务已重启", code=404)
-    try:
-        ok = await manager.cancel_task(data.card_id)
-    except Exception as exc:  # noqa: BLE001
-        return R.error(f"取消失败: {exc}", code=500)
-    if not ok:
-        return R.error("卡片已结束，无法取消", code=400)
-    return R.success({"card_id": data.card_id, "conversation_id": conversation_id, "canceled": True})
+    # Long-task execution used to be owned by the removed Python Agent loop.
+    # Until an SDK CapabilityProvider is registered, fail explicitly rather
+    # than importing that second runtime on demand.
+    return R.error("长任务能力尚未注册到 Agent SDK", code=501)
