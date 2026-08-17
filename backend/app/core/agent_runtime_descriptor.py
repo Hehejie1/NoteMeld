@@ -15,8 +15,10 @@ class AgentRuntimeDescriptor:
     base_url: str
     token: str
     sdk_version: str = "0.1.0"
+    abi_version: int = 2
     schema_version: str = "1"
     started_at: str = ""
+    data_root: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -25,7 +27,9 @@ class AgentRuntimeDescriptor:
             "base_url": self.base_url,
             "token": self.token,
             "sdk_version": self.sdk_version,
+            "abi_version": self.abi_version,
             "started_at": self.started_at,
+            "data_root": self.data_root,
         }
 
 
@@ -59,11 +63,14 @@ def read_descriptor(data_root: str | Path) -> AgentRuntimeDescriptor | None:
         raw = json.loads(target.read_text(encoding="utf-8"))
         if raw.get("schema_version") != "1" or not isinstance(raw.get("pid"), int):
             return None
-        if not all(isinstance(raw.get(key), str) and raw[key] for key in ("base_url", "token", "sdk_version")):
+        if not all(isinstance(raw.get(key), str) and raw[key] for key in ("base_url", "token", "sdk_version", "data_root")):
+            return None
+        if raw.get("abi_version") != 2:
             return None
         return AgentRuntimeDescriptor(
             pid=raw["pid"], base_url=raw["base_url"], token=raw["token"],
-            sdk_version=raw["sdk_version"], schema_version="1", started_at=raw.get("started_at", ""),
+            sdk_version=raw["sdk_version"], abi_version=2, schema_version="1",
+            started_at=raw.get("started_at", ""), data_root=raw["data_root"],
         )
     except (OSError, ValueError, TypeError):
         return None
