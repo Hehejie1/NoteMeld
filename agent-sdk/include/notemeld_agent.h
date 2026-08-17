@@ -30,7 +30,7 @@ uint64_t notemeld_agent_submit_turn(AgentRuntimeHandle * handle, const char * re
 int32_t notemeld_agent_complete_driver_call(AgentRuntimeHandle * handle, uint64_t call_id, const char * result_json);
 /* ownership: none | threading: any thread; idempotent while tombstone retained | errors: typed FFI result */
 int32_t notemeld_agent_cancel_turn(AgentRuntimeHandle * handle, uint64_t turn_token);
-/* ownership: input borrowed | threading: any thread | errors: v1 always FFI_UNSUPPORTED for known turn */
+/* ownership: input borrowed | threading: any thread | errors: queued at next model safe point; terminal turns return FFI_TURN_TERMINAL */
 int32_t notemeld_agent_steer_turn(AgentRuntimeHandle * handle, uint64_t turn_token, const char * steer_json);
 /* ownership: none | threading: blocks caller; never UI event loop | errors: FFI_TIMEOUT distinct from internal error */
 int32_t notemeld_agent_wait_turn(AgentRuntimeHandle * handle, uint64_t turn_token, uint64_t timeout_ms);

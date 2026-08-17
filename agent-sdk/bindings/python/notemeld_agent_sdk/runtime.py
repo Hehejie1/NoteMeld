@@ -212,7 +212,7 @@ class Runtime:
     def steer(self, turn_token: int, payload: Mapping[str, Any]) -> None:
         self._ensure_open()
         code = int(self._lib.notemeld_agent_steer_turn(self._handle, turn_token, _json_bytes(payload)))
-        self._check(code, "steer is unsupported by the fixed-loop v1 runtime")
+        self._check(code, "steer failed")
 
     def _last_error(self, fallback: str) -> AgentSdkError:
         pointer = self._lib.notemeld_agent_last_error_json(self._handle)
