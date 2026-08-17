@@ -39,7 +39,7 @@ class TurnManager:
         return turn
 
     def finish_turn(self, session_id: str, turn_id: str, status: str, event: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        result = agent_store.transition_turn(turn_id, status, terminal_event=event, **kwargs)
+        result = agent_store.transition_turn(turn_id, status=status, terminal_event=event, **kwargs)
         with self._lock:
             active = self._active.get(session_id)
             if active and active.turn_id == turn_id:
