@@ -23,4 +23,3 @@ def select_model(explicit: str | None, session_id: str, available: Iterable[str]
     if candidates:
         return candidates[0]
     raise ModelConfigurationRequired("请先配置可用模型")
-
