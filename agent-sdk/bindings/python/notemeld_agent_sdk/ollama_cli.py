@@ -6,6 +6,8 @@ from .runtime import Runtime
 
 def _ollama(base: str, model: str, num_ctx: int, request: dict[str, Any]) -> dict[str, Any]:
     messages=request.get("payload",{}).get("messages",[])
+    if os.environ.get("NOTEMELD_AGENT_DEBUG"):
+        print(f"ollama messages={type(messages).__name__} count={len(messages) if isinstance(messages, list) else -1}", file=sys.stderr)
     body=json.dumps({"model":model,"messages":messages,"stream":False,"options":{"num_ctx":num_ctx},"think":False}).encode()
     req=urllib.request.Request(base.rstrip("/")+"/api/chat",data=body,headers={"content-type":"application/json"})
     try:
