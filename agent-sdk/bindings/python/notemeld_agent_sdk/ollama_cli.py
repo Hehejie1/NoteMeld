@@ -17,7 +17,7 @@ def _ollama(base: str, model: str, num_ctx: int, request: dict[str, Any]) -> dic
             print(f"ollama request failed: {type(exc).__name__}", file=sys.stderr)
         return {"ok":False,"error":{"code":"model_unavailable","message":"model unavailable"}}
     content=str(data.get("message",{}).get("content", ""))
-    return {"ok":True,"result":{"chunks":[{"type":"content_delta","delta":content}],"completion":{"content":content,"tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":int(data.get("prompt_eval_count",0) or 0),"output_tokens":int(data.get("eval_count",0) or 0)}}}}
+    return {"ok":True,"result":{"chunks":[{"type":"content_delta","delta":content}],"completion":{"content":content,"tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":int(data.get("prompt_eval_count",0) or 0),"output_tokens":int(data.get("eval_count",0) or 0),"cache_read_tokens":0,"cache_write_tokens":0}}}}
 
 def main(argv: list[str]|None=None)->int:
     p=argparse.ArgumentParser(description="Evaluate NoteMeld Agent SDK with local Ollama")
