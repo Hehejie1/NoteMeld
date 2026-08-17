@@ -4,21 +4,24 @@ import argparse, json, os, queue, sys, urllib.request, uuid
 from typing import Any
 from .runtime import Runtime
 
-def _ollama(base: str, model: str, request: dict[str, Any]) -> dict[str, Any]:
+def _ollama(base: str, model: str, num_ctx: int, request: dict[str, Any]) -> dict[str, Any]:
     messages=request.get("payload",{}).get("messages",[])
-    body=json.dumps({"model":model,"messages":messages,"stream":False}).encode()
+    body=json.dumps({"model":model,"messages":messages,"stream":False,"options":{"num_ctx":num_ctx},"think":False}).encode()
     req=urllib.request.Request(base.rstrip("/")+"/api/chat",data=body,headers={"content-type":"application/json"})
     try:
         with urllib.request.urlopen(req,timeout=300) as response: data=json.load(response)
-    except Exception: return {"ok":False,"error":{"code":"model_unavailable","message":"model unavailable"}}
+    except Exception as exc:
+        if os.environ.get("NOTEMELD_AGENT_DEBUG"):
+            print(f"ollama request failed: {type(exc).__name__}", file=sys.stderr)
+        return {"ok":False,"error":{"code":"model_unavailable","message":"model unavailable"}}
     content=str(data.get("message",{}).get("content", ""))
     return {"ok":True,"result":{"chunks":[{"type":"content_delta","delta":content}],"completion":{"content":content,"tool_calls":[],"finish_reason":"stop","usage":{"input_tokens":int(data.get("prompt_eval_count",0) or 0),"output_tokens":int(data.get("eval_count",0) or 0)}}}}
 
 def main(argv: list[str]|None=None)->int:
     p=argparse.ArgumentParser(description="Evaluate NoteMeld Agent SDK with local Ollama")
-    p.add_argument("--model",default=os.environ.get("NOTEMELD_OLLAMA_MODEL","qwen3:4b")); p.add_argument("--ollama-url",default=os.environ.get("OLLAMA_URL","http://127.0.0.1:11434")); p.add_argument("--library",default=os.environ.get("NOTEMELD_AGENT_SDK_LIBRARY")); args=p.parse_args(argv)
+    p.add_argument("--model",default=os.environ.get("NOTEMELD_OLLAMA_MODEL","qwen3:4b")); p.add_argument("--num-ctx",type=int,default=int(os.environ.get("NOTEMELD_OLLAMA_NUM_CTX","4096"))); p.add_argument("--ollama-url",default=os.environ.get("OLLAMA_URL","http://127.0.0.1:11434")); p.add_argument("--library",default=os.environ.get("NOTEMELD_AGENT_SDK_LIBRARY")); args=p.parse_args(argv)
     history=[]; model=args.model
-    def driver(req): return _ollama(args.ollama_url,model,req)
+    def driver(req): return _ollama(args.ollama_url,model,args.num_ctx,req)
     try:
         with Runtime(args.library,driver=driver) as runtime:
             print(f"agent sdk / ollama ({model}) — /model NAME, /new, /exit",file=sys.stderr)
