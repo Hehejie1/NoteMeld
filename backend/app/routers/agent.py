@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import json
@@ -97,25 +98,39 @@ def get_turn(turn_id: str):
 
 @router.get("/turns/{turn_id}/events")
 def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
-    """Replay persisted events as SSE with sequence-based reconnect support."""
+    """Replay persisted events and follow the turn until a terminal status."""
     cursor = request.headers.get("last-event-id")
     if cursor is not None:
         try:
             after_sequence = max(after_sequence, int(cursor))
         except ValueError:
             raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": "Last-Event-ID must be an integer"})
-    events = [event for event in agent_store.list_events(turn_id) if int(event["sequence"]) > after_sequence]
-
     async def stream():
-        for event in events:
-            payload = {
-                "event_id": event["event_id"],
-                "turn_id": event["turn_id"],
-                "sequence": event["sequence"],
-                "type": event.get("event_type") or (event.get("payload_json") or {}).get("type", "unknown"),
-                "payload": event.get("payload_json") if isinstance(event.get("payload_json"), dict) else {},
-            }
-            yield f"id: {event['sequence']}\nevent: {payload['type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        cursor = after_sequence
+        idle_rounds = 0
+        while idle_rounds < 3000:
+            emitted = False
+            for event in agent_store.list_events(turn_id):
+                sequence = int(event["sequence"])
+                if sequence <= cursor:
+                    continue
+                payload = {
+                    "event_id": event["event_id"],
+                    "turn_id": event["turn_id"],
+                    "sequence": sequence,
+                    "type": event.get("event_type") or (event.get("payload_json") or {}).get("type", "unknown"),
+                    "payload": event.get("payload_json") if isinstance(event.get("payload_json"), dict) else {},
+                }
+                cursor = sequence
+                emitted = True
+                yield f"id: {sequence}\nevent: {payload['type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            turn = agent_store.get_turn(turn_id)
+            if turn is None:
+                return
+            if str(turn.get("status")) in agent_store.TERMINAL_STATUSES:
+                return
+            idle_rounds = 0 if emitted else idle_rounds + 1
+            await asyncio.sleep(0.1)
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
