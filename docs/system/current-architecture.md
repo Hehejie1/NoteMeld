@@ -185,6 +185,8 @@ Wiki 文件位于 `note_results/wiki/`：
 
 `backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；开发环境通过 `NOTEMELD_AGENT_SDK_PYTHON_PATH` 显式指定外部 SDK 源码，生产环境加载已安装 package；`NOTEMELD_AGENT_MODE=python-oracle` 是显式回滚开关。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。当前仍处于 Host/API 增量阶段，旧 `/api/chat/free*` 未删除。
 
+桌面后端打包时可通过 `NOTEMELD_AGENT_SDK_WHEEL` 安装带 native library 的 wheel；PyInstaller 会将 `notemeld_agent_sdk` 及其 `native/` 资源收入 sidecar。源码构建可使用 `NOTEMELD_AGENT_SDK_ROOT` 指向独立 SDK checkout。
+
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和旧 free-chat 兼容层都基于同一事件信封工作。Host descriptor 计划以原子方式写入数据根目录的 `run/agent-runtime.json`，供 UI、CLI 和桌面进程复用。
 
 ChatComposer 的 `chat` 模式已改为只提交一次 Agent v1 Turn 并消费 SSE；`note`、`learn` 等非聊天分支继续使用原有链路。聊天用户消息由 TurnManager 写入 canonical conversation，前端不再直接写聊天用户/助手消息。
