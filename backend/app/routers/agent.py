@@ -17,7 +17,7 @@ from app.agent_host.turn_manager import SessionBusyError, TurnManager
 from app.agent_host.host import get_agent_sdk_host
 from app.db.model_dao import get_all_models
 from app.services import agent_store
-from app.services.conversation_store import get_conversation, list_conversations, upsert_conversation
+from app.services.conversation_store import append_message, get_conversation, list_conversations, upsert_conversation
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 _turns = TurnManager()
@@ -82,8 +82,33 @@ def create_turn(session_id: str, payload: TurnRequest):
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)}) from error
     except agent_store.TurnNotFoundError as error:
         raise HTTPException(status_code=404, detail={"code": "session_not_found", "message": str(error)}) from error
-    _executor.start(session_id=session_id, turn_id=turn["turn_id"], content=payload.input, model_name=selected_model)
-    turn = {**turn, "user_message_id": None, "assistant_message_id": None,
+    user_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:user"))
+    assistant_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:assistant"))
+    try:
+        append_message(session_id, {
+            "id": user_message_id,
+            "role": "user",
+            "message_type": "user_input",
+            "content": payload.input,
+            "status": "completed",
+        })
+        append_message(session_id, {
+            "id": assistant_message_id,
+            "role": "assistant",
+            "message_type": "assistant_text",
+            "content": "",
+            "status": "streaming",
+        })
+    except Exception as error:  # noqa: BLE001 - durable projection failure
+        raise HTTPException(status_code=500, detail={"code": "store_unavailable", "message": "无法创建 Agent 消息投影"}) from error
+    _executor.start(
+        session_id=session_id,
+        turn_id=turn["turn_id"],
+        content=payload.input,
+        model_name=selected_model,
+        assistant_message_id=assistant_message_id,
+    )
+    turn = {**turn, "user_message_id": user_message_id, "assistant_message_id": assistant_message_id,
             "events_url": f"/api/agent/v1/turns/{turn['turn_id']}/events", "replayed": False}
     return _ok(turn)
 

@@ -9,6 +9,7 @@ from app.agent_host.host import AgentSdkHost, get_agent_sdk_host
 from app.ai import create_models
 from app.db.model_dao import get_all_models
 from app.services import agent_store
+from app.services.conversation_store import update_message
 
 
 _TERMINAL = {
@@ -46,19 +47,22 @@ class NativeAgentExecutor:
         self.finish_turn = finish_turn
         self.library = library
 
-    def start(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None) -> threading.Thread:
+    def start(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None,
+              assistant_message_id: str | None = None) -> threading.Thread:
         worker = threading.Thread(
             target=self.run_sync,
             args=(turn_id, session_id, content),
-            kwargs={"model_name": model_name},
+            kwargs={"model_name": model_name, "assistant_message_id": assistant_message_id},
             name=f"notemeld-agent-{turn_id[:8]}",
             daemon=True,
         )
         worker.start()
         return worker
 
-    def run_sync(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None) -> None:
+    def run_sync(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None,
+                 assistant_message_id: str | None = None) -> None:
         terminal: dict[str, Any] | None = None
+        assistant_content = ""
         try:
             models, model = _resolve_saved_model(model_name)
 
@@ -78,13 +82,27 @@ class NativeAgentExecutor:
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
 
             def on_event(event: dict[str, Any]) -> None:
-                nonlocal terminal
+                nonlocal terminal, assistant_content
                 event_type = str(event.get("type") or "")
                 if self.event_sink is not None:
                     self.event_sink(event)
                 if event_type in _TERMINAL:
                     terminal = event
+                    if assistant_message_id:
+                        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+                        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+                        update_message(session_id, assistant_message_id, {
+                            "status": "completed" if event_type == "turn.succeeded" else "failed",
+                            "content": assistant_content,
+                            "error": event_type != "turn.succeeded",
+                            "meta": {"turn_id": turn_id, "error": error},
+                        })
                 else:
+                    if event_type == "message.delta":
+                        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+                        assistant_content += str(payload.get("delta") or payload.get("content") or "")
+                        if assistant_message_id:
+                            update_message(session_id, assistant_message_id, {"content": assistant_content, "status": "streaming"})
                     agent_store.append_event(
                         turn_id,
                         event,
