@@ -3,12 +3,6 @@ from typing import Any, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.agent.long_task import find_manager_by_card
-from app.agent.workspace import (
-    WorkspaceError,
-    list_directory,
-    read_file,
-)
 from app.services.conversation_store import (
     append_message,
     delete_conversation_note_document,
@@ -383,6 +377,8 @@ def delete_conversation_document(conversation_id: str, task_id: str):
 @router.get("/conversations/{conversation_id}/workspace/list")
 def workspace_list(conversation_id: str, path: Optional[str] = None):
     """列出会话工作空间目录内容（只读）。"""
+    from app.agent.workspace import WorkspaceError, list_directory
+
     try:
         return R.success(list_directory(conversation_id, path or ""))
     except WorkspaceError as exc:
@@ -394,6 +390,8 @@ def workspace_list(conversation_id: str, path: Optional[str] = None):
 @router.get("/conversations/{conversation_id}/workspace/read")
 def workspace_read(conversation_id: str, path: str):
     """读取会话工作空间内某文件（只读）。"""
+    from app.agent.workspace import WorkspaceError, read_file
+
     if not path:
         return R.error("path 参数不能为空", code=400)
     try:
@@ -419,6 +417,8 @@ async def cancel_long_task(conversation_id: str, data: CancelTaskPayload):
 
     根据 ``card_id`` 反查 LongTaskManager，并校验卡片属于路径中的会话后触发取消。
     """
+    from app.agent.long_task import find_manager_by_card
+
     if not data.card_id:
         return R.error("card_id 不能为空", code=400)
     manager = find_manager_by_card(data.card_id)

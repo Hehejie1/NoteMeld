@@ -8,8 +8,8 @@ import threading
 from pathlib import Path
 from typing import Callable, TypeVar
 
-from app.agent.workspace import workspaces_root
 from app.models.learning_canvas import LearningCanvas
+from app.utils.storage_paths import workspaces_root
 
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")

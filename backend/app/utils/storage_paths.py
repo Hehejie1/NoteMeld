@@ -18,6 +18,11 @@ def note_output_dir() -> Path:
     return Path(os.getenv("NOTE_OUTPUT_DIR", data_root() / "note_results")).resolve()
 
 
+def workspaces_root() -> Path:
+    """Shared workspace root without importing the legacy Agent package."""
+    return (note_output_dir() / "workspaces").resolve()
+
+
 def migration_root_dir() -> Path:
     return Path(os.getenv("NOTEMELD_MIGRATION_DIR", data_root() / "migrations")).resolve()
 
