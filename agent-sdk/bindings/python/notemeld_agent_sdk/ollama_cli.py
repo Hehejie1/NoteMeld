@@ -44,13 +44,16 @@ def main(argv: list[str]|None=None)->int:
                 if line.startswith("/model "): model=line.split(None,1)[1]; print(f"model: {model}",file=sys.stderr); continue
                 request={"schema_version":"1","request_id":str(uuid.uuid4()),"session_id":"ollama-cli","input":{"text":line,"attachments":[],"context_refs":[]},"model_override":None,"approval_mode":"interactive","history":history}
                 token=runtime.submit_turn(request); runtime.wait(token,300_000)
+                answer = ""
                 while True:
                     try: event=runtime.events.get_nowait()
                     except queue.Empty: break
                     print(json.dumps(event,ensure_ascii=False),file=sys.stderr)
                     if event.get("type")=="message.delta": print(event.get("payload",{}).get("delta",""),end="",flush=True)
-                    if event.get("type")=="turn.succeeded": print()
-                history.extend([{"role":"user","content":line}])
+                    if event.get("type")=="turn.succeeded":
+                        answer = str(event.get("payload",{}).get("result",{}).get("content", ""))
+                        print()
+                history.extend([{"role":"user","content":line}, {"role":"assistant","content":answer}])
         return 0
     except Exception as exc: print(f"agent sdk error: {exc}",file=sys.stderr); return 1
 if __name__=="__main__": raise SystemExit(main())

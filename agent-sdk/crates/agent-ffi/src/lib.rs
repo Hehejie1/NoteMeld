@@ -727,11 +727,21 @@ fn run_submitted_turn(state: Arc<RuntimeState>, turn_token: u64, request: TurnRe
         async move { emit_envelope(&state, &request, sequence, event) }
     });
     let run_request = request.clone();
+    // The C ABI runtime has no product database of its own.  Hosts that own
+    // session history may supply a bounded `history` array in the request's
+    // flattened fields; decode it into the canonical SDK messages instead of
+    // silently discarding it.
+    let history = request
+        .extra
+        .get("history")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<Vec<AgentMessage>>(value).ok())
+        .unwrap_or_default();
     let result = guard_worker(|| {
         async_runtime().and_then(|executor| {
             executor.block_on(async {
                 runtime
-                    .run_turn(run_request, Vec::<AgentMessage>::new(), cancellation, sink)
+                    .run_turn(run_request, history, cancellation, sink)
                     .await
             })
         })
