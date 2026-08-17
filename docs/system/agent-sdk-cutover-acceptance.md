@@ -16,7 +16,7 @@
 | 17 | 通过 | `backend/app/agent/`、旧 loop、compat、旧 chat service 和 legacy tests 已删除；生产无旧 Agent import/flag |
 | 18 | 本机通过 | dylib、Python wheel、clean wheel native smoke、artifact manifest/license/architecture verifier；Swift iOS harness 在指定 release dylib 目录后可构建；PyInstaller sidecar 已成功产出并收入 SDK binding |
 | 19 | 本机通过，移动 CI-only | PyInstaller packaged sidecar 真实 Ollama Agent turn 通过：UI/Agent v1 首轮 `turn.succeeded` 且 assistant content 非空，随后产品 CLI 复用同一 session 二轮 `turn.succeeded`；`scripts/test-packaged-backend.sh` health smoke、Tauri 单测 7 passed、Rust/clippy/frontend/CLI/native cancel/restart recovery 均通过 |
-| 20 | 待最终发布验收 | Android/Harmony target CI、独立 `/Users/hehejie/ai/notemeld-agent-sdk` 与 NoteMeld 内嵌 SDK 的最终同步，以及发布 artifact 门禁 |
+| 20 | 移动 target CI-only | 独立 `/Users/hehejie/ai/notemeld-agent-sdk` 已同步最新 workspace（commit `55017ea`），Rust/Python 单测通过；剩余 Android connected test、Harmony SDK/实机和最终发布 artifact 门禁需在目标 CI 执行 |
 
 ## 可复现门禁
 
