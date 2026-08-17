@@ -380,7 +380,7 @@ def _merge_redacted_values(
 @router.get("/mcp_servers")
 def list_mcp_servers():
     """返回所有已配置的 MCP server（auth 字段不返回前端）。"""
-    from app.agent.mcp_client import load_mcp_servers
+    from app.agent_host.mcp_config import load_mcp_servers
 
     servers = load_mcp_servers()
     safe = {
@@ -393,7 +393,7 @@ def list_mcp_servers():
 @router.put("/mcp_servers/{server_id}")
 def upsert_mcp_server(server_id: str, data: McpServerConfigPayload):
     """新增或更新 MCP server 配置。"""
-    from app.agent.mcp_client import load_mcp_servers, save_mcp_servers
+    from app.agent_host.mcp_config import load_mcp_servers, save_mcp_servers
 
     import re
 
@@ -457,7 +457,7 @@ def upsert_mcp_server(server_id: str, data: McpServerConfigPayload):
 @router.delete("/mcp_servers/{server_id}")
 def delete_mcp_server(server_id: str):
     """删除 MCP server 配置。"""
-    from app.agent.mcp_client import load_mcp_servers, save_mcp_servers
+    from app.agent_host.mcp_config import load_mcp_servers, save_mcp_servers
 
     servers = load_mcp_servers()
     if server_id not in servers:
@@ -475,7 +475,7 @@ def delete_mcp_server(server_id: str):
 @router.get("/mcp_servers/enabled")
 def get_enabled_mcp_servers():
     """返回所有 enabled 的 MCP server（脱敏）。"""
-    from app.agent.mcp_client import list_enabled_mcp_servers
+    from app.agent_host.mcp_config import list_enabled_mcp_servers
 
     servers = list_enabled_mcp_servers()
     safe = {
