@@ -1,4 +1,5 @@
 import os
+import secrets
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -9,6 +10,9 @@ from dotenv import load_dotenv
 
 from app.db.init_db import init_db
 from app.core.runtime_mode import resolve_runtime_settings
+from app.core.agent_runtime_descriptor import AgentRuntimeDescriptor, remove_descriptor, write_descriptor
+from app.agent_host.host import close_agent_sdk_host, get_agent_sdk_host
+from app.utils.storage_paths import data_root
 from app.exceptions.exception_handlers import register_exception_handlers
 from app.utils.logger import get_logger
 from app.utils.storage_paths import screenshot_dir, static_dir as runtime_static_dir, upload_dir
@@ -47,7 +51,32 @@ async def lifespan(app: FastAPI):
     # 如果配置了不可用的类型（如 mlx-whisper 未安装），会在使用时报错而非静默回退
     _cfg = TranscriberConfigManager().get_config()
     logger.info(f"当前转写器配置: type={_cfg['transcriber_type']}, model_size={_cfg['whisper_model_size']}")
-    yield
+    runtime_settings = resolve_runtime_settings()
+    host = get_agent_sdk_host()
+    descriptor_root = data_root()
+    descriptor = None
+    try:
+        # One process-scoped native runtime is created before any UI/CLI turn
+        # can arrive.  A missing/incompatible SDK is a startup error, never a
+        # reason to re-enable the removed Python Agent runtime.
+        host.start()
+        descriptor = write_descriptor(
+            descriptor_root,
+            AgentRuntimeDescriptor(
+                pid=os.getpid(),
+                base_url=runtime_settings["api_base_url"],
+                token=secrets.token_urlsafe(32),
+                sdk_version=str(getattr(host._loaded, "sdk_version", "0.1.0")),
+                abi_version=2,
+                data_root=str(descriptor_root),
+            ),
+        )
+        logger.info("Agent SDK Host started: descriptor=%s", descriptor)
+        yield
+    finally:
+        close_agent_sdk_host()
+        if descriptor is not None:
+            remove_descriptor(descriptor_root)
 
 app = create_app(lifespan=lifespan)
 
