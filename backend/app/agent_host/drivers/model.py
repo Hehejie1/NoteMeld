@@ -11,6 +11,10 @@ from app.ai.errors import (
 )
 from app.ai.provider import LLMContext
 from app.ai.stream import StreamEventType
+from app.utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def map_provider_error(error: Exception) -> dict[str, Any]:
@@ -106,4 +110,5 @@ class NoteMeldModelDriver:
                 "usage": usage_payload,
             }
         except Exception as error:  # noqa: BLE001 - map provider boundary
+            logger.exception("Agent SDK model provider failed")
             return {"ok": False, "error": map_provider_error(error)}
