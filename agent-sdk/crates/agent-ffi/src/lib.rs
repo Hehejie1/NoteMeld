@@ -708,11 +708,16 @@ fn run_submitted_turn(state: Arc<RuntimeState>, turn_token: u64, request: TurnRe
         async move { emit_envelope(&state, &request, sequence, event) }
     });
     let run_request = request.clone();
+    let history = request
+        .extra
+        .get("history")
+        .and_then(|value| serde_json::from_value::<Vec<AgentMessage>>(value.clone()).ok())
+        .unwrap_or_default();
     let result = guard_worker(|| {
         async_runtime().and_then(|executor| {
             executor.block_on(async {
                 runtime
-                    .run_turn(run_request, Vec::<AgentMessage>::new(), cancellation, sink)
+                    .run_turn(run_request, history, cancellation, sink)
                     .await
             })
         })

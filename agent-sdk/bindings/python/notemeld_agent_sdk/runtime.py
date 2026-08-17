@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping
 
 SDK_VERSION = "0.1.0"
 SCHEMA_VERSION = "1"
+ABI_VERSION = 2
 
 FFI_OK = 0
 FFI_UNSUPPORTED = -6

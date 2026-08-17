@@ -1,0 +1,23 @@
+{
+  "abi_version": 2,
+  "sdk_version": "0.1.0",
+  "schema_version": "1",
+  "calling_convention": "C",
+  "compatibility": {"supersedes": "abi-v1", "event_schema": "1", "unknown_events": "forward_compatible"},
+  "functions": [
+    {"name": "notemeld_agent_sdk_version", "return": "const char *"},
+    {"name": "notemeld_agent_schema_version", "return": "const char *"},
+    {"name": "notemeld_agent_runtime_new", "return": "AgentRuntimeHandle *"},
+    {"name": "notemeld_agent_runtime_set_callbacks", "return": "int32_t"},
+    {"name": "notemeld_agent_submit_turn", "return": "uint64_t"},
+    {"name": "notemeld_agent_complete_driver_call", "return": "int32_t"},
+    {"name": "notemeld_agent_cancel_turn", "return": "int32_t"},
+    {"name": "notemeld_agent_steer_turn", "return": "int32_t"},
+    {"name": "notemeld_agent_wait_turn", "return": "int32_t"},
+    {"name": "notemeld_agent_last_error_json", "return": "char *"},
+    {"name": "notemeld_agent_string_free", "return": "void"},
+    {"name": "notemeld_agent_runtime_free", "return": "void"}
+  ],
+  "control": {"cancel": "idempotent", "steer": "accepted_at_safe_point", "terminal_events": 1},
+  "ownership": {"runtime": "opaque", "callback_context": "released_exactly_once", "strings": "string_free"}
+}

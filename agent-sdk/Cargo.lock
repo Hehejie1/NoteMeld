@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "agent-approval"
+version = "0.1.0"
+dependencies = [
+ "agent-events",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "agent-capabilities"
 version = "0.1.0"
 dependencies = [
