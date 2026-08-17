@@ -289,6 +289,35 @@ def get_turn(turn_id: str) -> dict[str, Any] | None:
         db.close()
 
 
+def recover_nonterminal() -> list[str]:
+    """Mark turns left active by a crashed process as interrupted exactly once."""
+    db = _db()
+    recovered: list[str] = []
+    try:
+        with db.begin():
+            turns = (
+                db.query(AgentTurn)
+                .filter(~AgentTurn.status.in_(tuple(TERMINAL_STATUSES)))
+                .with_for_update()
+                .all()
+            )
+            for turn in turns:
+                _append_event(
+                    db,
+                    turn_id=turn.turn_id,
+                    event_type="turn.interrupted",
+                    payload={"type": "turn.interrupted", "reason": "host_restart"},
+                    sequence=None,
+                )
+                turn.status = "interrupted"
+                turn.error_code = "interrupted"
+                turn.error_message = "Agent Host restarted before the turn completed"
+                recovered.append(turn.turn_id)
+        return recovered
+    finally:
+        db.close()
+
+
 def list_events(turn_id: str) -> list[dict[str, Any]]:
     db = _db()
     try:
@@ -375,6 +404,7 @@ __all__ = [
     "get_turn",
     "get_model_preference",
     "list_events",
+    "recover_nonterminal",
     "set_model_preference",
     "transition_turn",
 ]
