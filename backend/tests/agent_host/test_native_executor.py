@@ -18,6 +18,10 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
 
         def submit_turn(self, request):
             assert request["input"]["text"] == "hello"
+            assert request["model_override"] == {
+                "provider_id": "demo-provider",
+                "model_name": "demo",
+            }
             response = self.driver({"kind": "model.stream", "messages": [{"role": "user", "content": "hello"}]})
             assert response["ok"] is True
             self.on_event({"schema_version": "1", "type": "message.delta", "payload": {"delta": "hi"}})
@@ -55,7 +59,10 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
     monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
     monkeypatch.setattr("app.agent_host.native_executor.create_models", lambda: object())
     monkeypatch.setattr("app.agent_host.native_executor.NoteMeldModelDriver", FakeModelDriver)
-    monkeypatch.setattr("app.agent_host.native_executor._resolve_saved_model", lambda _name: (object(), object()))
+    monkeypatch.setattr(
+        "app.agent_host.native_executor._resolve_saved_model",
+        lambda _name: (object(), SimpleNamespace(provider_id="demo-provider", name="demo")),
+    )
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.append_event", lambda _turn, event, **_kw: persisted.append(event))
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.transition_turn", lambda *args, **kwargs: finished.append((args, kwargs)))
 

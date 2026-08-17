@@ -48,6 +48,12 @@ class NoteMeldModelDriver:
         messages = list(request.get("messages") or [])
         ctx = LLMContext(messages=messages, tools=list(request.get("tools") or []) or None)
         chunks: list[str] = []
+        usage_payload: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+        }
         tool_calls: list[dict[str, Any]] = []
         emit = emit or (lambda _event: None)
 
@@ -78,12 +84,26 @@ class NoteMeldModelDriver:
                     }
                     tool_calls.append(tool_call)
                     await send(tool_call)
+                elif event_type == StreamEventType.DONE.value or event_type == "done":
+                    usage = getattr(event, "usage", None)
+                    usage_payload.update({
+                        "input_tokens": int(getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None) or 0),
+                        "output_tokens": int(getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None) or 0),
+                    })
+                    usage_payload["cache_read_tokens"] = int(getattr(usage, "cache_read_tokens", None) or 0)
+                    usage_payload["cache_write_tokens"] = int(getattr(usage, "cache_write_tokens", None) or 0)
+                elif event_type == StreamEventType.ERROR.value or event_type == "error":
+                    provider_error = getattr(event, "error", None)
+                    if isinstance(provider_error, BaseException):
+                        raise provider_error
+                    raise RuntimeError("model provider stream failed")
             return {
                 "ok": True,
                 "content": "".join(chunks),
+                "chunks": [{"type": "content_delta", "delta": chunk} for chunk in chunks],
                 "tool_calls": tool_calls,
                 "finish_reason": "tool_calls" if tool_calls else "stop",
-                "usage": {},
+                "usage": usage_payload,
             }
         except Exception as error:  # noqa: BLE001 - map provider boundary
             return {"ok": False, "error": map_provider_error(error)}

@@ -10,6 +10,7 @@ from app.ai import create_models
 from app.db.model_dao import get_all_models
 from app.services import agent_store
 from app.services.conversation_store import get_conversation, update_message
+from app.utils.logger import get_logger
 
 
 _TERMINAL = {
@@ -18,6 +19,8 @@ _TERMINAL = {
     "turn.cancelled": "cancelled",
     "turn.interrupted": "interrupted",
 }
+
+logger = get_logger(__name__)
 
 
 def _resolve_saved_model(model_name: str | None) -> tuple[Any, Any]:
@@ -65,18 +68,25 @@ class NativeAgentExecutor:
         assistant_content = ""
         try:
             models, model = _resolve_saved_model(model_name)
+            model_override = {
+                "provider_id": str(getattr(model, "provider_id", "")),
+                "model_name": str(getattr(model, "name", model_name) or ""),
+            }
 
             async def call_driver(request: dict[str, Any]) -> dict[str, Any]:
                 kind = request.get("kind")
                 if kind == "model.stream":
                     result = await NoteMeldModelDriver(models, model).stream(request)
                     if result.get("ok"):
-                        return {"schema_version": "1", "ok": True, "result": {"completion": {
-                            "content": result.get("content", ""),
-                            "tool_calls": result.get("tool_calls", []),
-                            "finish_reason": result.get("finish_reason", "stop"),
-                            "usage": result.get("usage", {}),
-                        }}}
+                        return {"schema_version": "1", "ok": True, "result": {
+                            "chunks": result.get("chunks", []),
+                            "completion": {
+                                "content": result.get("content", ""),
+                                "tool_calls": result.get("tool_calls", []),
+                                "finish_reason": result.get("finish_reason", "stop"),
+                                "usage": result.get("usage", {}),
+                            },
+                        }}
                     return {"schema_version": "1", **result}
                 return {"schema_version": "1", "ok": False,
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
@@ -131,7 +141,7 @@ class NativeAgentExecutor:
                     "session_id": session_id,
                     "input": {"text": content, "attachments": [], "context_refs": []},
                     "history": history,
-                    "model_override": model_name,
+                    "model_override": model_override,
                     "approval_mode": "interactive",
                 },
                 driver=driver,
@@ -146,6 +156,10 @@ class NativeAgentExecutor:
             error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
             self._finish(turn_id, session_id, status, terminal, error)
         except Exception as error:  # noqa: BLE001 - terminal boundary
+            # Keep the public event deliberately redacted, but retain the
+            # exception class/message in the sidecar log so packaged startup
+            # and native driver integration failures are diagnosable.
+            logger.exception("Agent SDK turn failed at host boundary: turn_id=%s", turn_id)
             event = {"type": "turn.failed", "payload": {"error": {"code": "sdk_internal_error", "message": "Agent 执行失败"}}}
             if self.event_sink is not None:
                 self.event_sink(event)
