@@ -1,5 +1,7 @@
 # Universal Agent SDK and Unified CLI Implementation Plan
 
+> **状态：Superseded。** 用户已取消“一发布周期 Python oracle/rollback”兼容方案。新计划为 `docs/superpowers/plans/2026-08-17-agent-sdk-single-runtime-cutover.md`，本文件只保留历史证据，不得继续作为执行入口。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 NoteMeld 现有 Python Agent 能力迁移为单一 Rust Agent SDK，并让桌面 UI、Web Host、`notemeld agent` CLI、iOS、Android 与 OpenHarmony 产物共享同一 Turn/Event/Session 语义及同一份 NoteMeld 会话数据。

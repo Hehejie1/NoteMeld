@@ -183,7 +183,9 @@ Wiki 文件位于 `note_results/wiki/`：
 
 ### Agent Host（增量迁移）
 
-`backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；开发环境通过 `NOTEMELD_AGENT_SDK_PYTHON_PATH` 显式指定外部 SDK 源码，生产环境加载已安装 package；`NOTEMELD_AGENT_MODE=python-oracle` 是显式回滚开关。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。当前仍处于 Host/API 增量阶段，旧 `/api/chat/free*` 未删除。
+`backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；开发环境通过 `NOTEMELD_AGENT_SDK_PYTHON_PATH` 显式指定外部 SDK 源码，生产环境加载已安装 package。`python/python-oracle/legacy` runtime mode 已 fail-closed，不再存在静默回退。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。旧 `/api/chat/ask`、`/api/chat/free`、`/api/chat/free/stream` 已从生产 Router 移除。
+
+旧 NoteMeld Python Agent package（`backend/app/agent/`）、Python loop 测试和 `agent_host/compat.py` 已删除；Agent 行为只由独立 `notemeld-agent-sdk` 提供。
 
 桌面后端打包时可通过 `NOTEMELD_AGENT_SDK_WHEEL` 安装带 native library 的 wheel；PyInstaller 会将 `notemeld_agent_sdk` 及其 `native/` 资源收入 sidecar。源码构建可使用 `NOTEMELD_AGENT_SDK_ROOT` 指向独立 SDK checkout。
 

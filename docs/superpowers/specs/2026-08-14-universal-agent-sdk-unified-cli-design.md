@@ -1,9 +1,10 @@
 # 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 设计规格
 
-日期：2026-08-14  
-作者 / Agent：Codex（doc-driven + brainstorming）  
-状态：Approved（用户于 2026-08-14 确认“规格确认”）
-Canonical Requirement：`docs/requirements/2026-08-14-universal-agent-sdk-unified-cli.md`  
+日期：2026-08-14
+作者 / Agent：Codex（doc-driven + brainstorming）
+状态：Superseded
+替代架构：`docs/superpowers/specs/2026-08-17-agent-sdk-single-runtime-architecture.md`
+Canonical Requirement：`docs/requirements/2026-08-14-universal-agent-sdk-unified-cli.md`
 Change Spec：`docs/system/change-spec-universal-agent-sdk-unified-cli.md`
 
 ## 1. 设计结论

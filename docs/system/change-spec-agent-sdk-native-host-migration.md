@@ -1,5 +1,7 @@
 # Change Spec：独立 Agent SDK native host 迁移
 
+> 状态：Superseded。该文档记录过渡接入；正式单一运行时架构见 `docs/system/change-spec-agent-sdk-single-runtime-cutover.md`。
+
 ## 当前现状
 
 独立仓库 `/Users/hehejie/ai/notemeld-agent-sdk` 已提供 Rust workspace、C ABI、Python binding 和带 native library 的 macOS wheel。NoteMeld 的 `/api/agent/v1` 已有 Turn/事件存储，但此前只创建 Turn，不实际执行 Rust runtime；旧 `backend/app/agent/core` 仍被聊天、工具和 MCP 兼容路径使用。

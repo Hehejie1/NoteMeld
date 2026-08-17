@@ -1,6 +1,6 @@
 # Requirements Index
 
-更新时间：2026-08-16
+更新时间：2026-08-18
 
 本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
 
@@ -30,7 +30,9 @@
 | P4-P5 | Planned | 主动学习空间（本地知识、互联网研究、学习画布与掌握验证） | [`2026-08-01-notemeld-agent-deep-learning-canvas.md`](2026-08-01-notemeld-agent-deep-learning-canvas.md) | [`plan`](../superpowers/plans/2026-08-11-notemeld-active-learning-space.md) + [`spec`](../superpowers/specs/2026-08-11-notemeld-active-learning-space.md) + [`阶段验证`](../superpowers/tests/2026-08-11-notemeld-active-learning-space.md) | 核心纵向闭环已实现；诊断、选择性编译、增量合并等完整验收仍待推进；多 Agent 后续演进 |
 | P4.1 | Implemented | 语义无限白板（可编辑卡片、关系、对话引用与显式 Note 发布） | [`2026-08-14-notemeld-semantic-infinite-whiteboard.md`](2026-08-14-notemeld-semantic-infinite-whiteboard.md) | [`plan`](../superpowers/plans/2026-08-14-notemeld-semantic-infinite-whiteboard.md) + [`spec`](../superpowers/specs/2026-08-14-notemeld-semantic-infinite-whiteboard-design.md) + [`证据`](../superpowers/tests/2026-08-14-notemeld-semantic-infinite-whiteboard.md) | 主线能力与白板/Note 发布链路已接入；性能基准与浏览器/纵向验收待补充 |
 | P3.1 | Implemented | L0–L3 渐进式能力路由与按需 Wiki 检索 | [`2026-08-11-progressive-capability-routing.md`](2026-08-11-progressive-capability-routing.md) | [`plan`](../superpowers/plans/2026-08-11-progressive-capability-routing.md) + [`spec`](../superpowers/specs/2026-08-11-progressive-capability-routing.md) + [`验收`](../superpowers/tests/2026-08-11-progressive-capability-routing.md) | 首轮固定 3 个元工具；Wiki/Skill/MCP 渐进披露；Agent free-chat 取消默认重型 Wiki 预搜；定向回归通过 |
-| P6 | Ready for Plan | 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话 | [`2026-08-14-universal-agent-sdk-unified-cli.md`](2026-08-14-universal-agent-sdk-unified-cli.md) | [`设计规格`](../superpowers/specs/2026-08-14-universal-agent-sdk-unified-cli-design.md) | Rust 为唯一 Agent 核心；UI/CLI 共享 Agent Host、Conversation 和数据；移动端/Harmony 交付 SDK 产物，远程互调与 Harbor 后置 |
+| P6 | Planned（待确认） | Agent SDK 单一运行时与 NoteMeld 正式切换 | [`2026-08-17-agent-sdk-single-runtime-cutover.md`](2026-08-17-agent-sdk-single-runtime-cutover.md) | [`目标架构`](../superpowers/specs/2026-08-17-agent-sdk-single-runtime-architecture.md) + [`plan`](../superpowers/plans/2026-08-17-agent-sdk-single-runtime-cutover.md) + [`执行规格`](../superpowers/specs/2026-08-17-agent-sdk-single-runtime-execution.md) | 19 个 Task 和精确协议已完成；等待用户确认，尚未开发。SDK 是唯一 Agent 行为事实源，历史业务数据继续可读 |
+| P6.1 | Planned | K0-K3 文章级分层知识检索与独立 Agent 工具 | [`2026-08-18-k0-k3-article-knowledge-retrieval.md`](2026-08-18-k0-k3-article-knowledge-retrieval.md) | [`plan`](../superpowers/plans/2026-08-18-k0-k3-article-knowledge-retrieval.md) + [`执行规格`](../superpowers/specs/2026-08-18-k0-k3-article-knowledge-retrieval-execution.md) | 全层 article_id=task_id；K1/K2/K3 可预过滤；四工具独立/并行；目标 10 万篇单机索引。服务层可并行实施，Agent 接入依赖 P6 正式 Capability/ToolDriver |
+| P6-history | Superseded | 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话（旧兼容方案） | [`2026-08-14-universal-agent-sdk-unified-cli.md`](2026-08-14-universal-agent-sdk-unified-cli.md) | [`旧设计规格`](../superpowers/specs/2026-08-14-universal-agent-sdk-unified-cli-design.md) | 被 2026-08-17 单一运行时需求替代；旧方案中的一发布周期兼容与 Python rollback 不再适用 |
 | - | Planned | 模型上下文与能力感知分块 | [`2026-08-13-model-context-capability-aware-chunking.md`](2026-08-13-model-context-capability-aware-chunking.md) | [`plan`](../superpowers/plans/2026-08-13-model-context-capability-aware-chunking.md) + [`spec`](../superpowers/specs/2026-08-13-model-context-capability-aware-chunking-design.md) + [`验证`](../superpowers/tests/2026-08-13-model-context-capability-aware-chunking.md) | Tasks 1–8 自动化 gate 已通过；真实 UI/Ollama/7.5 分钟视频/历史笔记手动验收待完成，保持 Planned |
 | - | Planned | 多源视频增强总结 | 待补充 | `docs/superpowers/plans/2026-06-11-multisource-video-summary-implementation.md` | 三路并行采集融合总结 |
 | - | Superseded | Agent Reach 集成 | `docs/requirements/notemeld-agent-reach-integration-prd.md` | - | 多平台搜索与爬取 → 合并到 [P4 search_web](2026-08-01-notemeld-agent-deep-learning-canvas.md) |
@@ -46,6 +48,8 @@
 
 ## 最近变更
 
+- 2026-08-18：新增 P6.1 K0-K3 文章级分层知识检索 Requirement/Plan/Execution Spec；统一 article_id=task_id，定义四个无顺序依赖的 Knowledge Capability、共享版本化索引、K3 occurrence BM25/vector + SQLite graph provenance 和 10 万篇 benchmark 门槛
+- 2026-08-17：P6 改为 Agent SDK 单一运行时正式切换；用户明确取消旧 Python Agent/compat/rollback，新增清晰分层架构和 SDK/Framework 能力边界，历史 Conversation/Note/Wiki 数据继续保留
 - 2026-08-16：完成语义无限白板需求状态收口：`requirements`、`index`、`data-model`、`api-inventory`、`product-rules` 同步更新，新增白板验收证据骨架，状态更新为 Implemented（性能/纵向证据待补）
 - 2026-08-15：完成语义无限白板 Requirement、Change Spec 与可执行 Plan；明确 Board/Card/Relation 模型、四类卡片、后端权威引用、白板草稿到 Note 显式发布、React Flow MIT 合规与 500/1000 性能门槛
 - 2026-08-14：新增 P6 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话需求；确认 Rust 单一核心、版本化 Turn/Event、Python Host binding、`notemeld agent` 和移动端/OpenHarmony SDK 产物

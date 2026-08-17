@@ -1,10 +1,13 @@
 # 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 执行规格
 
-日期：2026-08-14  
-状态：Ready for Execution  
-批准依据：用户于 2026-08-14 回复“规格确认”  
-实施计划：`docs/superpowers/plans/2026-08-14-universal-agent-sdk-unified-cli.md`  
+日期：2026-08-14
+状态：Superseded（不得继续执行）
+批准依据：用户于 2026-08-14 回复“规格确认”
+实施计划：`docs/superpowers/plans/2026-08-14-universal-agent-sdk-unified-cli.md`
 设计规格：`docs/superpowers/specs/2026-08-14-universal-agent-sdk-unified-cli-design.md`
+替代规格：`docs/superpowers/specs/2026-08-17-agent-sdk-single-runtime-execution.md`
+
+> 用户于 2026-08-17 明确取消旧 Python Agent compatibility/rollback。本文只保留历史实施证据，新的开发必须以替代规格为准。
 
 ## 1. 执行目标与边界
 

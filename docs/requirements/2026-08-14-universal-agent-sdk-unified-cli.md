@@ -1,10 +1,11 @@
 # 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话
 
-日期：2026-08-14  
-作者 / Agent：Codex（doc-driven）  
-状态：Planned（规格已确认，实施计划与执行规格已生成）
-关联对话 / 任务：Harbor Agent 测评前置改造、UI/CLI 统一 Agent、跨平台 Agent SDK  
-关联系统文档：`docs/system/current-architecture.md`、`docs/system/product-rules.md`、`docs/system/data-model.md`、`docs/system/api-inventory.md`、`docs/system/known-pitfalls.md`  
+日期：2026-08-14
+作者 / Agent：Codex（doc-driven）
+状态：Superseded
+替代需求：`docs/requirements/2026-08-17-agent-sdk-single-runtime-cutover.md`（用户于 2026-08-17 明确取消旧 Agent 兼容与 rollback，要求 SDK 成为唯一运行逻辑）
+关联对话 / 任务：Harbor Agent 测评前置改造、UI/CLI 统一 Agent、跨平台 Agent SDK
+关联系统文档：`docs/system/current-architecture.md`、`docs/system/product-rules.md`、`docs/system/data-model.md`、`docs/system/api-inventory.md`、`docs/system/known-pitfalls.md`
 关联历史需求：`docs/requirements/2026-08-01-notemeld-agent-core-runtime.md`、`docs/requirements/2026-08-01-notemeld-agent-research-assistant.md`、`docs/requirements/2026-08-11-progressive-capability-routing.md`
 
 ## 1. 原始需求

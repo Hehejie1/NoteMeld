@@ -1,7 +1,9 @@
 # Change Spec：跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话
 
-更新时间：2026-08-14  
-状态：Design Review  
+> 状态：Superseded。用户于 2026-08-17 明确取消旧 Agent 兼容与 rollback；新事实源为 `docs/system/change-spec-agent-sdk-single-runtime-cutover.md`。
+
+更新时间：2026-08-14
+状态：Design Review
 Canonical Requirement：`docs/requirements/2026-08-14-universal-agent-sdk-unified-cli.md`
 
 依据 `docs/system/change-spec-template.md` 编写。本 Change Spec 描述如何在现有 Python/FastAPI/React/Tauri 系统上增量引入 Rust Agent SDK，并在可回滚前提下把 UI 与 CLI 迁移到统一 Agent Host。
