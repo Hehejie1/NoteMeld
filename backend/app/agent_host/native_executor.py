@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from typing import Any, Callable
 
@@ -77,7 +78,8 @@ class NativeAgentExecutor:
                 return {"schema_version": "1", "ok": False,
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
 
-            loaded = AgentSdkRuntime.load(binding_path="development" if self.library else "packaged")
+            binding_mode = "development" if (self.library or os.getenv("NOTEMELD_AGENT_SDK_PYTHON_PATH")) else "packaged"
+            loaded = AgentSdkRuntime.load(binding_path=binding_mode)
             if loaded.binding is None:
                 raise RuntimeError("Rust SDK binding unavailable")
             Runtime = loaded.binding.Runtime
@@ -143,4 +145,3 @@ class NativeAgentExecutor:
                 terminal_event=event,
                 terminal_event_type=event.get("type", "terminal"),
             )
-
