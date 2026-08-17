@@ -26,6 +26,8 @@ class AgentSdkHost:
         self._loaded: AgentSdkRuntime | None = None
         self._runtime: Any | None = None
         self._handles: dict[str, NativeTurnHandle] = {}
+        self._drivers: dict[int, Callable[[dict[str, Any]], Mapping[str, Any]]] = {}
+        self._event_handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
         self._lock = RLock()
         self._closed = False
 
@@ -45,15 +47,25 @@ class AgentSdkHost:
                 raise AgentSdkUnavailable("Rust SDK binding unavailable")
             factory = self.runtime_factory or loaded.binding.Runtime
             self._loaded = loaded
-            # Driver and event callbacks are installed by the product executor;
-            # the runtime is still created once and shared by all turns.
-            kwargs: dict[str, Any] = {}
-            if driver is not None:
-                kwargs["driver"] = driver
-            if on_event is not None:
-                kwargs["on_event"] = on_event
-            self._runtime = factory(**kwargs)
+            # The native runtime is created once. Per-turn callbacks are routed
+            # by the token included in ABI v2 driver requests.
+            self._runtime = factory(driver=self._dispatch_driver, on_event=self._dispatch_event)
             return self
+
+    def _dispatch_driver(self, request: dict[str, Any]) -> Mapping[str, Any]:
+        token = int(request.get("turn_token") or 0)
+        with self._lock:
+            driver = self._drivers.get(token)
+        if driver is None:
+            return {"schema_version": "1", "ok": False, "error": {"code": "turn_not_found", "message": "turn driver unavailable"}}
+        return driver(request)
+
+    def _dispatch_event(self, event: dict[str, Any]) -> None:
+        turn_id = str(event.get("turn_id") or "")
+        with self._lock:
+            handler = self._event_handlers.get(turn_id)
+        if handler is not None:
+            handler(event)
 
     @property
     def runtime(self) -> Any:
@@ -68,6 +80,25 @@ class AgentSdkHost:
                 self.start()
             handle = NativeTurnHandle(turn_id, int(token))
             self._handles[turn_id] = handle
+            return handle
+
+    def submit(
+        self,
+        turn_id: str,
+        request: Mapping[str, Any],
+        *,
+        driver: Callable[[dict[str, Any]], Mapping[str, Any]],
+        on_event: Callable[[dict[str, Any]], None],
+    ) -> NativeTurnHandle:
+        with self._lock:
+            runtime = self.runtime
+            token = int(runtime.submit_turn(dict(request)))
+            if not token:
+                raise AgentSdkUnavailable("native turn submission failed")
+            handle = NativeTurnHandle(turn_id, token)
+            self._handles[turn_id] = handle
+            self._drivers[token] = driver
+            self._event_handlers[turn_id] = on_event
             return handle
 
     def handle(self, turn_id: str) -> NativeTurnHandle | None:
@@ -88,7 +119,10 @@ class AgentSdkHost:
 
     def forget(self, turn_id: str) -> None:
         with self._lock:
-            self._handles.pop(turn_id, None)
+            handle = self._handles.pop(turn_id, None)
+            self._event_handlers.pop(turn_id, None)
+            if handle is not None:
+                self._drivers.pop(handle.token, None)
 
     def close(self) -> None:
         with self._lock:
@@ -96,6 +130,8 @@ class AgentSdkHost:
                 return
             runtime, self._runtime = self._runtime, None
             self._handles.clear()
+            self._drivers.clear()
+            self._event_handlers.clear()
             self._closed = True
         if runtime is not None:
             runtime.close()

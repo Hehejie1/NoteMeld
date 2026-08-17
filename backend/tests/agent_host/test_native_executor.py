@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from types import SimpleNamespace
 
 
 def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
@@ -35,8 +36,14 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
         def __exit__(self, *_args):
             self.close()
 
-    class FakeSdk:
-        Runtime = FakeRuntime
+    class FakeHost:
+        def submit(self, _turn_id, request, *, driver, on_event):
+            self.runtime = FakeRuntime(driver=driver, on_event=on_event)
+            self.runtime.submit_turn(request)
+            return SimpleNamespace(token=1)
+
+        def forget(self, _turn_id):
+            return None
 
     class FakeModelDriver:
         def __init__(self, *_args, **_kwargs):
@@ -45,7 +52,7 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
         async def stream(self, _request):
             return {"ok": True, "content": "hi", "tool_calls": [], "finish_reason": "stop", "usage": {}}
 
-    monkeypatch.setattr("app.agent_host.native_executor.AgentSdkRuntime.load", lambda **_kwargs: type("Loaded", (), {"binding": FakeSdk})())
+    monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
     monkeypatch.setattr("app.agent_host.native_executor.create_models", lambda: object())
     monkeypatch.setattr("app.agent_host.native_executor.NoteMeldModelDriver", FakeModelDriver)
     monkeypatch.setattr("app.agent_host.native_executor._resolve_saved_model", lambda _name: (object(), object()))

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import threading
 from typing import Any, Callable
 
 from app.agent_host.drivers.model import NoteMeldModelDriver
-from app.agent_host.runtime import AgentSdkRuntime
+from app.agent_host.host import AgentSdkHost, get_agent_sdk_host
 from app.ai import create_models
 from app.db.model_dao import get_all_models
 from app.services import agent_store
@@ -78,12 +77,6 @@ class NativeAgentExecutor:
                 return {"schema_version": "1", "ok": False,
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
 
-            binding_mode = "development" if (self.library or os.getenv("NOTEMELD_AGENT_SDK_PYTHON_PATH")) else "packaged"
-            loaded = AgentSdkRuntime.load(binding_path=binding_mode)
-            if loaded.binding is None:
-                raise RuntimeError("Rust SDK binding unavailable")
-            Runtime = loaded.binding.Runtime
-
             def on_event(event: dict[str, Any]) -> None:
                 nonlocal terminal
                 event_type = str(event.get("type") or "")
@@ -102,16 +95,22 @@ class NativeAgentExecutor:
             def driver(request: dict[str, Any]) -> dict[str, Any]:
                 return asyncio.run(call_driver(request))
 
-            with Runtime(self.library, driver=driver, on_event=on_event) as runtime:
-                token = runtime.submit_turn({
+            host: AgentSdkHost = AgentSdkHost(binding_path=self.library) if self.library else get_agent_sdk_host()
+            handle = host.submit(
+                turn_id,
+                {
                     "schema_version": "1",
                     "request_id": turn_id,
                     "session_id": session_id,
                     "input": {"text": content, "attachments": [], "context_refs": []},
                     "model_override": model_name,
                     "approval_mode": "interactive",
-                })
-                runtime.wait(token, 30_000)
+                },
+                driver=driver,
+                on_event=on_event,
+            )
+            host.runtime.wait(handle.token, 30_000)
+            host.forget(turn_id)
             if terminal is None:
                 raise RuntimeError("Agent SDK did not emit a terminal event")
             status = _TERMINAL[str(terminal["type"])]
