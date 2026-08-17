@@ -31,7 +31,7 @@ use agent_events::{
     AgentError, AgentErrorCode, AgentEvent, AgentEventEnvelope, EventId, TurnFailedPayload, TurnId,
     TurnRequest, SCHEMA_VERSION, SDK_VERSION,
 };
-use agent_model::{ModelChunk, ModelChunkSink, ModelCompletion, ModelDriver, ModelRequest};
+use agent_model::{ModelChunk, ModelChunkSink, ModelCompletion, ModelDriver, ModelMessage, ModelRequest};
 use agent_tools::{
     ToolCall, ToolContext, ToolDescriptor, ToolDriver, ToolProgressSink, ToolResult,
 };
@@ -169,6 +169,7 @@ impl DriverCalls {
 #[derive(Debug, Clone)]
 struct TurnControl {
     cancellation: CancellationToken,
+    steer: Arc<Mutex<VecDeque<Value>>>,
 }
 
 #[derive(Default)]
@@ -466,19 +467,25 @@ async fn dispatch_driver_call(
 
 struct FfiModelDriver {
     state: Weak<RuntimeState>,
+    steer: Arc<Mutex<VecDeque<Value>>>,
 }
 
 #[async_trait]
 impl ModelDriver for FfiModelDriver {
     async fn stream(
         &self,
-        request: ModelRequest,
+        mut request: ModelRequest,
         sink: ModelChunkSink,
     ) -> Result<ModelCompletion, AgentError> {
         let state = self
             .state
             .upgrade()
             .ok_or_else(|| AgentError::new(AgentErrorCode::Cancelled, "runtime closed"))?;
+        if let Ok(mut pending) = self.steer.lock() {
+            while let Some(content) = pending.pop_front() {
+                request.messages.push(ModelMessage { role: "user".to_owned(), content });
+            }
+        }
         let messages = serde_json::to_value(&request.messages)
             .map_err(|_| internal_error("model request encoding failed"))?;
         let response = dispatch_driver_call(
@@ -675,9 +682,8 @@ fn run_submitted_turn(state: Arc<RuntimeState>, turn_token: u64, request: TurnRe
         Err(_) => return,
     };
     let weak = Arc::downgrade(&state);
-    let model: Arc<dyn ModelDriver> = Arc::new(FfiModelDriver {
-        state: weak.clone(),
-    });
+    let steer = state.turns.lock().ok().and_then(|turns| turns.active.get(&turn_token).map(|turn| Arc::clone(&turn.steer))).unwrap_or_else(|| Arc::new(Mutex::new(VecDeque::new())));
+    let model: Arc<dyn ModelDriver> = Arc::new(FfiModelDriver { state: weak.clone(), steer });
     let tools: Arc<dyn ToolDriver> = Arc::new(FfiToolDriver { state: weak });
     let runtime = AgentRuntime::new(
         model,
@@ -844,7 +850,7 @@ pub extern "C" fn notemeld_agent_submit_turn(
             .lock()
             .ok()?
             .active
-            .insert(turn_token, TurnControl { cancellation });
+            .insert(turn_token, TurnControl { cancellation, steer: Arc::new(Mutex::new(VecDeque::new())) });
         let executor = async_runtime().ok()?;
         executor.spawn_blocking({
             let state = Arc::clone(&state);
@@ -937,19 +943,25 @@ pub extern "C" fn notemeld_agent_steer_turn(
     catch_unwind(AssertUnwindSafe(|| {
         let state = runtime_for(handle)?;
         let turns = state.turns.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
-        let exists = turns.active.contains_key(&turn_token) || turns.terminal.contains(&turn_token);
-        if !exists {
-            return Err(FFI_TURN_NOT_FOUND);
+        if turns.terminal.contains(&turn_token) {
+            return Err(FFI_TURN_TERMINAL);
         }
+        let Some(turn) = turns.active.get(&turn_token) else {
+            return Err(FFI_TURN_NOT_FOUND);
+        };
         let wire = unsafe { read_bounded_c_string(steer_json, MAX_STEER_BYTES) }
             .map_err(|_| FFI_INVALID_INPUT)?;
         let value: Value = serde_json::from_str(&wire).map_err(|_| FFI_INVALID_INPUT)?;
-        if !value.is_object() {
+        let text = value.get("text").or_else(|| value.get("input")).and_then(Value::as_str).map(str::trim).filter(|text| !text.is_empty()).ok_or(FFI_INVALID_INPUT)?;
+        if text.len() > MAX_STEER_BYTES / 4 {
             return Err(FFI_INVALID_INPUT);
         }
-        // Task 4's fixed canonical loop has no mid-turn input port. Expose an
-        // explicit, typed control result instead of pretending steer applied.
-        Err(FFI_UNSUPPORTED)
+        let mut pending = turn.steer.lock().map_err(|_| FFI_INTERNAL_ERROR)?;
+        if pending.len() >= 16 {
+            return Err(FFI_INVALID_INPUT);
+        }
+        pending.push_back(Value::String(text.to_owned()));
+        Ok(FFI_OK)
     }))
     .unwrap_or(Err(FFI_INTERNAL_ERROR))
     .unwrap_or_else(|code| code)
@@ -1072,9 +1084,7 @@ mod tests {
         for id in 1..=(MAX_TURN_TOMBSTONES as u64 + 2) {
             state.turns.lock().unwrap().active.insert(
                 id,
-                TurnControl {
-                    cancellation: CancellationToken::new(),
-                },
+                TurnControl { cancellation: CancellationToken::new(), steer: Arc::new(Mutex::new(VecDeque::new())) },
             );
             state.mark_terminal(id);
         }
@@ -1113,9 +1123,7 @@ mod tests {
         });
         state.turns.lock().unwrap().active.insert(
             1,
-            TurnControl {
-                cancellation: CancellationToken::new(),
-            },
+            TurnControl { cancellation: CancellationToken::new(), steer: Arc::new(Mutex::new(VecDeque::new())) },
         );
         let request: TurnRequest = serde_json::from_value(json!({
             "schema_version":"1", "request_id":"ffffffff-ffff-4fff-8fff-ffffffffffff",

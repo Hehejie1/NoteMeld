@@ -387,10 +387,7 @@ fn version_lifecycle_driver_event_cancel_steer_and_stale_handle_contract() {
     assert_eq!(notemeld_agent_cancel_turn(handle, turn), FFI_OK);
     assert_eq!(notemeld_agent_cancel_turn(handle, turn), FFI_OK);
     let steer = CString::new(r#"{"text":"change direction"}"#).unwrap();
-    assert_eq!(
-        notemeld_agent_steer_turn(handle, turn, steer.as_ptr()),
-        FFI_UNSUPPORTED
-    );
+    assert_eq!(notemeld_agent_steer_turn(handle, turn, steer.as_ptr()), FFI_TURN_TERMINAL);
 
     notemeld_agent_runtime_free(handle);
     notemeld_agent_runtime_free(handle);
