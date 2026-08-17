@@ -52,6 +52,9 @@ validate_ffmpeg_runtime
 cd "${ROOT_DIR}"
 rm -rf "${ROOT_DIR}/build"
 rm -f "${DIST_BIN}"
+if [[ -n "${NOTEMELD_AGENT_SDK_WHEEL:-}" ]]; then
+  "${PYTHON_BIN}" -m pip install --no-deps --force-reinstall "${NOTEMELD_AGENT_SDK_WHEEL}"
+fi
 NOTEMELD_ROOT_DIR="${ROOT_DIR}" "${PYTHON_BIN}" -m PyInstaller packaging/backend/pyinstaller/backend.spec
 
 if [[ ! -f "${DIST_BIN}" ]]; then
