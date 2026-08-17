@@ -183,9 +183,11 @@ Wiki 文件位于 `note_results/wiki/`：
 
 ### Agent Host（增量迁移）
 
-`backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；开发环境通过 `NOTEMELD_AGENT_SDK_PYTHON_PATH` 显式指定外部 SDK 源码，生产环境加载已安装 package；`NOTEMELD_AGENT_MODE=python-oracle` 是显式回滚开关。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。当前仍处于 Host/API 增量阶段，旧 `/api/chat/free*` 未删除。
+`backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；开发环境可通过 `NOTEMELD_AGENT_SDK_PYTHON_PATH` 显式指定外部 SDK 源码，生产环境加载已安装 package。Agent v1 只允许 Rust runtime；`python`、`python-oracle`、`legacy` 模式全部 fail-closed，避免同一应用存在两套 Agent loop。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。当前仍处于 Host/API 增量阶段，旧 `/api/chat/free*` 未删除。
 
-桌面后端打包时可通过 `NOTEMELD_AGENT_SDK_WHEEL` 安装带 native library 的 wheel；PyInstaller 会将 `notemeld_agent_sdk` 及其 `native/` 资源收入 sidecar。源码构建可使用 `NOTEMELD_AGENT_SDK_ROOT` 指向独立 SDK checkout。
+源码启动和已安装 CLI 启动都会先校验 `notemeld_agent_sdk` 的 SDK/schema 版本；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。桌面后端打包使用同一 wheel；PyInstaller 会将 `notemeld_agent_sdk` 及其 `native/` 资源收入 sidecar。打包构建仍可使用 `NOTEMELD_AGENT_SDK_ROOT` 指向独立 SDK checkout。
+
+`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop。它支持 `-p/--prompt`、`--conversation/--session`、`--model`、`--output/--format`，交互模式支持 `/new`、`/resume`、`/sessions`、`/model` 和 `/exit`；因此 UI 与 CLI 共享 Conversation、Turn、Event 和模型偏好。
 
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和旧 free-chat 兼容层都基于同一事件信封工作。Host descriptor 计划以原子方式写入数据根目录的 `run/agent-runtime.json`，供 UI、CLI 和桌面进程复用。
 

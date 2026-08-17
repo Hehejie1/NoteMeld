@@ -19,6 +19,16 @@ def test_loader_accepts_compatible_python_binding(monkeypatch):
     assert runtime.schema_version == "1"
 
 
+def test_loader_defaults_to_rust(monkeypatch):
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
+    monkeypatch.delenv("NOTEMELD_AGENT_MODE", raising=False)
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
+
+    runtime = AgentSdkRuntime.load(binding_path="development")
+
+    assert runtime.mode == "rust"
+
+
 def test_loader_fails_closed_on_incompatible_schema(monkeypatch):
     module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="99")
     monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
@@ -27,11 +37,10 @@ def test_loader_fails_closed_on_incompatible_schema(monkeypatch):
         AgentSdkRuntime.load(binding_path="development")
 
 
-def test_loader_supports_explicit_python_oracle_rollback(monkeypatch):
-    runtime = AgentSdkRuntime.load(mode="python-oracle")
-
-    assert runtime.mode == "python-oracle"
-    assert runtime.binding is None
+@pytest.mark.parametrize("mode", ["python", "python-oracle", "legacy"])
+def test_loader_fails_closed_for_legacy_python_modes(mode):
+    with pytest.raises(AgentSdkUnavailable, match="legacy Python agent runtime is disabled"):
+        AgentSdkRuntime.load(mode=mode)
 
 
 def test_loader_does_not_expose_provider_payload(monkeypatch):

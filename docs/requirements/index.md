@@ -1,6 +1,6 @@
 # Requirements Index
 
-更新时间：2026-08-16
+更新时间：2026-08-17
 
 本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
 
@@ -31,6 +31,7 @@
 | P4.1 | Implemented | 语义无限白板（可编辑卡片、关系、对话引用与显式 Note 发布） | [`2026-08-14-notemeld-semantic-infinite-whiteboard.md`](2026-08-14-notemeld-semantic-infinite-whiteboard.md) | [`plan`](../superpowers/plans/2026-08-14-notemeld-semantic-infinite-whiteboard.md) + [`spec`](../superpowers/specs/2026-08-14-notemeld-semantic-infinite-whiteboard-design.md) + [`证据`](../superpowers/tests/2026-08-14-notemeld-semantic-infinite-whiteboard.md) | 主线能力与白板/Note 发布链路已接入；性能基准与浏览器/纵向验收待补充 |
 | P3.1 | Implemented | L0–L3 渐进式能力路由与按需 Wiki 检索 | [`2026-08-11-progressive-capability-routing.md`](2026-08-11-progressive-capability-routing.md) | [`plan`](../superpowers/plans/2026-08-11-progressive-capability-routing.md) + [`spec`](../superpowers/specs/2026-08-11-progressive-capability-routing.md) + [`验收`](../superpowers/tests/2026-08-11-progressive-capability-routing.md) | 首轮固定 3 个元工具；Wiki/Skill/MCP 渐进披露；Agent free-chat 取消默认重型 Wiki 预搜；定向回归通过 |
 | P6 | Ready for Plan | 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话 | [`2026-08-14-universal-agent-sdk-unified-cli.md`](2026-08-14-universal-agent-sdk-unified-cli.md) | [`设计规格`](../superpowers/specs/2026-08-14-universal-agent-sdk-unified-cli-design.md) | Rust 为唯一 Agent 核心；UI/CLI 共享 Agent Host、Conversation 和数据；移动端/Harmony 交付 SDK 产物，远程互调与 Harbor 后置 |
+| P6.2 | Planned | NoteMeld 消费独立 Agent SDK 产物并统一 CLI | [`2026-08-17-notemeld-agent-sdk-artifact-integration.md`](2026-08-17-notemeld-agent-sdk-artifact-integration.md) | [`plan`](../superpowers/plans/2026-08-17-notemeld-agent-sdk-artifact-integration.md) + [`spec`](../superpowers/specs/2026-08-17-notemeld-agent-sdk-artifact-integration.md) | wheel/native artifact 唯一生产输入；源码/安装启动统一校验；CLI 复用 Agent v1；删除采用生产 import 门禁 |
 | - | Planned | 模型上下文与能力感知分块 | [`2026-08-13-model-context-capability-aware-chunking.md`](2026-08-13-model-context-capability-aware-chunking.md) | [`plan`](../superpowers/plans/2026-08-13-model-context-capability-aware-chunking.md) + [`spec`](../superpowers/specs/2026-08-13-model-context-capability-aware-chunking-design.md) + [`验证`](../superpowers/tests/2026-08-13-model-context-capability-aware-chunking.md) | Tasks 1–8 自动化 gate 已通过；真实 UI/Ollama/7.5 分钟视频/历史笔记手动验收待完成，保持 Planned |
 | - | Planned | 多源视频增强总结 | 待补充 | `docs/superpowers/plans/2026-06-11-multisource-video-summary-implementation.md` | 三路并行采集融合总结 |
 | - | Superseded | Agent Reach 集成 | `docs/requirements/notemeld-agent-reach-integration-prd.md` | - | 多平台搜索与爬取 → 合并到 [P4 search_web](2026-08-01-notemeld-agent-deep-learning-canvas.md) |
@@ -46,6 +47,7 @@
 
 ## 最近变更
 
+- 2026-08-17：新增 NoteMeld 消费独立 Agent SDK artifact 与统一 CLI 的执行 Requirement/Plan/Spec；明确重复 Python binding、Python oracle 与 legacy Agent core 的不同删除门禁
 - 2026-08-16：完成语义无限白板需求状态收口：`requirements`、`index`、`data-model`、`api-inventory`、`product-rules` 同步更新，新增白板验收证据骨架，状态更新为 Implemented（性能/纵向证据待补）
 - 2026-08-15：完成语义无限白板 Requirement、Change Spec 与可执行 Plan；明确 Board/Card/Relation 模型、四类卡片、后端权威引用、白板草稿到 Note 显式发布、React Flow MIT 合规与 500/1000 性能门槛
 - 2026-08-14：新增 P6 跨平台 NoteMeld Agent SDK 与统一 UI/CLI 会话需求；确认 Rust 单一核心、版本化 Turn/Event、Python Host binding、`notemeld agent` 和移动端/OpenHarmony SDK 产物

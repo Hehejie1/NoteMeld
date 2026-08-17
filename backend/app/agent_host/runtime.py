@@ -40,7 +40,7 @@ class AgentSdkRuntime:
     ) -> "AgentSdkRuntime":
         selected = (mode or os.getenv("NOTEMELD_AGENT_MODE") or "rust").strip().lower()
         if selected in {"python", "python-oracle", "legacy"}:
-            return cls(None, "python-oracle", None, None)
+            raise AgentSdkUnavailable("legacy Python agent runtime is disabled")
         if selected != "rust":
             raise AgentSdkUnavailable("unsupported agent runtime mode")
         try:
@@ -78,7 +78,3 @@ class AgentSdkRuntime:
                     sys.path.insert(0, str(source_root))
         # The package is installed in production and is importable in the sidecar.
         return importlib.import_module("notemeld_agent_sdk.runtime")
-
-    @property
-    def is_rollback(self) -> bool:
-        return self.mode == "python-oracle"
