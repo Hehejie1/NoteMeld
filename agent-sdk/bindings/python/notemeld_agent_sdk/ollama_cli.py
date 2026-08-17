@@ -1,6 +1,6 @@
 """Dependency-free interactive evaluator for the SDK with local Ollama."""
 from __future__ import annotations
-import argparse, json, os, queue, sys, urllib.request, uuid
+import argparse, json, os, queue, shutil, subprocess, sys, urllib.request, uuid
 from typing import Any
 from .runtime import Runtime
 
@@ -9,9 +9,17 @@ def _ollama(base: str, model: str, num_ctx: int, request: dict[str, Any]) -> dic
     if os.environ.get("NOTEMELD_AGENT_DEBUG"):
         print(f"ollama messages={type(messages).__name__} count={len(messages) if isinstance(messages, list) else -1}", file=sys.stderr)
     body=json.dumps({"model":model,"messages":messages,"stream":False,"options":{"num_ctx":num_ctx},"think":False}).encode()
-    req=urllib.request.Request(base.rstrip("/")+"/api/chat",data=body,headers={"content-type":"application/json"})
     try:
-        with urllib.request.urlopen(req,timeout=300) as response: data=json.load(response)
+        if shutil.which("curl"):
+            result = subprocess.run(
+                ["curl", "--silent", "--show-error", "--fail-with-body", "--max-time", "300",
+                 base.rstrip("/") + "/api/chat", "-H", "content-type: application/json", "--data-binary", "@-"],
+                input=body, capture_output=True, timeout=305, check=True,
+            )
+            data = json.loads(result.stdout.decode("utf-8"))
+        else:
+            req=urllib.request.Request(base.rstrip("/")+"/api/chat",data=body,headers={"content-type":"application/json"})
+            with urllib.request.urlopen(req,timeout=300) as response: data=json.load(response)
     except Exception as exc:
         if os.environ.get("NOTEMELD_AGENT_DEBUG"):
             print(f"ollama request failed: {type(exc).__name__}", file=sys.stderr)
