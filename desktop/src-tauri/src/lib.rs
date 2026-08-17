@@ -1,4 +1,6 @@
 use serde::Serialize;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     net::TcpListener,
@@ -6,8 +8,6 @@ use std::{
     process::{Child, Command},
     sync::Mutex,
 };
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use tauri::{webview::PageLoadEvent, AppHandle, Manager, RunEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
@@ -109,7 +109,8 @@ fn repo_root() -> Result<PathBuf, String> {
 }
 
 fn ensure_dir(path: &Path) -> Result<(), String> {
-    fs::create_dir_all(path).map_err(|err| format!("failed to create directory {}: {err}", path.display()))
+    fs::create_dir_all(path)
+        .map_err(|err| format!("failed to create directory {}: {err}", path.display()))
 }
 
 #[cfg(unix)]
@@ -301,7 +302,9 @@ fn ensure_packaged_ffmpeg_dir(app: &AppHandle, data_dir: &Path) -> Result<Option
                 if status.success() {
                     Ok(())
                 } else {
-                    Err(format!("failed to extract bundled ffmpeg runtime: exit status {status}"))
+                    Err(format!(
+                        "failed to extract bundled ffmpeg runtime: exit status {status}"
+                    ))
                 }
             })?;
     }
@@ -373,9 +376,15 @@ fn spawn_backend_sidecar(
     command.env("NOTE_OUTPUT_DIR", &note_output_dir);
     command.env("VECTOR_DB_DIR", &vector_store_dir);
     command.env("NOTEMELD_DOWNLOADER_CONFIG", &downloader_config);
-    command.env("NOTEMELD_TRANSCRIBER_CONFIG", config_dir.join("transcriber.json"));
+    command.env(
+        "NOTEMELD_TRANSCRIBER_CONFIG",
+        config_dir.join("transcriber.json"),
+    );
     command.env("NOTEMELD_DATABASE_PATH", &database_path);
-    command.env("DATABASE_URL", format!("sqlite:///{}", database_path.display()));
+    command.env(
+        "DATABASE_URL",
+        format!("sqlite:///{}", database_path.display()),
+    );
     command.env("NOTEMELD_MODEL_DIR", &model_dir);
     command.env("NOTEMELD_APP_DATA_DIR", &app_data_dir);
     command.env("NOTEMELD_FRAME_DIR", &frame_dir);
@@ -384,7 +393,9 @@ fn spawn_backend_sidecar(
     command.env("STATIC_DIR", &static_dir);
     command.env("OUT_DIR", &screenshot_dir);
 
-    if let Some(ffmpeg_dir) = optional_packaged_ffmpeg_dir(ensure_packaged_ffmpeg_dir(app, &data_dir)) {
+    if let Some(ffmpeg_dir) =
+        optional_packaged_ffmpeg_dir(ensure_packaged_ffmpeg_dir(app, &data_dir))
+    {
         command.env("FFMPEG_BIN_PATH", ffmpeg_dir);
     } else if let Ok(ffmpeg_path) = std::env::var("FFMPEG_BIN_PATH") {
         command.env("FFMPEG_BIN_PATH", ffmpeg_path);
@@ -406,6 +417,15 @@ fn kill_backend(app: &AppHandle) {
     }
 }
 
+/// Explicit stop is separate from window exit so a CLI turn can outlive the
+/// desktop UI. The product `notemeld stop` command remains the process-level
+/// stop entry point; this command is available to a future desktop settings
+/// action without changing the shared Host lifecycle.
+#[tauri::command]
+fn desktop_stop_backend(app: AppHandle) {
+    kill_backend(&app);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -419,8 +439,8 @@ pub fn run() {
             let runtime_payload = build_runtime_payload(port, generate_session_token());
             let runtime_bootstrap =
                 build_runtime_bootstrap(&runtime_payload).map_err(std::io::Error::other)?;
-            let backend_child =
-                spawn_backend_sidecar(app.handle(), port, &runtime_payload).map_err(std::io::Error::other)?;
+            let backend_child = spawn_backend_sidecar(app.handle(), port, &runtime_payload)
+                .map_err(std::io::Error::other)?;
 
             app.manage(DesktopRuntimeState {
                 backend_child: Mutex::new(Some(backend_child)),
@@ -442,6 +462,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_mode,
             desktop_runtime_bootstrap,
+            desktop_stop_backend,
             open_external_url,
             get_autostart_enabled,
             set_autostart_enabled
@@ -450,7 +471,10 @@ pub fn run() {
         .expect("error while building NoteMeld desktop")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                kill_backend(app_handle);
+                // Keep the process-scoped AgentSdkHost alive for an existing
+                // CLI turn. It is stopped explicitly, not as a side effect
+                // of closing the UI window.
+                let _ = app_handle;
             }
         });
 }
@@ -552,7 +576,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn packaged_ffmpeg_setup_failure_does_not_abort_desktop_startup() {
-        let result = optional_packaged_ffmpeg_dir(Err("ffmpeg runtime is not executable".to_string()));
+        let result =
+            optional_packaged_ffmpeg_dir(Err("ffmpeg runtime is not executable".to_string()));
 
         assert!(result.is_none());
     }
