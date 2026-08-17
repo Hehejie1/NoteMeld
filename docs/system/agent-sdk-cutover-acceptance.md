@@ -14,8 +14,8 @@
 | 15 | 通过 smoke | `scripts/notemeld-agent.py` fake Agent v1 server：session → turn → SSE terminal |
 | 16 | 通过单测 | FastAPI Host lifecycle、0600 atomic descriptor、共享 session/CLI discovery |
 | 17 | 通过 | `backend/app/agent/`、旧 loop、compat、旧 chat service 和 legacy tests 已删除；生产无旧 Agent import/flag |
-| 18 | 本机通过 | dylib、Python wheel、clean wheel native smoke、artifact manifest/license/architecture verifier |
-| 19 | 部分通过 | backend 非 asyncio 657 passed；Rust/clippy/frontend/CLI/native cancel/restart recovery 通过；真实桌面纵向仍待跑 |
+| 18 | 本机通过 | dylib、Python wheel、clean wheel native smoke、artifact manifest/license/architecture verifier；Swift iOS harness 在指定 release dylib 目录后可构建 |
+| 19 | 部分通过 | backend Agent/Host 相关契约 114 passed（另 4 xfailed）；Rust/clippy/frontend/CLI/native cancel/restart recovery 通过；真实桌面纵向仍待跑 |
 | 20 | 待最终发布验收 | UI → CLI → UI 真机续聊、Android/Harmony target、桌面 packaged host 作为发布前门禁 |
 
 ## 可复现门禁
