@@ -28,6 +28,9 @@ cargo +stable clippy --workspace --all-targets --offline -- -D warnings
 cd ..
 PYTHONPATH=backend python3 -m pytest backend/tests -m 'not asyncio' -q
 cd frontend && pnpm exec tsc --noEmit
+
+# Requires the locally built desktop/src-tauri/bin/backend/notemeld-backend.
+scripts/test-packaged-backend.sh
 ```
 
 本机 Android 仅发现 `adb` 且没有 connected device；`gradle`、OpenHarmony `hvigor/ohpm` 不在 PATH。因此 Android connected test 与 Harmony HAR/consumer test 只能由 CI 执行，不能在本机声明通过。
