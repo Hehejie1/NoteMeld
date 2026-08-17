@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/agent-capabilities",
+    "crates/agent-approval",
     "crates/agent-core",
     "crates/agent-events",
     "crates/agent-ffi",

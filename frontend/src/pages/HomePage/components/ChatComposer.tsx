@@ -208,11 +208,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
   const urlChip = urlCard
   const plainText = text.trim()
   const hasLearningGoal = mode === 'learn' && !!plainText
-  const canSubmit = (
-    mode === 'learn'
-      ? hasLearningGoal && !learningRequestInFlight
-      : !!plainText || !!urlChip || !!pendingUploadedFile
-  ) && !uploading && !submitting
+  const canSubmit = (!!plainText || !!urlChip || !!pendingUploadedFile) && !uploading && !submitting && (mode !== 'learn' || (hasLearningGoal && !learningRequestInFlight))
   const currentConversation = taskId ? tasks.find(t => t.id === taskId) : null
   const collapseTextInput = mode !== 'learn'
     && shouldCollapseComposerTextInput({ text, urlCard })
