@@ -377,11 +377,11 @@ def delete_conversation_document(conversation_id: str, task_id: str):
 @router.get("/conversations/{conversation_id}/workspace/list")
 def workspace_list(conversation_id: str, path: Optional[str] = None):
     """列出会话工作空间目录内容（只读）。"""
-    from app.agent.workspace import WorkspaceError, list_directory
+    from app.agent_host.workspace_adapter import WorkspaceAdapterError, list_directory
 
     try:
         return R.success(list_directory(conversation_id, path or ""))
-    except WorkspaceError as exc:
+    except WorkspaceAdapterError as exc:
         return R.error(str(exc), code=403)
     except FileNotFoundError as exc:
         return R.error(f"路径不存在: {exc}", code=404)
@@ -390,13 +390,13 @@ def workspace_list(conversation_id: str, path: Optional[str] = None):
 @router.get("/conversations/{conversation_id}/workspace/read")
 def workspace_read(conversation_id: str, path: str):
     """读取会话工作空间内某文件（只读）。"""
-    from app.agent.workspace import WorkspaceError, read_file
+    from app.agent_host.workspace_adapter import WorkspaceAdapterError, read_file
 
     if not path:
         return R.error("path 参数不能为空", code=400)
     try:
         return R.success(read_file(conversation_id, path))
-    except WorkspaceError as exc:
+    except WorkspaceAdapterError as exc:
         return R.error(str(exc), code=403)
     except FileNotFoundError:
         return R.error(f"文件不存在: {path}", code=404)
