@@ -15,8 +15,8 @@
 | 16 | 通过单测 | FastAPI Host lifecycle、0600 atomic descriptor、共享 session/CLI discovery |
 | 17 | 通过 | `backend/app/agent/`、旧 loop、compat、旧 chat service 和 legacy tests 已删除；生产无旧 Agent import/flag |
 | 18 | 本机通过 | dylib、Python wheel、clean wheel native smoke、artifact manifest/license/architecture verifier；Swift iOS harness 在指定 release dylib 目录后可构建；PyInstaller sidecar 已成功产出并收入 SDK binding |
-| 19 | 本机通过，移动 CI-only | backend Agent/Host 相关契约 114 passed（另 4 xfailed）；Rust/clippy/frontend/CLI/native cancel/restart recovery 通过；Tauri 单测 7 passed，窗口退出不再终止共享 Host；PyInstaller packaged sidecar `/api/sys_check` smoke 通过（冷启动约 1–2 分钟） |
-| 20 | 待最终发布验收 | UI → CLI → UI 真机续聊、Android/Harmony target、桌面 packaged host 作为发布前门禁 |
+| 19 | 本机通过，移动 CI-only | PyInstaller packaged sidecar 真实 Ollama Agent turn 通过：UI/Agent v1 首轮 `turn.succeeded` 且 assistant content 非空，随后产品 CLI 复用同一 session 二轮 `turn.succeeded`；`scripts/test-packaged-backend.sh` health smoke、Tauri 单测 7 passed、Rust/clippy/frontend/CLI/native cancel/restart recovery 均通过 |
+| 20 | 待最终发布验收 | Android/Harmony target CI、独立 `/Users/hehejie/ai/notemeld-agent-sdk` 与 NoteMeld 内嵌 SDK 的最终同步，以及发布 artifact 门禁 |
 
 ## 可复现门禁
 
