@@ -10,6 +10,10 @@ use agent_model::{
     invoke_model, ModelChunk, ModelChunkSink, ModelDriver, ModelRequest, ModelUsage,
 };
 use agent_tools::{execute_tool_round, ToolCall, ToolContext, ToolDriver, ToolProgressSink};
+use agent_tools::ToolDescriptor;
+use agent_capabilities::{CapabilityRegistry, DisclosureLevel};
+use agent_storage::AgentStore;
+use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -37,6 +41,8 @@ pub struct AgentRuntime {
     model: Arc<dyn ModelDriver>,
     tools: Arc<dyn ToolDriver>,
     config: AgentRuntimeConfig,
+    tool_descriptors: Vec<ToolDescriptor>,
+    capabilities: Option<Arc<CapabilityRegistry>>,
 }
 
 impl AgentRuntime {
@@ -49,7 +55,51 @@ impl AgentRuntime {
             model,
             tools,
             config,
+            tool_descriptors: Vec::new(),
+            capabilities: None,
         }
+    }
+
+    pub fn with_tool_descriptors(mut self, descriptors: Vec<ToolDescriptor>) -> Self {
+        self.tool_descriptors = descriptors;
+        self
+    }
+
+    pub fn with_capabilities(mut self, registry: Arc<CapabilityRegistry>) -> Self {
+        self.capabilities = Some(registry);
+        self
+    }
+
+    /// Durable entry point. The Store owns turn identity, idempotency and
+    /// history loading; the legacy `run_turn` remains available for callers
+    /// that explicitly provide an in-memory history.
+    pub async fn start_turn<S: AgentStore + ?Sized + 'static>(
+        &self,
+        store: Arc<S>,
+        request: TurnRequest,
+        cancel: CancellationToken,
+        events: AgentEventSink,
+    ) -> Result<TurnOutcome, AgentError> {
+        let payload = serde_json::to_value(&request).map_err(|_| AgentError::new(AgentErrorCode::InvalidInput, "turn request cannot be serialized"))?;
+        let started = store.begin_turn(request.session_id.clone(), request.request_id.clone(), payload).await?;
+        let history_values = store.load_history(&request.session_id).await?;
+        let mut history = Vec::with_capacity(history_values.len());
+        for value in history_values {
+            history.push(serde_json::from_value(value).map_err(|_| AgentError::new(AgentErrorCode::InvalidInput, "stored message is invalid"))?);
+        }
+        if started.replayed && matches!(started.turn.status, TurnStatus::Succeeded | TurnStatus::Failed | TurnStatus::Cancelled | TurnStatus::Interrupted) {
+            let content = history.iter().rev().find(|m: &&AgentMessage| m.role == "assistant").and_then(|m| m.content.as_str()).unwrap_or_default().to_owned();
+            return Ok(TurnOutcome { status: started.turn.status, content, messages: history, usage: ModelUsage::default(), turn_count: 0, diagnostics: Vec::new() });
+        }
+        let result = self.run_turn(request.clone(), history, cancel, events).await;
+        match &result {
+            Ok(outcome) => {
+                for message in &outcome.messages { let _ = store.append_message(&request.session_id, &started.turn.id, serde_json::to_value(message).unwrap_or(Value::Null)).await; }
+                let _ = store.finish_turn(&started.turn.id, outcome.status, None).await;
+            }
+            Err(error) => { let status = if error.code == AgentErrorCode::Cancelled { TurnStatus::Cancelled } else { TurnStatus::Failed }; let _ = store.finish_turn(&started.turn.id, status, Some(error.clone())).await; }
+        }
+        result
     }
 
     pub async fn run_turn(
@@ -158,6 +208,10 @@ impl AgentRuntime {
                     .map(AgentMessage::as_model_message)
                     .collect(),
             );
+            model_request.tools = self.tool_descriptors.clone();
+            if let Some(registry) = &self.capabilities {
+                model_request.tools.extend(meta_tool_descriptors(registry));
+            }
             model_request.cancellation = cancel.clone();
             let completion_result =
                 invoke_model(self.model.as_ref(), model_request, chunk_sink).await;
@@ -318,6 +372,15 @@ impl AgentRuntime {
             }
         }
     }
+}
+
+fn meta_tool_descriptors(registry: &CapabilityRegistry) -> Vec<ToolDescriptor> {
+    let _ = registry;
+    vec![
+        ToolDescriptor { name: "capability_discover".to_owned(), description: "List available capabilities at L0/L1".to_owned(), input_schema: json!({"type":"object","properties":{"level":{"enum":["L0","L1"]}}}) },
+        ToolDescriptor { name: "capability_describe".to_owned(), description: "Describe one capability schema at L2".to_owned(), input_schema: json!({"type":"object","required":["capability_id"]}) },
+        ToolDescriptor { name: "capability_invoke".to_owned(), description: "Invoke an allowed capability at L3".to_owned(), input_schema: json!({"type":"object","required":["capability_id","arguments"]}) },
+    ]
 }
 
 fn validate_request(request: &TurnRequest) -> Result<(), AgentError> {

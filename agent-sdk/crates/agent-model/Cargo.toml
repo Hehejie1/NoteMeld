@@ -10,6 +10,7 @@ agent-events = { path = "../agent-events" }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+agent-tools = { path = "../agent-tools" }
 tokio.workspace = true
 tokio-util.workspace = true
 

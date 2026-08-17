@@ -6,6 +6,7 @@ use agent_events::AgentError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use agent_tools::ToolDescriptor;
 use tokio::sync::Mutex;
 
 pub use tokio_util::sync::CancellationToken;
@@ -19,6 +20,7 @@ pub struct ModelMessage {
 #[derive(Debug, Clone)]
 pub struct ModelRequest {
     pub messages: Vec<ModelMessage>,
+    pub tools: Vec<ToolDescriptor>,
     pub cancellation: CancellationToken,
 }
 
@@ -26,6 +28,7 @@ impl ModelRequest {
     pub fn new(messages: Vec<ModelMessage>) -> Self {
         Self {
             messages,
+            tools: Vec::new(),
             cancellation: CancellationToken::new(),
         }
     }

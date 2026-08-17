@@ -12,6 +12,38 @@ use agent_events::{
 };
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Row, TransactionBehavior};
 use serde_json::{json, Value};
+use async_trait::async_trait;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoreTurnStart {
+    pub turn: StoredTurn,
+    pub replayed: bool,
+}
+
+/// Durable state boundary owned by the SDK. Hosts may implement this trait
+/// against their own database; the reference SQLite store is only a harness.
+#[async_trait]
+pub trait AgentStore: Send + Sync {
+    async fn begin_turn(
+        &self,
+        session_id: SessionId,
+        request_id: RequestId,
+        payload: Value,
+    ) -> Result<StoreTurnStart, AgentError>;
+    async fn load_history(&self, session_id: &SessionId) -> Result<Vec<Value>, AgentError>;
+    async fn append_message(
+        &self,
+        session_id: &SessionId,
+        turn_id: &TurnId,
+        message: Value,
+    ) -> Result<(), AgentError>;
+    async fn finish_turn(
+        &self,
+        turn_id: &TurnId,
+        status: TurnStatus,
+        error: Option<AgentError>,
+    ) -> Result<(), AgentError>;
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredSession {
@@ -122,7 +154,23 @@ impl ReferenceSqliteStore {
                     UNIQUE(turn_id, sequence)
                  );
                  CREATE INDEX IF NOT EXISTS idx_agent_events_turn
-                    ON agent_events(turn_id, sequence);",
+                    ON agent_events(turn_id, sequence);
+                 CREATE TABLE IF NOT EXISTS reference_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL REFERENCES reference_sessions(id),
+                    turn_id TEXT NOT NULL REFERENCES agent_turns(id),
+                    message_json TEXT NOT NULL CHECK(json_valid(message_json)),
+                    created_at TEXT NOT NULL
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_reference_messages_session
+                    ON reference_messages(session_id, id);
+                 CREATE TABLE IF NOT EXISTS reference_turn_requests (
+                    session_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    turn_id TEXT NOT NULL REFERENCES agent_turns(id),
+                    payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
+                    PRIMARY KEY(session_id, request_id)
+                 );",
             )
             .map_err(sqlite_error)?;
         Ok(Self {
@@ -138,6 +186,109 @@ impl ReferenceSqliteStore {
             )
         })
     }
+}
+
+#[async_trait]
+impl AgentStore for ReferenceSqliteStore {
+    async fn begin_turn(
+        &self,
+        session_id: SessionId,
+        request_id: RequestId,
+        payload: Value,
+    ) -> Result<StoreTurnStart, AgentError> {
+        self.insert_session(&StoredSession::new(session_id.clone()))?;
+        let payload_json = serde_json::to_string(&payload).map_err(wire_error)?;
+        {
+            let connection = self.lock()?;
+            let existing: Option<(String, String)> = connection.query_row(
+                "SELECT turn_id, payload_json FROM reference_turn_requests WHERE session_id = ?1 AND request_id = ?2",
+                params![&session_id.0, &request_id.0], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).optional().map_err(sqlite_error)?;
+            if let Some((turn_id, existing_payload)) = existing {
+                if existing_payload != payload_json { return Err(AgentError::new(AgentErrorCode::DuplicateRequest, "request_id was already used with a different payload")); }
+                let turn = query_turn_by_id(&connection, &turn_id)?.ok_or_else(turn_not_found)?;
+                return Ok(StoreTurnStart { turn, replayed: true });
+            }
+        }
+        let now = now_string();
+        let session_id_for_index = session_id.0.clone();
+        let request_id_for_index = request_id.0.clone();
+        let turn = StoredTurn {
+            id: TurnId::from(uuid::Uuid::new_v4().to_string()),
+            session_id,
+            request_id,
+            status: TurnStatus::Created,
+            model_provider_id: payload.get("model_provider_id").and_then(Value::as_str).map(str::to_owned),
+            model_name: payload.get("model_name").and_then(Value::as_str).map(str::to_owned),
+            error_code: None,
+            error_message: None,
+            created_at: now.clone(),
+            started_at: None,
+            finished_at: None,
+            updated_at: now,
+        };
+        match self.insert_turn(&turn)? {
+            TurnWriteOutcome::Inserted => {
+                self.lock()?.execute("INSERT INTO reference_turn_requests(session_id, request_id, turn_id, payload_json) VALUES (?1, ?2, ?3, ?4)", params![session_id_for_index, request_id_for_index, &turn.id.0, payload_json]).map_err(sqlite_error)?;
+                Ok(StoreTurnStart { turn, replayed: false })
+            }
+            TurnWriteOutcome::Replayed(existing) => Ok(StoreTurnStart { turn: *existing, replayed: true }),
+        }
+    }
+
+    async fn load_history(&self, session_id: &SessionId) -> Result<Vec<Value>, AgentError> {
+        validate_session_id(session_id)?;
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(
+            "SELECT message_json FROM reference_messages WHERE session_id = ?1 ORDER BY id ASC",
+        ).map_err(sqlite_error)?;
+        let rows = statement.query_map(params![session_id.0], |row| row.get::<_, String>(0))
+            .map_err(sqlite_error)?;
+        rows.map(|row| {
+            let raw = row.map_err(sqlite_error)?;
+            serde_json::from_str(&raw).map_err(wire_error)
+        }).collect()
+    }
+
+    async fn append_message(
+        &self,
+        session_id: &SessionId,
+        turn_id: &TurnId,
+        message: Value,
+    ) -> Result<(), AgentError> {
+        validate_session_id(session_id)?;
+        validate_turn_id(turn_id)?;
+        let raw = serde_json::to_string(&message).map_err(wire_error)?;
+        self.lock()?.execute(
+            "INSERT INTO reference_messages(session_id, turn_id, message_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![session_id.0, turn_id.0, raw, now_string()],
+        ).map_err(sqlite_error)?;
+        Ok(())
+    }
+
+    async fn finish_turn(
+        &self,
+        turn_id: &TurnId,
+        status: TurnStatus,
+        error: Option<AgentError>,
+    ) -> Result<(), AgentError> {
+        validate_turn_id(turn_id)?;
+        if !matches!(status, TurnStatus::Succeeded | TurnStatus::Failed | TurnStatus::Cancelled | TurnStatus::Interrupted) {
+            return Err(AgentError::new(AgentErrorCode::InvalidInput, "finish_turn requires terminal status"));
+        }
+        let now = now_string();
+        let changed = self.lock()?.execute(
+            "UPDATE agent_turns SET status = ?1, error_code = ?2, error_message = ?3, finished_at = ?4, updated_at = ?4 WHERE id = ?5",
+            params![status_name(status), error.as_ref().map(|e| error_code_name(e.code)), error.as_ref().map(|e| e.message.as_str()), now, turn_id.0],
+        ).map_err(sqlite_error)?;
+        if changed == 0 { return Err(turn_not_found()); }
+        Ok(())
+    }
+}
+
+fn now_string() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis().to_string()
 }
 
 impl SessionStore for ReferenceSqliteStore {
@@ -511,6 +662,10 @@ fn validate_turn_id(turn_id: &TurnId) -> Result<(), AgentError> {
     serde_json::to_value(turn_id)
         .map(|_| ())
         .map_err(wire_error)
+}
+
+fn turn_not_found() -> AgentError {
+    AgentError::new(AgentErrorCode::TurnNotFound, "turn not found")
 }
 
 fn validate_turn(turn: &StoredTurn) -> Result<(), AgentError> {
