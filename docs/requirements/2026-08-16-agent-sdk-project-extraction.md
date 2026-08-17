@@ -1,6 +1,6 @@
 # 独立 Agent SDK 项目拆分与 NoteMeld 延后接入
 
-状态：Ready for Plan
+状态：Planned
 
 ## 原始意图
 
@@ -40,4 +40,11 @@
 
 - 风险：直接移动目录会丢失历史或造成 SDK/NoteMeld 依赖漂移。采用 `git subtree split` 保留历史，并在 NoteMeld 中暂时保留兼容适配层。
 - 风险：Python wheel 与 native library 版本不一致。安装时强制校验 SDK、schema、ABI 三者版本。
-- 回滚：NoteMeld 保留 Python oracle/legacy mode；SDK 拆分只先新增独立项目，不立即删除原接入适配层。
+- 回滚：回退到上一份兼容 SDK wheel；Agent v1 不再保留 Python oracle/legacy runtime，避免同一 Turn 出现两套执行语义。仍有调用方的旧聊天适配层在迁移完成前保留。
+
+## 2026-08-17 接入更新
+
+- 独立 SDK 已产出并验证带 native library 的 Python wheel；NoteMeld 的源码/安装启动改由 `NOTEMELD_AGENT_SDK_WHEEL` 注入并校验版本。
+- Python oracle/legacy runtime 回滚已取消；Agent v1 只允许 Rust runtime，失败时 fail-closed。
+- NoteMeld 内重复 SDK Python binding 尚承担当前仓库 artifact CI 的唯一输入，必须先把 CI 迁入独立 SDK 仓库再删除。
+- `backend/app/agent/core` 仍有生产调用者且 native tool driver 尚未完全替代，不满足删除门禁。后续迁移由 `2026-08-17-notemeld-agent-sdk-artifact-integration.md` 跟踪。

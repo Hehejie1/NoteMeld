@@ -97,6 +97,23 @@ export_runtime_env() {
   export OUT_DIR="$DATA_ROOT/static/screenshots"
 }
 
+ensure_agent_sdk() {
+  local python_bin="$APP_DIR/.venv/bin/python"
+  if "$python_bin" -c 'import notemeld_agent_sdk.runtime as sdk_runtime; raise SystemExit(0 if sdk_runtime.SDK_VERSION == "0.1.0" and sdk_runtime.SCHEMA_VERSION == "1" else 1)' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local wheel="${NOTEMELD_AGENT_SDK_WHEEL:-}"
+  if [[ -z "$wheel" ]]; then
+    fail "notemeld-agent-sdk is not installed. Set NOTEMELD_AGENT_SDK_WHEEL to the compiled wheel."
+  fi
+  [[ -f "$wheel" ]] || fail "Agent SDK wheel not found: ${wheel}"
+  log "Installing standalone Agent SDK wheel"
+  "$python_bin" -m pip install --disable-pip-version-check --no-deps --force-reinstall "$wheel"
+  "$python_bin" -c 'import notemeld_agent_sdk.runtime as sdk_runtime; raise SystemExit(0 if sdk_runtime.SDK_VERSION == "0.1.0" and sdk_runtime.SCHEMA_VERSION == "1" else 1)' >/dev/null 2>&1 \
+    || fail "Installed notemeld-agent-sdk is incompatible (expected SDK_VERSION=0.1.0 SCHEMA_VERSION=1)"
+}
+
 ensure_installed() {
   [[ -d "$APP_DIR" ]] || fail "NoteMeld app not found at ${APP_DIR}. Run the installer first."
   [[ -d "$APP_DIR/backend" ]] || fail "Backend directory not found at ${APP_DIR}/backend."
@@ -198,6 +215,7 @@ cmd_start() {
 
   prepare_dirs
   export_runtime_env
+  ensure_agent_sdk
 
   start_backend
   start_frontend
@@ -277,6 +295,7 @@ cmd_agent() {
   require_cmd curl
   prepare_dirs
   export_runtime_env
+  ensure_agent_sdk
   start_backend
   exec "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/notemeld-agent.py" "$@"
 }
@@ -301,6 +320,7 @@ Environment:
   NOTEMELD_HOME         Default: ~/.notemeld
   NOTEMELD_BACKEND_PORT Default: 8483
   NOTEMELD_FRONTEND_PORT Default: 3015
+  NOTEMELD_AGENT_SDK_WHEEL  Compiled standalone SDK wheel to install
 EOF
 }
 

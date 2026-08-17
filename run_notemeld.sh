@@ -20,6 +20,10 @@ Requirements (auto-installed if missing on macOS with Homebrew):
 - npm
 - corepack
 
+Agent SDK:
+- set NOTEMELD_AGENT_SDK_WHEEL to the compiled notemeld-agent-sdk wheel
+- the wheel is installed into the source-mode virtualenv automatically
+
 After startup:
 - open http://127.0.0.1:3015
 - configure Trae MCP with url http://127.0.0.1:8483/mcp
@@ -49,6 +53,7 @@ BACKEND_LOG="${LOG_DIR}/run_notemeld_backend.log"
 FRONTEND_LOG="${LOG_DIR}/run_notemeld_frontend.log"
 BACKEND_STAMP="${VENV_DIR}/.backend_deps_installed"
 BACKEND_REQUIREMENTS="${BACKEND_DIR}/requirements.txt"
+NOTEMELD_AGENT_SDK_WHEEL="${NOTEMELD_AGENT_SDK_WHEEL:-}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -405,6 +410,20 @@ if [[ ! -f "${BACKEND_STAMP}" || "${BACKEND_REQUIREMENTS}" -nt "${BACKEND_STAMP}
   "${VENV_DIR}/bin/python" -m pip install -r "${BACKEND_REQUIREMENTS}"
   touch "${BACKEND_STAMP}"
 fi
+
+ensure_agent_sdk() {
+  if "${VENV_DIR}/bin/python" -c 'import notemeld_agent_sdk.runtime as sdk_runtime; raise SystemExit(0 if sdk_runtime.SDK_VERSION == "0.1.0" and sdk_runtime.SCHEMA_VERSION == "1" else 1)' >/dev/null 2>&1; then
+    return 0
+  fi
+  [[ -n "${NOTEMELD_AGENT_SDK_WHEEL}" ]] || fail "notemeld-agent-sdk is not installed. Set NOTEMELD_AGENT_SDK_WHEEL to the compiled wheel before starting NoteMeld."
+  [[ -f "${NOTEMELD_AGENT_SDK_WHEEL}" ]] || fail "NOTEMELD_AGENT_SDK_WHEEL does not exist: ${NOTEMELD_AGENT_SDK_WHEEL}"
+  log "Installing standalone notemeld-agent-sdk from ${NOTEMELD_AGENT_SDK_WHEEL}"
+  "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check --no-deps --force-reinstall "${NOTEMELD_AGENT_SDK_WHEEL}"
+  "${VENV_DIR}/bin/python" -c 'import notemeld_agent_sdk.runtime as sdk_runtime; raise SystemExit(0 if sdk_runtime.SDK_VERSION == "0.1.0" and sdk_runtime.SCHEMA_VERSION == "1" else 1)' >/dev/null 2>&1 \
+    || fail "Installed notemeld-agent-sdk is incompatible (expected SDK_VERSION=0.1.0 SCHEMA_VERSION=1)"
+}
+
+ensure_agent_sdk
 
 log "Preparing default transcriber"
 (
