@@ -38,7 +38,7 @@ class AgentSdkRuntime:
         binding_path: str | os.PathLike[str] | None = None,
         mode: str | None = None,
     ) -> "AgentSdkRuntime":
-        selected = (mode or os.getenv("NOTEMELD_AGENT_MODE") or "rust").strip().lower()
+        selected = (mode or "rust").strip().lower()
         # The Rust SDK is the only supported Agent runtime.  Keeping a silent
         # Python/oracle fallback here creates a second state machine and can
         # make UI/CLI turns disagree about events and terminal status.

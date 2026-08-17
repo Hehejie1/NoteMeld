@@ -1,5 +1,4 @@
 import json
-import os
 from typing import AsyncIterator, Optional
 
 from app.ai import create_models
@@ -14,15 +13,6 @@ from app.utils.logger import get_logger
 from app.utils.storage_paths import note_output_dir
 
 logger = get_logger(__name__)
-
-# P2 feature flag：true 时三函数内部 redirect 到 agent_service。
-# 默认 false（保留旧实现路径，确保现有测试 0 影响）；生产环境通过
-# 环境变量 AGENT_CHAT_ENABLED=true 启用 Agent 路径。
-_AGENT_CHAT_ENABLED = os.getenv("AGENT_CHAT_ENABLED", "false").lower() in (
-    "true",
-    "1",
-    "yes",
-)
 
 SYSTEM_PROMPT = """你是一个视频笔记问答助手。你拥有以下能力：
 
@@ -200,19 +190,6 @@ async def free_chat(
     use_wiki: bool = True,
     asset_content: Optional[str] = None,
 ) -> dict:
-    if _AGENT_CHAT_ENABLED:
-        from app.agent.agent_service import run_free_chat
-
-        return await run_free_chat(
-            question=question,
-            history=history,
-            provider_id=provider_id,
-            model_name=model_name,
-            conversation_id=conversation_id,
-            linked_task_id=linked_task_id,
-            use_wiki=use_wiki,
-            asset_content=asset_content,
-        )
     query_context = _prepare_free_chat_context(question, linked_task_id, use_wiki)
     resolved_asset_content = _resolve_asset_context(conversation_id, asset_content)
 
@@ -258,21 +235,6 @@ async def free_chat_stream(
     use_wiki: bool = True,
     asset_content: Optional[str] = None,
 ) -> AsyncIterator[dict]:
-    if _AGENT_CHAT_ENABLED:
-        from app.agent.agent_service import run_free_chat_stream
-
-        async for event in run_free_chat_stream(
-            question=question,
-            history=history,
-            provider_id=provider_id,
-            model_name=model_name,
-            conversation_id=conversation_id,
-            linked_task_id=linked_task_id,
-            use_wiki=use_wiki,
-            asset_content=asset_content,
-        ):
-            yield event
-        return
     query_context = _prepare_free_chat_context(question, linked_task_id, use_wiki)
     resolved_asset_content = _resolve_asset_context(conversation_id, asset_content)
 
@@ -333,16 +295,6 @@ async def chat(
     3. 如果 LLM 调用了工具，执行工具并将结果返回给 LLM
     4. 循环直到 LLM 给出最终回答
     """
-    if _AGENT_CHAT_ENABLED:
-        from app.agent.agent_service import run_chat
-
-        return await run_chat(
-            task_id=task_id,
-            question=question,
-            history=history,
-            provider_id=provider_id,
-            model_name=model_name,
-        )
     vector_store = VectorStoreManager()
 
     # 1. 检索初始上下文
