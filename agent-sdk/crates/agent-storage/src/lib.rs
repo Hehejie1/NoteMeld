@@ -3,7 +3,7 @@
 use std::{
     path::Path,
     sync::{Mutex, MutexGuard},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use agent_events::{
@@ -56,6 +56,13 @@ pub trait SessionStore {
     fn insert_session(&self, session: &StoredSession) -> Result<(), AgentError>;
     fn insert_turn(&self, turn: &StoredTurn) -> Result<TurnWriteOutcome, AgentError>;
     fn get_turn(&self, turn_id: &TurnId) -> Result<Option<StoredTurn>, AgentError>;
+    fn transition_turn(
+        &self,
+        turn_id: &TurnId,
+        next_status: TurnStatus,
+        error_code: Option<AgentErrorCode>,
+        error_message: Option<String>,
+    ) -> Result<(), AgentError>;
 }
 
 pub trait EventStore {
@@ -227,6 +234,86 @@ impl SessionStore for ReferenceSqliteStore {
         validate_turn_id(turn_id)?;
         let connection = self.lock()?;
         query_turn_by_id(&connection, &turn_id.0)
+    }
+
+    fn transition_turn(
+        &self,
+        turn_id: &TurnId,
+        next_status: TurnStatus,
+        error_code: Option<AgentErrorCode>,
+        error_message: Option<String>,
+    ) -> Result<(), AgentError> {
+        validate_turn_id(turn_id)?;
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+
+        let turn = query_turn_by_id(&transaction, &turn_id.0)?;
+        let mut turn = match turn {
+            Some(turn) => turn,
+            None => {
+                return Err(AgentError::new(
+                    AgentErrorCode::TurnNotFound,
+                    "turn not found",
+                ))
+            }
+        };
+
+        if turn.status == next_status {
+            return Ok(());
+        }
+
+        let timestamp = now_string();
+        let started_at = if next_status == TurnStatus::Running {
+            let started = turn.started_at.unwrap_or_else(|| timestamp.clone());
+            turn.started_at = Some(started.clone());
+            Some(started)
+        } else {
+            turn.started_at
+        };
+
+        turn.status = next_status;
+        turn.updated_at = timestamp.clone();
+
+        match next_status {
+            TurnStatus::Succeeded
+            | TurnStatus::Failed
+            | TurnStatus::Cancelled
+            | TurnStatus::Interrupted => {
+                turn.finished_at = Some(timestamp);
+            }
+            _ => {
+                turn.finished_at = None;
+            }
+        }
+
+        turn.error_code = error_code;
+        turn.error_message = error_message;
+
+        transaction
+            .execute(
+                "UPDATE agent_turns
+                 SET status = ?1, model_provider_id = ?2, model_name = ?3,
+                     error_code = ?4, error_message = ?5,
+                     started_at = ?6, finished_at = ?7, updated_at = ?8
+                 WHERE id = ?9",
+                params![
+                    status_name(turn.status),
+                    turn.model_provider_id,
+                    turn.model_name,
+                    turn.error_code.map(error_code_name),
+                    turn.error_message,
+                    started_at,
+                    turn.finished_at,
+                    turn.updated_at,
+                    turn.id.0,
+                ],
+            )
+            .map_err(sqlite_error)?;
+
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(())
     }
 }
 
@@ -555,6 +642,14 @@ fn sqlite_error(error: rusqlite::Error) -> AgentError {
         AgentErrorCode::SdkInternalError,
         "reference sqlite operation failed",
     )
+}
+
+fn now_string() -> String {
+    let since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Default::default())
+        .as_secs();
+    format!("{since_epoch}")
 }
 
 fn status_name(status: TurnStatus) -> &'static str {
