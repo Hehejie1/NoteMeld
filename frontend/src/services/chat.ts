@@ -1,8 +1,7 @@
-import request from '@/utils/request'
-import { getRuntimeApiBaseUrl } from '@/utils/runtime'
 import type { ConversationMessage, ConversationSource } from '@/store/taskStore'
 import { isDemoMode } from '@/demo/mode'
 import { demoStreamFreeChat } from '@/demo/transport'
+import { createAgentSession, startAgentTurn, streamAgentEvents } from '@/services/agent'
 
 export interface LegacyConversationContextRef {
   id: string
@@ -106,7 +105,23 @@ export interface FreeChatStreamHandlers {
 }
 
 export const askFreeChat = async (data: FreeChatPayload): Promise<FreeChatResponse> => {
-  return await request.post('/chat/free', data)
+  const session = data.conversation_id || (await createAgentSession()).data.id
+  const turn = await startAgentTurn(session, {
+    input: data.question,
+    model: data.model_name,
+    linked_task_id: data.linked_task_id,
+    asset_content: data.asset_content,
+    context_refs: data.context_refs,
+  })
+  let answer = ''
+  for await (const event of streamAgentEvents(turn.data.turn_id)) {
+    const payload = event.payload || {}
+    if (event.type === 'message.delta') answer += String(payload.delta || payload.content || '')
+    if (event.type === 'turn.failed' || event.type === 'turn.cancelled') {
+      throw new Error(String((payload.error as { message?: string } | undefined)?.message || 'Agent turn failed'))
+    }
+  }
+  return { answer, sources: [] }
 }
 
 const isTaskCardStatus = (value: unknown): value is TaskCardStreamStatus =>
@@ -124,35 +139,22 @@ export const streamFreeChat = async (
     await demoStreamFreeChat(data, handlers)
     return
   }
-  const baseURL = String(getRuntimeApiBaseUrl() || import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
-  const response = await fetch(`${baseURL}/chat/free/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+  const session = data.conversation_id || (await createAgentSession()).data.id
+  const turn = await startAgentTurn(session, {
+    input: data.question,
+    model: data.model_name,
+    linked_task_id: data.linked_task_id,
+    asset_content: data.asset_content,
+    context_refs: data.context_refs,
   })
-
-  if (!response.ok || !response.body) {
-    throw new Error(`聊天请求失败: ${response.status}`)
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-
-    const events = buffer.split('\n\n')
-    buffer = events.pop() || ''
-
-    for (const rawEvent of events) {
-      const dataLine = rawEvent
-        .split('\n')
-        .find(line => line.startsWith('data: '))
-      if (!dataLine) continue
-      const payload = JSON.parse(dataLine.slice(6)) as FreeChatStreamEvent
+  let answer = ''
+  for await (const event of streamAgentEvents(turn.data.turn_id)) {
+      const eventPayload = event.payload || {}
+      const payload = {
+        ...eventPayload,
+        type: event.type === 'message.delta' ? 'delta' : event.type === 'turn.succeeded' ? 'done' : event.type === 'turn.failed' || event.type === 'turn.cancelled' ? 'error' : event.type,
+        content: eventPayload.delta || eventPayload.content,
+      } as FreeChatStreamEvent
 
       // parameter_request 在 payload 顶层用 kind 区分，没有 type 字段
       if (payload.kind === 'parameter_request' && handlers.onParameterRequest) {
@@ -166,14 +168,15 @@ export const streamFreeChat = async (
       }
 
       if (payload.type === 'delta' && payload.content) {
+        answer += payload.content
         handlers.onDelta(payload.content)
       } else if (payload.type === 'done') {
         handlers.onDone({
-          answer: payload.answer || '',
+          answer: payload.answer || answer,
           sources: payload.sources || [],
         })
       } else if (payload.type === 'error') {
-        handlers.onError(payload.message || '聊天失败，请重试')
+        handlers.onError(String(payload.message || '聊天失败，请重试'))
       } else if (payload.type === 'task_card' && handlers.onTaskCard) {
         const status: TaskCardStreamStatus = isTaskCardStatus(payload.status)
           ? payload.status
@@ -200,6 +203,5 @@ export const streamFreeChat = async (
         })
       }
       // 其他未知 type 静默忽略，保证旧前端不 crash
-    }
   }
 }

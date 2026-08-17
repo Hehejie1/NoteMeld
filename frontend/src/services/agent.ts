@@ -36,6 +36,12 @@ export const startAgentTurn = (sessionId: string, request: AgentTurnRequest) =>
     body: JSON.stringify(request),
   })
 
+export const createAgentSession = (sessionId?: string) =>
+  json<{ data: { id: string } }>('/agent/v1/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId, title: 'NoteMeld Agent' }),
+  })
+
 export const cancelAgentTurn = (turnId: string) => json(`/agent/v1/turns/${turnId}/cancel`, { method: 'POST' })
 export const steerAgentTurn = (turnId: string, input: string) =>
   json(`/agent/v1/turns/${turnId}/steer`, { method: 'POST', body: JSON.stringify({ input }) })
