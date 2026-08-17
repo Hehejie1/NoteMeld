@@ -75,8 +75,11 @@ class NativeAgentExecutor:
 
             async def call_driver(request: dict[str, Any]) -> dict[str, Any]:
                 kind = request.get("kind")
+                driver_payload = request.get("payload")
+                if not isinstance(driver_payload, dict):
+                    driver_payload = request
                 if kind == "model.stream":
-                    result = await NoteMeldModelDriver(models, model).stream(request)
+                    result = await NoteMeldModelDriver(models, model).stream(driver_payload)
                     if result.get("ok"):
                         return {"schema_version": "1", "ok": True, "result": {
                             "chunks": result.get("chunks", []),

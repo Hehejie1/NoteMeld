@@ -22,7 +22,10 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
                 "provider_id": "demo-provider",
                 "model_name": "demo",
             }
-            response = self.driver({"kind": "model.stream", "messages": [{"role": "user", "content": "hello"}]})
+            response = self.driver({
+                "kind": "model.stream",
+                "payload": {"messages": [{"role": "user", "content": "hello"}]},
+            })
             assert response["ok"] is True
             self.on_event({"schema_version": "1", "type": "message.delta", "payload": {"delta": "hi"}})
             self.on_event({"schema_version": "1", "type": "turn.succeeded", "payload": {"answer": "hi"}})
@@ -54,6 +57,7 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
             pass
 
         async def stream(self, _request):
+            assert _request["messages"] == [{"role": "user", "content": "hello"}]
             return {"ok": True, "content": "hi", "tool_calls": [], "finish_reason": "stop", "usage": {}}
 
     monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
