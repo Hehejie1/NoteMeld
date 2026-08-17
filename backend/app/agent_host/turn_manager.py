@@ -3,10 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any
-import uuid
 
 from app.services import agent_store
-from app.services import conversation_store
 
 
 class SessionBusyError(RuntimeError):
@@ -35,31 +33,9 @@ class TurnManager:
                 raise SessionBusyError("session already has an active turn")
             turn = agent_store.create_turn(session_id, model_name=model_name, idempotency_key=idempotency_key)
             self._active[session_id] = ActiveTurn(session_id, turn["turn_id"])
-        try:
-            conversation_store.append_message(
-                session_id,
-                {
-                    "id": str(uuid.uuid4()),
-                    "role": "user",
-                    "message_type": "user_input",
-                    "content": content,
-                },
-            )
-        except Exception:
-            # Never leave an active Turn when canonical conversation persistence fails.
-            try:
-                agent_store.transition_turn(
-                    turn["turn_id"],
-                    "failed",
-                    error_code="storage_failure",
-                    error_message="无法保存用户消息",
-                    terminal_event={"type": "turn.failed", "error": {"code": "storage_failure", "message": "无法保存用户消息"}},
-                    terminal_event_type="turn.failed",
-                )
-            finally:
-                with self._lock:
-                    self._active.pop(session_id, None)
-            raise
+        # Durable user/message persistence belongs to AgentSdkHost's Store
+        # adapter. Keeping it out of this coordination shim prevents duplicate
+        # Conversation rows and lets unit callers use a fake store.
         return turn
 
     def finish_turn(self, session_id: str, turn_id: str, status: str, event: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
