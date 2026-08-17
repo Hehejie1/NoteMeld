@@ -397,6 +397,7 @@ fn invoke_json_callback(
 async fn dispatch_driver_call(
     state: &Arc<RuntimeState>,
     turn_token: u64,
+    turn_id: &str,
     kind: &str,
     payload: Value,
     cancellation: CancellationToken,
@@ -439,6 +440,7 @@ async fn dispatch_driver_call(
         "sdk_version": SDK_VERSION,
         "call_id": call_id,
         "turn_token": turn_token,
+        "turn_id": turn_id,
         "kind": kind,
         "payload": payload,
     });
@@ -471,6 +473,7 @@ struct FfiModelDriver {
     state: Weak<RuntimeState>,
     steer: Arc<Mutex<VecDeque<Value>>>,
     turn_token: u64,
+    turn_id: String,
 }
 
 #[async_trait]
@@ -494,6 +497,7 @@ impl ModelDriver for FfiModelDriver {
         let response = dispatch_driver_call(
             &state,
             self.turn_token,
+            &self.turn_id,
             "model.stream",
             json!({"messages": messages}),
             request.cancellation,
@@ -527,6 +531,7 @@ impl ModelDriver for FfiModelDriver {
 struct FfiToolDriver {
     state: Weak<RuntimeState>,
     turn_token: u64,
+    turn_id: String,
 }
 
 #[async_trait]
@@ -548,6 +553,7 @@ impl ToolDriver for FfiToolDriver {
         let response = dispatch_driver_call(
             &state,
             self.turn_token,
+            &self.turn_id,
             "tool.invoke",
             json!({
                 "call_id": call.id(),
@@ -689,8 +695,9 @@ fn run_submitted_turn(state: Arc<RuntimeState>, turn_token: u64, request: TurnRe
     };
     let weak = Arc::downgrade(&state);
     let steer = state.turns.lock().ok().and_then(|turns| turns.active.get(&turn_token).map(|turn| Arc::clone(&turn.steer))).unwrap_or_else(|| Arc::new(Mutex::new(VecDeque::new())));
-    let model: Arc<dyn ModelDriver> = Arc::new(FfiModelDriver { state: weak.clone(), steer, turn_token });
-    let tools: Arc<dyn ToolDriver> = Arc::new(FfiToolDriver { state: weak, turn_token });
+    let turn_id = request.request_id.0.clone();
+    let model: Arc<dyn ModelDriver> = Arc::new(FfiModelDriver { state: weak.clone(), steer, turn_token, turn_id: turn_id.clone() });
+    let tools: Arc<dyn ToolDriver> = Arc::new(FfiToolDriver { state: weak, turn_token, turn_id });
     let runtime = AgentRuntime::new(
         model,
         tools,

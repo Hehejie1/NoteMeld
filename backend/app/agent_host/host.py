@@ -28,6 +28,8 @@ class AgentSdkHost:
         self._handles: dict[str, NativeTurnHandle] = {}
         self._drivers: dict[int, Callable[[dict[str, Any]], Mapping[str, Any]]] = {}
         self._event_handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
+        self._pending_drivers: dict[str, Callable[[dict[str, Any]], Mapping[str, Any]]] = {}
+        self._pending_events: dict[str, Callable[[dict[str, Any]], None]] = {}
         self._lock = RLock()
         self._closed = False
 
@@ -56,6 +58,8 @@ class AgentSdkHost:
         token = int(request.get("turn_token") or 0)
         with self._lock:
             driver = self._drivers.get(token)
+            if driver is None:
+                driver = self._pending_drivers.get(str(request.get("turn_id") or ""))
         if driver is None:
             return {"schema_version": "1", "ok": False, "error": {"code": "turn_not_found", "message": "turn driver unavailable"}}
         return driver(request)
@@ -64,6 +68,8 @@ class AgentSdkHost:
         turn_id = str(event.get("turn_id") or "")
         with self._lock:
             handler = self._event_handlers.get(turn_id)
+            if handler is None:
+                handler = self._pending_events.get(turn_id)
         if handler is not None:
             handler(event)
 
@@ -92,13 +98,20 @@ class AgentSdkHost:
     ) -> NativeTurnHandle:
         with self._lock:
             runtime = self.runtime
+            request_id = str(request.get("request_id") or turn_id)
+            self._pending_drivers[request_id] = driver
+            self._pending_events[turn_id] = on_event
             token = int(runtime.submit_turn(dict(request)))
             if not token:
+                self._pending_drivers.pop(request_id, None)
+                self._pending_events.pop(turn_id, None)
                 raise AgentSdkUnavailable("native turn submission failed")
             handle = NativeTurnHandle(turn_id, token)
             self._handles[turn_id] = handle
             self._drivers[token] = driver
             self._event_handlers[turn_id] = on_event
+            self._pending_drivers.pop(request_id, None)
+            self._pending_events.pop(turn_id, None)
             return handle
 
     def handle(self, turn_id: str) -> NativeTurnHandle | None:
@@ -132,6 +145,8 @@ class AgentSdkHost:
             self._handles.clear()
             self._drivers.clear()
             self._event_handlers.clear()
+            self._pending_drivers.clear()
+            self._pending_events.clear()
             self._closed = True
         if runtime is not None:
             runtime.close()
