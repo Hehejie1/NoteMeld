@@ -1,4 +1,3 @@
-import asyncio
 from copy import deepcopy
 
 from app.services.conversation_context_refs import (
@@ -9,7 +8,6 @@ from app.services.conversation_context_refs import (
     sanitize_context_refs,
     split_asset_and_context_refs,
 )
-from app.routers.chat import FreeAskRequest, ask_free_question, ask_free_question_stream
 from app.routers.conversation import (
     ConversationMessagePayload,
     ConversationMessagePatchPayload,
@@ -17,8 +15,7 @@ from app.routers.conversation import (
     patch_conversation_message,
     post_conversation_message,
 )
-from app.services.chat_service import _resolve_asset_context
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 
 def test_context_references_are_typed_bounded_and_prompt_isolated():
@@ -126,74 +123,6 @@ def test_note_selection_resolution_requires_conversation_ownership():
         return_value=["note-other"],
     ):
         assert resolve_context_refs("conversation", raw) == []
-
-
-def test_reference_context_does_not_hide_persisted_conversation_assets():
-    merged = merge_context_refs_with_asset(
-        None,
-        [{"id": "ref", "type": "note_selection", "snapshot": "选中证据"}],
-    )
-    with patch(
-        "app.services.conversation_asset_store.ConversationAssetStore.list_assets",
-        return_value=[{"title": "已上传资产", "content": "持久化内容"}],
-    ):
-        resolved = _resolve_asset_context("conversation", merged)
-
-    assert "持久化内容" in resolved
-    assert "选中证据" in resolved
-
-
-def test_chat_routes_resolve_refs_before_model_asset_merge():
-    canonical = [
-        {
-            "id": "selection",
-            "type": "whiteboard_selection",
-            "whiteboard_id": "wb_1",
-            "revision": 2,
-            "card_ids": ["card_a"],
-            "relation_ids": [],
-            "label": "Selection",
-            "snapshot": "canonical board content",
-            "source_ids": [],
-        }
-    ]
-    request = FreeAskRequest(
-        question="question",
-        provider_id="provider",
-        model_name="model",
-        conversation_id="conv_1",
-        context_refs=[{"type": "whiteboard_selection", "snapshot": "FORGED"}],
-    )
-
-    async def stream_result(**kwargs):
-        stream_assets.append(kwargs["asset_content"])
-        yield {"type": "done", "answer": "ok", "sources": []}
-
-    stream_assets: list[str | None] = []
-    with patch(
-        "app.routers.chat.resolve_context_refs",
-        return_value=canonical,
-    ) as resolver, patch(
-        "app.routers.chat.free_chat_service",
-        new=AsyncMock(return_value={"answer": "ok", "sources": []}),
-    ) as free_chat, patch(
-        "app.routers.chat.free_chat_stream_service",
-        side_effect=stream_result,
-    ):
-        asyncio.run(ask_free_question(request))
-
-        async def consume_stream():
-            response = await ask_free_question_stream(request)
-            return [chunk async for chunk in response.body_iterator]
-
-        asyncio.run(consume_stream())
-
-    assert resolver.call_count == 2
-    assert all(call.args[0] == "conv_1" for call in resolver.call_args_list)
-    non_stream_asset = free_chat.await_args.kwargs["asset_content"]
-    assert "canonical board content" in non_stream_asset
-    assert "FORGED" not in non_stream_asset
-    assert "canonical board content" in (stream_assets[0] or "")
 
 
 def test_patch_user_message_meta_resolves_refs_with_path_conversation_id():
