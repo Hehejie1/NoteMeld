@@ -39,8 +39,11 @@ class AgentSdkRuntime:
         mode: str | None = None,
     ) -> "AgentSdkRuntime":
         selected = (mode or os.getenv("NOTEMELD_AGENT_MODE") or "rust").strip().lower()
+        # The Rust SDK is the only supported Agent runtime.  Keeping a silent
+        # Python/oracle fallback here creates a second state machine and can
+        # make UI/CLI turns disagree about events and terminal status.
         if selected in {"python", "python-oracle", "legacy"}:
-            return cls(None, "python-oracle", None, None)
+            raise AgentSdkUnavailable("legacy Python Agent runtime is removed; install the Rust SDK")
         if selected != "rust":
             raise AgentSdkUnavailable("unsupported agent runtime mode")
         try:
@@ -81,4 +84,4 @@ class AgentSdkRuntime:
 
     @property
     def is_rollback(self) -> bool:
-        return self.mode == "python-oracle"
+        return False

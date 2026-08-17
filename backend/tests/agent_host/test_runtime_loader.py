@@ -27,11 +27,10 @@ def test_loader_fails_closed_on_incompatible_schema(monkeypatch):
         AgentSdkRuntime.load(binding_path="development")
 
 
-def test_loader_supports_explicit_python_oracle_rollback(monkeypatch):
-    runtime = AgentSdkRuntime.load(mode="python-oracle")
-
-    assert runtime.mode == "python-oracle"
-    assert runtime.binding is None
+@pytest.mark.parametrize("mode", ["python", "python-oracle", "legacy"])
+def test_loader_rejects_legacy_python_runtime(mode):
+    with pytest.raises(AgentSdkUnavailable, match="legacy Python Agent runtime is removed"):
+        AgentSdkRuntime.load(mode=mode)
 
 
 def test_loader_does_not_expose_provider_payload(monkeypatch):
