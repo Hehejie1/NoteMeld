@@ -1,17 +1,21 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use agent_events::{
-    AgentError, AgentErrorCode, AgentEvent, MessageCompletedPayload, MessageDeltaPayload,
-    MessageStartedPayload, ToolCompletedPayload, ToolProgressPayload, ToolStartedPayload,
-    TurnCancelledPayload, TurnFailedPayload, TurnId, TurnRequest, TurnStartedPayload, TurnStatus,
-    TurnSucceededPayload, UsageUpdatedPayload, SCHEMA_VERSION,
+    AgentError, AgentErrorCode, AgentEvent, AgentEventEnvelope, MessageCompletedPayload,
+    MessageDeltaPayload, MessageStartedPayload, RequestId, SessionId, ToolCompletedPayload,
+    ToolProgressPayload, ToolStartedPayload, TurnCancelledPayload, TurnFailedPayload, TurnId,
+    TurnRequest, TurnStartedPayload, TurnStatus, TurnSucceededPayload, UsageUpdatedPayload,
+    SCHEMA_VERSION,
 };
 use agent_model::{
     invoke_model, ModelChunk, ModelChunkSink, ModelDriver, ModelRequest, ModelUsage,
 };
 use agent_tools::{execute_tool_round, ToolCall, ToolContext, ToolDriver, ToolProgressSink};
+use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::{AgentEventSink, AgentMessage, TurnOutcome};
 
@@ -33,9 +37,356 @@ impl Default for AgentRuntimeConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct BeginTurnInput {
+    pub session_id: SessionId,
+    pub request_id: RequestId,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct BeginTurnOutcome {
+    pub turn_id: TurnId,
+    pub replayed: bool,
+    pub cached_outcome: Option<TurnOutcome>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReplayQuery {
+    pub turn_id: TurnId,
+    pub sequence: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecoverOutcome {
+    pub interrupted: Vec<TurnId>,
+}
+
+#[async_trait]
+pub trait AgentStore: Send + Sync {
+    async fn begin_turn(&self, input: BeginTurnInput) -> Result<BeginTurnOutcome, AgentError>;
+    async fn load_history(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<Vec<crate::AgentMessage>, AgentError>;
+    async fn append_events(
+        &self,
+        turn_id: &TurnId,
+        events: &[AgentEventEnvelope],
+    ) -> Result<(), AgentError>;
+    async fn checkpoint_messages(
+        &self,
+        turn_id: &TurnId,
+        messages: &[crate::AgentMessage],
+    ) -> Result<(), AgentError>;
+    async fn finish_turn(
+        &self,
+        turn_id: &TurnId,
+        outcome: &crate::TurnOutcome,
+    ) -> Result<(), AgentError>;
+    async fn replay_events(
+        &self,
+        query: ReplayQuery,
+    ) -> Result<Vec<AgentEventEnvelope>, AgentError>;
+    async fn recover_nonterminal(&self) -> Result<RecoverOutcome, AgentError>;
+}
+
+#[derive(Default)]
+struct InMemoryAgentStore {
+    inner: Mutex<InMemoryAgentStoreState>,
+}
+
+#[derive(Default)]
+struct InMemoryAgentStoreState {
+    turns: HashMap<TurnId, InMemoryTurnRecord>,
+    by_request: HashMap<(SessionId, RequestId), TurnId>,
+    by_session: HashSet<SessionId>,
+    order: HashMap<SessionId, Vec<TurnId>>,
+    active_turn: HashMap<SessionId, TurnId>,
+    events: HashMap<TurnId, Vec<AgentEventEnvelope>>,
+}
+
+#[derive(Clone)]
+struct InMemoryTurnRecord {
+    request_payload: serde_json::Value,
+    status: TurnStatus,
+    messages: Vec<crate::AgentMessage>,
+    usage: agent_model::ModelUsage,
+    turn_count: usize,
+    content: String,
+    diagnostics: Vec<crate::AgentDiagnostic>,
+    _request_id: RequestId,
+    session_id: SessionId,
+}
+
+impl Default for InMemoryTurnRecord {
+    fn default() -> Self {
+        Self {
+            request_payload: Value::Null,
+            status: TurnStatus::Created,
+            messages: Vec::new(),
+    usage: ModelUsage::default(),
+    turn_count: 0,
+    content: String::new(),
+    diagnostics: Vec::new(),
+    _request_id: RequestId(String::new()),
+    session_id: SessionId(String::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl AgentStore for InMemoryAgentStore {
+    async fn begin_turn(&self, input: BeginTurnInput) -> Result<BeginTurnOutcome, AgentError> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        if input.session_id.0.is_empty() {
+            return Err(AgentError::new(
+                AgentErrorCode::InvalidInput,
+                "session_id must not be empty",
+            ));
+        }
+
+        if state
+            .by_request
+            .contains_key(&(input.session_id.clone(), input.request_id.clone()))
+        {
+            let existing = state
+                .by_request
+                .get(&(input.session_id.clone(), input.request_id.clone()))
+                .expect("request index should reference an in-memory turn");
+            let record = state
+                .turns
+                .get(existing)
+                .ok_or_else(|| internal_error("turn index drift"))?;
+            if record.request_payload == input.payload {
+                let outcome = cached_outcome_for_turn(record);
+                return Ok(BeginTurnOutcome {
+                    turn_id: existing.clone(),
+                    replayed: true,
+                    cached_outcome: outcome,
+                });
+            }
+            return Err(AgentError::new(
+                AgentErrorCode::DuplicateRequest,
+                "request_id already used with a different payload",
+            ));
+        }
+
+        if let Some(active) = state.active_turn.get(&input.session_id) {
+            let active_status = state
+                .turns
+                .get(active)
+                .ok_or_else(|| internal_error("active turn missing"))?
+                .status;
+            if !matches!(
+                active_status,
+                TurnStatus::Succeeded
+                    | TurnStatus::Failed
+                    | TurnStatus::Cancelled
+                    | TurnStatus::Interrupted
+            ) {
+                return Err(AgentError::new(
+                    AgentErrorCode::SessionBusy,
+                    "session already has an active turn",
+                ));
+            }
+        }
+
+        let turn_id = TurnId(Uuid::new_v4().to_string());
+        let record = InMemoryTurnRecord {
+            request_payload: input.payload,
+            status: TurnStatus::Created,
+            session_id: input.session_id.clone(),
+            _request_id: input.request_id.clone(),
+            ..InMemoryTurnRecord::default()
+        };
+        state.by_request.insert(
+            (input.session_id.clone(), input.request_id),
+            turn_id.clone(),
+        );
+        state.turns.insert(turn_id.clone(), record);
+        state
+            .active_turn
+            .insert(input.session_id.clone(), turn_id.clone());
+        state
+            .order
+            .entry(input.session_id.clone())
+            .or_default()
+            .push(turn_id.clone());
+        state.by_session.insert(input.session_id);
+        Ok(BeginTurnOutcome {
+            turn_id,
+            replayed: false,
+            cached_outcome: None,
+        })
+    }
+
+    async fn load_history(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<Vec<crate::AgentMessage>, AgentError> {
+        let state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        if !state.by_session.contains(session_id) {
+            return Err(AgentError::new(
+                AgentErrorCode::SessionNotFound,
+                "session not found",
+            ));
+        }
+
+        let mut history = Vec::new();
+        if let Some(order) = state.order.get(session_id) {
+            for turn_id in order {
+                if let Some(record) = state.turns.get(turn_id) {
+                    history.extend(record.messages.clone());
+                }
+            }
+        }
+        Ok(history)
+    }
+
+    async fn append_events(
+        &self,
+        turn_id: &TurnId,
+        events: &[AgentEventEnvelope],
+    ) -> Result<(), AgentError> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        if !state.turns.contains_key(turn_id) {
+            return Err(AgentError::new(
+                AgentErrorCode::TurnNotFound,
+                "turn not found",
+            ));
+        }
+        let entry = state.events.entry(turn_id.clone()).or_default();
+        entry.extend_from_slice(events);
+        entry.sort_by_key(|event| event.sequence);
+        Ok(())
+    }
+
+    async fn checkpoint_messages(
+        &self,
+        turn_id: &TurnId,
+        messages: &[crate::AgentMessage],
+    ) -> Result<(), AgentError> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        let record = state
+            .turns
+            .get_mut(turn_id)
+            .ok_or_else(|| AgentError::new(AgentErrorCode::TurnNotFound, "turn not found"))?;
+        record.messages = messages.to_vec();
+        Ok(())
+    }
+
+    async fn finish_turn(
+        &self,
+        turn_id: &TurnId,
+        outcome: &crate::TurnOutcome,
+    ) -> Result<(), AgentError> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        let record = state
+            .turns
+            .get_mut(turn_id)
+            .ok_or_else(|| AgentError::new(AgentErrorCode::TurnNotFound, "turn not found"))?;
+        let session_id = record.session_id.clone();
+        record.status = outcome.status;
+        record.messages = outcome.messages.clone();
+        record.usage = outcome.usage;
+        record.turn_count = outcome.turn_count;
+        record.content = outcome.content.clone();
+        record.diagnostics = outcome.diagnostics.clone();
+        if matches!(
+            outcome.status,
+            TurnStatus::Succeeded
+                | TurnStatus::Failed
+                | TurnStatus::Cancelled
+                | TurnStatus::Interrupted
+        ) {
+            state.active_turn.remove(&session_id);
+        }
+        Ok(())
+    }
+
+    async fn replay_events(
+        &self,
+        query: ReplayQuery,
+    ) -> Result<Vec<AgentEventEnvelope>, AgentError> {
+        let state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        let events = state
+            .events
+            .get(&query.turn_id)
+            .ok_or_else(|| internal_error("event stream unavailable"))?;
+        Ok(events
+            .iter()
+            .filter(|event| event.sequence > query.sequence)
+            .cloned()
+            .collect())
+    }
+
+    async fn recover_nonterminal(&self) -> Result<RecoverOutcome, AgentError> {
+        let state = self
+            .inner
+            .lock()
+            .map_err(|_| internal_error("agent store unavailable"))?;
+        let interrupted = state
+            .turns
+            .iter()
+            .filter_map(|(turn_id, record)| {
+                (!matches!(
+                    record.status,
+                    TurnStatus::Succeeded
+                        | TurnStatus::Failed
+                        | TurnStatus::Cancelled
+                        | TurnStatus::Interrupted
+                ))
+                .then_some(turn_id.clone())
+            })
+            .collect();
+        Ok(RecoverOutcome { interrupted })
+    }
+}
+
+fn cached_outcome_for_turn(record: &InMemoryTurnRecord) -> Option<TurnOutcome> {
+    if matches!(
+        record.status,
+        TurnStatus::Succeeded
+            | TurnStatus::Failed
+            | TurnStatus::Cancelled
+            | TurnStatus::Interrupted
+    ) {
+        Some(TurnOutcome {
+            status: record.status,
+            content: record.content.clone(),
+            messages: record.messages.clone(),
+            usage: record.usage,
+            turn_count: record.turn_count,
+            diagnostics: record.diagnostics.clone(),
+        })
+    } else {
+        None
+    }
+}
+
 pub struct AgentRuntime {
     model: Arc<dyn ModelDriver>,
     tools: Arc<dyn ToolDriver>,
+    store: Arc<dyn AgentStore>,
     config: AgentRuntimeConfig,
 }
 
@@ -48,14 +399,117 @@ impl AgentRuntime {
         Self {
             model,
             tools,
+            store: Arc::new(InMemoryAgentStore::default()),
             config,
         }
+    }
+
+    pub fn with_store(
+        model: Arc<dyn ModelDriver>,
+        tools: Arc<dyn ToolDriver>,
+        store: Arc<dyn AgentStore>,
+        config: AgentRuntimeConfig,
+    ) -> Self {
+        Self {
+            model,
+            tools,
+            store,
+            config,
+        }
+    }
+
+    pub async fn start_turn(
+        &self,
+        request: TurnRequest,
+        cancel: CancellationToken,
+        events: AgentEventSink,
+    ) -> Result<TurnOutcome, AgentError> {
+        validate_max_turns(self.config.max_turns)?;
+        validate_request(&request)?;
+
+        let payload = serde_json::to_value(&request)
+            .map_err(|_| internal_error("failed to serialize request for start turn"))?;
+        let begin = self
+            .store
+            .begin_turn(BeginTurnInput {
+                session_id: request.session_id.clone(),
+                request_id: request.request_id.clone(),
+                payload,
+            })
+            .await?;
+        if begin.replayed {
+            if let Some(outcome) = begin.cached_outcome {
+                return Ok(outcome);
+            }
+            return Err(AgentError::new(
+                AgentErrorCode::InvalidInput,
+                "replay outcome was not durable yet",
+            ));
+        }
+
+        let history = self.store.load_history(&request.session_id).await?;
+        let turn_id = begin.turn_id.clone();
+        let result = self
+            .run_turn_inner(request, turn_id.clone(), history, cancel, events)
+            .await;
+
+        match &result {
+            Ok(outcome) => {
+                self.store
+                    .checkpoint_messages(&turn_id, &outcome.messages)
+                    .await
+                    .map_err(|error| AgentError::new(error.code, error.message))?;
+                self.store
+                    .finish_turn(&turn_id, outcome)
+                    .await
+                    .map_err(|error| AgentError::new(error.code, error.message))?;
+            }
+            Err(error) => {
+                let terminal = if error.code == AgentErrorCode::Cancelled {
+                    TurnStatus::Cancelled
+                } else {
+                    TurnStatus::Failed
+                };
+                let terminal_outcome = TurnOutcome {
+                    status: terminal,
+                    content: String::new(),
+                    messages: Vec::new(),
+                    usage: ModelUsage::default(),
+                    turn_count: 0,
+                    diagnostics: vec![crate::AgentDiagnostic {
+                        code: error.code,
+                        message: error.message.clone(),
+                    }],
+                };
+                self.store
+                    .finish_turn(&turn_id, &terminal_outcome)
+                    .await
+                    .map_err(|store_error| {
+                        AgentError::new(store_error.code, store_error.message)
+                    })?;
+            }
+        }
+
+        result
     }
 
     pub async fn run_turn(
         &self,
         request: TurnRequest,
         history: Vec<AgentMessage>,
+        cancel: CancellationToken,
+        events: AgentEventSink,
+    ) -> Result<TurnOutcome, AgentError> {
+        let turn_id = TurnId(Uuid::new_v4().to_string());
+        self.run_turn_inner(request, turn_id, history, cancel, events)
+            .await
+    }
+
+    async fn run_turn_inner(
+        &self,
+        request: TurnRequest,
+        turn_id: TurnId,
+        messages: Vec<AgentMessage>,
         cancel: CancellationToken,
         events: AgentEventSink,
     ) -> Result<TurnOutcome, AgentError> {
@@ -66,8 +520,8 @@ impl AgentRuntime {
             }))
             .await;
 
-        match self
-            .run_turn_inner(request, history, cancel, events.clone())
+        let outcome = match self
+            .run_turn_turn(request, turn_id, messages, cancel, events.clone())
             .await
         {
             Ok(mut outcome) => {
@@ -81,7 +535,7 @@ impl AgentRuntime {
                     }))
                     .await;
                 outcome.diagnostics = events.diagnostics();
-                Ok(outcome)
+                outcome
             }
             Err(error) => {
                 let terminal = if error.code == AgentErrorCode::Cancelled {
@@ -96,14 +550,17 @@ impl AgentRuntime {
                     })
                 };
                 events.emit(terminal).await;
-                Err(error)
+                return Err(error);
             }
-        }
+        };
+
+        Ok(outcome)
     }
 
-    async fn run_turn_inner(
+    async fn run_turn_turn(
         &self,
         request: TurnRequest,
+        turn_id: TurnId,
         mut messages: Vec<AgentMessage>,
         cancel: CancellationToken,
         events: AgentEventSink,
@@ -264,12 +721,7 @@ impl AgentRuntime {
                     Ok(())
                 }
             });
-            let mut tool_context = ToolContext::new(
-                request.session_id.clone(),
-                // Session coordination allocates the durable TurnId in Task 5. Until
-                // then request_id is the valid UUID correlation available at this API.
-                TurnId(request.request_id.0.clone()),
-            );
+            let mut tool_context = ToolContext::new(request.session_id.clone(), turn_id.clone());
             tool_context.cancellation = cancel.clone();
             let tool_round_result =
                 execute_tool_round(Arc::clone(&self.tools), calls, tool_context, progress_sink)
@@ -514,4 +966,277 @@ fn max_turns_error(max_turns: usize) -> AgentError {
         .details
         .insert("max_turns".to_owned(), json!(max_turns));
     error
+}
+
+fn internal_error(message: impl Into<String>) -> AgentError {
+    AgentError::new(AgentErrorCode::SdkInternalError, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    };
+
+    use agent_model::ModelRequest;
+    use serde_json::Map;
+    use agent_tools::{
+        ToolCall, ToolContext, ToolDescriptor, ToolDriver, ToolProgressSink, ToolResult,
+    };
+    use async_trait::async_trait;
+
+    fn request_for(session: &str, request_id: &str, text: &str) -> TurnRequest {
+        TurnRequest {
+            schema_version: SCHEMA_VERSION.to_owned(),
+            request_id: RequestId(request_id.to_owned()),
+            session_id: SessionId(session.to_owned()),
+            input: agent_events::TurnInput {
+                text: text.to_owned(),
+                ..agent_events::TurnInput::default()
+            },
+            model_override: None,
+            approval_mode: agent_events::ApprovalMode::Interactive,
+            extra: Map::new(),
+        }
+    }
+
+    #[derive(Default)]
+    struct NoTools;
+
+    #[async_trait]
+    impl ToolDriver for NoTools {
+        async fn describe(&self, _names: &[String]) -> Result<Vec<ToolDescriptor>, AgentError> {
+            Ok(vec![])
+        }
+
+        async fn invoke(
+            &self,
+            _call: ToolCall,
+            _context: ToolContext,
+            _sink: ToolProgressSink,
+        ) -> Result<ToolResult, AgentError> {
+            panic!("tools should not be invoked in session runtime tests");
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingModel {
+        calls: Arc<AtomicUsize>,
+        history_lengths: Arc<Mutex<Vec<usize>>>,
+    }
+
+    #[async_trait]
+    impl agent_model::ModelDriver for RecordingModel {
+        async fn stream(
+            &self,
+            request: ModelRequest,
+            _sink: agent_model::ModelChunkSink,
+        ) -> Result<agent_model::ModelCompletion, AgentError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.history_lengths
+                .lock()
+                .unwrap()
+                .push(request.messages.len());
+            Ok(agent_model::ModelCompletion {
+                content: "ok".to_owned(),
+                tool_calls: vec![],
+                finish_reason: "stop".to_owned(),
+                usage: ModelUsage::default(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn start_turn_uses_durable_replay_for_duplicate_request_id() {
+        let model = Arc::new(RecordingModel::default());
+        let model_driver: Arc<dyn agent_model::ModelDriver> = model.clone();
+        let runtime = AgentRuntime::new(
+            model_driver,
+            Arc::new(NoTools),
+            AgentRuntimeConfig::default(),
+        );
+        let first = request_for("s-replay", "33333333-3333-3333-3333-333333333333", "first question");
+        let second = request_for("s-replay", "44444444-4444-4444-4444-444444444444", "second question");
+
+        let outcome1 = runtime
+            .start_turn(
+                first.clone(),
+                CancellationToken::new(),
+                AgentEventSink::discard(),
+            )
+            .await
+            .expect("first run should succeed");
+        assert_eq!(outcome1.content, "ok");
+        assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+
+        let outcome2 = runtime
+            .start_turn(
+                second.clone(),
+                CancellationToken::new(),
+                AgentEventSink::discard(),
+            )
+            .await
+            .expect("second run should succeed and see first turn history");
+        assert_eq!(outcome2.content, "ok");
+        let history_lengths = model.history_lengths.lock().unwrap().clone();
+        assert_eq!(history_lengths[0], 1);
+        assert_eq!(history_lengths[1], 3);
+
+        let replay = runtime
+            .start_turn(second, CancellationToken::new(), AgentEventSink::discard())
+            .await
+            .expect("duplicate request should replay without re-running");
+        assert_eq!(model.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(replay.content, outcome2.content);
+
+        let duplicate_payload_error = runtime
+            .start_turn(
+                request_for(
+                    "s-replay",
+                    "44444444-4444-4444-4444-444444444444",
+                    "changed question",
+                ),
+                CancellationToken::new(),
+                AgentEventSink::discard(),
+            )
+            .await
+            .expect_err("same request_id with different payload must fail");
+        assert_eq!(
+            duplicate_payload_error.code,
+            AgentErrorCode::DuplicateRequest
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn start_turn_blocks_when_session_has_active_turn() {
+        let model = Arc::new(RecordingModel::default());
+        let model_driver: Arc<dyn agent_model::ModelDriver> = model.clone();
+        let store: Arc<dyn AgentStore> = Arc::new(InMemoryAgentStore::default());
+        let runtime = AgentRuntime::with_store(
+            model_driver,
+            Arc::new(NoTools),
+            Arc::clone(&store),
+            AgentRuntimeConfig::default(),
+        );
+        let request_a = request_for("s-busy", "11111111-1111-1111-1111-111111111111", "blocked");
+        let request_b = request_for("s-busy", "22222222-2222-2222-2222-222222222222", "still blocked");
+        let busy_payload = serde_json::to_value(request_a.clone())
+            .expect("request should serialize for active turn");
+        store
+            .begin_turn(BeginTurnInput {
+                session_id: request_a.session_id.clone(),
+                request_id: request_a.request_id.clone(),
+                payload: busy_payload,
+            })
+            .await
+            .expect("pre-seed active turn should succeed");
+
+        let error = runtime
+            .start_turn(
+                request_b,
+                CancellationToken::new(),
+                AgentEventSink::discard(),
+            )
+            .await
+            .expect_err("concurrent request should be rejected");
+        assert_eq!(error.code, AgentErrorCode::SessionBusy);
+        assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[derive(Default)]
+    struct RejectingStore;
+
+    #[async_trait]
+    impl AgentStore for RejectingStore {
+        async fn begin_turn(&self, _input: BeginTurnInput) -> Result<BeginTurnOutcome, AgentError> {
+            Err(AgentError::new(
+                AgentErrorCode::SdkInternalError,
+                "store failed",
+            ))
+        }
+
+        async fn load_history(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<Vec<crate::AgentMessage>, AgentError> {
+            Err(AgentError::new(
+                AgentErrorCode::SessionNotFound,
+                "unreachable",
+            ))
+        }
+
+        async fn append_events(
+            &self,
+            _turn_id: &TurnId,
+            _events: &[AgentEventEnvelope],
+        ) -> Result<(), AgentError> {
+            Err(AgentError::new(
+                AgentErrorCode::SdkInternalError,
+                "unreachable",
+            ))
+        }
+
+        async fn checkpoint_messages(
+            &self,
+            _turn_id: &TurnId,
+            _messages: &[crate::AgentMessage],
+        ) -> Result<(), AgentError> {
+            Err(AgentError::new(
+                AgentErrorCode::SdkInternalError,
+                "unreachable",
+            ))
+        }
+
+        async fn finish_turn(
+            &self,
+            _turn_id: &TurnId,
+            _outcome: &crate::TurnOutcome,
+        ) -> Result<(), AgentError> {
+            Err(AgentError::new(
+                AgentErrorCode::SdkInternalError,
+                "unreachable",
+            ))
+        }
+
+        async fn replay_events(
+            &self,
+            _query: ReplayQuery,
+        ) -> Result<Vec<AgentEventEnvelope>, AgentError> {
+            Err(AgentError::new(
+                AgentErrorCode::SdkInternalError,
+                "unreachable",
+            ))
+        }
+
+        async fn recover_nonterminal(&self) -> Result<RecoverOutcome, AgentError> {
+            Ok(RecoverOutcome {
+                interrupted: Vec::new(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn start_turn_short_circuits_on_store_begin_error() {
+        let model = Arc::new(RecordingModel::default());
+        let model_driver: Arc<dyn agent_model::ModelDriver> = model.clone();
+        let runtime = AgentRuntime::with_store(
+            model_driver,
+            Arc::new(NoTools),
+            Arc::new(RejectingStore),
+            AgentRuntimeConfig::default(),
+        );
+        let error = runtime
+            .start_turn(
+            request_for("s-store", "66666666-6666-6666-6666-666666666666", "should fail"),
+                CancellationToken::new(),
+                AgentEventSink::discard(),
+            )
+            .await
+            .expect_err("store begin failure should fail fast");
+        assert_eq!(error.code, AgentErrorCode::SdkInternalError);
+        assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+    }
 }

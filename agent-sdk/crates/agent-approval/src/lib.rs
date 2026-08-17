@@ -19,6 +19,7 @@ impl ApprovalManager {
     pub fn expire(&mut self, now: Instant) -> Vec<ApprovalRequest> { let ids: Vec<_>=self.pending.iter().filter(|(_,p)|p.request.deadline<=now).map(|(id,_)|id.clone()).collect(); ids.into_iter().filter_map(|id| { let mut p=self.pending.remove(&id)?; let req=p.request.clone(); if let Some(tx)=p.result.take(){let _=tx.send(Decision::Expired);} Some(req)}).collect() }
     pub fn cancel_turn(&mut self, turn_id: &str) -> usize { let ids: Vec<_>=self.pending.iter().filter(|(_,p)|p.request.turn_id==turn_id).map(|(id,_)|id.clone()).collect(); let n=ids.len(); for id in ids { self.resolve(&id,Decision::Cancelled); } n }
     pub fn len(&self)->usize { self.pending.len() }
+    pub fn is_empty(&self)->bool { self.pending.is_empty() }
 }
 pub fn deadline_after(seconds:u64)->Instant { Instant::now()+Duration::from_secs(seconds) }
 
