@@ -5,10 +5,12 @@ from typing import Any, Callable, Mapping
 
 
 class NoteMeldToolDriver:
-    """Adapter over the existing L0-L3 capability registry."""
+    """Thin SDK ToolDriver adapter over a product capability provider."""
 
-    def __init__(self, registry: Any):
-        self.registry = registry
+    def __init__(self, registry: Any = None, *, provider: Any = None):
+        self.registry = registry or provider
+        if self.registry is None:
+            raise ValueError("tool registry or provider is required")
 
     async def describe(self, names: list[str]) -> list[dict[str, Any]]:
         return await self.registry.describe(names)
@@ -48,6 +50,12 @@ class NoteMeldToolDriver:
             Signal(),
             update,
         )
+        if isinstance(result, dict) and "call_id" not in result:
+            result = {
+                "call_id": call_id,
+                "content": [{"type": "json", "json": result}],
+                "structured_content": result,
+            }
         if hasattr(result, "model_dump"):
             return result.model_dump()
         return dict(result)

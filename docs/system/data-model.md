@@ -183,3 +183,21 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 ## Agent Host 数据边界
 
 Agent Host 使用 `agent_turns`, `agent_events`, `agent_preferences` 三张附加表。`agent_turns.session_id` 外键指向 `conversations.id`；消息历史仍来自 `conversation_messages`。UI-only 的 `note_progress`、`task_card`、`parameter_request` 等消息不会进入 SDK model history。模型选择顺序为显式 Turn 模型、会话偏好默认模型、偏好 fallback 第一项、用户可用模型第一项。
+
+## K0-K3 Article Knowledge Index
+
+更新时间：2026-08-18
+
+K0-K3 是建立在既有 `note_documents.task_id` 之上的增量索引模型，不替换 Note、Wiki contribution、materialized page 或历史 Chroma 数据。
+
+| 表 | 关键字段 | 语义 |
+| --- | --- | --- |
+| `knowledge_articles` | `article_id`, `content`, `status` | K0 文章索引镜像；`article_id == note_documents.task_id`。 |
+| `knowledge_chunks` | `chunk_id`, `article_id`, `page_number`, `section_path`, `start_time`, `end_time` | K1 原文证据块和位置 provenance。 |
+| `knowledge_profiles` | `profile_id`, `article_id`, `summary`, `topics_json`, `status` | K2 每篇文章一个高密画像，优先复用 Wiki summary。 |
+| `knowledge_terms` | `term_id`, `term_type`, `normalized_name` | K3 canonical 实体/概念节点。 |
+| `knowledge_term_occurrences` | `term_id`, `article_id`, `evidence_id` | 节点到文章和证据的 occurrence provenance。 |
+| `knowledge_relations` | `source_term_id`, `target_term_id`, `article_id`, `evidence_id` | K3 关系边及其文章来源，不按文章复制 canonical 节点。 |
+| `knowledge_index_states` | `layer`, `generation`, `status` | 索引 generation 和可重建状态预留。 |
+
+SQLite FTS5 表 `knowledge_chunk_fts`、`knowledge_profile_fts`、`knowledge_term_fts` 为共享在线词法索引；向量 collection 使用版本化固定名称，禁止为每篇文章创建 collection。删除文章时移除 occurrence、chunk/profile 和 FTS 行，再把文章置为 `deleted`；共享 term 只有不再被任何文章引用时才允许后续清理。

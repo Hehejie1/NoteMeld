@@ -206,3 +206,18 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 - LLM Provider 请求由后端发起，不由前端直接调用。当前主路径走 `backend/app/ai/`（notemeld-ai 抽象层）：通过 `NotemeldGPT` 适配器在 `create_chat_completion` 内调 `Models.complete()`，由 notemeld-ai 统一写 usage。旧 `backend/app/gpt/` 的 `GPTFactory`/`UniversalGPT` 过渡期保留供回滚（`from_config` 已加 `DeprecationWarning`）；`services/model.py` 的 `list_models` 仍走 `GPTFactory`（非 chat-completion 路径）。详见 `docs/system/current-architecture.md` 的 LLM 调用层章节。
 - 视频平台、网页和转写服务由后端下载器/转写器调用。
 - 前端唯一允许直接访问后端之外的场景应经过明确设计，例如外链打开或图片代理；新增远端调用必须说明安全边界。
+
+## Agent Knowledge Capability Contract
+
+更新时间：2026-08-18
+
+本阶段不新增公共 HTTP 或 MCP endpoint。四个能力通过 Agent Host 的通用 `ToolDriver` 注册：
+
+| capability id | 作用 | 关键参数 |
+| --- | --- | --- |
+| `knowledge:article_lookup` | K0 精确文章读取 | `article_ids?`, `query?` |
+| `knowledge:evidence_search` | K1 原文证据混合检索 | `query`, `article_ids?`, `location?`, `top_k?` |
+| `knowledge:profile_search` | K2 高密画像检索 | `query`, `article_ids?`, `filters?`, `top_k?` |
+| `knowledge:semantic_search` | K3 实体/概念/关系检索 | `query`, `article_ids?`, `node_types?`, `relation_types?`, `hops?`, `top_k?` |
+
+除 K0 精确读取外，查询均返回 `knowledge_result.v1` envelope：`schema_version`、`capability_id`、`total`、`results`、`warnings`。每个 result 必须包含 `article_id`；K1 追加 chunk/location，K3 追加 term/relation/evidence provenance。`article_ids` 缺省为全库，显式 `[]` 返回 `invalid_arguments`，不能静默放宽为全库。

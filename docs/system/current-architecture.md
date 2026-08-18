@@ -262,3 +262,11 @@ scripts/run_core_regression.sh
 - 桌面首次启动可能慢，前端必须保留后端 ready 门禁和足够长的等待窗口。
 - 打包脚本对 ffmpeg runtime、签名、公证、双架构有强约束，不能为“本地能跑”而删。
 - 现有文档中存在 PRD/架构说明，但新需求必须基于本目录的系统事实做增量 Change Spec。
+
+## K0-K3 Knowledge Services
+
+- 新增 `knowledge_articles`、`knowledge_chunks`、`knowledge_profiles`、`knowledge_terms`、`knowledge_term_occurrences` 和 `knowledge_relations` SQLite 表；K0-K3 统一使用 `article_id`，其值直接复用 `note_documents.task_id`。
+- SQLite FTS5 共享表 `knowledge_chunk_fts`、`knowledge_profile_fts`、`knowledge_term_fts` 负责词法索引；共享向量 collection 使用固定版本名 `knowledge_k1_v1`、`knowledge_k2_v1`、`knowledge_k3_v1`，不再按文章创建 collection。
+- `KnowledgeArticleService` 从现有 Note JSON、Wiki contribution 或 ingestion chunk 增量写入 K0-K3。旧 per-task Chroma collection、Wiki contribution 和 materialized pages 继续保留；共享索引失败只记录可重试 warning，不回滚已保存 Note。
+- `KnowledgeQueryService` 提供 K0 article lookup、K1 evidence、K2 profile、K3 semantic 四类独立查询。`article_ids` 缺省为全库，显式空数组是参数错误；结果统一携带 `article_id` 和来源 provenance。
+- `NoteMeldKnowledgeProvider` 通过现有 `NoteMeldToolDriver` 向 SDK 提供四个同级 capability。Host 不维护 K3→K2→K1 顺序，也不把 K0-K3 数据模型写入 SDK。

@@ -5,7 +5,9 @@ import threading
 from typing import Any, Callable
 
 from app.agent_host.drivers.model import NoteMeldModelDriver
+from app.agent_host.drivers.tools import NoteMeldToolDriver
 from app.agent_host.host import AgentSdkHost, get_agent_sdk_host
+from app.agent_host.knowledge_provider import NoteMeldKnowledgeProvider
 from app.ai import create_models
 from app.db.model_dao import get_all_models
 from app.services import agent_store
@@ -68,6 +70,7 @@ class NativeAgentExecutor:
         assistant_content = ""
         try:
             models, model = _resolve_saved_model(model_name)
+            knowledge_provider = NoteMeldKnowledgeProvider()
             model_override = {
                 "provider_id": str(getattr(model, "provider_id", "")),
                 "model_name": str(getattr(model, "name", model_name) or ""),
@@ -91,6 +94,16 @@ class NativeAgentExecutor:
                             },
                         }}
                     return {"schema_version": "1", **result}
+                if kind == "tool.describe":
+                    names = driver_payload.get("names") if isinstance(driver_payload, dict) else None
+                    return {"schema_version": "1", "ok": True, "result": {"tools": await knowledge_provider.describe(names)}}
+                if kind == "tool.invoke":
+                    call = driver_payload if isinstance(driver_payload, dict) else {}
+                    result = await NoteMeldToolDriver(provider=knowledge_provider).invoke(
+                        call,
+                        {"session_id": session_id, "turn_id": turn_id},
+                    )
+                    return {"schema_version": "1", "ok": True, "result": result}
                 return {"schema_version": "1", "ok": False,
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
 

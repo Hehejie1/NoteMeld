@@ -215,6 +215,12 @@ class VectorStoreManager:
 
         collection.add(documents=documents, metadatas=metadatas, ids=ids)
         logger.info(f"向量索引完成: task_id={task_id}, chunks={len(all_chunks)}")
+        try:
+            from app.services.knowledge_article_service import KnowledgeArticleService
+
+            KnowledgeArticleService().index_from_note_file(task_id, note_path=result_path)
+        except Exception as exc:  # noqa: BLE001 - knowledge index must not fail Note indexing
+            logger.warning("K0-K3 shared index failed without failing legacy index: task_id=%s error=%s", task_id, exc)
 
     def index_chunks(self, task_id: str, chunks: list) -> None:
         """直接索引 ingestion 生成的 KnowledgeChunk。"""
@@ -251,6 +257,18 @@ class VectorStoreManager:
 
         collection.add(documents=documents, metadatas=metadatas, ids=ids)
         logger.info(f"ingestion 向量索引完成: task_id={task_id}, chunks={len(all_chunks)}")
+        try:
+            from app.services.knowledge_article_service import KnowledgeArticleService
+
+            KnowledgeArticleService().index_article(
+                article_id=task_id,
+                title=task_id,
+                content="\n\n".join(str(chunk.content) for chunk in all_chunks),
+                source_type="document",
+                chunks=[chunk.to_dict() if hasattr(chunk, "to_dict") else {"content": chunk.content, "chunk_index": index, "metadata": chunk.metadata} for index, chunk in enumerate(all_chunks)],
+            )
+        except Exception as exc:  # noqa: BLE001 - knowledge index must not fail ingestion
+            logger.warning("K0-K3 shared ingestion index failed without failing legacy index: task_id=%s error=%s", task_id, exc)
 
     def _parse_results(self, results: dict) -> list[dict]:
         """将 ChromaDB query 结果转换为 chunk 列表。"""

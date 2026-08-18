@@ -1,10 +1,14 @@
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path
 
 from app.renderers.export_outline_renderer import ExportOutlineRenderer
 from app.services.knowledge_extractor import KnowledgeExtractor
 from app.services.wiki_store import WikiStore
+
+
+logger = logging.getLogger(__name__)
 
 
 class WikiPipelineStageError(RuntimeError):
@@ -75,6 +79,14 @@ class WikiPipeline:
                 ExportOutlineRenderer().render(summary_input, packet),
             )
         paths = WikiStore(base_dir=self.output_dir / "wiki").persist_contribution(packet, markdown)
+        try:
+            from app.services.knowledge_article_service import KnowledgeArticleService
+
+            KnowledgeArticleService().index_from_packet(packet, markdown)
+        except Exception as exc:  # noqa: BLE001 - Note/Wiki success must not depend on indexing
+            # The contribution is already durable; the next reindex job can
+            # rebuild K0-K3 without making the Note look failed.
+            logger.warning("K0-K3 index failed after Wiki contribution: article_id=%s error=%s", packet.source_id, exc)
         return {
             "analysis": analysis,
             "packet": packet,

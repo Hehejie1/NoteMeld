@@ -21,6 +21,14 @@ class MigrationReindexService:
     def rebuild(self, task_ids: list[str] | None = None) -> dict:
         tasks = self._normalize_task_ids(task_ids or self._task_ids_from_db())
         WikiStore(base_dir=self.note_output_root / "wiki").rebuild_from_contributions()
+        knowledge_result = {"indexed": 0}
+        if self.vector_store_manager is None:
+            from app.services.knowledge_reindex_service import KnowledgeReindexService
+
+            knowledge_result = KnowledgeReindexService(
+                note_output_root=self.note_output_root,
+                current_db_path=self.current_db_path,
+            ).rebuild(tasks)
 
         vector_store = self.vector_store_manager or self._build_vector_store_manager()
         rebuilt = 0
@@ -33,6 +41,7 @@ class MigrationReindexService:
         return {
             "wiki_rebuilt": True,
             "vector_rebuilt": rebuilt,
+            "knowledge_rebuilt": knowledge_result["indexed"],
             "task_ids": tasks,
         }
 

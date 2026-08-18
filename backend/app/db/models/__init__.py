@@ -5,6 +5,15 @@ from app.db.models.whiteboard import (
     WhiteboardRelation,
 )
 from app.db.models.agent import AgentTurn, AgentEvent, AgentPreference
+from app.db.models.knowledge import (
+    KnowledgeArticle,
+    KnowledgeChunk,
+    KnowledgeIndexState,
+    KnowledgeProfile,
+    KnowledgeRelation,
+    KnowledgeTerm,
+    KnowledgeTermOccurrence,
+)
 
 __all__ = [
     "Whiteboard",
@@ -14,4 +23,11 @@ __all__ = [
     "AgentTurn",
     "AgentEvent",
     "AgentPreference",
+    "KnowledgeArticle",
+    "KnowledgeChunk",
+    "KnowledgeIndexState",
+    "KnowledgeProfile",
+    "KnowledgeRelation",
+    "KnowledgeTerm",
+    "KnowledgeTermOccurrence",
 ]

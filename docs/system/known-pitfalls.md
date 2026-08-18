@@ -275,3 +275,10 @@
 - 不允许通过 `NOTEMELD_AGENT_MODE=python|python-oracle|legacy` 回滚；这些模式必须 fail-closed。模型调用失败也不能静默切回旧 Agent，避免同一 Turn 执行两次。
 - 启动入口必须校验外部 wheel 的 SDK/schema 版本；“Python 包能 import”不等于 native artifact 兼容。缺失、架构错误或版本错误都应在启动前阻断。
 - 检查方式：`backend/tests/agent_host/` 的 loader、artifact、CLI、driver、Turn、broker、preference 与 API 契约测试。
+
+## K0-K3 检索不能重新退回文件遍历
+
+- 发生过的问题/风险：如果在 10 万篇文章规模继续逐个读取 contribution/Markdown 或为每篇文章创建 Chroma collection，画像筛选和跨文章检索会随文章数线性放大，并且结果无法统一返回 `article_id`。
+- 不允许重新引入的错误做法：K2 在线逐文件扫描；K1/K2/K3 依赖旧 per-task collection；把 K3 canonical 节点按文章复制；用 `article_ids=[]` 当作全库；要求先调 K3 才能调 K2/K1；把 K0-K3 业务模型写入 SDK。
+- 检查方式：`backend/tests/knowledge/test_knowledge_retrieval.py` 的文章过滤、显式空集合、K3 provenance、四工具独立调用；检查 FTS/向量 collection 数量为固定版本集合。
+- 修复经验：SQLite FTS5 负责共享词法索引，版本化共享 Chroma 负责向量索引，SQLite relation/occurrence 负责图 provenance；查询前校验文章范围，工具由 NoteMeld Provider 独立注册，Note 保存成功边界不受索引失败影响。
