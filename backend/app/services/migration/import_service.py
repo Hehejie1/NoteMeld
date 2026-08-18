@@ -5,6 +5,7 @@ import tempfile
 import zipfile
 import json
 from pathlib import Path
+from app.utils.storage_paths import temp_dir
 
 from app.services.migration.job_store import MigrationJobStore
 from app.services.migration.manifest_service import MigrationManifestError, MigrationManifestService
@@ -46,8 +47,11 @@ class MigrationImportService:
 
         def _run_import():
             try:
-                with tempfile.TemporaryDirectory(prefix="notemeld-migration-import-") as temp_dir:
-                    package_dir = Path(temp_dir) / archive_path.stem
+                temp_dir().mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(
+                    prefix="migration-import-", dir=temp_dir()
+                ) as temporary_dir:
+                    package_dir = Path(temporary_dir) / archive_path.stem
                     self._ensure_archive_fits_available_storage(archive_path, self.current_db_path.parent)
                     self._extract_archive(archive_path, package_dir)
                     self._import_extracted_package(

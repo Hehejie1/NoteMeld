@@ -28,24 +28,16 @@ mkdir -p \
   "${SMOKE_ROOT}/data/static/screenshots" \
   "${SMOKE_ROOT}/data/chroma" \
   "${SMOKE_ROOT}/data/models" \
+  "${SMOKE_ROOT}/data/tmp" \
   "${SMOKE_ROOT}/logs"
 
 env \
   NOTEMELD_DATA_DIR="${SMOKE_ROOT}/data" \
   NOTEMELD_LOG_DIR="${SMOKE_ROOT}/logs" \
-  NOTEMELD_DATABASE_PATH="${SMOKE_ROOT}/data/notemeld.db" \
-  DATABASE_URL="sqlite:///${SMOKE_ROOT}/data/notemeld.db" \
-  NOTEMELD_APP_DATA_DIR="${SMOKE_ROOT}/data" \
-  DATA_DIR="${SMOKE_ROOT}/data" \
-  UPLOAD_DIR="${SMOKE_ROOT}/data/uploads" \
-  STATIC_DIR="${SMOKE_ROOT}/data/static" \
-  OUT_DIR="${SMOKE_ROOT}/data/static/screenshots" \
-  VECTOR_DB_DIR="${SMOKE_ROOT}/data/chroma" \
-  NOTEMELD_MODEL_DIR="${SMOKE_ROOT}/data/models" \
   BACKEND_HOST=127.0.0.1 \
   BACKEND_PORT="${PORT}" \
   NOTEMELD_RUNTIME_MODE=desktop \
-  "${BACKEND_BIN}" >"${SMOKE_ROOT}/backend.log" 2>&1 &
+  "${BACKEND_BIN}" >"${SMOKE_ROOT}/logs/backend.log" 2>&1 &
 PID=$!
 
 for _ in $(seq 1 "${TIMEOUT_SECONDS}"); do
@@ -60,5 +52,5 @@ for _ in $(seq 1 "${TIMEOUT_SECONDS}"); do
 done
 
 echo "packaged backend did not become healthy within ${TIMEOUT_SECONDS}s" >&2
-tail -80 "${SMOKE_ROOT}/backend.log" >&2 || true
+tail -80 "${SMOKE_ROOT}/logs/backend.log" >&2 || true
 exit 1

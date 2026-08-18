@@ -38,17 +38,7 @@ FRONTEND_DIR="${ROOT_DIR}/frontend"
 VENV_DIR="${ROOT_DIR}/.venv"
 NOTEMELD_RUNTIME_MODE="${NOTEMELD_RUNTIME_MODE:-source-script}"
 LOG_DIR="${ROOT_DIR}/logs"
-DATA_DIR="${ROOT_DIR}/vector_db"
-NOTE_OUTPUT_DIR="${DATA_DIR}/note_results"
-VECTOR_STORE_DIR="${DATA_DIR}/chroma"
-DOWNLOADER_CONFIG="${DATA_DIR}/config/downloader.json"
-DATABASE_PATH="${DATA_DIR}/notemeld.db"
-MODEL_DIR="${DATA_DIR}/models"
-APP_DATA_DIR="${DATA_DIR}/data"
-FRAME_DIR="${APP_DATA_DIR}/output_frames"
-UPLOAD_DIR="${DATA_DIR}/uploads"
-STATIC_DIR="${DATA_DIR}/static"
-SCREENSHOT_DIR="${STATIC_DIR}/screenshots"
+DATA_ROOT="${ROOT_DIR}/vector_db"
 BACKEND_LOG="${LOG_DIR}/run_notemeld_backend.log"
 FRONTEND_LOG="${LOG_DIR}/run_notemeld_frontend.log"
 BACKEND_STAMP="${VENV_DIR}/.backend_deps_installed"
@@ -296,18 +286,6 @@ wait_for_url() {
   return 1
 }
 
-migrate_dir_if_exists() {
-  local source_dir="$1"
-  local target_dir="$2"
-  local label="$3"
-
-  if [[ -d "${source_dir}" ]]; then
-    mkdir -p "${target_dir}"
-    cp -Rn "${source_dir}/." "${target_dir}/" 2>/dev/null || true
-    log "Migrated ${label} to ${target_dir}"
-  fi
-}
-
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
@@ -356,24 +334,7 @@ require_cmd lsof
 
 [[ -d "${BACKEND_DIR}" ]] || fail "Backend directory not found: ${BACKEND_DIR}"
 [[ -d "${FRONTEND_DIR}" ]] || fail "Frontend directory not found: ${FRONTEND_DIR}"
-mkdir -p "${LOG_DIR}" "${NOTE_OUTPUT_DIR}" "${VECTOR_STORE_DIR}" "$(dirname "${DOWNLOADER_CONFIG}")" "${MODEL_DIR}" "${FRAME_DIR}" "${UPLOAD_DIR}" "${SCREENSHOT_DIR}"
-
-if [[ ! -f "${DOWNLOADER_CONFIG}" && -f "${ROOT_DIR}/config/downloader.json" ]]; then
-  cp "${ROOT_DIR}/config/downloader.json" "${DOWNLOADER_CONFIG}"
-  log "Migrated downloader config to ${DOWNLOADER_CONFIG}"
-fi
-
-migrate_dir_if_exists "${ROOT_DIR}/note_results" "${NOTE_OUTPUT_DIR}" "root note results"
-migrate_dir_if_exists "${BACKEND_DIR}/note_results" "${NOTE_OUTPUT_DIR}" "backend note results"
-migrate_dir_if_exists "${BACKEND_DIR}/models" "${MODEL_DIR}" "backend model cache"
-migrate_dir_if_exists "${BACKEND_DIR}/data" "${APP_DATA_DIR}" "backend runtime data"
-migrate_dir_if_exists "${BACKEND_DIR}/uploads" "${UPLOAD_DIR}" "uploaded files"
-migrate_dir_if_exists "${BACKEND_DIR}/static" "${STATIC_DIR}" "static assets"
-
-if [[ ! -f "${DATABASE_PATH}" && -f "${BACKEND_DIR}/notemeld.db" ]]; then
-  cp "${BACKEND_DIR}/notemeld.db" "${DATABASE_PATH}"
-  log "Migrated SQLite database to ${DATABASE_PATH}"
-fi
+mkdir -p "${LOG_DIR}" "${DATA_ROOT}/tmp"
 
 if port_in_use "${FRONTEND_PORT}"; then
   warn "Port ${FRONTEND_PORT} is already in use, attempting to free..."
@@ -428,20 +389,8 @@ ensure_agent_sdk
 log "Preparing default transcriber"
 (
   cd "${BACKEND_DIR}"
-  export NOTEMELD_DATA_DIR="${DATA_DIR}"
+  export NOTEMELD_DATA_DIR="${DATA_ROOT}"
   export NOTEMELD_LOG_DIR="${LOG_DIR}"
-  export NOTE_OUTPUT_DIR="${NOTE_OUTPUT_DIR}"
-  export VECTOR_DB_DIR="${VECTOR_STORE_DIR}"
-  export NOTEMELD_DOWNLOADER_CONFIG="${DOWNLOADER_CONFIG}"
-  export NOTEMELD_DATABASE_PATH="${DATABASE_PATH}"
-  export DATABASE_URL="sqlite:///${DATABASE_PATH}"
-  export NOTEMELD_MODEL_DIR="${MODEL_DIR}"
-  export NOTEMELD_APP_DATA_DIR="${APP_DATA_DIR}"
-  export NOTEMELD_FRAME_DIR="${FRAME_DIR}"
-  export DATA_DIR="${APP_DATA_DIR}"
-  export UPLOAD_DIR="${UPLOAD_DIR}"
-  export STATIC_DIR="${STATIC_DIR}"
-  export OUT_DIR="${SCREENSHOT_DIR}"
   "${VENV_DIR}/bin/python" "${BACKEND_DIR}/app/services/transcriber_bootstrap.py"
 ) || warn "Transcriber bootstrap failed, continuing anyway"
 
@@ -476,20 +425,8 @@ if ! port_in_use "${BACKEND_PORT}"; then
   log "Starting backend on ${BACKEND_PORT}"
   (
     cd "${BACKEND_DIR}"
-    export NOTEMELD_DATA_DIR="${DATA_DIR}"
+    export NOTEMELD_DATA_DIR="${DATA_ROOT}"
     export NOTEMELD_LOG_DIR="${LOG_DIR}"
-    export NOTE_OUTPUT_DIR="${NOTE_OUTPUT_DIR}"
-    export VECTOR_DB_DIR="${VECTOR_STORE_DIR}"
-    export NOTEMELD_DOWNLOADER_CONFIG="${DOWNLOADER_CONFIG}"
-    export NOTEMELD_DATABASE_PATH="${DATABASE_PATH}"
-    export DATABASE_URL="sqlite:///${DATABASE_PATH}"
-    export NOTEMELD_MODEL_DIR="${MODEL_DIR}"
-    export NOTEMELD_APP_DATA_DIR="${APP_DATA_DIR}"
-    export NOTEMELD_FRAME_DIR="${FRAME_DIR}"
-    export DATA_DIR="${APP_DATA_DIR}"
-    export UPLOAD_DIR="${UPLOAD_DIR}"
-    export STATIC_DIR="${STATIC_DIR}"
-    export OUT_DIR="${SCREENSHOT_DIR}"
     "${VENV_DIR}/bin/python" main.py
   ) >"${BACKEND_LOG}" 2>&1 &
   BACKEND_PID=$!

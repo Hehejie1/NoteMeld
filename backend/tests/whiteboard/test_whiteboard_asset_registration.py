@@ -16,10 +16,8 @@ from app.services.whiteboard_repository import WhiteboardRepository
 
 @pytest.fixture
 def asset_environment(tmp_path, monkeypatch):
-    output_root = tmp_path / "note-results"
     uploads_root = tmp_path / "uploads"
-    monkeypatch.setenv("NOTE_OUTPUT_DIR", str(output_root))
-    monkeypatch.setenv("UPLOAD_DIR", str(uploads_root))
+    monkeypatch.setenv("NOTEMELD_DATA_DIR", str(tmp_path))
     engine = create_engine(f"sqlite:///{tmp_path / 'whiteboard-assets.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)

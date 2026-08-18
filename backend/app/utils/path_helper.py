@@ -11,7 +11,7 @@ def get_data_dir():
     if getattr(sys, 'frozen', False):
 
         base_dir = os.path.dirname(sys.executable)
-        data_path = os.path.join(base_dir, "data")
+        data_path = os.path.join(base_dir, "vector_db", "data")
     else:
 
         data_path = str(app_data_dir())

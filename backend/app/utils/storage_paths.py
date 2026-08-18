@@ -15,7 +15,7 @@ def log_dir() -> Path:
 
 
 def note_output_dir() -> Path:
-    return Path(os.getenv("NOTE_OUTPUT_DIR", data_root() / "note_results")).resolve()
+    return data_root() / "note_results"
 
 
 def workspaces_root() -> Path:
@@ -24,64 +24,65 @@ def workspaces_root() -> Path:
 
 
 def migration_root_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_MIGRATION_DIR", data_root() / "migrations")).resolve()
+    return data_root() / "migrations"
 
 
 def migration_jobs_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_MIGRATION_JOBS_DIR", migration_root_dir() / "jobs")).resolve()
+    return migration_root_dir() / "jobs"
 
 
 def migration_packages_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_MIGRATION_PACKAGES_DIR", migration_root_dir() / "packages")).resolve()
+    return migration_root_dir() / "packages"
 
 
 def migration_upload_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_MIGRATION_UPLOAD_DIR", migration_root_dir() / "uploads")).resolve()
+    return migration_root_dir() / "uploads"
 
 
 def vector_store_dir() -> Path:
-    return Path(os.getenv("VECTOR_DB_DIR", data_root() / "chroma")).resolve()
+    return data_root() / "chroma"
 
 
 def downloader_config_path() -> Path:
-    configured = os.getenv("NOTEMELD_DOWNLOADER_CONFIG") or os.getenv("DOWNLOADER_CONFIG")
-    return Path(configured).resolve() if configured else data_root() / "config" / "downloader.json"
+    return data_root() / "config" / "downloader.json"
 
 
 def transcriber_config_path() -> Path:
-    configured = os.getenv("NOTEMELD_TRANSCRIBER_CONFIG")
-    return Path(configured).resolve() if configured else data_root() / "config" / "transcriber.json"
+    return data_root() / "config" / "transcriber.json"
 
 
 def research_search_config_path() -> Path:
-    configured = os.getenv("NOTEMELD_RESEARCH_SEARCH_CONFIG")
-    return Path(configured).resolve() if configured else data_root() / "config" / "research_search.json"
+    return data_root() / "config" / "research_search.json"
 
 
 def database_path() -> Path:
-    configured = os.getenv("NOTEMELD_DATABASE_PATH")
-    return Path(configured).resolve() if configured else data_root() / "notemeld.db"
+    return data_root() / "notemeld.db"
 
 
 def model_root_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_MODEL_DIR", data_root() / "models")).resolve()
+    return data_root() / "models"
 
 
 def app_data_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_APP_DATA_DIR", data_root() / "data")).resolve()
+    return data_root() / "data"
 
 
 def frame_output_dir() -> Path:
-    return Path(os.getenv("NOTEMELD_FRAME_DIR", app_data_dir() / "output_frames")).resolve()
+    return app_data_dir() / "output_frames"
 
 
 def upload_dir() -> Path:
-    return Path(os.getenv("UPLOAD_DIR", data_root() / "uploads")).resolve()
+    return data_root() / "uploads"
 
 
 def static_dir() -> Path:
-    return Path(os.getenv("STATIC_DIR", data_root() / "static")).resolve()
+    return data_root() / "static"
 
 
 def screenshot_dir() -> Path:
-    return Path(os.getenv("OUT_DIR", static_dir() / "screenshots")).resolve()
+    return static_dir() / "screenshots"
+
+
+def temp_dir() -> Path:
+    """Application-owned temporary files must remain inside the data root."""
+    return data_root() / "tmp"

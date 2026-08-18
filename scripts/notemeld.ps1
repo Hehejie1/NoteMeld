@@ -7,10 +7,10 @@ $ErrorActionPreference = "Stop"
 
 $NotemeldHome = if ($env:NOTEMELD_HOME) { $env:NOTEMELD_HOME } else { Join-Path $env:USERPROFILE ".notemeld" }
 $AppDir = if ($env:NOTEMELD_APP_DIR) { $env:NOTEMELD_APP_DIR } else { Join-Path $NotemeldHome "app" }
-$DataRoot = if ($env:NOTEMELD_DATA_DIR) { $env:NOTEMELD_DATA_DIR } else { Join-Path $NotemeldHome "data" }
-$LogDir = if ($env:NOTEMELD_LOG_DIR) { $env:NOTEMELD_LOG_DIR } else { Join-Path $NotemeldHome "logs" }
-$ModelDir = if ($env:NOTEMELD_MODEL_DIR) { $env:NOTEMELD_MODEL_DIR } else { Join-Path $NotemeldHome "models" }
-$RunDir = if ($env:NOTEMELD_RUN_DIR) { $env:NOTEMELD_RUN_DIR } else { Join-Path $NotemeldHome "run" }
+$DataRoot = Join-Path $AppDir "vector_db"
+$LogDir = Join-Path $AppDir "logs"
+$ModelDir = Join-Path $DataRoot "models"
+$RunDir = Join-Path $DataRoot "run"
 
 $BackendPort = if ($env:NOTEMELD_BACKEND_PORT) { [int]$env:NOTEMELD_BACKEND_PORT } else { 8483 }
 $FrontendPort = if ($env:NOTEMELD_FRONTEND_PORT) { [int]$env:NOTEMELD_FRONTEND_PORT } else { 3015 }
@@ -129,6 +129,7 @@ function Prepare-Dirs {
     (Join-Path $DataRoot "config"), `
     (Join-Path $DataRoot "uploads"), `
     (Join-Path $DataRoot "static\screenshots"), `
+    (Join-Path $DataRoot "tmp"), `
     (Join-Path $DataRoot "data\output_frames"), `
     $ModelDir | Out-Null
 }
@@ -136,19 +137,7 @@ function Prepare-Dirs {
 function Get-RuntimeEnvScript {
   $lines = @(
     "`$env:NOTEMELD_DATA_DIR = $(Quote-PsString $DataRoot)",
-    "`$env:NOTEMELD_LOG_DIR = $(Quote-PsString $LogDir)",
-    "`$env:NOTE_OUTPUT_DIR = $(Quote-PsString (Join-Path $DataRoot "note_results"))",
-    "`$env:VECTOR_DB_DIR = $(Quote-PsString (Join-Path $DataRoot "chroma"))",
-    "`$env:NOTEMELD_DOWNLOADER_CONFIG = $(Quote-PsString (Join-Path $DataRoot "config\downloader.json"))",
-    "`$env:NOTEMELD_DATABASE_PATH = $(Quote-PsString (Join-Path $DataRoot "notemeld.db"))",
-    "`$env:DATABASE_URL = $(Quote-PsString ("sqlite:///" + (Join-Path $DataRoot "notemeld.db").Replace('\', '/')))",
-    "`$env:NOTEMELD_MODEL_DIR = $(Quote-PsString $ModelDir)",
-    "`$env:NOTEMELD_APP_DATA_DIR = $(Quote-PsString (Join-Path $DataRoot "data"))",
-    "`$env:NOTEMELD_FRAME_DIR = $(Quote-PsString (Join-Path $DataRoot "data\output_frames"))",
-    "`$env:DATA_DIR = $(Quote-PsString (Join-Path $DataRoot "data"))",
-    "`$env:UPLOAD_DIR = $(Quote-PsString (Join-Path $DataRoot "uploads"))",
-    "`$env:STATIC_DIR = $(Quote-PsString (Join-Path $DataRoot "static"))",
-    "`$env:OUT_DIR = $(Quote-PsString (Join-Path $DataRoot "static\screenshots"))"
+    "`$env:NOTEMELD_LOG_DIR = $(Quote-PsString $LogDir)"
   )
   return ($lines -join [Environment]::NewLine)
 }
