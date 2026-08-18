@@ -29,6 +29,15 @@ def test_installed_launcher_keeps_sdk_install_contract() -> None:
     assert "Installed notemeld-agent-sdk is incompatible" in source
 
 
+def test_notemeld_does_not_embed_or_load_sdk_source() -> None:
+    runtime = (ROOT / "backend" / "app" / "agent_host" / "runtime.py").read_text(encoding="utf-8")
+    spec = (ROOT / "packaging" / "backend" / "pyinstaller" / "backend.spec").read_text(encoding="utf-8")
+    assert "NOTEMELD_AGENT_SDK_PYTHON_PATH" not in runtime
+    assert "NOTEMELD_AGENT_SDK_ROOT" not in spec
+    assert "SDK source directories are unsupported" in runtime
+    assert "importlib.util.find_spec(\"notemeld_agent_sdk\")" in spec
+
+
 def test_source_and_installed_launchers_have_valid_shell_syntax() -> None:
     for script in (ROOT / "run_notemeld.sh", ROOT / "scripts" / "notemeld"):
         result = subprocess.run(
