@@ -62,4 +62,4 @@ description: 将 linked worktree 分支并入目标本地分支，并在成功�
 
 **禁止** `git push --force`、`git reset --hard`、`git stash drop` 等破坏性命令。
 
-完整支线流程：`/wt-start` → `/wt-verify` → `/wt-merge`。
+完整支线流程：`/wt-start`  → `/wt-merge`。
