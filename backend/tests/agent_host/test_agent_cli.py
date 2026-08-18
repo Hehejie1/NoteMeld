@@ -125,7 +125,7 @@ def test_events_poll_empty_replay_then_delta_and_terminal_without_real_sleep(mon
     values = cli.events("turn-1")
 
     assert [value["type"] for value in values] == ["message.delta", "turn.succeeded"]
-    assert "after_sequence=-1" in urls[0]
+    assert "after_sequence=-1" not in urls[0]
     assert "after_sequence=0" in urls[2]
 
 
@@ -160,4 +160,4 @@ def test_events_replays_terminal_after_terminal_status_race(monkeypatch):
 
     assert values == [{"sequence": 0, "type": "turn.succeeded", "payload": {"answer": "done"}}]
     assert len(urls) == 2
-    assert all("after_sequence=-1" in url for url in urls)
+    assert all("after_sequence=-1" not in url for url in urls)

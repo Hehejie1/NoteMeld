@@ -92,6 +92,15 @@ def test_native_executor_routes_tool_calls_to_product_driver(monkeypatch):
             self.on_event = on_event
 
         def submit_turn(self, _request):
+            described = self.driver({
+                "kind": "tool.describe",
+                "payload": {"names": []},
+            })
+            assert described == {
+                "schema_version": "1",
+                "ok": True,
+                "result": {"tools": [{"name": "wiki:search", "description": "search", "input_schema": {"type": "object"}}]},
+            }
             result = self.driver({
                 "kind": "tool.invoke",
                 "payload": {
@@ -119,6 +128,14 @@ def test_native_executor_routes_tool_calls_to_product_driver(monkeypatch):
             return None
 
     class FakeToolDriver:
+        class Registry:
+            @staticmethod
+            def describe(names):
+                assert names == []
+                return [{"name": "wiki:search", "description": "search", "input_schema": {"type": "object"}}]
+
+        registry = Registry()
+
         async def invoke(self, call, context, on_progress=None):
             requested.append((call, context))
             return {"items": []}

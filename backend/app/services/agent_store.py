@@ -152,7 +152,11 @@ def create_turn(
                 .first()
             )
             if existing is not None:
-                return _serialize_turn(existing)
+                value = _serialize_turn(existing)
+                # Internal marker consumed by TurnManager/HTTP projection;
+                # callers must not create another message pair or native turn.
+                value["_replayed"] = True
+                return value
 
         turn = AgentTurn(
             turn_id=turn_id or str(uuid.uuid4()),
@@ -171,7 +175,9 @@ def create_turn(
             raise
 
         db.refresh(turn)
-        return _serialize_turn(turn)
+        value = _serialize_turn(turn)
+        value["_replayed"] = False
+        return value
     finally:
         db.close()
 

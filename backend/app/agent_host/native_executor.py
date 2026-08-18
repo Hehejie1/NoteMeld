@@ -98,17 +98,23 @@ class NativeAgentExecutor:
                         }}
                     return {"schema_version": "1", **result}
                 if kind == "tool.describe":
-                    names = driver_payload.get("names") if isinstance(driver_payload, dict) else None
+                    names = driver_payload.get("names", []) if isinstance(driver_payload, dict) else []
+                    if not isinstance(names, list) or any(not isinstance(name, str) for name in names):
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "invalid_input", "message": "工具名称必须是字符串数组"}}
                     try:
                         provider = self.tool_driver.registry if self.tool_driver is not None else knowledge_provider
-                        descriptors = provider.describe(names or [])
+                        descriptors = provider.describe(names)
                         if asyncio.iscoroutine(descriptors):
                             descriptors = await descriptors
-                        return {"schema_version": "1", "ok": True, "result": {"tools": descriptors}}
+                    except ValueError as error:
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "invalid_input", "message": str(error)}}
                     except Exception:  # noqa: BLE001 - product capability boundary
                         logger.exception("Agent SDK product tool discovery failed")
                         return {"schema_version": "1", "ok": False,
                                 "error": {"code": "tool_failed", "message": "工具发现失败"}}
+                    return {"schema_version": "1", "ok": True, "result": {"tools": descriptors}}
                 if kind == "tool.invoke":
                     driver = self.tool_driver or NoteMeldToolDriver(provider=knowledge_provider)
                     if driver is None:

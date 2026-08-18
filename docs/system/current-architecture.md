@@ -17,7 +17,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 桌面端：`desktop/src-tauri/`，Tauri v2。负责启动 Python backend sidecar、注入运行时配置、控制窗口展示、桌面文件能力和自动更新。
 - 打包层：`packaging/` + `.trae/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
 - 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
-- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；`/api/agent/v1` 创建 Turn 后由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成。
+- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；`/api/agent/v1` 创建 Turn 后由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成；approval resolve 通过同一个 native runtime 控制面回传。
 
 ## 前端入口
 

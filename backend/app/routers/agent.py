@@ -53,6 +53,10 @@ class PreferenceRequest(BaseModel):
     fallback_models: list[str] = Field(default_factory=list)
 
 
+class ApprovalRequest(BaseModel):
+    decision: str = Field(pattern="^(approve|deny)$")
+
+
 @router.post("/sessions")
 def create_session(payload: SessionRequest):
     session_id = payload.session_id or str(uuid.uuid4())
@@ -89,6 +93,10 @@ def create_turn(session_id: str, payload: TurnRequest):
         raise HTTPException(status_code=404, detail={"code": "session_not_found", "message": str(error)}) from error
     user_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:user"))
     assistant_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:assistant"))
+    if turn.get("replayed"):
+        return _ok({**turn, "user_message_id": user_message_id,
+                    "assistant_message_id": assistant_message_id,
+                    "events_url": f"/api/agent/v1/turns/{turn['turn_id']}/events"})
     try:
         append_message(session_id, {
             "id": user_message_id,
@@ -206,8 +214,17 @@ def steer_turn(turn_id: str, payload: dict | None = None):
 
 
 @router.post("/approvals/{approval_id}")
-def resolve_approval(approval_id: str):
-    raise HTTPException(status_code=501, detail={"code": "approval_not_ready", "message": "审批执行链尚未接入 Rust turn"})
+def resolve_approval(approval_id: str, payload: ApprovalRequest):
+    try:
+        get_agent_sdk_host().resolve_approval(approval_id, payload.decision)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail={"code": "approval_not_found"}) from error
+    except Exception as error:  # noqa: BLE001 - map native control boundary
+        code = getattr(error, "code", None)
+        if code == -3:
+            raise HTTPException(status_code=404, detail={"code": "approval_not_found"}) from error
+        raise HTTPException(status_code=409, detail={"code": "approval_unavailable", "message": "审批控制不可用"}) from error
+    return _ok({"approval_id": approval_id, "decision": payload.decision, "accepted": True})
 
 
 @router.get("/sessions/{session_id}/model-preference")

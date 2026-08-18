@@ -32,10 +32,14 @@ class TurnManager:
             if session_id in self._active:
                 raise SessionBusyError("session already has an active turn")
             turn = agent_store.create_turn(session_id, model_name=model_name, idempotency_key=idempotency_key)
+            if turn.pop("_replayed", False):
+                turn["replayed"] = True
+                return turn
             self._active[session_id] = ActiveTurn(session_id, turn["turn_id"])
         # Durable user/message persistence belongs to AgentSdkHost's Store
         # adapter. Keeping it out of this coordination shim prevents duplicate
         # Conversation rows and lets unit callers use a fake store.
+        turn["replayed"] = False
         return turn
 
     def finish_turn(self, session_id: str, turn_id: str, status: str, event: dict[str, Any], **kwargs: Any) -> dict[str, Any]:

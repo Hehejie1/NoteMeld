@@ -134,6 +134,8 @@
 
 CLI 契约：`notemeld agent -p/--prompt` 提交单次 Turn；`--conversation/--session` 继续指定 Conversation；`--model` 传递模型覆盖；`--output/--format text|json|jsonl` 控制输出。REPL 的 `/new`、`/resume ID`、`/sessions`、`/model [NAME]`、`/exit` 只组合本表接口，不直接写数据库，也不加载另一套 Agent runtime。
 
+Agent Host 控制约束：SDK 原生 driver 请求包含 `model.stream`、`tool.describe` 和 `tool.invoke`；Host 对 `tool.describe` 只返回 bounded namespaced capabilities。审批由 `POST /api/agent/v1/approvals/{approval_id}` 发送 `{"decision":"approve|deny"}` 到同一个 native runtime；Host 不直接修改 Turn 终态。
+
 白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |

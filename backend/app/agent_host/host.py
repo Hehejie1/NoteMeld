@@ -130,6 +130,12 @@ class AgentSdkHost:
             raise KeyError(turn_id)
         self.runtime.steer(handle.token, payload)
 
+    def resolve_approval(self, approval_id: str, decision: str) -> None:
+        resolver = getattr(self.runtime, "resolve_approval", None)
+        if not callable(resolver):
+            raise AgentSdkUnavailable("installed Agent SDK does not expose approval control")
+        resolver(approval_id, decision)
+
     def forget(self, turn_id: str) -> None:
         with self._lock:
             handle = self._handles.pop(turn_id, None)

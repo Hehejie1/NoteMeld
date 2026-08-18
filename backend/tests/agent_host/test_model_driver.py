@@ -30,6 +30,33 @@ def test_model_driver_maps_stream_chunks_and_completion():
     }
 
 
+def test_model_driver_translates_sdk_tool_descriptors_to_provider_envelope():
+    seen = []
+
+    class Models:
+        async def stream(self, model, ctx, options=None, signal=None):
+            seen.append(ctx.tools)
+            yield type("Event", (), {"type": "done", "usage": None})()
+
+    result = asyncio.run(NoteMeldModelDriver(Models(), model=object()).stream({
+        "messages": [],
+        "tools": [{
+            "name": "wiki:search",
+            "description": "search wiki",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+        }],
+    }))
+    assert result["ok"] is True
+    assert seen == [[{
+        "type": "function",
+        "function": {
+            "name": "wiki:search",
+            "description": "search wiki",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+        },
+    }]]
+
+
 def test_provider_error_mapping_is_stable_and_safe():
     error = map_provider_error(RuntimeError("provider payload api_key=secret"))
     assert error["code"] == "model_unavailable"

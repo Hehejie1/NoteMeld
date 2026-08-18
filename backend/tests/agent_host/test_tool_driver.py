@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pytest
+import asyncio
 
 from app.agent_host.drivers.tools import NoteMeldToolDriver
 
@@ -23,26 +23,35 @@ class FakeRegistry:
     def get_tool(self, name):
         return FakeTool() if name == "search_knowledge" else None
 
-
-@pytest.mark.asyncio
-async def test_tool_driver_registers_describes_and_invokes_tools():
-    progress = []
-    driver = NoteMeldToolDriver(FakeRegistry())
-
-    descriptors = await driver.describe(["search_knowledge"])
-    result = await driver.invoke(
-        {"call_id": "c1", "tool_name": "search_knowledge", "arguments": {"query": "x"}},
-        {"session_id": "s1", "turn_id": "t1"},
-        progress.append,
-    )
-
-    assert descriptors[0]["name"] == "search_knowledge"
-    assert result["call_id"] == "c1"
-    assert progress[0]["progress"] == 0.5
+    async def invoke(self, name, arguments, call_id, signal, on_update):
+        return await self.get_tool(name).execute(call_id, arguments, signal, on_update)
 
 
-@pytest.mark.asyncio
-async def test_tool_driver_rejects_unknown_tool():
-    driver = NoteMeldToolDriver(FakeRegistry())
-    with pytest.raises(ValueError, match="tool"):
-        await driver.invoke({"call_id": "c1", "tool_name": "missing", "arguments": {}}, {}, lambda _: None)
+def test_tool_driver_registers_describes_and_invokes_tools():
+    async def exercise():
+        progress = []
+        driver = NoteMeldToolDriver(FakeRegistry())
+
+        descriptors = await driver.describe(["search_knowledge"])
+        result = await driver.invoke(
+            {"call_id": "c1", "tool_name": "search_knowledge", "arguments": {"query": "x"}},
+            {"session_id": "s1", "turn_id": "t1"},
+            progress.append,
+        )
+
+        assert descriptors[0]["name"] == "search_knowledge"
+        assert result["call_id"] == "c1"
+        assert progress[0]["progress"] == 0.5
+    asyncio.run(exercise())
+
+
+def test_tool_driver_rejects_unknown_tool():
+    async def exercise():
+        driver = NoteMeldToolDriver(FakeRegistry())
+        try:
+            await driver.invoke({"call_id": "c1", "tool_name": "missing", "arguments": {}}, {}, lambda _: None)
+        except ValueError as error:
+            assert "tool" in str(error)
+        else:
+            raise AssertionError("unknown tool should fail")
+    asyncio.run(exercise())

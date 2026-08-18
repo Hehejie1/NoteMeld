@@ -17,6 +17,30 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _model_tools(raw_tools: Any) -> list[dict[str, Any]] | None:
+    """Translate SDK descriptors to the provider's OpenAI tool envelope."""
+    if not raw_tools:
+        return None
+    result: list[dict[str, Any]] = []
+    for descriptor in raw_tools:
+        if not isinstance(descriptor, Mapping):
+            continue
+        name = str(descriptor.get("name") or "").strip()
+        if not name:
+            continue
+        result.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": str(descriptor.get("description") or ""),
+                "parameters": descriptor.get("input_schema")
+                if isinstance(descriptor.get("input_schema"), Mapping)
+                else {"type": "object"},
+            },
+        })
+    return result or None
+
+
 def map_provider_error(error: Exception) -> dict[str, Any]:
     if isinstance(error, ProviderAuthError):
         code = "model_not_configured"
@@ -50,7 +74,7 @@ class NoteMeldModelDriver:
         emit: Callable[[dict[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
         messages = list(request.get("messages") or [])
-        ctx = LLMContext(messages=messages, tools=list(request.get("tools") or []) or None)
+        ctx = LLMContext(messages=messages, tools=_model_tools(request.get("tools")))
         chunks: list[str] = []
         usage_payload: dict[str, int] = {
             "input_tokens": 0,

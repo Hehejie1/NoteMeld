@@ -79,6 +79,26 @@ def test_start_turn_projects_same_session_for_ui_and_cli(monkeypatch):
     assert calls[2][1]["assistant_message_id"] == result["data"]["assistant_message_id"]
 
 
+def test_idempotent_retry_returns_existing_turn_without_duplicate_projection(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "get_all_models", lambda: [{"model_name": "demo"}])
+    monkeypatch.setattr(agent, "select_model", lambda *_args: "demo")
+    monkeypatch.setattr(agent._turns, "start_turn", lambda *_args, **_kwargs: {
+        "turn_id": "turn-existing", "session_id": "session-1", "status": "succeeded",
+        "replayed": True,
+    })
+    monkeypatch.setattr(agent, "append_message", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(agent._executor, "start", lambda **kwargs: calls.append(("executor", kwargs)))
+
+    result = agent.create_turn(
+        "session-1",
+        agent.TurnRequest(input="hello", model="demo", idempotency_key="same-request"),
+    )
+
+    assert result["data"]["replayed"] is True
+    assert calls == []
+
+
 def test_cancel_does_not_pretend_native_turn_is_terminal(monkeypatch):
     monkeypatch.setattr(agent.agent_store, "get_turn", lambda _turn_id: {
         "turn_id": "turn-1", "session_id": "session-1", "status": "running",
@@ -94,3 +114,11 @@ def test_cancel_does_not_pretend_native_turn_is_terminal(monkeypatch):
     assert result["data"] == {"turn_id": "turn-1", "accepted": True, "status": "cancelling"}
     assert transitions[0][0][1] == "cancelling"
     assert transitions[0][1]["terminal_event_type"] == "turn.cancelling"
+
+
+def test_resolve_approval_routes_to_native_host(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.get_agent_sdk_host(), "resolve_approval", lambda approval_id, decision: calls.append((approval_id, decision)))
+    result = agent.resolve_approval("approval-1", agent.ApprovalRequest(decision="approve"))
+    assert result["data"] == {"approval_id": "approval-1", "decision": "approve", "accepted": True}
+    assert calls == [("approval-1", "approve")]

@@ -18,7 +18,7 @@ NoteMeld 已通过独立 `notemeld-agent-sdk` 的 Python binding 加载 Rust nat
 - 不接入 Harbor。
 - 不把产品数据库表暴露给 SDK。
 - 不在 NoteMeld 重新实现 Agent loop、工具调度或审批状态机。
-- 不伪造 SDK 尚未提供的 approval resolve ABI。
+- 不在 NoteMeld 内伪造 SDK 行为；approval resolve 必须调用独立 SDK 的 native control ABI。
 
 ## 影响范围
 
@@ -34,6 +34,6 @@ NoteMeld 已通过独立 `notemeld-agent-sdk` 的 Python binding 加载 Rust nat
 - cancel 不直接产生 `cancelled`，并在 native handle 注册竞态后重试 cancel。
 - Python 编译和 diff check 通过。
 
-## 剩余风险
+## 收口补充（2026-08-18）
 
-独立 SDK FFI 当前仍需后续版本补齐模型工具描述传递和 approval resolve ABI；本阶段 Host 已完成适配边界，但不能宣称审批闭环或真实模型工具循环全部完成。
+独立 SDK 已补齐 `tool.describe` 到 `model.stream` 的 descriptor 传递，以及 native approval control ABI；NoteMeld Host 已对齐这两个协议。相同 `idempotency_key` 的 HTTP 重试只返回原 Turn，不重复创建 Conversation message 或启动 native turn。SDK Rust workspace 的最终 cargo gate 仍需在隔离官方 registry 缓存可用时执行；本机用户级 TUNA 配置导致的一次编译探测在编译前停止，不能当作通过证据。
