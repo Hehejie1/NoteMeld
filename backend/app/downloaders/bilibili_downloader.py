@@ -14,6 +14,7 @@ from app.models.transcriber_model import TranscriptResult, TranscriptSegment
 from app.utils.path_helper import get_data_dir
 from app.utils.url_parser import extract_video_id
 from app.services.cookie_manager import CookieConfigManager
+from app.utils.storage_paths import temp_dir
 
 logger = logging.getLogger(__name__)
 UA = (
@@ -57,7 +58,11 @@ class BilibiliDownloader(Downloader, ABC):
             if "=" in pair:
                 key, value = pair.split("=", 1)
                 lines.append(f".bilibili.com\tTRUE\t/\tFALSE\t0\t{key}\t{value}\n")
-        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+        cookie_tmp_dir = temp_dir()
+        cookie_tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp = tempfile.NamedTemporaryFile(
+            mode='w', suffix='.txt', delete=False, dir=cookie_tmp_dir, encoding='utf-8'
+        )
         tmp.writelines(lines)
         tmp.close()
         logger.info("已生成 B站 Netscape Cookie 文件: %s (条目: %d)", tmp.name, len(lines) - 1)

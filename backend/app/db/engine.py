@@ -259,8 +259,8 @@ def migrate_legacy_sqlite_if_needed(database_url: str) -> dict[str, int]:
     return migrated_counts
 
 
-# 默认 SQLite，如果想换 PostgreSQL 或 MySQL，可以直接改 .env
-DATABASE_URL = _resolve_database_url(os.getenv("DATABASE_URL"))
+# NoteMeld owns one local database below the unified data root.
+DATABASE_URL = f"sqlite:///{_default_sqlite_path()}"
 
 # SQLite 需要特定连接参数，其他数据库不需要
 engine_args = {}

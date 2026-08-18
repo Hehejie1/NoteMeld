@@ -1157,7 +1157,7 @@ class NoteGenerator:
         extras: Optional[str],
         video_img_urls: List[str],
     ) -> str:
-        output_dir = Path(os.getenv("NOTE_OUTPUT_DIR", str(NOTE_OUTPUT_DIR)))
+        output_dir = NOTE_OUTPUT_DIR
         refine_engine = SummaryRefineEngine()
         result = refine_engine.run(
             task_id=task_id,

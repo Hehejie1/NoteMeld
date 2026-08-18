@@ -23,7 +23,9 @@ class TestCoreRuntimeContracts(unittest.TestCase):
 
         self.assertIn("NOTEMELD_RUNTIME_MODE", lib_rs)
         self.assertIn("NOTEMELD_DATA_DIR", lib_rs)
-        self.assertIn("NOTEMELD_DATABASE_PATH", lib_rs)
+        self.assertIn('join("vector_db")', lib_rs)
+        self.assertNotIn('command.env("NOTE_OUTPUT_DIR"', lib_rs)
+        self.assertNotIn('command.env("OUT_DIR"', lib_rs)
         self.assertIn("FFMPEG_BIN_PATH", lib_rs)
         self.assertIn("notemeld-backend.exe", lib_rs)
         self.assertIn("window.__NOTEMELD_RUNTIME__", lib_rs)
@@ -52,6 +54,29 @@ class TestCoreRuntimeContracts(unittest.TestCase):
                 self.assertEqual(storage_paths.upload_dir(), data_root / "uploads")
                 self.assertEqual(storage_paths.static_dir(), data_root / "static")
                 self.assertEqual(storage_paths.screenshot_dir(), data_root / "static" / "screenshots")
+                self.assertEqual(storage_paths.temp_dir(), data_root / "tmp")
+
+    def test_legacy_subdirectory_environment_variables_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = pathlib.Path(tmp_dir).resolve()
+            legacy_root = pathlib.Path(tmp_dir) / "legacy"
+            with patch.dict(
+                os.environ,
+                {
+                    "NOTEMELD_DATA_DIR": str(data_root),
+                    "NOTE_OUTPUT_DIR": str(legacy_root / "notes"),
+                    "VECTOR_DB_DIR": str(legacy_root / "chroma"),
+                    "STATIC_DIR": str(legacy_root / "static"),
+                    "OUT_DIR": str(legacy_root / "screenshots"),
+                    "UPLOAD_DIR": str(legacy_root / "uploads"),
+                    "DATA_DIR": str(legacy_root / "data"),
+                },
+                clear=True,
+            ):
+                self.assertTrue(storage_paths.note_output_dir().is_relative_to(data_root))
+                self.assertTrue(storage_paths.vector_store_dir().is_relative_to(data_root))
+                self.assertTrue(storage_paths.screenshot_dir().is_relative_to(data_root))
+                self.assertTrue(storage_paths.upload_dir().is_relative_to(data_root))
 
 
 if __name__ == "__main__":

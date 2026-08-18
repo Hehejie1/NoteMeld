@@ -8,6 +8,7 @@ import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from app.utils.storage_paths import temp_dir
 
 from app.services.note_style_format_adapters import (
     extract_from_docx_adapter,
@@ -656,7 +657,9 @@ def _render_document_analysis_preview_image(analysis: dict[str, Any], file_name:
         draw.rounded_rectangle((48, y, 912, y + block_height), radius=16, outline=line_color, width=2, fill="#ffffff")
         draw.text((72, y + 18), f"{block_type}: {block.get('text_summary') or block.get('text') or ''}", fill=text_color)
         y += block_height + 24
-    preview_path = Path(tempfile.gettempdir()) / f"{Path(file_name).stem}.render-preview.png"
+    preview_dir = temp_dir()
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = preview_dir / f"{Path(file_name).stem}.render-preview.png"
     preview.save(preview_path)
     return str(preview_path)
 

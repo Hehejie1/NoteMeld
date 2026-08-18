@@ -197,6 +197,14 @@
 - 检查方式：`backend/tests/ai/test_provider_compat.py`（usage 双写对齐）、`test_note_generator_migration.py`、`test_t11_migration.py`（迁移点 + GPTFactory 回滚 import 保留断言）；搜索 `GPTFactory().from_config` 确认仅剩 `model.py` 的 list_models 路径。
 - 修复经验：`GPTFactory.from_config` 加 `DeprecationWarning`，至少保留 1 个 Beta 版本；`model.py` 的 `list_models` 刻意不迁移；新 chat-completion 调用点一律用 `NotemeldGPT.from_config`。
 
+## 运行数据路径分裂
+
+- 发生过的问题：源码启动后根目录出现 `note_results`、`static` 等目录，下载器和临时文件也可能落到工作目录或系统临时目录，用户无法判断哪份数据是事实源。
+- 根因：`.env` 相对路径、子目录级环境变量、旧启动脚本迁移复制和下载器 `DATA_DIR` 回退同时存在。
+- 不允许重新引入的错误做法：恢复 `NOTE_OUTPUT_DIR`、`VECTOR_DB_DIR`、`STATIC_DIR`、`OUT_DIR`、`UPLOAD_DIR`、`DATA_DIR` 等子目录覆盖；启动时扫描并复制根目录旧数据；把 NoteMeld 运行时临时文件写到工作目录或系统临时目录。
+- 检查方式：检查 `storage_paths.py` 的所有子路径是否从 `data_root()` 派生；运行启动契约并确认数据只在 `vector_db/`、日志只在 `logs/`。
+- 修复经验：数据根只允许单一运行模式注入口，业务子目录固定；应用临时文件写入 `vector_db/tmp`，日志根固定为 `logs`。
+
 ## Agent 变更流程缺失
 
 - 发生过的问题：新需求容易直接写 PRD 或方案，忽略当前系统事实，重复踩 Wiki、桌面、MCP、数据路径等坑。

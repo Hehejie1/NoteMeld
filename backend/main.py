@@ -26,11 +26,10 @@ from ffmpeg_helper import ensure_ffmpeg_or_raise
 logger = get_logger(__name__)
 load_dotenv()
 
-# 读取 .env 中的路径
+# STATIC is an HTTP mount path, not a filesystem path.
 static_path = os.getenv('STATIC', '/static')
-out_dir = os.getenv('OUT_DIR', './static/screenshots')
 
-# 自动创建本地目录（static 和 static/screenshots）
+# Create all runtime directories below the unified storage roots.
 static_dir = str(runtime_static_dir())
 uploads_dir = str(upload_dir())
 out_dir = str(screenshot_dir())

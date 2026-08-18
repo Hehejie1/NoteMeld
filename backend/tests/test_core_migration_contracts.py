@@ -180,16 +180,15 @@ class TestCoreMigrationContracts(unittest.TestCase):
             (uploads_dir / "demo.txt").write_text("upload", encoding="utf-8")
             (static_dir / "screenshots" / "shot-1.jpg").write_bytes(b"fake-image")
 
-            with patch.dict(os.environ, {"STATIC_DIR": str(static_dir)}):
-                service = MigrationExportService(
-                    current_db_path=current_db,
-                    note_output_root=note_output_dir,
-                    uploads_root=uploads_dir,
-                    packages_dir=packages_dir,
-                    job_store=MigrationJobStore(root / "jobs"),
-                )
+            service = MigrationExportService(
+                current_db_path=current_db,
+                note_output_root=note_output_dir,
+                uploads_root=uploads_dir,
+                packages_dir=packages_dir,
+                job_store=MigrationJobStore(root / "jobs"),
+            )
 
-                result = service.start_export({"job_id": "job-export-1", "package_name": "backup-1"})
+            result = service.start_export({"job_id": "job-export-1", "package_name": "backup-1"})
             archive_path = packages_dir / "backup-1.zip"
 
             self.assertEqual(result["status"], "completed")

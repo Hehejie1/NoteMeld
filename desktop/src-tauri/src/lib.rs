@@ -337,30 +337,9 @@ fn spawn_backend_sidecar(
         .or_else(|| resolve_packaged_backend_command(app))
         .ok_or_else(|| "failed to locate desktop backend command".to_string())?;
 
-    let (data_dir, log_dir) = resolve_desktop_paths(app)?;
-    let note_output_dir = data_dir.join("note_results");
-    let vector_store_dir = data_dir.join("chroma");
-    let config_dir = data_dir.join("config");
-    let model_dir = data_dir.join("models");
-    let app_data_dir = data_dir.join("data");
-    let frame_dir = app_data_dir.join("output_frames");
-    let upload_dir = data_dir.join("uploads");
-    let static_dir = data_dir.join("static");
-    let screenshot_dir = static_dir.join("screenshots");
-    let database_path = data_dir.join("notemeld.db");
-    let downloader_config = config_dir.join("downloader.json");
-
-    for path in [
-        &note_output_dir,
-        &vector_store_dir,
-        &config_dir,
-        &model_dir,
-        &frame_dir,
-        &upload_dir,
-        &screenshot_dir,
-    ] {
-        ensure_dir(path)?;
-    }
+    let (app_data_root, log_dir) = resolve_desktop_paths(app)?;
+    let data_dir = app_data_root.join("vector_db");
+    ensure_dir(&data_dir)?;
 
     let mut command = Command::new(program);
     command.args(args);
@@ -373,25 +352,6 @@ fn spawn_backend_sidecar(
     command.env("NOTEMELD_API_BASE_URL", &payload.api_base_url);
     command.env("NOTEMELD_DATA_DIR", &data_dir);
     command.env("NOTEMELD_LOG_DIR", &log_dir);
-    command.env("NOTE_OUTPUT_DIR", &note_output_dir);
-    command.env("VECTOR_DB_DIR", &vector_store_dir);
-    command.env("NOTEMELD_DOWNLOADER_CONFIG", &downloader_config);
-    command.env(
-        "NOTEMELD_TRANSCRIBER_CONFIG",
-        config_dir.join("transcriber.json"),
-    );
-    command.env("NOTEMELD_DATABASE_PATH", &database_path);
-    command.env(
-        "DATABASE_URL",
-        format!("sqlite:///{}", database_path.display()),
-    );
-    command.env("NOTEMELD_MODEL_DIR", &model_dir);
-    command.env("NOTEMELD_APP_DATA_DIR", &app_data_dir);
-    command.env("NOTEMELD_FRAME_DIR", &frame_dir);
-    command.env("DATA_DIR", &app_data_dir);
-    command.env("UPLOAD_DIR", &upload_dir);
-    command.env("STATIC_DIR", &static_dir);
-    command.env("OUT_DIR", &screenshot_dir);
 
     if let Some(ffmpeg_dir) =
         optional_packaged_ffmpeg_dir(ensure_packaged_ffmpeg_dir(app, &data_dir))

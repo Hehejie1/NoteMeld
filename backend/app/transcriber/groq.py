@@ -9,11 +9,13 @@ from openai import OpenAI
 import ffmpeg
 import tempfile
 from dotenv import load_dotenv
+from app.utils.storage_paths import temp_dir
 load_dotenv()
 MAX_SIZE_MB = 18
 MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
 def compress_audio(input_path: str, target_bitrate='64k') -> str:
-    output_fd, output_path = tempfile.mkstemp(suffix=".mp3")  # 临时输出文件
+    temp_dir().mkdir(parents=True, exist_ok=True)
+    output_fd, output_path = tempfile.mkstemp(suffix=".mp3", dir=temp_dir())
     os.close(output_fd)  # 关闭文件描述符，ffmpeg 会用路径操作
     ffmpeg.input(input_path).output(output_path, audio_bitrate=target_bitrate).run(quiet=True, overwrite_output=True)
     return output_path

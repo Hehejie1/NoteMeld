@@ -3,10 +3,10 @@ set -euo pipefail
 
 NOTEMELD_HOME="${NOTEMELD_HOME:-$HOME/.notemeld}"
 APP_DIR="${NOTEMELD_APP_DIR:-$NOTEMELD_HOME/app}"
-DATA_ROOT="${NOTEMELD_DATA_DIR:-$NOTEMELD_HOME/data}"
-LOG_DIR="${NOTEMELD_LOG_DIR:-$NOTEMELD_HOME/logs}"
-MODEL_DIR="${NOTEMELD_MODEL_DIR:-$NOTEMELD_HOME/models}"
-RUN_DIR="${NOTEMELD_RUN_DIR:-$NOTEMELD_HOME/run}"
+DATA_ROOT="${APP_DIR}/vector_db"
+LOG_DIR="${APP_DIR}/logs"
+MODEL_DIR="${DATA_ROOT}/models"
+RUN_DIR="${DATA_ROOT}/run"
 NOTEMELD_RUNTIME_MODE="${NOTEMELD_RUNTIME_MODE:-source-cli}"
 
 BACKEND_PORT="${NOTEMELD_BACKEND_PORT:-8483}"
@@ -75,6 +75,7 @@ prepare_dirs() {
     "$DATA_ROOT/config" \
     "$DATA_ROOT/uploads" \
     "$DATA_ROOT/static/screenshots" \
+    "$DATA_ROOT/tmp" \
     "$DATA_ROOT/data/output_frames" \
     "$MODEL_DIR"
 }
@@ -83,18 +84,6 @@ export_runtime_env() {
   export NOTEMELD_RUNTIME_MODE
   export NOTEMELD_DATA_DIR="$DATA_ROOT"
   export NOTEMELD_LOG_DIR="$LOG_DIR"
-  export NOTE_OUTPUT_DIR="$DATA_ROOT/note_results"
-  export VECTOR_DB_DIR="$DATA_ROOT/chroma"
-  export NOTEMELD_DOWNLOADER_CONFIG="$DATA_ROOT/config/downloader.json"
-  export NOTEMELD_DATABASE_PATH="$DATA_ROOT/notemeld.db"
-  export DATABASE_URL="sqlite:///$DATA_ROOT/notemeld.db"
-  export NOTEMELD_MODEL_DIR="$MODEL_DIR"
-  export NOTEMELD_APP_DATA_DIR="$DATA_ROOT/data"
-  export NOTEMELD_FRAME_DIR="$DATA_ROOT/data/output_frames"
-  export DATA_DIR="$DATA_ROOT/data"
-  export UPLOAD_DIR="$DATA_ROOT/uploads"
-  export STATIC_DIR="$DATA_ROOT/static"
-  export OUT_DIR="$DATA_ROOT/static/screenshots"
 }
 
 ensure_agent_sdk() {

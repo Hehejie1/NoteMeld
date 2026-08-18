@@ -39,7 +39,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 
 ## 数据存储
 
-默认数据根目录由 `NOTEMELD_DATA_DIR` 控制。未配置时，源码模式使用仓库下 `vector_db`；桌面模式由 Tauri 注入系统 App Data 目录。
+默认数据根目录固定为项目（或安装应用）下的 `vector_db`。桌面模式由 Tauri 注入应用数据目录下的 `vector_db`；`NOTEMELD_DATA_DIR` 只用于运行模式注入数据根，不再允许各子目录单独改写。
 
 统一路径定义在 `backend/app/utils/storage_paths.py`：
 
@@ -50,10 +50,13 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - `static/screenshots/`：截图资源。
 - `models/`：本地模型。
 - `chroma/`：Chroma 向量库。
+- `tmp/`：后端运行时临时文件；NoteMeld 业务临时文件不得写入项目根目录或系统临时目录。
+
+所有日志统一写入项目（或安装应用）下的 `logs/`，由 `NOTEMELD_LOG_DIR` 注入桌面/CLI 的日志根。`NOTE_OUTPUT_DIR`、`VECTOR_DB_DIR`、`STATIC_DIR`、`OUT_DIR`、`UPLOAD_DIR`、`DATA_DIR` 等旧子目录变量不再生效。
 
 SQLite 模型位于 `backend/app/db/models/`，主要包含 provider、model、usage、conversation、note document、note style、template extraction task、video task 等。
 
-Wiki 文件位于 `note_results/wiki/`：
+Wiki 文件位于 `vector_db/note_results/wiki/`：
 
 - `contributions/*.json`：每篇笔记的结构化知识贡献。
 - `sources/*.md`：来源页。

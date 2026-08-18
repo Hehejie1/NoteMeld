@@ -2,19 +2,14 @@ import os
 import re
 from urllib.parse import quote
 from markdown_pdf import MarkdownPdf, Section
-from dotenv import load_dotenv
-
-load_dotenv()
+from app.utils.storage_paths import note_output_dir, static_dir
 
 # 项目根路径（无论你在哪里运行）
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 从 .env 获取 DATA_DIR，相对于 BASE_DIR 解析
-DATA_DIR_NAME = os.getenv("DATA_DIR", "data")
-DATA_DIR = os.path.join(BASE_DIR, DATA_DIR_NAME)
-SAVE_PATH = os.path.join(DATA_DIR, "note_output")
-IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL")
-STATIC_BASE = os.path.join(BASE_DIR, IMAGE_BASE_URL)
+DATA_ROOT = str(note_output_dir().parent)
+SAVE_PATH = str(note_output_dir() / "exports")
+STATIC_BASE = str(static_dir())
 
 
 class ExportUtils:
@@ -81,9 +76,8 @@ class ExportUtils:
 
             # 处理 /static/ 开头的路径
             if img_path.startswith("/static/"):
-                # 构建绝对路径
-                relative_path = img_path.lstrip("/")  # 移除开头的 /
-                abs_path = os.path.join(BASE_DIR, relative_path)
+                relative_path = img_path.removeprefix("/static/")
+                abs_path = os.path.join(STATIC_BASE, relative_path)
                 abs_path = self._get_normalized_path(abs_path)
 
                 # 检查文件是否存在并转换为 base64
@@ -105,7 +99,6 @@ class ExportUtils:
                 possible_paths = [
                     os.path.join(STATIC_BASE, img_path),
                     os.path.abspath(img_path),
-                    os.path.join(BASE_DIR, img_path)
                 ]
 
                 for abs_path in possible_paths:
@@ -226,10 +219,9 @@ class ExportUtils:
         """
         print("=== 路径调试信息 ===")
         print(f"BASE_DIR: {BASE_DIR}")
-        print(f"DATA_DIR: {DATA_DIR}")
+        print(f"DATA_ROOT: {DATA_ROOT}")
         print(f"SAVE_PATH: {SAVE_PATH}")
         print(f"STATIC_BASE: {STATIC_BASE}")
-        print(f"IMAGE_BASE_URL: {IMAGE_BASE_URL}")
         print("==================")
 
 if __name__ == '__main__':
@@ -282,4 +274,3 @@ if __name__ == '__main__':
 - 积极的激励比惩罚更能驱动行为改变。
 
 通过这次实验，团队不仅解决了餐具堆积的问题，还为未来更复杂的行为管理系统奠定了基础。 ''',)
-

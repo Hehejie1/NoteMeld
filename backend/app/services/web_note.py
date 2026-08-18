@@ -546,7 +546,7 @@ class WebNoteGenerator:
         return (page.main_text_summary or "").strip()
 
     def _output_dir(self) -> Path:
-        output_dir = Path(os.getenv("NOTE_OUTPUT_DIR", str(NOTE_OUTPUT_DIR)))
+        output_dir = NOTE_OUTPUT_DIR
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 

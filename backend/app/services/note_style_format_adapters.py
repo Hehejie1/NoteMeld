@@ -6,6 +6,7 @@ import tempfile
 import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
+from app.utils.storage_paths import temp_dir
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -741,7 +742,9 @@ def _render_pdf_pages_to_images(file_path: str) -> list[str]:
         with fitz.open(file_path) as document:
             for page_index, page in enumerate(document, start=1):
                 pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-                image_path = Path(tempfile.gettempdir()) / f"{stem}-page-{page_index}.png"
+                preview_dir = temp_dir()
+                preview_dir.mkdir(parents=True, exist_ok=True)
+                image_path = preview_dir / f"{stem}-page-{page_index}.png"
                 pixmap.save(str(image_path))
                 image_paths.append(str(image_path))
         return image_paths
@@ -761,7 +764,9 @@ def _render_pdf_pages_to_images(file_path: str) -> list[str]:
             suffix = Path(str(getattr(image, "name", ""))).suffix.lower() or ".png"
             if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
                 suffix = ".png"
-            image_path = Path(tempfile.gettempdir()) / f"{stem}-page-{page_index}{suffix}"
+            preview_dir = temp_dir()
+            preview_dir.mkdir(parents=True, exist_ok=True)
+            image_path = preview_dir / f"{stem}-page-{page_index}{suffix}"
             image_path.write_bytes(image.data)
             image_paths.append(str(image_path))
         return image_paths

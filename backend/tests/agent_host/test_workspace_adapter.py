@@ -6,7 +6,7 @@ from app.agent_host.workspace_adapter import WorkspaceAdapterError, list_directo
 
 
 def test_workspace_adapter_reads_only_safe_product_workspace(monkeypatch, tmp_path):
-    monkeypatch.setenv("NOTE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTEMELD_DATA_DIR", str(tmp_path))
     root = tmp_path / "workspaces" / "conv-1"
     root.mkdir(parents=True)
     (root / "note.md").write_text("hello", encoding="utf-8")

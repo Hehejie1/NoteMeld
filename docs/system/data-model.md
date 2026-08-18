@@ -8,8 +8,8 @@
 
 数据根目录由 `backend/app/utils/storage_paths.py` 统一决定：
 
-- `NOTEMELD_DATA_DIR` 已配置：使用该目录。
-- 未配置：源码模式默认使用仓库下 `vector_db`。
+- `NOTEMELD_DATA_DIR` 已配置：使用该运行模式的数据根；其所有子目录仍由系统固定派生。
+- 未配置：默认使用项目根目录下的 `vector_db`。
 - 桌面模式：Tauri sidecar 注入 App Data、SQLite、uploads、static、models、screenshots 等路径。
 
 主要存储：
@@ -18,6 +18,8 @@
 - 任务结果：`<data_dir>/note_results/`。
 - 上传文件：`<data_dir>/uploads/`。
 - 静态资源：`<data_dir>/static/`。
+- 后端临时文件：`<data_dir>/tmp/`。
+- 日志：项目/安装应用下的 `logs/`，不属于数据根。
 - 截图：`<data_dir>/static/screenshots/`。
 - 向量库：`<data_dir>/chroma/`。
 - Wiki：`<data_dir>/note_results/wiki/`。
