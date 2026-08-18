@@ -17,7 +17,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 桌面端：`desktop/src-tauri/`，Tauri v2。负责启动 Python backend sidecar、注入运行时配置、控制窗口展示、桌面文件能力和自动更新。
 - 打包层：`packaging/` + `.trae/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
 - 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
-- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；`/api/agent/v1` 创建 Turn 后由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。
+- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；`/api/agent/v1` 创建 Turn 后由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成。
 
 ## 前端入口
 
@@ -193,6 +193,8 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 桌面后端打包时通过 `NOTEMELD_AGENT_SDK_WHEEL` 安装带 native library 的 wheel；PyInstaller 只从已安装的 `notemeld_agent_sdk` package 收集 Python 和 `native/` 资源。SDK 的 Rust workspace、binding、CLI、构建脚本和发布 workflow 全部维护在 `/Users/hehejie/ai/notemeld-agent-sdk`，NoteMeld 不再跟踪源码副本。
 
 源码启动和已安装 CLI 启动都会先校验 `notemeld_agent_sdk` 的 SDK/schema 版本；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop，支持一次性和交互式会话、会话恢复、模型切换与 JSON/JSONL 输出。
+
+当前 Host 已提供三个只读产品能力适配：`wiki:search`、`note:search`、`note:read`。它们只调用 NoteMeld 现有知识服务，不维护 Agent 状态机。SDK FFI 的工具描述传递和审批 resolve ABI 仍由独立 `notemeld-agent-sdk` 后续版本补齐；在 ABI 未具备前，Host 不会伪造审批成功，也不会把产品工具错误当成模型成功。
 
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和旧 free-chat 兼容层都基于同一事件信封工作。Host descriptor 计划以原子方式写入数据根目录的 `run/agent-runtime.json`，供 UI、CLI 和桌面进程复用。
 

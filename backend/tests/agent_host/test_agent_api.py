@@ -77,3 +77,20 @@ def test_start_turn_projects_same_session_for_ui_and_cli(monkeypatch):
     assert calls[2][0] == "executor"
     assert calls[2][1]["session_id"] == "session-1"
     assert calls[2][1]["assistant_message_id"] == result["data"]["assistant_message_id"]
+
+
+def test_cancel_does_not_pretend_native_turn_is_terminal(monkeypatch):
+    monkeypatch.setattr(agent.agent_store, "get_turn", lambda _turn_id: {
+        "turn_id": "turn-1", "session_id": "session-1", "status": "running",
+    })
+    monkeypatch.setattr(agent.get_agent_sdk_host(), "cancel", lambda _turn_id: None)
+    transitions = []
+    monkeypatch.setattr(agent.agent_store, "transition_turn", lambda *args, **kwargs: transitions.append((args, kwargs)) or {
+        "turn_id": "turn-1", "status": "cancelling",
+    })
+
+    result = agent.cancel_turn("turn-1")
+
+    assert result["data"] == {"turn_id": "turn-1", "accepted": True, "status": "cancelling"}
+    assert transitions[0][0][1] == "cancelling"
+    assert transitions[0][1]["terminal_event_type"] == "turn.cancelling"

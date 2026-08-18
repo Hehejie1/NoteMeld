@@ -125,6 +125,9 @@
 | GET | `/api/agent/v1/sessions/{session_id}` | path | `{data: Conversation}` | UI/CLI | `session_not_found` |
 | POST | `/api/agent/v1/sessions/{session_id}/turns` | `input/model?/idempotency_key?` | `{data: Turn}` | UI/CLI | 409 `session_busy` |
 | GET | `/api/agent/v1/turns/{turn_id}/events` | `after_sequence?` | `{data: AgentEvent[]}` | UI/CLI | `turn_not_found` |
+| POST | `/api/agent/v1/turns/{turn_id}/cancel` | 无 | `{data:{turn_id,accepted,status:cancelling}}` | UI/CLI | 404/409 | 只请求 native Turn 取消；最终 `cancelled` 由 SDK terminal event 写入 |
+| POST | `/api/agent/v1/turns/{turn_id}/steer` | JSON steer payload | `{data:{turn_id,accepted}}` | UI/CLI | 404/409 | 不伪造 steer；native handle 不存在时返回 `steer_unsupported` |
+| POST | `/api/agent/v1/approvals/{approval_id}` | `approved` | 尚未接入 | UI/CLI | 501 `approval_not_ready` | SDK FFI 尚无 approval resolve ABI，本阶段 fail-closed |
 | GET/PUT | `/api/agent/v1/sessions/{session_id}/model-preference` | `default_model_id/fallback_models` | `{data: Preference}` | 设置/CLI | `invalid_input` |
 
 这些接口复用 `conversations` 作为 Session 主表；Agent 表只保存 Turn、Event 和模型偏好，不建立第二套历史。

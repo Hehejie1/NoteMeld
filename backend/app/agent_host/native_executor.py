@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from typing import Any, Callable
 
@@ -47,10 +48,12 @@ class NativeAgentExecutor:
         event_sink: Callable[[dict[str, Any]], Any] | None = None,
         finish_turn: Callable[..., Any] | None = None,
         library: str | None = None,
+        tool_driver: NoteMeldToolDriver | None = None,
     ) -> None:
         self.event_sink = event_sink
         self.finish_turn = finish_turn
         self.library = library
+        self.tool_driver = tool_driver
 
     def start(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None,
               assistant_message_id: str | None = None) -> threading.Thread:
@@ -96,14 +99,50 @@ class NativeAgentExecutor:
                     return {"schema_version": "1", **result}
                 if kind == "tool.describe":
                     names = driver_payload.get("names") if isinstance(driver_payload, dict) else None
-                    return {"schema_version": "1", "ok": True, "result": {"tools": await knowledge_provider.describe(names)}}
+                    try:
+                        provider = self.tool_driver.registry if self.tool_driver is not None else knowledge_provider
+                        descriptors = provider.describe(names or [])
+                        if asyncio.iscoroutine(descriptors):
+                            descriptors = await descriptors
+                        return {"schema_version": "1", "ok": True, "result": {"tools": descriptors}}
+                    except Exception:  # noqa: BLE001 - product capability boundary
+                        logger.exception("Agent SDK product tool discovery failed")
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "tool_failed", "message": "工具发现失败"}}
                 if kind == "tool.invoke":
-                    call = driver_payload if isinstance(driver_payload, dict) else {}
-                    result = await NoteMeldToolDriver(provider=knowledge_provider).invoke(
-                        call,
-                        {"session_id": session_id, "turn_id": turn_id},
-                    )
-                    return {"schema_version": "1", "ok": True, "result": result}
+                    driver = self.tool_driver or NoteMeldToolDriver(provider=knowledge_provider)
+                    if driver is None:
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "tool_failed", "message": "产品工具驱动未配置"}}
+                    arguments = driver_payload.get("arguments", {})
+                    if isinstance(arguments, str):
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = None
+                    if not isinstance(arguments, dict):
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "invalid_input", "message": "工具参数必须是对象"}}
+                    try:
+                        output = await driver.invoke(
+                            {
+                                "call_id": driver_payload.get("call_id"),
+                                "tool_name": driver_payload.get("tool_name"),
+                                "arguments": arguments,
+                            },
+                            {
+                                "session_id": driver_payload.get("session_id") or session_id,
+                                "turn_id": driver_payload.get("turn_id") or turn_id,
+                            },
+                        )
+                    except ValueError as error:
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "invalid_input", "message": str(error)}}
+                    except Exception:  # noqa: BLE001 - product tool boundary
+                        logger.exception("Agent SDK product tool failed")
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "tool_failed", "message": "工具执行失败"}}
+                    return {"schema_version": "1", "ok": True, "result": {"output": output}}
                 return {"schema_version": "1", "ok": False,
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
 
@@ -163,6 +202,12 @@ class NativeAgentExecutor:
                 driver=driver,
                 on_event=on_event,
             )
+            # Cancel may arrive between HTTP turn creation and native
+            # registration. Re-check the durable intent immediately after the
+            # token exists so the command always reaches the same native turn.
+            current = agent_store.get_turn(turn_id)
+            if current is not None and str(current.get("status")) == "cancelling":
+                host.cancel(turn_id)
             host.runtime.wait(handle.token, 30_000)
             host.forget(turn_id)
             if terminal is None:

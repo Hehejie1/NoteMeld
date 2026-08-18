@@ -261,6 +261,17 @@ def transition_turn(
                     payload=terminal_event,
                     sequence=None,
                 )
+            elif terminal_event is not None:
+                # Control-plane transitions such as ``cancelling`` are not
+                # terminal, but still need an ordered event so reconnecting
+                # UI/CLI clients observe the same intent as the native turn.
+                _append_event(
+                    db,
+                    turn_id=turn_id,
+                    event_type=terminal_event_type,
+                    payload=terminal_event,
+                    sequence=None,
+                )
 
             turn.status = status
             turn.error_code = error_code

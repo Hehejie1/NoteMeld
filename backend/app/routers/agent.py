@@ -10,6 +10,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent_host.event_broker import EventBroker
+from app.agent_host.capabilities import NoteMeldCapabilityRegistry
+from app.agent_host.drivers.tools import NoteMeldToolDriver
 from app.agent_host.native_executor import NativeAgentExecutor
 from app.agent_host.preferences import ModelConfigurationRequired
 from app.agent_host.preferences import select_model
@@ -22,7 +24,10 @@ from app.services.conversation_store import append_message, get_conversation, li
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 _turns = TurnManager()
 _events = EventBroker()
-_executor = NativeAgentExecutor(finish_turn=_turns.finish_turn)
+_executor = NativeAgentExecutor(
+    finish_turn=_turns.finish_turn,
+    tool_driver=NoteMeldToolDriver(NoteMeldCapabilityRegistry()),
+)
 
 
 def _ok(data):
@@ -163,13 +168,26 @@ def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
 @router.post("/turns/{turn_id}/cancel")
 def cancel_turn(turn_id: str):
     try:
+        turn = agent_store.get_turn(turn_id)
+        if turn is None:
+            raise agent_store.TurnNotFoundError(f"Turn 未找到: {turn_id}")
+        if str(turn.get("status")) in agent_store.TERMINAL_STATUSES:
+            raise agent_store.TurnTerminalError(f"已终态 Turn 不允许取消: {turn_id}")
         try:
             get_agent_sdk_host().cancel(turn_id)
-        except (KeyError, RuntimeError):
-            # A turn that has not reached native registration can still be
-            # cancelled durably; the executor observes the terminal state.
+        except KeyError:
+            # The native registration can race with the HTTP command. Mark
+            # the durable turn as cancelling; the executor retries cancel
+            # immediately after registration and only the SDK emits terminal.
             pass
-        return _ok(agent_store.transition_turn(turn_id, "cancelled", terminal_event={"type": "turn.cancelled"}, terminal_event_type="turn.cancelled"))
+        if str(turn.get("status")) != "cancelling":
+            turn = agent_store.transition_turn(
+                turn_id,
+                "cancelling",
+                terminal_event={"type": "turn.cancelling"},
+                terminal_event_type="turn.cancelling",
+            )
+        return _ok({"turn_id": turn_id, "accepted": True, "status": "cancelling"})
     except agent_store.TurnNotFoundError as error:
         raise HTTPException(status_code=404, detail={"code": "turn_not_found"}) from error
     except agent_store.TurnTerminalError as error:
