@@ -8,6 +8,8 @@ Requirement：`docs/requirements/2026-08-17-agent-sdk-single-runtime-cutover.md`
 执行规格：`docs/superpowers/specs/2026-08-17-agent-sdk-single-runtime-execution.md`
 Supersedes：`docs/system/change-spec-universal-agent-sdk-unified-cli.md`、`docs/system/change-spec-agent-sdk-native-host-migration.md`
 
+当前状态：核心切换和 SDK 唯一源码仓库收敛已完成；本文保留为迁移设计与验收依据。
+
 ## 0. 预检查
 
 - [x] 已阅读五份必读系统文档。
@@ -23,8 +25,8 @@ Supersedes：`docs/system/change-spec-universal-agent-sdk-unified-cli.md`、`doc
 - NoteMeld `NativeAgentExecutor` 只处理 model driver，`tool.invoke` 返回未接入；steer/approval 路由是占位。
 - HTTP cancel 直接写数据库终态，没有调用 SDK cancel。
 - events endpoint 只读取一次持久事件后结束，不是 replay + live subscription。
-- Python `backend/app/agent/core` 及其 AgentService/SSE bridge 仍在生产代码中使用。
-- NoteMeld 仓库还跟踪 76 个 `agent-sdk/` 文件和 `.github/workflows/agent-sdk.yml`；独立 SDK 仓库尚未成为唯一源码/CI 发布源。
+- Python `backend/app/agent/core` 及其 AgentService/SSE bridge 已从生产代码删除。
+- 历史基线曾包含 NoteMeld 内嵌 `agent-sdk/` 文件和 SDK workflow；本次收敛将其移除，独立 SDK 仓库成为唯一源码/CI 发布源。
 - 当前 Agent Host、SDK session crate 和 SQLAlchemy store 同时持有部分 Turn 规则，边界重叠。
 
 ## 2. 本次目标
@@ -88,7 +90,7 @@ Supersedes：`docs/system/change-spec-universal-agent-sdk-unified-cli.md`、`doc
 ### 删除旧路径
 
 - 新链路纵向验收通过后删除 Python Agent Core、legacy Agent service、compat、feature flag 和 rollback。
-- 独立 SDK artifact/CI 通过后删除 NoteMeld 内嵌 `agent-sdk/` 源码与本仓库 SDK build workflow；NoteMeld release 只下载/校验 artifact。
+- 独立 SDK artifact/CI 已迁移至 `/Users/hehejie/ai/notemeld-agent-sdk`；NoteMeld 内嵌 `agent-sdk/` 源码与本仓库 SDK build workflow 已删除，NoteMeld release 只下载/校验 artifact。
 - 旧 product tools 改写成 SDK adapters 后保留，不删除业务能力。
 
 ## 7. 数据变更

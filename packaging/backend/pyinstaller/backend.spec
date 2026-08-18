@@ -20,17 +20,12 @@ if MODEL_RUNTIME_CATALOG.exists():
     APP_RESOURCE_DATAS.append((str(MODEL_RUNTIME_CATALOG), "app/resources"))
 
 hiddenimports = collect_submodules("app")
-sdk_root = os.environ.get("NOTEMELD_AGENT_SDK_ROOT", "").strip()
-sdk_python = (Path(sdk_root).resolve() / "bindings" / "python") if sdk_root else None
 sdk_spec = importlib.util.find_spec("notemeld_agent_sdk")
-if (sdk_python and sdk_python.is_dir()) or sdk_spec is not None:
-    if sdk_python and sdk_python.is_dir():
-        sdk_import_root = sdk_python
-    else:
-        sdk_import_root = Path(sdk_spec.submodule_search_locations[0])
+if sdk_spec is not None:
+    sdk_import_root = Path(sdk_spec.submodule_search_locations[0])
     if sdk_import_root.is_dir():
-        # AgentSdkRuntime imports this package dynamically; make the standalone
-        # SDK and its packaged dylib visible to PyInstaller.
+        # AgentSdkRuntime imports this package dynamically; the package must
+        # come from the installed standalone SDK artifact.
         hiddenimports += collect_submodules("notemeld_agent_sdk")
         APP_RESOURCE_DATAS += collect_data_files("notemeld_agent_sdk", include_py_files=True)
         APP_RESOURCE_DATAS.append((str(sdk_import_root), "notemeld_agent_sdk"))
@@ -39,7 +34,7 @@ if (sdk_python and sdk_python.is_dir()) or sdk_spec is not None:
 
 a = Analysis(
     [str(DESKTOP_ENTRY)],
-    pathex=[str(BACKEND_DIR)] + ([str(sdk_python)] if sdk_python and sdk_python.is_dir() else []),
+    pathex=[str(BACKEND_DIR)],
     binaries=[],
     datas=APP_RESOURCE_DATAS,
     hiddenimports=hiddenimports,

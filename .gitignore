@@ -305,4 +305,3 @@ frontend/tmp-*.png
 /docs/superpowers/tests/*
 !/docs/superpowers/tests/2026-08-13-model-context-capability-aware-chunking.md
 # Rust build outputs are local SDK test artifacts, never source or release inputs.
-/agent-sdk/target/

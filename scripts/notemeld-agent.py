@@ -34,8 +34,11 @@ def request(method: str, path: str, payload: dict | None = None) -> dict:
 
 
 def _event_batch(turn_id: str, after_sequence: int) -> list[dict[str, Any]]:
+    event_path = f"/turns/{turn_id}/events"
+    if after_sequence >= 0:
+        event_path += f"?after_sequence={after_sequence}"
     req = urllib.request.Request(
-        BASE + f"/turns/{turn_id}/events?after_sequence={after_sequence}",
+        BASE + event_path,
         method="GET",
         headers={"Accept": "text/event-stream"},
     )
@@ -233,6 +236,9 @@ def main() -> int:
                     print_value({"type": "session.resumed", "id": session}, args.output_format)
             except RuntimeError as error:
                 print(f"error: {error}", file=sys.stderr)
+            continue
+        if text == "/cancel":
+            print("当前 CLI turn 已由同步事件回放完成；如需取消，请通过 Agent v1 API 提交 cancel。", file=sys.stderr)
             continue
         try:
             submit_turn(session, text, model, args.output_format)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -63,23 +62,18 @@ class AgentSdkRuntime:
     @staticmethod
     def _load_binding(path: str | os.PathLike[str]) -> ModuleType:
         requested = str(path)
-        if requested not in {"development", "packaged"}:
-            candidate = Path(requested)
-            if candidate.is_dir():
-                python_root = candidate / "bindings" / "python"
-                if (python_root / "notemeld_agent_sdk").is_dir():
-                    os.environ.setdefault("NOTEMELD_AGENT_SDK_PYTHON_PATH", str(python_root))
-                else:
-                    os.environ.setdefault("NOTEMELD_AGENT_SDK_LIBRARY", str(candidate))
         if requested == "development":
-            configured_root = os.getenv("NOTEMELD_AGENT_SDK_PYTHON_PATH", "").strip()
-            if configured_root:
-                source_root = Path(configured_root).expanduser().resolve()
-                if not (source_root / "notemeld_agent_sdk").is_dir():
-                    raise AgentSdkUnavailable("external SDK Python path is invalid")
-                if str(source_root) not in sys.path:
-                    sys.path.insert(0, str(source_root))
-        # The package is installed in production and is importable in the sidecar.
+            raise AgentSdkUnavailable("development SDK source loading is disabled; install the standalone wheel")
+        if requested not in {"packaged"}:
+            candidate = Path(requested).expanduser().resolve()
+            if candidate.is_dir():
+                raise AgentSdkUnavailable("SDK source directories are unsupported; install the standalone wheel")
+            if candidate.is_file():
+                # A native library path is permitted for artifact smoke tests, but
+                # Python modules still come from the installed standalone package.
+                os.environ.setdefault("NOTEMELD_AGENT_SDK_LIBRARY", str(candidate))
+        # The package is installed from the standalone artifact and is importable
+        # in the source venv or packaged sidecar.
         return importlib.import_module("notemeld_agent_sdk.runtime")
 
     @property
