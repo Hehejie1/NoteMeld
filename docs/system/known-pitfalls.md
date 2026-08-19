@@ -1,6 +1,6 @@
 # Known Pitfalls
 
-更新时间：2026-08-13
+更新时间：2026-08-19
 
 本文记录历史踩坑和回归防线。修 Bug、新需求或重构前必须确认不会重新引入这些问题。
 
@@ -297,3 +297,10 @@
 - 不允许重新引入的错误做法：每轮传空 history；用固定消息条数代替统一模型窗口预算；忽略 system/current user；丢弃 assistant tool calls 或 tool result call id；把 Provider 原始异常用 `logger.exception` 写入日志；在 NoteMeld 重做 Agent loop。
 - 检查方式：`backend/tests/agent_host/test_model_driver.py` 与 `test_native_executor.py`；断言两轮 model request 都保留 system/history/current user/tool group，并重复携带 context refs、工具描述和无凭证 model descriptor，同时覆盖 delta、usage、tool call 和安全错误分类。
 - 修复经验：Rust SDK canonical messages 始终是每轮权威；Host 只附着 Turn 级不可变上下文并做 Provider envelope 转换。完整历史交给 SDK，Provider 前裁剪继续复用 `Models.stream()`，空 messages fail-closed。
+
+## 产品工具错误被当成 driver 失败而中断 SDK loop
+
+- 发生过的问题/风险：NoteMeld ToolDriver 对未知工具、参数或产品异常直接抛错，Host 再返回 driver-level `ok:false`。Rust SDK 会把它视为整个 tool round 失败，Turn 在 ToolResult 写回前终止，模型没有机会读取分类错误并继续回答；如果 NoteMeld 为补偿而自己重试或调用下一轮模型，又会形成第二套工具循环。
+- 不允许重新引入的错误做法：产品业务失败直接返回 ABI driver error；在 UI/CLI 执行工具；Host 自己循环调用模型；把工具参数、Provider payload、凭证或异常原文写入 ToolResult/日志；用进程内 Session map 关联并发结果。
+- 检查方式：`backend/tests/agent_host/test_tool_driver.py` 覆盖五类稳定错误，`test_tool_scheduler_integration.py` 使用真实 standalone SDK artifact 断言 tool call → Capability Registry → ToolResult → 第二轮模型，并发两个 Session 的 call id/result 不串。
+- 修复经验：NoteMeld 只实现薄 ToolDriver 并只调用 Capability Registry。产品成功和可恢复失败都转换为 `{call_id, output}` ToolResult；失败 output 使用稳定脱敏 code。只有 callback/ABI 自身格式损坏才返回 driver-level error，调度、并发、取消和下一轮模型始终归 SDK 所有。

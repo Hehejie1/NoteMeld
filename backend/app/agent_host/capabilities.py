@@ -14,6 +14,24 @@ from app.services.wiki_search import WikiSearch
 from app.utils.storage_paths import note_output_dir
 
 
+class CapabilityError(Exception):
+    """Safe product error that may cross the ToolDriver boundary."""
+
+    code = "business_error"
+
+
+class UnknownCapabilityError(CapabilityError):
+    code = "unknown_tool"
+
+
+class InvalidCapabilityArguments(CapabilityError):
+    code = "invalid_arguments"
+
+
+class CapabilityBusinessError(CapabilityError):
+    code = "business_error"
+
+
 class NoteMeldCapabilityRegistry:
     _DESCRIPTORS = {
         "wiki:search": {
@@ -67,31 +85,46 @@ class NoteMeldCapabilityRegistry:
         on_update: Callable[[dict[str, Any]], Any],
     ) -> dict[str, Any]:
         del call_id, signal
+        if name not in self._DESCRIPTORS:
+            raise UnknownCapabilityError("未知产品能力")
         update_result = on_update({"message": "正在读取 NoteMeld 知识", "progress": 0.0})
         if inspect.isawaitable(update_result):
             await update_result
         if name == "wiki:search":
             query = str(arguments.get("query") or "").strip()
             if not query:
-                raise ValueError("query 不能为空")
-            limit = max(1, min(int(arguments.get("limit") or 5), 20))
+                raise InvalidCapabilityArguments("query 不能为空")
+            try:
+                limit = max(1, min(int(arguments.get("limit") or 5), 20))
+            except (TypeError, ValueError) as error:
+                raise InvalidCapabilityArguments("limit 必须是整数") from error
             result = WikiSearch(note_output_dir() / "wiki").search(query, limit=limit)
         elif name == "note:search":
             query = str(arguments.get("query") or "").strip()
             if not query:
-                raise ValueError("query 不能为空")
-            limit = max(1, min(int(arguments.get("limit") or 10), 20))
+                raise InvalidCapabilityArguments("query 不能为空")
+            try:
+                limit = max(1, min(int(arguments.get("limit") or 10), 20))
+            except (TypeError, ValueError) as error:
+                raise InvalidCapabilityArguments("limit 必须是整数") from error
             result = search_note_documents_by_title(query, limit=limit)
         elif name == "note:read":
             title = str(arguments.get("title") or "").strip()
             if not title:
-                raise ValueError("title 不能为空")
+                raise InvalidCapabilityArguments("title 不能为空")
             result = read_note_document_by_title(title)
             if result is None:
-                raise ValueError("Note 不存在")
-        else:
-            raise ValueError(f"未知能力: {name}")
+                raise CapabilityBusinessError("Note 不存在")
         update_result = on_update({"message": "知识读取完成", "progress": 1.0})
         if inspect.isawaitable(update_result):
             await update_result
         return result
+
+
+__all__ = [
+    "CapabilityBusinessError",
+    "CapabilityError",
+    "InvalidCapabilityArguments",
+    "NoteMeldCapabilityRegistry",
+    "UnknownCapabilityError",
+]
