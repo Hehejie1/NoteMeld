@@ -25,7 +25,7 @@ def test_one_shot_uses_agent_api_and_keeps_jsonl_stdout(monkeypatch, capsys):
     monkeypatch.setattr(
         cli,
         "events",
-        lambda turn_id: [{"type": "message.delta", "payload": {"delta": "ok"}}, {"type": "turn.succeeded", "payload": {}}],
+        lambda turn_id, **_kwargs: [{"type": "message.delta", "payload": {"delta": "ok"}}, {"type": "turn.succeeded", "payload": {}}],
     )
 
     monkeypatch.setattr(cli.sys, "argv", ["notemeld-agent", "-p", "hello", "--conversation", "s-1", "--model", "gemma3:4b", "--output", "jsonl"])
@@ -46,7 +46,7 @@ def test_positional_prompt_remains_compatible_and_json_is_a_single_document(monk
         return {"data": {"turn_id": "turn-2"}}
 
     monkeypatch.setattr(cli, "request", fake_request)
-    monkeypatch.setattr(cli, "events", lambda turn_id: [{"type": "turn.succeeded", "payload": {"answer": "done"}}])
+    monkeypatch.setattr(cli, "events", lambda turn_id, **_kwargs: [{"type": "turn.succeeded", "payload": {"answer": "done"}}])
     monkeypatch.setattr(cli.sys, "argv", ["notemeld-agent", "hello", "--format", "json"])
 
     assert cli.main() == 0

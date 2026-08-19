@@ -1,6 +1,6 @@
 # Product Rules
 
-更新时间：2026-08-16
+更新时间：2026-08-19
 
 本文记录已经确认的产品硬规则。任何开发者或 Agent 修改需求、方案、代码、接口、数据结构前，都必须确认不会破坏这些规则。
 
@@ -18,6 +18,7 @@
 - 上传 Markdown 必须兼容浏览器把 `.md` 识别为 `application/octet-stream` 或 `binary/octet-stream` 的情况。
 - MCP 必须作为本地知识工具接入 AI IDE，endpoint 保持 `http://127.0.0.1:8483/mcp`。
 - 桌面端不能替代源码启动入口，`run_notemeld.sh` 和 `notemeld` CLI 必须继续可用。
+- Web、Tauri 和 `notemeld agent` 只能通过 `/api/agent/v1` 使用同一个 Agent Host；Session 复用 Conversation，同一 Session 同时只能有一个活动 Turn，不得由入口维护第二套 Agent 状态或直接写 Agent 数据库。
 
 ## 不允许被改坏的行为
 

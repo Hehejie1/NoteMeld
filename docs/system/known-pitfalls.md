@@ -277,6 +277,13 @@
 - 启动入口必须复用 Host loader 校验外部 wheel 的 version metadata、ABI contract、binding signatures、native exports 和 native SDK/schema version；“Python 包能 import”不等于 native artifact 兼容。缺失、架构错误或版本错误都应在启动前阻断，诊断不得回显本地 artifact 路径。
 - 检查方式：`backend/tests/agent_host/` 的 loader、artifact、CLI、driver、Turn、broker、preference 与 API 契约测试。
 
+## Agent Session 并发门禁只靠进程内状态或 SELECT FOR UPDATE
+
+- 发生过的问题/风险：入口各自维护活动 Turn map 会形成第二套状态；SQLite 又会忽略 `SELECT FOR UPDATE`，两个并发请求可能同时观察到“无活动 Turn”。SQLAlchemy 2.x 在查询 autobegin 后再次 `db.begin()` 还会直接拒绝创建 Turn。
+- 不允许重新引入的错误做法：UI/CLI 直接写 Agent 表；Router 绕过 Host entry；用进程内 dict 作为 Session 活动状态事实源；在 SQLite 只做先查后插；并发门禁失败后回退旧 Python Agent。
+- 检查方式：`backend/tests/agent_host/test_agent_store.py` 覆盖同 Session 并发一成一拒、不同 Session 均可创建、existing Conversation 不新增第二状态；`test_agent_route_cutover.py` 覆盖 Web/Tauri/CLI 的 `/api/agent/v1` 单一路径。
+- 修复经验：入口只提交 Host lifecycle command；Agent Store 在短 SQLite `BEGIN IMMEDIATE` 写事务内完成 Conversation/幂等/活动检查和插入，Turn 创建后模型执行不持有该锁。
+
 ## K0-K3 检索不能重新退回文件遍历
 
 - 发生过的问题/风险：如果在 10 万篇文章规模继续逐个读取 contribution/Markdown 或为每篇文章创建 Chroma collection，画像筛选和跨文章检索会随文章数线性放大，并且结果无法统一返回 `article_id`。

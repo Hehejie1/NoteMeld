@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
 from app.db.engine import Base
@@ -15,7 +18,7 @@ def _make_session_factory(tmp_path):
     session_factory = sessionmaker(bind=engine)
 
     with session_factory() as session:
-        session.add(
+        session.add_all([
             Conversation(
                 id="conv-1",
                 mode="chat",
@@ -26,8 +29,19 @@ def _make_session_factory(tmp_path):
                 transcript_json="{}",
                 audio_meta_json="{}",
                 markdown_json='""',
-            )
-        )
+            ),
+            Conversation(
+                id="conv-2",
+                mode="chat",
+                title="other",
+                status="SUCCESS",
+                note_state="none",
+                form_data_json="{}",
+                transcript_json="{}",
+                audio_meta_json="{}",
+                markdown_json='""',
+            ),
+        ])
         session.commit()
 
     return session_factory
@@ -56,6 +70,64 @@ def test_create_turn_blocks_parallel_active_turn_in_same_session(monkeypatch, tm
 
     with pytest.raises(agent_store.SessionBusyError):
         agent_store.create_turn("conv-1", turn_id="turn-2")
+
+
+def test_concurrent_turn_creation_rejects_second_turn_in_same_session(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+    barrier = Barrier(2)
+
+    def create(turn_id):
+        barrier.wait()
+        try:
+            return agent_store.create_turn("conv-1", turn_id=turn_id)
+        except agent_store.SessionBusyError as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(create, ["turn-a", "turn-b"]))
+
+    created = [result for result in results if isinstance(result, dict)]
+    rejected = [result for result in results if isinstance(result, agent_store.SessionBusyError)]
+    assert len(created) == 1
+    assert len(rejected) == 1
+
+
+def test_different_sessions_can_have_active_turns_concurrently(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+    barrier = Barrier(2)
+
+    def create(item):
+        session_id, turn_id = item
+        barrier.wait()
+        return agent_store.create_turn(session_id, turn_id=turn_id)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(create, [("conv-1", "turn-a"), ("conv-2", "turn-b")]))
+
+    assert {result["session_id"] for result in results} == {"conv-1", "conv-2"}
+    assert all(result["status"] == "created" for result in results)
+
+
+def test_existing_conversation_is_the_only_session_state(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+
+    with session_factory() as session:
+        before = session.query(Conversation).count()
+
+    turn = agent_store.create_turn("conv-1", turn_id="continued-turn")
+    agent_store.append_event(turn["turn_id"], {"delta": "ok"}, event_type="message.delta")
+
+    with session_factory() as session:
+        assert session.query(Conversation).count() == before
+        assert session.get(Conversation, "conv-1") is not None
+        table_names = set(inspect(session.get_bind()).get_table_names())
+    assert turn["session_id"] == "conv-1"
+    assert agent_store.list_events(turn["turn_id"])[0]["turn_id"] == turn["turn_id"]
+    assert "agent_sessions" not in table_names
+    assert "agent_messages" not in table_names
 
 
 def test_create_turn_allows_replay_when_session_is_busy(monkeypatch, tmp_path):

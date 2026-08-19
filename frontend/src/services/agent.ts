@@ -12,7 +12,6 @@ export type AgentEvent = {
 
 export type AgentContextRef = {
   type: string
-  [key: string]: unknown
 }
 
 export type AgentAttachment = {

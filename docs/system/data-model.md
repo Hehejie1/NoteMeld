@@ -1,6 +1,6 @@
 # Data Model
 
-更新时间：2026-08-16
+更新时间：2026-08-19
 
 本文记录当前数据模型和字段语义。修改数据结构、状态、缓存、统计或文件布局前必须先阅读本文，并搜索相关代码和测试。
 
@@ -182,7 +182,7 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 - 桌面自动更新元数据来自远端 endpoint，但用户数据仍在本地 App Data。
 ## Agent Host 数据边界
 
-Agent Host 使用 `agent_turns`, `agent_events`, `agent_preferences` 三张附加表。`agent_turns.session_id` 外键指向 `conversations.id`；消息历史仍来自 `conversation_messages`。UI-only 的 `note_progress`、`task_card`、`parameter_request` 等消息不会进入 SDK model history。模型选择顺序为显式 Turn 模型、会话偏好默认模型、偏好 fallback 第一项、用户可用模型第一项。
+Agent Host 使用 `agent_turns`, `agent_events`, `agent_preferences` 三张附加表。`agent_turns.session_id` 外键指向 `conversations.id`；不存在 `agent_sessions` 或 `agent_messages`，消息历史仍来自 `conversation_messages`。UI-only 的 `note_progress`、`task_card`、`parameter_request` 等消息不会进入 SDK model history。模型选择顺序为显式 Turn 模型、会话偏好默认模型、偏好 fallback 第一项、用户可用模型第一项。同一 Session 只允许一个非终态 Turn；SQLite 创建 Turn 时使用短 `BEGIN IMMEDIATE` 事务原子完成 Conversation 存在性、幂等键和活动 Turn 检查及插入，不维护进程内第二状态。
 
 ## K0-K3 Article Knowledge Index
 

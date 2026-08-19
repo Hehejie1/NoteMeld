@@ -4,6 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 from app.routers import agent
+from app.services import agent_store
 from fastapi import HTTPException
 
 
@@ -39,9 +40,9 @@ def test_events_endpoint_replays_then_waits_until_terminal(monkeypatch):
         calls.append(1)
         return next(snapshots, [event, terminal])
 
-    monkeypatch.setattr(agent.agent_store, "list_events", list_events)
+    monkeypatch.setattr(agent_store, "list_events", list_events)
     monkeypatch.setattr(
-        agent.agent_store,
+        agent_store,
         "get_turn",
         lambda _turn_id: {"status": "running"} if len(calls) < 2 else {"status": "succeeded"},
     )
@@ -58,7 +59,7 @@ def test_events_endpoint_replays_then_waits_until_terminal(monkeypatch):
 
 
 def test_events_endpoint_returns_404_for_unknown_turn(monkeypatch):
-    monkeypatch.setattr(agent.agent_store, "get_turn", lambda _turn_id: None)
+    monkeypatch.setattr(agent._entry, "get_turn", lambda _turn_id: None)
 
     request = SimpleNamespace(headers={})
     try:
@@ -75,7 +76,7 @@ def test_start_turn_projects_same_session_for_ui_and_cli(monkeypatch):
     monkeypatch.setattr(agent, "get_all_models", lambda: [{"model_name": "demo"}])
     monkeypatch.setattr(agent, "select_model", lambda *_args: "demo")
     monkeypatch.setattr(
-        agent.agent_store,
+        agent._entry,
         "create_turn",
         lambda session_id, **_kwargs: {"turn_id": "turn-1", "session_id": session_id, "status": "created"},
     )
@@ -97,7 +98,7 @@ def test_idempotent_retry_returns_existing_turn_without_duplicate_projection(mon
     monkeypatch.setattr(agent, "get_all_models", lambda: [{"model_name": "demo"}])
     monkeypatch.setattr(agent, "select_model", lambda *_args: "demo")
     monkeypatch.setattr(
-        agent.agent_store,
+        agent._entry,
         "create_turn",
         lambda *_args, **_kwargs: {
             "turn_id": "turn-existing", "session_id": "session-1", "status": "succeeded",
@@ -120,7 +121,7 @@ def test_start_turn_accepts_empty_text_with_context_refs_and_attachments(monkeyp
     monkeypatch.setattr(agent, "get_all_models", lambda: [{"model_name": "demo"}])
     monkeypatch.setattr(agent, "select_model", lambda *_args: "demo")
     monkeypatch.setattr(
-        agent.agent_store,
+        agent._entry,
         "create_turn",
         lambda *_, **__: {"turn_id": "turn-2", "session_id": "session-1", "status": "created"},
     )
@@ -146,20 +147,19 @@ def test_start_turn_accepts_empty_text_with_context_refs_and_attachments(monkeyp
 
 
 def test_cancel_does_not_pretend_native_turn_is_terminal(monkeypatch):
-    monkeypatch.setattr(agent.agent_store, "get_turn", lambda _turn_id: {
+    monkeypatch.setattr(agent._entry, "get_turn", lambda _turn_id: {
         "turn_id": "turn-1", "session_id": "session-1", "status": "running",
     })
     monkeypatch.setattr(agent.get_agent_sdk_host(), "cancel", lambda _turn_id: None)
     transitions = []
-    monkeypatch.setattr(agent.agent_store, "transition_turn", lambda *args, **kwargs: transitions.append((args, kwargs)) or {
+    monkeypatch.setattr(agent._entry, "mark_cancelling", lambda turn_id: transitions.append(turn_id) or {
         "turn_id": "turn-1", "status": "cancelling",
     })
 
     result = agent.cancel_turn("turn-1")
 
     assert result["data"] == {"turn_id": "turn-1", "accepted": True, "status": "cancelling"}
-    assert transitions[0][0][1] == "cancelling"
-    assert transitions[0][1]["terminal_event_type"] == "turn.cancelling"
+    assert transitions == ["turn-1"]
 
 
 def test_resolve_approval_routes_to_native_host(monkeypatch):

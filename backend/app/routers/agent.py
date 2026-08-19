@@ -13,40 +13,24 @@ from pydantic import BaseModel, Field, model_validator
 from app.agent_host.event_broker import EventBroker
 from app.agent_host.capabilities import NoteMeldCapabilityRegistry
 from app.agent_host.drivers.tools import NoteMeldToolDriver
+from app.agent_host.entry import (
+    PreferenceError,
+    SessionBusyError,
+    TurnNotFoundError,
+    TurnTerminalError,
+    get_agent_host_entry,
+)
 from app.agent_host.native_executor import NativeAgentExecutor
 from app.agent_host.preferences import ModelConfigurationRequired
 from app.agent_host.preferences import select_model
 from app.agent_host.host import get_agent_sdk_host
 from app.db.model_dao import get_all_models
-from app.services import agent_store
-from app.services.conversation_store import get_conversation, list_conversations, upsert_conversation
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 _events = EventBroker()
-
-
-def _finish_turn_callback(
-    _session_id: str,
-    turn_id: str,
-    status: str,
-    event: dict[str, Any],
-    *,
-    error_code: str | None = None,
-    error_message: str | None = None,
-    terminal_event_type: str = "terminal",
-) -> dict[str, Any]:
-    return agent_store.transition_turn(
-        turn_id,
-        status,
-        error_code=error_code,
-        error_message=error_message,
-        terminal_event=event,
-        terminal_event_type=terminal_event_type,
-    )
-
-
+_entry = get_agent_host_entry()
 _executor = NativeAgentExecutor(
-    finish_turn=_finish_turn_callback,
+    finish_turn=_entry.finish_turn,
     tool_driver=NoteMeldToolDriver(NoteMeldCapabilityRegistry()),
 )
 
@@ -128,18 +112,17 @@ def _normalize_turn_input(payload: TurnRequest) -> tuple[str, list[dict[str, Any
 
 @router.post("/sessions")
 def create_session(payload: SessionRequest):
-    session_id = payload.session_id or str(uuid.uuid4())
-    return _ok(upsert_conversation({"id": session_id, "title": payload.title, "mode": "chat"}))
+    return _ok(_entry.create_session(session_id=payload.session_id, title=payload.title))
 
 
 @router.get("/sessions")
 def get_sessions():
-    return _ok(list_conversations())
+    return _ok(_entry.list_sessions())
 
 
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str):
-    value = get_conversation(session_id)
+    value = _entry.get_session(session_id)
     if value is None:
         raise HTTPException(status_code=404, detail={"code": "session_not_found"})
     return _ok(value)
@@ -154,18 +137,18 @@ def create_turn(session_id: str, payload: TurnRequest):
             [str(row.get("model_name") or "") for row in get_all_models()],
         )
         normalized_input, attachments, context_refs = _normalize_turn_input(payload)
-        turn = agent_store.create_turn(
+        turn = _entry.create_turn(
             session_id,
             model_name=selected_model,
             idempotency_key=payload.idempotency_key,
         )
-    except agent_store.SessionBusyError as error:
+    except SessionBusyError as error:
         raise HTTPException(status_code=409, detail={"code": error.code, "message": str(error)}) from error
     except ModelConfigurationRequired as error:
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)}) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": str(error)}) from error
-    except agent_store.TurnNotFoundError as error:
+    except TurnNotFoundError as error:
         raise HTTPException(status_code=404, detail={"code": "session_not_found", "message": str(error)}) from error
     user_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:user"))
     assistant_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:assistant"))
@@ -196,7 +179,7 @@ def create_turn(session_id: str, payload: TurnRequest):
 
 @router.get("/turns/{turn_id}")
 def get_turn(turn_id: str):
-    value = agent_store.get_turn(turn_id)
+    value = _entry.get_turn(turn_id)
     if value is None:
         raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
     return _ok(value)
@@ -205,7 +188,7 @@ def get_turn(turn_id: str):
 @router.get("/turns/{turn_id}/events")
 def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
     """Replay persisted events and follow the turn until a terminal status."""
-    if agent_store.get_turn(turn_id) is None:
+    if _entry.get_turn(turn_id) is None:
         raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
     cursor = request.headers.get("last-event-id")
     if cursor is not None:
@@ -233,11 +216,11 @@ def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
 @router.post("/turns/{turn_id}/cancel")
 def cancel_turn(turn_id: str):
     try:
-        turn = agent_store.get_turn(turn_id)
+        turn = _entry.get_turn(turn_id)
         if turn is None:
-            raise agent_store.TurnNotFoundError(f"Turn 未找到: {turn_id}")
-        if str(turn.get("status")) in agent_store.TERMINAL_STATUSES:
-            raise agent_store.TurnTerminalError(f"已终态 Turn 不允许取消: {turn_id}")
+            raise TurnNotFoundError(f"Turn 未找到: {turn_id}")
+        if _entry.is_terminal(turn):
+            raise TurnTerminalError(f"已终态 Turn 不允许取消: {turn_id}")
         try:
             get_agent_sdk_host().cancel(turn_id)
         except KeyError:
@@ -246,22 +229,17 @@ def cancel_turn(turn_id: str):
             # immediately after registration and only the SDK emits terminal.
             pass
         if str(turn.get("status")) != "cancelling":
-            turn = agent_store.transition_turn(
-                turn_id,
-                "cancelling",
-                terminal_event={"type": "turn.cancelling"},
-                terminal_event_type="turn.cancelling",
-            )
+            turn = _entry.mark_cancelling(turn_id)
         return _ok({"turn_id": turn_id, "accepted": True, "status": "cancelling"})
-    except agent_store.TurnNotFoundError as error:
+    except TurnNotFoundError as error:
         raise HTTPException(status_code=404, detail={"code": "turn_not_found"}) from error
-    except agent_store.TurnTerminalError as error:
+    except TurnTerminalError as error:
         raise HTTPException(status_code=409, detail={"code": "turn_terminal", "message": str(error)}) from error
 
 
 @router.post("/turns/{turn_id}/steer")
 def steer_turn(turn_id: str, payload: dict | None = None):
-    if agent_store.get_turn(turn_id) is None:
+    if _entry.get_turn(turn_id) is None:
         raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
     try:
         get_agent_sdk_host().steer(turn_id, payload or {})
@@ -286,17 +264,17 @@ def resolve_approval(approval_id: str, payload: ApprovalRequest):
 
 @router.get("/sessions/{session_id}/model-preference")
 def get_preference(session_id: str):
-    return _ok(agent_store.get_model_preference(session_id))
+    return _ok(_entry.get_model_preference(session_id))
 
 
 @router.put("/sessions/{session_id}/model-preference")
 def put_preference(session_id: str, payload: PreferenceRequest):
     try:
-        value = agent_store.set_model_preference(
+        value = _entry.set_model_preference(
             session_id,
             default_model_id=payload.default_model_id,
             fallback_models=payload.fallback_models,
         )
-    except (agent_store.PreferenceError, agent_store.TurnNotFoundError) as error:
+    except (PreferenceError, TurnNotFoundError) as error:
         raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": str(error)}) from error
     return _ok(value)

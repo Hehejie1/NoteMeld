@@ -39,7 +39,7 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
             }
             response = self.driver({
                 "kind": "model.stream",
-                "payload": {"messages": [{"role": "user", "content": "hello"}]},
+                "payload": {"messages": request["messages"]},
             })
             assert response["ok"] is True
             self.on_event({"schema_version": "1", "type": "message.delta", "payload": {"delta": "hi"}})
@@ -88,7 +88,10 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
         lambda _name: (object(), SimpleNamespace(provider_id="demo-provider", name="demo")),
     )
     monkeypatch.setattr("app.agent_host.native_executor.append_message", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("app.agent_host.native_executor.agent_store.append_event", lambda _turn, event, **_kw: persisted.append(event))
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.agent_store.append_event",
+        lambda _turn, event, **kwargs: persisted.append((event, kwargs)),
+    )
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.transition_turn", lambda *args, **kwargs: finished.append((args, kwargs)))
 
     executor = NativeAgentExecutor(event_sink=events.append)
@@ -102,7 +105,8 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
     executor.run_sync("turn-1", "session-1", "hello", model_name="demo", asset_content="ctx-asset", context_refs=[{"type": "whiteboard_selection"}])
 
     assert [event["type"] for event in events] == ["message.delta", "turn.succeeded"], finished
-    assert [event["type"] for event in persisted] == ["message.delta"]
+    assert [kwargs["event_type"] for _event, kwargs in persisted] == ["message.delta"]
+    assert persisted[0][0] == {"delta": "hi"}
     assert finished[-1][0][1] == "succeeded"
     assert captured["request"]["history"] == [
         {"role": "user", "content": "hello"},
@@ -126,6 +130,11 @@ def test_native_executor_loads_async_tool_descriptors_when_tool_driver_not_provi
             assert isinstance(request.get("tools"), list) and request["tools"], "tools should be discovered before submit"
             tool_names = [item.get("name") for item in request.get("tools", [])]
             assert "article_lookup" in tool_names or any(item.startswith("knowledge:") for item in tool_names if isinstance(item, str))
+            response = self.driver({
+                "kind": "model.stream",
+                "payload": {"messages": request["messages"], "tools": request["tools"]},
+            })
+            assert response["ok"] is True
             self.on_event({"schema_version": "1", "type": "turn.succeeded", "payload": {}})
             return 1
 
@@ -142,6 +151,9 @@ def test_native_executor_loads_async_tool_descriptors_when_tool_driver_not_provi
             return None
 
     class FakeModelDriver:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
         async def stream(self, request):
             calls.append(request)
             return {"ok": True, "content": "", "tool_calls": [], "finish_reason": "stop", "usage": {}}
@@ -161,11 +173,10 @@ def test_native_executor_loads_async_tool_descriptors_when_tool_driver_not_provi
     )
 
     executor = NativeAgentExecutor()
-    executor.run_sync("turn-1", "session-1", "hello", model_name="demo", tool_driver=None)
+    executor.run_sync("turn-1", "session-1", "hello", model_name="demo")
 
     assert "request" in descriptors_seen
     assert descriptors_seen["request"]["input"]["tools"]
-    assert calls
     call = calls[0]
     assert call["messages"] == [{"role": "user", "content": "hello"}]
     assert call["tools"] == descriptors_seen["request"]["tools"]

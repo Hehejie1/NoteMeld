@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-08-16
+更新时间：2026-08-19
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -130,7 +130,7 @@
 | POST | `/api/agent/v1/approvals/{approval_id}` | `approved` / `decision`（兼容） | `approve`\|`deny` | UI/CLI | 404/409 | 仅将请求透传至 SDK |
 | GET/PUT | `/api/agent/v1/sessions/{session_id}/model-preference` | `default_model_id/fallback_models` | `{data: Preference}` | 设置/CLI | `invalid_input` |
 
-这些接口复用 `conversations` 作为 Session 主表；Agent 表只保存 Turn、Event 和模型偏好，不建立第二套历史。
+这些接口是 Web、Tauri、CLI、源码和桌面打包运行的唯一 Agent HTTP 入口。它们复用 `conversations` 作为 Session 主表；Agent 表只保存 Turn、Event 和模型偏好，不建立第二套历史。Router 只向 `AgentHostEntry` 提交生命周期命令，不直接写 Agent 表；同一 Session 的并发 Turn 返回 409 `session_busy`，不同 Session 可各自运行活动 Turn。
 
 CLI 契约：`notemeld agent -p/--prompt` 提交单次 Turn；`--conversation/--session` 继续指定 Conversation；`--model` 传递模型覆盖；`--output/--format text|json|jsonl` 控制输出。REPL 的 `/new`、`/resume ID`、`/sessions`、`/model [NAME]`、`/exit` 只组合本表接口，不直接写数据库，也不加载另一套 Agent runtime。
 

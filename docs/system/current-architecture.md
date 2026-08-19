@@ -1,6 +1,6 @@
 # Current Architecture
 
-更新时间：2026-08-16
+更新时间：2026-08-19
 
 本文只记录当前仓库真实系统事实，不描述理想化重构方案。新需求、方案、Bug 修复和代码改动前必须先阅读本文。
 
@@ -17,7 +17,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 桌面端：`desktop/src-tauri/`，Tauri v2。负责启动 Python backend sidecar、注入运行时配置、控制窗口展示、桌面文件能力和自动更新。
 - 打包层：`packaging/` + `.trae/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
 - 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
-- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；`/api/agent/v1` 创建 Turn 后由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成；approval resolve 通过同一个 native runtime 控制面回传。
+- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；Web、Tauri 和 CLI 都只调用 `/api/agent/v1`，Router 再通过无内存状态的 `AgentHostEntry` 进入同一 Host 生命周期。Turn 由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成；approval resolve 通过同一个 native runtime 控制面回传。
 
 ## 前端入口
 
@@ -110,7 +110,7 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 - L1 只返回候选名称与摘要；L2 只展开选中能力的 schema；L3 才执行 Wiki 搜索/页面读取、Skill 或 MCP 工具。L3 Wiki 结果动态写回原有 `sources` 列表。
 - 第三方 MCP 只读取 `enabled=true` 的 server 配置；L0/L1 不连接 server，L2/L3 才执行单 server 工具发现，请求完成、异常或 SSE 断开时关闭 adapter。
 - 同一请求内对同一 MCP server 的并行 L2/L3 发现通过 server 级异步锁合并为一次；设置 API 统一移除 auth 并把 headers/env 值替换为 `***`，编辑时由后端恢复已有凭证。
-- `use_wiki=false` 同时禁止注册和执行 Wiki capability。`AGENT_CHAT_ENABLED=false` 的 legacy free-chat 仍按原行为预取 Wiki，用于兼容和回滚。
+- `use_wiki=false` 同时禁止注册和执行 Wiki capability。生产 Agent 不存在 `AGENT_CHAT_ENABLED` 或 legacy free-chat runtime fallback。
 
 ### 主动学习空间链路
 
@@ -196,9 +196,9 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 
 当前 Host 已提供三个只读产品能力适配：`wiki:search`、`note:search`、`note:read`。它们只调用 NoteMeld 现有知识服务，不维护 Agent 状态机。SDK FFI 的工具描述传递和审批 resolve ABI 仍由独立 `notemeld-agent-sdk` 后续版本补齐；在 ABI 未具备前，Host 不会伪造审批成功，也不会把产品工具错误当成模型成功。
 
-Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和旧 free-chat 兼容层都基于同一事件信封工作。Host descriptor 计划以原子方式写入数据根目录的 `run/agent-runtime.json`，供 UI、CLI 和桌面进程复用。
+Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和兼容调用层都基于同一事件信封工作。Host descriptor 以原子方式写入数据根目录的 `run/agent-runtime.json`，供 Host 生命周期诊断复用。
 
-ChatComposer 的 `chat` 模式已改为只提交一次 Agent v1 Turn 并消费 SSE；`note`、`learn` 等非聊天分支继续使用原有链路。聊天用户消息由 TurnManager 写入 canonical conversation，前端不再直接写聊天用户/助手消息。
+ChatComposer 的 `chat` 模式已改为只提交一次 Agent v1 Turn 并消费 SSE；`note`、`learn` 等非聊天分支继续使用原有链路。聊天用户/助手消息由 Host executor 投影到 canonical conversation，前端不直接持久化 Agent 消息。`AgentHostEntry` 不维护活动 Turn map；SQLite `BEGIN IMMEDIATE` 事务在创建时保证同一 Session 只有一个非终态 Turn，不同 Session 的 Turn 创建后可并行执行。
 
 源码启动：
 
