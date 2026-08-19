@@ -40,6 +40,61 @@ def _resolve_saved_model(model_name: str | None) -> tuple[Any, Any]:
     return models, model
 
 
+def _safe_model_config(model: Any) -> dict[str, Any]:
+    capabilities = getattr(model, "capabilities", None)
+    return {
+        "provider_id": str(getattr(model, "provider_id", "") or ""),
+        "model_name": str(getattr(model, "name", "") or ""),
+        "context_window_tokens": int(getattr(model, "context_window_tokens", 4096) or 4096),
+        "capabilities": {
+            "supports_vision": bool(getattr(model, "supports_vision", False)),
+            "supports_stream": bool(getattr(model, "supports_stream", True)),
+            "supports_tool_calling": getattr(capabilities, "supports_tool_calling", None),
+        },
+    }
+
+
+def _complete_driver_messages(
+    raw_messages: Any,
+    *,
+    history: list[dict[str, Any]],
+    current_text: str,
+) -> list[dict[str, Any]]:
+    """Keep SDK messages authoritative, with an ABI-v1 first-round fallback.
+
+    Current native artifacts send the complete canonical message list. Older
+    ABI-v1 artifacts may send only the current user message on the first model
+    call; prefix the already loaded Conversation snapshot only for that exact
+    shape. Empty model requests fail closed at the caller.
+    """
+    if not isinstance(raw_messages, list):
+        return []
+    messages = [dict(item) for item in raw_messages if isinstance(item, dict)]
+    if len(messages) != 1 or not history:
+        return messages
+    only = messages[0]
+    content = only.get("content")
+    is_current_user = only.get("role") == "user" and (
+        content == current_text
+        or isinstance(content, dict) and str(content.get("text") or "") == current_text
+    )
+    return [*history, only] if is_current_user else messages
+
+
+def _is_model_history_item(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    role = str(item.get("role") or "")
+    if role not in {"system", "user", "assistant", "tool"}:
+        return False
+    content = item.get("content")
+    if content is not None and str(content):
+        return True
+    if role == "assistant" and item.get("tool_calls"):
+        return True
+    return role == "tool" and bool(item.get("tool_call_id"))
+
+
 class NativeAgentExecutor:
     """Run one persisted Agent v1 turn through the standalone Rust SDK."""
 
@@ -101,6 +156,18 @@ class NativeAgentExecutor:
                 "provider_id": str(getattr(model, "provider_id", "")),
                 "model_name": str(getattr(model, "name", model_name) or ""),
             }
+            model_config = _safe_model_config(model)
+            model_driver = NoteMeldModelDriver(
+                models,
+                model,
+                options={
+                    "usage_context": {
+                        "phase": "agent",
+                        "task_id": turn_id,
+                        "request_meta": {"session_id": session_id, "turn_id": turn_id},
+                    },
+                },
+            )
 
             async def call_driver(request: dict[str, Any]) -> dict[str, Any]:
                 kind = request.get("kind")
@@ -108,7 +175,31 @@ class NativeAgentExecutor:
                 if not isinstance(driver_payload, dict):
                     driver_payload = request
                 if kind == "model.stream":
-                    result = await NoteMeldModelDriver(models, model).stream(driver_payload)
+                    model_request = dict(driver_payload)
+                    model_request["messages"] = _complete_driver_messages(
+                        driver_payload.get("messages"),
+                        history=history,
+                        current_text=content,
+                    )
+                    if not model_request["messages"]:
+                        return {
+                            "schema_version": "1",
+                            "ok": False,
+                            "error": {
+                                "code": "invalid_input",
+                                "message": "模型请求缺少消息上下文",
+                                "details": {},
+                            },
+                        }
+                    model_request.update({
+                        "model": model_config,
+                        "model_override": model_override,
+                        "input": normalized_input,
+                        "context_refs": normalized_context_refs,
+                        "tools": tool_descriptors,
+                        "generation_config": {},
+                    })
+                    result = await model_driver.stream(model_request)
                     if result.get("ok"):
                         return {"schema_version": "1", "ok": True, "result": {
                             "chunks": result.get("chunks", []),
@@ -256,9 +347,16 @@ class NativeAgentExecutor:
                 if role not in {"system", "user", "assistant", "tool"}:
                     return None
                 content = item.get("content")
-                if content is None:
+                if content is None and role not in {"assistant", "tool"}:
                     return None
-                payload = {"role": role, "content": str(content) if not isinstance(content, (dict, list)) else json.dumps(content, ensure_ascii=False)}
+                payload = {
+                    "role": role,
+                    "content": (
+                        json.dumps(content, ensure_ascii=False)
+                        if isinstance(content, (dict, list))
+                        else "" if content is None else str(content)
+                    ),
+                }
                 if item.get("tool_calls") is not None:
                     payload["tool_calls"] = item.get("tool_calls")
                 if item.get("tool_call_id") is not None:
@@ -279,9 +377,8 @@ class NativeAgentExecutor:
             history = [
                 item
                 for item in history_store.load_history(session_id)
-                if str(item.get("role") or "") in {"system", "user", "assistant", "tool"}
-                and str(item.get("content") or "")
-            ][-40:]
+                if _is_model_history_item(item)
+            ]
             if history and history[-1] == {"role": "user", "content": content}:
                 history.pop()
             tool_provider = self.tool_driver.registry if self.tool_driver is not None else knowledge_provider
@@ -314,6 +411,7 @@ class NativeAgentExecutor:
                     "history": history,
                     "messages": sdk_messages,
                     "tools": tool_descriptors,
+                    "model": model_config,
                     "model_override": model_override,
                     "approval_mode": "interactive",
                 },

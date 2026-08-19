@@ -56,7 +56,7 @@ class EventBroker:
             "type": str(event_type),
             "payload": payload,
         }
-        for queue in tuple(self._with_lock(self._queues.get(turn_id, ())):
+        for queue in self._with_lock(self._queues.get(turn_id, set())):
             queue.put_nowait(record)
 
     async def publish(self, turn_id: str, event: dict[str, Any]) -> None:
