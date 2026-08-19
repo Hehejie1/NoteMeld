@@ -271,9 +271,10 @@
 ## Agent Host 与 SDK 版本漂移
 
 - 运行时必须同时校验 SDK version 与 Agent Event schema version；不兼容时 fail-closed，错误不得包含 Provider key 或完整 payload。
+- 当前已发布 artifact 的真实契约是 SDK `0.1.0`、schema `1`、ABI `1`；独立 SDK 的 wheel/header/build scripts/verifier 均以 `abi-v1.json` 为准。`abi-v2.json` 是未发布的未来契约，不能用 Python 包级临时 `ABI_VERSION=2` 覆盖 artifact 事实。
 - UI/CLI 不得直接写 `conversation_messages` 或 Agent Event；应通过 Host，避免重复消息和事件序列断裂。
 - 不允许通过 `NOTEMELD_AGENT_MODE=python|python-oracle|legacy` 回滚；这些模式必须 fail-closed。模型调用失败也不能静默切回旧 Agent，避免同一 Turn 执行两次。
-- 启动入口必须校验外部 wheel 的 SDK/schema 版本；“Python 包能 import”不等于 native artifact 兼容。缺失、架构错误或版本错误都应在启动前阻断。
+- 启动入口必须复用 Host loader 校验外部 wheel 的 version metadata、ABI contract、binding signatures、native exports 和 native SDK/schema version；“Python 包能 import”不等于 native artifact 兼容。缺失、架构错误或版本错误都应在启动前阻断，诊断不得回显本地 artifact 路径。
 - 检查方式：`backend/tests/agent_host/` 的 loader、artifact、CLI、driver、Turn、broker、preference 与 API 契约测试。
 
 ## K0-K3 检索不能重新退回文件遍历

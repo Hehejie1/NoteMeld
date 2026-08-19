@@ -12,11 +12,11 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_source_launcher_installs_and_validates_external_sdk_wheel() -> None:
     source = (ROOT / "run_notemeld.sh").read_text(encoding="utf-8")
     assert "NOTEMELD_AGENT_SDK_WHEEL" in source
-    assert "--no-deps --force-reinstall" in source
-    assert "import notemeld_agent_sdk.runtime as sdk_runtime" in source
-    assert 'SDK_VERSION == "0.1.0"' in source
-    assert 'SCHEMA_VERSION == "1"' in source
-    assert 'ABI_VERSION == "2"' in source
+    assert "--no-deps" in source
+    assert "--force-reinstall" in source
+    assert "from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable" in source
+    assert 'AgentSdkRuntime.load(binding_path="packaged")' in source
+    assert 'EXPECTED_NOTEMELD_AGENT_ABI_VERSION="1"' in source
     assert "Installed notemeld-agent-sdk is incompatible" in source
 
 
@@ -24,10 +24,9 @@ def test_installed_launcher_keeps_sdk_install_contract() -> None:
     source = (ROOT / "scripts" / "notemeld").read_text(encoding="utf-8")
     assert "NOTEMELD_AGENT_SDK_WHEEL" in source
     assert "ensure_agent_sdk" in source
-    assert "import notemeld_agent_sdk.runtime as sdk_runtime" in source
-    assert 'SDK_VERSION == "0.1.0"' in source
-    assert 'SCHEMA_VERSION == "1"' in source
-    assert 'ABI_VERSION == "2"' in source
+    assert "from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable" in source
+    assert 'AgentSdkRuntime.load(binding_path="packaged")' in source
+    assert 'EXPECTED_NOTEMELD_AGENT_ABI_VERSION="1"' in source
     assert "Installed notemeld-agent-sdk is incompatible" in source
 
 

@@ -46,7 +46,7 @@ BACKEND_REQUIREMENTS="${BACKEND_DIR}/requirements.txt"
 NOTEMELD_AGENT_SDK_WHEEL="${NOTEMELD_AGENT_SDK_WHEEL:-}"
 EXPECTED_NOTEMELD_AGENT_SDK_VERSION="0.1.0"
 EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION="1"
-EXPECTED_NOTEMELD_AGENT_ABI_VERSION="2"
+EXPECTED_NOTEMELD_AGENT_ABI_VERSION="1"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -376,22 +376,30 @@ if [[ ! -f "${BACKEND_STAMP}" || "${BACKEND_REQUIREMENTS}" -nt "${BACKEND_STAMP}
 fi
 
 ensure_agent_sdk() {
-  local check_code='import notemeld_agent_sdk.runtime as sdk_runtime
-if str(getattr(sdk_runtime, "SDK_VERSION", "")) == "0.1.0" and \
-   str(getattr(sdk_runtime, "SCHEMA_VERSION", "")) == "1" and \
-   str(getattr(sdk_runtime, "ABI_VERSION", "")) == "2":
-    raise SystemExit(0)
-raise SystemExit(1)
+  local check_code='import sys
+from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable
+try:
+    AgentSdkRuntime.load(binding_path="packaged")
+except AgentSdkUnavailable as error:
+    print(str(error), file=sys.stderr)
+    raise SystemExit(1)
 '
-  if "${VENV_DIR}/bin/python" -c "$check_code" >/dev/null 2>&1; then
+  local sdk_error=""
+  if sdk_error="$(PYTHONPATH="${VENV_DIR}/../backend${PYTHONPATH:+:${PYTHONPATH}}" \
+    "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
     return 0
   fi
-  [[ -n "${NOTEMELD_AGENT_SDK_WHEEL}" ]] || fail "notemeld-agent-sdk is not installed. Set NOTEMELD_AGENT_SDK_WHEEL to the compiled wheel before starting NoteMeld."
-  [[ -f "${NOTEMELD_AGENT_SDK_WHEEL}" ]] || fail "NOTEMELD_AGENT_SDK_WHEEL does not exist: ${NOTEMELD_AGENT_SDK_WHEEL}"
-  log "Installing standalone notemeld-agent-sdk from ${NOTEMELD_AGENT_SDK_WHEEL}"
-  "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check --no-deps --force-reinstall "${NOTEMELD_AGENT_SDK_WHEEL}"
-  "${VENV_DIR}/bin/python" -c "$check_code" >/dev/null 2>&1 \
-    || fail "Installed notemeld-agent-sdk is incompatible (expected SDK_VERSION=${EXPECTED_NOTEMELD_AGENT_SDK_VERSION} SCHEMA_VERSION=${EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION} ABI_VERSION=${EXPECTED_NOTEMELD_AGENT_ABI_VERSION})"
+  [[ -n "${NOTEMELD_AGENT_SDK_WHEEL}" ]] \
+    || fail "${sdk_error:-Agent SDK is missing or incompatible}. Set NOTEMELD_AGENT_SDK_WHEEL to the compiled wheel before starting NoteMeld."
+  [[ -f "${NOTEMELD_AGENT_SDK_WHEEL}" ]] || fail "The configured NOTEMELD_AGENT_SDK_WHEEL does not exist."
+  log "Installing standalone notemeld-agent-sdk wheel"
+  "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check --no-deps \
+    --force-reinstall "${NOTEMELD_AGENT_SDK_WHEEL}" >/dev/null 2>&1 \
+    || fail "Agent SDK wheel installation failed."
+  if ! sdk_error="$(PYTHONPATH="${VENV_DIR}/../backend${PYTHONPATH:+:${PYTHONPATH}}" \
+    "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
+    fail "${sdk_error:-Installed notemeld-agent-sdk is incompatible} (expected SDK_VERSION=${EXPECTED_NOTEMELD_AGENT_SDK_VERSION} SCHEMA_VERSION=${EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION} ABI_VERSION=${EXPECTED_NOTEMELD_AGENT_ABI_VERSION})"
+  fi
 }
 
 ensure_agent_sdk

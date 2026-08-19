@@ -9,7 +9,7 @@ def test_fastapi_lifespan_starts_shared_host_and_cleans_descriptor(monkeypatch, 
     from app.core.agent_runtime_descriptor import descriptor_path, read_descriptor
 
     fake_host = SimpleNamespace(
-        _loaded=SimpleNamespace(sdk_version="0.1.0"),
+        _loaded=SimpleNamespace(sdk_version="0.1.0", abi_version=1),
         started=False,
     )
 
@@ -34,7 +34,7 @@ def test_fastapi_lifespan_starts_shared_host_and_cleans_descriptor(monkeypatch, 
             descriptor = read_descriptor(tmp_path)
             assert descriptor is not None
             assert descriptor.pid > 0
-            assert descriptor.abi_version == 2
+            assert descriptor.abi_version == 1
             assert descriptor.base_url.endswith(":9999/api")
             assert descriptor_path(tmp_path).exists()
         assert closed == [True]

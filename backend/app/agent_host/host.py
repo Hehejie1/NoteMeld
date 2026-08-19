@@ -65,8 +65,18 @@ class AgentSdkHost:
             factory = self.runtime_factory or loaded.binding.Runtime
             self._loaded = loaded
             # The native runtime is created once. Per-turn callbacks are routed
-            # by the token included in ABI v2 driver requests.
-            self._runtime = factory(driver=self._dispatch_driver, on_event=self._dispatch_event)
+            # by the token included in the published ABI v1 driver requests.
+            factory_kwargs: dict[str, Any] = {
+                "driver": self._dispatch_driver,
+                "on_event": self._dispatch_event,
+            }
+            native_library = getattr(loaded, "native_library", None)
+            if native_library is not None:
+                factory_kwargs["native_library"] = native_library
+            try:
+                self._runtime = factory(**factory_kwargs)
+            except Exception as error:  # noqa: BLE001 - startup must fail closed
+                raise AgentSdkUnavailable("Agent SDK native artifact initialization failed") from error
             return self
 
     def _dispatch_driver(self, request: dict[str, Any]) -> Mapping[str, Any]:

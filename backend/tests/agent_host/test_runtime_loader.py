@@ -5,76 +5,129 @@ import types
 import pytest
 
 from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable
-from app.agent_host import runtime as runtime_module
 
 
-def test_loader_accepts_compatible_installed_binding(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1", ABI_VERSION=2)
-    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
+def _compatible_binding() -> types.SimpleNamespace:
+    return types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
+
+
+def _contract(*, sdk: str = "0.1.0", schema: str = "1", abi: int = 1) -> dict:
+    return {
+        "sdk_version": sdk,
+        "schema_version": schema,
+        "abi_version": abi,
+        "functions": [],
+    }
+
+
+def _stub_artifact(monkeypatch, binding, *, contract=None, native_library=None) -> None:
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: binding))
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_read_artifact_contract",
+        staticmethod(lambda _binding: contract or _contract()),
+    )
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_probe_native_artifact",
+        staticmethod(lambda _binding, _path, _contract: native_library),
+    )
+
+
+def test_loader_accepts_compatible_versioned_wheel_and_native_artifact(monkeypatch):
+    _stub_artifact(monkeypatch, _compatible_binding())
 
     runtime = AgentSdkRuntime.load(binding_path="packaged")
 
     assert runtime.mode == "rust"
     assert runtime.sdk_version == "0.1.0"
     assert runtime.schema_version == "1"
-    assert runtime.abi_version == 2
+    assert runtime.abi_version == 1
+    assert runtime.native_library is None
 
 
-def test_loader_falls_back_to_sdk_package_abi_when_binding_missing(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
-    package = types.SimpleNamespace(ABI_VERSION=2)
-    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
-    monkeypatch.setattr(runtime_module.importlib, "import_module", lambda name: package if name == "notemeld_agent_sdk" else module)
+def test_loader_fails_closed_when_sdk_package_is_missing(monkeypatch):
+    missing = ModuleNotFoundError("package unavailable", name="notemeld_agent_sdk")
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_load_binding",
+        staticmethod(lambda _path: (_ for _ in ()).throw(missing)),
+    )
 
-    runtime = AgentSdkRuntime.load(binding_path="packaged")
-
-    assert runtime.abi_version == 2
-
-
-def test_loader_fails_closed_on_incompatible_abi(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1", ABI_VERSION=99)
-    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
-
-    with pytest.raises(AgentSdkUnavailable, match="ABI"):
+    with pytest.raises(AgentSdkUnavailable, match="Agent SDK is not installed"):
         AgentSdkRuntime.load(binding_path="packaged")
 
 
-def test_loader_fails_closed_on_missing_abi(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
-    empty_package = types.SimpleNamespace()
-    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
-    monkeypatch.setattr(runtime_module.importlib, "import_module", lambda name: empty_package if name == "notemeld_agent_sdk" else module)
+def test_loader_fails_closed_on_incompatible_abi(monkeypatch):
+    _stub_artifact(monkeypatch, _compatible_binding(), contract=_contract(abi=2))
 
     with pytest.raises(AgentSdkUnavailable, match="ABI"):
         AgentSdkRuntime.load(binding_path="packaged")
 
 
 def test_loader_fails_closed_on_incompatible_schema(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="99", ABI_VERSION=2)
-    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
+    binding = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="99")
+    _stub_artifact(monkeypatch, binding)
 
     with pytest.raises(AgentSdkUnavailable, match="schema"):
         AgentSdkRuntime.load(binding_path="packaged")
 
 
+def test_loader_fails_closed_on_incompatible_sdk_version(monkeypatch):
+    binding = types.SimpleNamespace(SDK_VERSION="9.9.9", SCHEMA_VERSION="1")
+    _stub_artifact(monkeypatch, binding)
+
+    with pytest.raises(AgentSdkUnavailable, match="version"):
+        AgentSdkRuntime.load(binding_path="packaged")
+
+
+def test_loader_fails_closed_on_missing_native_artifact(monkeypatch):
+    binding = _compatible_binding()
+    _stub_artifact(monkeypatch, binding)
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_probe_native_artifact",
+        staticmethod(
+            lambda _binding, _path, _contract: (_ for _ in ()).throw(
+                AgentSdkUnavailable("Agent SDK native artifact is missing")
+            )
+        ),
+    )
+
+    with pytest.raises(AgentSdkUnavailable, match="native artifact is missing"):
+        AgentSdkRuntime.load(binding_path="packaged")
+
+
 @pytest.mark.parametrize("mode", ["python", "python-oracle", "legacy"])
-def test_loader_rejects_legacy_python_runtime(mode):
+def test_loader_rejects_legacy_without_calling_any_fallback(monkeypatch, mode):
+    called = False
+
+    def forbidden_loader(_path):
+        nonlocal called
+        called = True
+        raise AssertionError("legacy fallback must not load a binding")
+
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(forbidden_loader))
+
     with pytest.raises(AgentSdkUnavailable, match="legacy Python Agent runtime is removed"):
         AgentSdkRuntime.load(mode=mode)
+    assert called is False
 
 
-def test_loader_does_not_expose_provider_payload(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1", ABI_VERSION=2)
+def test_loader_does_not_expose_provider_payload_or_local_path(monkeypatch):
     monkeypatch.setattr(
         AgentSdkRuntime,
         "_load_binding",
-        staticmethod(lambda _path: (_ for _ in ()).throw(RuntimeError("api_key=secret"))),
+        staticmethod(
+            lambda _path: (_ for _ in ()).throw(
+                RuntimeError("api_key=secret path=/private/user/provider-payload.json")
+            )
+        ),
     )
 
     with pytest.raises(AgentSdkUnavailable) as exc_info:
         AgentSdkRuntime.load(binding_path="packaged")
-    assert "secret" not in str(exc_info.value)
-    assert "api_key" not in str(exc_info.value)
+    assert str(exc_info.value) == "Agent SDK binding initialization failed"
 
 
 def test_loader_rejects_external_sdk_source_directory(tmp_path):

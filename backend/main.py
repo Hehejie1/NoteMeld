@@ -68,8 +68,8 @@ async def lifespan(app: FastAPI):
                 pid=os.getpid(),
                 base_url=runtime_settings["api_base_url"],
                 token=secrets.token_urlsafe(32),
-                sdk_version=str(getattr(host._loaded, "sdk_version", "0.1.0")),
-                abi_version=int(getattr(host._loaded, "abi_version", 2) or 2),
+                sdk_version=str(host._loaded.sdk_version),
+                abi_version=int(host._loaded.abi_version),
                 data_root=str(descriptor_root),
             ),
         )

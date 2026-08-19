@@ -1,27 +1,32 @@
 from __future__ import annotations
 
+import ctypes
 import importlib
+import json
 import os
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 SDK_VERSION = "0.1.0"
 SCHEMA_VERSION = "1"
-ABI_VERSION = 2
+# The standalone SDK publishes abi-v1.json in every wheel/native artifact.
+# abi-v2.json is a future contract and is not part of the current release.
+ABI_VERSION = 1
+_ARTIFACT_METADATA = "notemeld-agent-sdk.json"
+_ABI_CONTRACT = f"abi-v{ABI_VERSION}.json"
 
 
 class AgentSdkUnavailable(RuntimeError):
     """Raised when the configured SDK cannot be loaded safely."""
 
 
-def _safe_reason(error: Exception) -> str:
-    # Provider configuration and payloads must never cross the startup boundary.
-    text = str(error).lower()
-    if any(token in text for token in ("api_key", "apikey", "authorization", "bearer", "token")):
-        return "SDK binding initialization failed"
-    return "SDK binding initialization failed: " + str(error)[:160]
+def _safe_reason(_error: Exception) -> str:
+    # Never echo dependency errors: loader failures may contain a local path,
+    # environment value, provider configuration, or payload fragment.
+    return "Agent SDK binding initialization failed"
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,7 @@ class AgentSdkRuntime:
     sdk_version: str | None
     schema_version: str | None
     abi_version: int | None
+    native_library: str | None = None
 
     @classmethod
     def load(
@@ -40,36 +46,47 @@ class AgentSdkRuntime:
         mode: str | None = None,
     ) -> "AgentSdkRuntime":
         selected = (mode or "rust").strip().lower()
-        # The Rust SDK is the only supported Agent runtime.  Keeping a silent
-        # Python/oracle fallback here creates a second state machine and can
-        # make UI/CLI turns disagree about events and terminal status.
+        # Reject legacy modes before touching any loader. There is no second
+        # runtime to call when the standalone SDK is unavailable.
         if selected in {"python", "python-oracle", "legacy"}:
             raise AgentSdkUnavailable("legacy Python Agent runtime is removed; install the Rust SDK")
         if selected != "rust":
             raise AgentSdkUnavailable("unsupported agent runtime mode")
+
+        requested = binding_path or "packaged"
         try:
-            binding = cls._load_binding(binding_path or "packaged")
+            binding = cls._load_binding(requested)
+            contract = cls._read_artifact_contract(binding)
             sdk_version = str(getattr(binding, "SDK_VERSION", ""))
             schema_version = str(getattr(binding, "SCHEMA_VERSION", ""))
-            abi_version = getattr(binding, "ABI_VERSION", None)
-            if abi_version is None:
-                try:
-                    abi_version = getattr(importlib.import_module("notemeld_agent_sdk"), "ABI_VERSION", None)
-                except Exception:
-                    abi_version = None
             try:
-                abi_version = int(abi_version)
-            except (TypeError, ValueError):
-                raise AgentSdkUnavailable("SDK ABI version mismatch")
-            if sdk_version != SDK_VERSION:
-                raise AgentSdkUnavailable("SDK version mismatch")
-            if schema_version != SCHEMA_VERSION:
-                raise AgentSdkUnavailable("schema version mismatch")
+                abi_version = int(contract["abi_version"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise AgentSdkUnavailable("Agent SDK ABI version mismatch") from error
+
+            if sdk_version != SDK_VERSION or contract.get("sdk_version") != SDK_VERSION:
+                raise AgentSdkUnavailable("Agent SDK version mismatch")
+            if schema_version != SCHEMA_VERSION or contract.get("schema_version") != SCHEMA_VERSION:
+                raise AgentSdkUnavailable("Agent SDK schema version mismatch")
             if abi_version != ABI_VERSION:
-                raise AgentSdkUnavailable("SDK ABI version mismatch")
-            return cls(binding, "rust", sdk_version, schema_version, abi_version)
+                raise AgentSdkUnavailable("Agent SDK ABI version mismatch")
+
+            native_library = cls._probe_native_artifact(binding, requested, contract)
+            return cls(
+                binding=binding,
+                mode="rust",
+                sdk_version=sdk_version,
+                schema_version=schema_version,
+                abi_version=abi_version,
+                native_library=native_library,
+            )
         except AgentSdkUnavailable:
             raise
+        except ModuleNotFoundError as error:
+            missing_name = str(error.name or "")
+            if missing_name == "notemeld_agent_sdk" or missing_name.startswith("notemeld_agent_sdk."):
+                raise AgentSdkUnavailable("Agent SDK is not installed") from error
+            raise AgentSdkUnavailable(_safe_reason(error)) from error
         except Exception as error:  # noqa: BLE001 - startup must fail closed
             raise AgentSdkUnavailable(_safe_reason(error)) from error
 
@@ -78,17 +95,100 @@ class AgentSdkRuntime:
         requested = str(path)
         if requested == "development":
             raise AgentSdkUnavailable("development SDK source loading is disabled; install the standalone wheel")
-        if requested not in {"packaged"}:
+        if requested != "packaged":
             candidate = Path(requested).expanduser().resolve()
             if candidate.is_dir():
                 raise AgentSdkUnavailable("SDK source directories are unsupported; install the standalone wheel")
-            if candidate.is_file():
-                # A native library path is permitted for artifact smoke tests, but
-                # Python modules still come from the installed standalone package.
-                os.environ.setdefault("NOTEMELD_AGENT_SDK_LIBRARY", str(candidate))
-        # The package is installed from the standalone artifact and is importable
-        # in the source venv or packaged sidecar.
+            if not candidate.is_file():
+                raise AgentSdkUnavailable("Agent SDK native artifact is missing")
+        # Normal package import is the only Python binding source. The wheel's
+        # versioned resources and native library are validated separately.
         return importlib.import_module("notemeld_agent_sdk.runtime")
+
+    @staticmethod
+    def _read_artifact_contract(binding: ModuleType) -> dict[str, Any]:
+        package_name = str(getattr(binding, "__package__", "") or "")
+        if package_name != "notemeld_agent_sdk":
+            raise AgentSdkUnavailable("Agent SDK artifact metadata is missing or invalid")
+        try:
+            package = resources.files(package_name)
+            metadata = json.loads(package.joinpath(_ARTIFACT_METADATA).read_text(encoding="utf-8"))
+            contract = json.loads(package.joinpath(_ABI_CONTRACT).read_text(encoding="utf-8"))
+        except (FileNotFoundError, ModuleNotFoundError, OSError, TypeError, ValueError) as error:
+            raise AgentSdkUnavailable("Agent SDK artifact metadata is missing or invalid") from error
+
+        if not isinstance(metadata, dict) or not isinstance(contract, dict):
+            raise AgentSdkUnavailable("Agent SDK artifact metadata is missing or invalid")
+        if metadata.get("sdk_version") != SDK_VERSION:
+            raise AgentSdkUnavailable("Agent SDK version mismatch")
+        if metadata.get("schema_version") != SCHEMA_VERSION:
+            raise AgentSdkUnavailable("Agent SDK schema version mismatch")
+        if metadata.get("binding_version") != SDK_VERSION:
+            raise AgentSdkUnavailable("Agent SDK binding version mismatch")
+        targets = metadata.get("target_triples")
+        if (
+            not isinstance(targets, list)
+            or not targets
+            or any(not isinstance(item, str) or not item for item in targets)
+        ):
+            raise AgentSdkUnavailable("Agent SDK artifact metadata is missing or invalid")
+        return contract
+
+    @staticmethod
+    def _probe_native_artifact(
+        binding: ModuleType,
+        path: str | os.PathLike[str],
+        contract: dict[str, Any],
+    ) -> str | None:
+        requested = str(path)
+        if requested == "packaged":
+            resolver = getattr(binding, "_packaged_native_library", None)
+            if not callable(resolver):
+                raise AgentSdkUnavailable("Agent SDK native artifact is missing")
+            native = resolver()
+            if native is None:
+                raise AgentSdkUnavailable("Agent SDK native artifact is missing")
+            native_path = Path(str(native))
+            explicit_path = None
+        else:
+            native_path = Path(requested).expanduser().resolve()
+            explicit_path = str(native_path)
+        if not native_path.is_file():
+            raise AgentSdkUnavailable("Agent SDK native artifact is missing")
+
+        functions = contract.get("functions")
+        if not isinstance(functions, list):
+            raise AgentSdkUnavailable("Agent SDK ABI version mismatch")
+        contract_symbols = {
+            item.get("name") for item in functions
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        }
+        signatures = getattr(binding, "ABI_SIGNATURES", None)
+        if not isinstance(signatures, dict) or contract_symbols != set(signatures):
+            raise AgentSdkUnavailable("Agent SDK ABI version mismatch")
+
+        try:
+            native_lib = ctypes.CDLL(str(native_path))
+        except OSError as error:
+            raise AgentSdkUnavailable("Agent SDK native artifact could not be loaded") from error
+        try:
+            for symbol in contract_symbols:
+                getattr(native_lib, symbol)
+        except AttributeError as error:
+            raise AgentSdkUnavailable("Agent SDK ABI version mismatch") from error
+
+        try:
+            native_lib.notemeld_agent_sdk_version.restype = ctypes.c_char_p
+            native_lib.notemeld_agent_schema_version.restype = ctypes.c_char_p
+            native_sdk_version = native_lib.notemeld_agent_sdk_version().decode("utf-8")
+            native_schema_version = native_lib.notemeld_agent_schema_version().decode("utf-8")
+        except (AttributeError, UnicodeDecodeError) as error:
+            raise AgentSdkUnavailable("Agent SDK ABI version mismatch") from error
+        if native_sdk_version != SDK_VERSION:
+            raise AgentSdkUnavailable("Agent SDK version mismatch")
+        if native_schema_version != SCHEMA_VERSION:
+            raise AgentSdkUnavailable("Agent SDK schema version mismatch")
+        return explicit_path
 
     @property
     def is_rollback(self) -> bool:

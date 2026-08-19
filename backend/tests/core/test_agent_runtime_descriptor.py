@@ -18,7 +18,7 @@ def _descriptor(root: str) -> AgentRuntimeDescriptor:
         base_url="http://127.0.0.1:8765",
         token="test-token",
         sdk_version="0.2.0",
-        abi_version=2,
+        abi_version=1,
         data_root=root,
         started_at="2026-08-18T00:00:00Z",
     )
@@ -39,7 +39,7 @@ def test_descriptor_rejects_incompatible_sdk_abi_or_data_root(tmp_path):
     path = write_descriptor(root, _descriptor(root))
     raw = json.loads(path.read_text())
 
-    for key, value in (("abi_version", 1), ("data_root", ""), ("sdk_version", "")):
+    for key, value in (("abi_version", 2), ("data_root", ""), ("sdk_version", "")):
         candidate = dict(raw)
         candidate[key] = value
         path.write_text(json.dumps(candidate))

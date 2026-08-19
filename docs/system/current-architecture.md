@@ -186,13 +186,13 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 
 ### Agent Host（增量迁移）
 
-`backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；源码和桌面启动都只允许加载已安装的 standalone wheel/native artifact，禁止从 SDK 源码目录回退。`python/python-oracle/legacy` runtime mode 已 fail-closed，不再存在静默回退。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。旧 `/api/chat/ask`、`/api/chat/free`、`/api/chat/free/stream` 已从生产 Router 移除。
+`backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；源码和桌面启动都只允许加载已安装的 standalone wheel/native artifact，禁止从 SDK 源码目录回退。当前真实发布契约是 `SDK 0.1.0 / Agent Event schema 1 / ABI 1`：loader 同时校验 wheel 内 `notemeld-agent-sdk.json`、`abi-v1.json`、Python binding signatures、native exports 及 native SDK/schema version；`abi-v2.json` 仍是未来契约，不能用包级临时常量绕过 artifact 校验。`python/python-oracle/legacy` runtime mode 已 fail-closed，不再存在静默回退。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。旧 `/api/chat/ask`、`/api/chat/free`、`/api/chat/free/stream` 已从生产 Router 移除。
 
 旧 NoteMeld Python Agent package（`backend/app/agent/`）、Python loop 测试和 `agent_host/compat.py` 已删除；Agent 行为只由独立 `notemeld-agent-sdk` 提供。
 
 桌面后端打包时通过 `NOTEMELD_AGENT_SDK_WHEEL` 安装带 native library 的 wheel；PyInstaller 只从已安装的 `notemeld_agent_sdk` package 收集 Python 和 `native/` 资源。SDK 的 Rust workspace、binding、CLI、构建脚本和发布 workflow 全部维护在 `/Users/hehejie/ai/notemeld-agent-sdk`，NoteMeld 不再跟踪源码副本。
 
-源码启动和已安装 CLI 启动都会先校验 `notemeld_agent_sdk` 的 SDK/schema 版本；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop，支持一次性和交互式会话、会话恢复、模型切换与 JSON/JSONL 输出。
+源码启动和已安装 CLI 启动都会调用同一个 `AgentSdkRuntime.load()` 校验 SDK/schema/ABI metadata 和 native artifact；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。缺包、缺 native、架构不可加载和版本漂移均使用固定分类错误，不回显 wheel 路径、Provider payload 或凭证。`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop，支持一次性和交互式会话、会话恢复、模型切换与 JSON/JSONL 输出。
 
 当前 Host 已提供三个只读产品能力适配：`wiki:search`、`note:search`、`note:read`。它们只调用 NoteMeld 现有知识服务，不维护 Agent 状态机。SDK FFI 的工具描述传递和审批 resolve ABI 仍由独立 `notemeld-agent-sdk` 后续版本补齐；在 ABI 未具备前，Host 不会伪造审批成功，也不会把产品工具错误当成模型成功。
 
