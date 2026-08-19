@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import Any
 
 import json
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.agent_host.event_broker import EventBroker
 from app.agent_host.capabilities import NoteMeldCapabilityRegistry
@@ -15,17 +16,37 @@ from app.agent_host.drivers.tools import NoteMeldToolDriver
 from app.agent_host.native_executor import NativeAgentExecutor
 from app.agent_host.preferences import ModelConfigurationRequired
 from app.agent_host.preferences import select_model
-from app.agent_host.turn_manager import SessionBusyError, TurnManager
 from app.agent_host.host import get_agent_sdk_host
 from app.db.model_dao import get_all_models
 from app.services import agent_store
-from app.services.conversation_store import append_message, get_conversation, list_conversations, upsert_conversation
+from app.services.conversation_store import get_conversation, list_conversations, upsert_conversation
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
-_turns = TurnManager()
 _events = EventBroker()
+
+
+def _finish_turn_callback(
+    _session_id: str,
+    turn_id: str,
+    status: str,
+    event: dict[str, Any],
+    *,
+    error_code: str | None = None,
+    error_message: str | None = None,
+    terminal_event_type: str = "terminal",
+) -> dict[str, Any]:
+    return agent_store.transition_turn(
+        turn_id,
+        status,
+        error_code=error_code,
+        error_message=error_message,
+        terminal_event=event,
+        terminal_event_type=terminal_event_type,
+    )
+
+
 _executor = NativeAgentExecutor(
-    finish_turn=_turns.finish_turn,
+    finish_turn=_finish_turn_callback,
     tool_driver=NoteMeldToolDriver(NoteMeldCapabilityRegistry()),
 )
 
@@ -40,7 +61,7 @@ class SessionRequest(BaseModel):
 
 
 class TurnRequest(BaseModel):
-    input: str = Field(min_length=1)
+    input: Any
     model: str | None = None
     idempotency_key: str | None = None
     linked_task_id: str | None = None
@@ -54,7 +75,55 @@ class PreferenceRequest(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    decision: str = Field(pattern="^(approve|deny)$")
+    decision: str | None = Field(default=None, pattern="^(approve|deny)$")
+    approved: bool | None = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "ApprovalRequest":
+        if self.decision is None:
+            if self.approved is None:
+                raise ValueError("approval payload must include decision or approved")
+            self.decision = "approve" if self.approved else "deny"
+        return self
+
+
+def _normalize_refs(raw_refs: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_refs, list):
+        return []
+    return [item for item in raw_refs if isinstance(item, dict)]
+
+
+def _normalize_attachments(raw_attachments: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_attachments, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for item in raw_attachments:
+        if isinstance(item, dict):
+            result.append(item)
+    return result
+
+
+def _normalize_turn_input(payload: TurnRequest) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    if isinstance(payload.input, str):
+        text = payload.input.strip()
+        if not text:
+            raise ValueError("input text cannot be empty")
+        attachments: list[dict[str, Any]] = []
+        context_refs = _normalize_refs(payload.context_refs)
+        return text, attachments, context_refs
+
+    if isinstance(payload.input, dict):
+        raw_text = payload.input.get("text")
+        text = "" if raw_text is None else str(raw_text).strip()
+        context_refs = _normalize_refs(payload.input.get("context_refs"))
+        attachments = _normalize_attachments(payload.input.get("attachments"))
+        if payload.context_refs:
+            context_refs.extend(_normalize_refs(payload.context_refs))
+        if not (text or attachments or context_refs):
+            raise ValueError("input.text/attachments/context_refs cannot be all empty")
+        return text, attachments, context_refs
+
+    raise ValueError("input must be a string or input object")
 
 
 @router.post("/sessions")
@@ -84,42 +153,41 @@ def create_turn(session_id: str, payload: TurnRequest):
             session_id,
             [str(row.get("model_name") or "") for row in get_all_models()],
         )
-        turn = _turns.start_turn(session_id, payload.input, model_name=selected_model, idempotency_key=payload.idempotency_key)
-    except SessionBusyError as error:
+        normalized_input, attachments, context_refs = _normalize_turn_input(payload)
+        turn = agent_store.create_turn(
+            session_id,
+            model_name=selected_model,
+            idempotency_key=payload.idempotency_key,
+        )
+    except agent_store.SessionBusyError as error:
         raise HTTPException(status_code=409, detail={"code": error.code, "message": str(error)}) from error
     except ModelConfigurationRequired as error:
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)}) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": str(error)}) from error
     except agent_store.TurnNotFoundError as error:
         raise HTTPException(status_code=404, detail={"code": "session_not_found", "message": str(error)}) from error
     user_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:user"))
     assistant_message_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"notemeld:{turn['turn_id']}:assistant"))
-    if turn.get("replayed"):
-        return _ok({**turn, "user_message_id": user_message_id,
-                    "assistant_message_id": assistant_message_id,
-                    "events_url": f"/api/agent/v1/turns/{turn['turn_id']}/events"})
-    try:
-        append_message(session_id, {
-            "id": user_message_id,
-            "role": "user",
-            "message_type": "user_input",
-            "content": payload.input,
-            "status": "completed",
+    if turn.pop("_replayed", False):
+        return _ok({
+            **turn,
+            "replayed": True,
+            "user_message_id": user_message_id,
+            "assistant_message_id": assistant_message_id,
+            "events_url": f"/api/agent/v1/turns/{turn['turn_id']}/events",
         })
-        append_message(session_id, {
-            "id": assistant_message_id,
-            "role": "assistant",
-            "message_type": "assistant_text",
-            "content": "",
-            "status": "streaming",
-        })
-    except Exception as error:  # noqa: BLE001 - durable projection failure
-        raise HTTPException(status_code=500, detail={"code": "store_unavailable", "message": "无法创建 Agent 消息投影"}) from error
     _executor.start(
         session_id=session_id,
         turn_id=turn["turn_id"],
-        content=payload.input,
+        content=normalized_input,
         model_name=selected_model,
+        user_message_id=user_message_id,
         assistant_message_id=assistant_message_id,
+        asset_content=payload.asset_content,
+        attachments=attachments,
+        context_refs=context_refs,
+        event_sink=lambda payload: _events.publish_sync(turn["turn_id"], payload),
     )
     turn = {**turn, "user_message_id": user_message_id, "assistant_message_id": assistant_message_id,
             "events_url": f"/api/agent/v1/turns/{turn['turn_id']}/events", "replayed": False}
@@ -137,6 +205,8 @@ def get_turn(turn_id: str):
 @router.get("/turns/{turn_id}/events")
 def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
     """Replay persisted events and follow the turn until a terminal status."""
+    if agent_store.get_turn(turn_id) is None:
+        raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
     cursor = request.headers.get("last-event-id")
     if cursor is not None:
         try:
@@ -145,31 +215,18 @@ def get_turn_events(request: Request, turn_id: str, after_sequence: int = -1):
             raise HTTPException(status_code=400, detail={"code": "invalid_input", "message": "Last-Event-ID must be an integer"})
     async def stream():
         cursor = after_sequence
-        idle_rounds = 0
-        while idle_rounds < 3000:
-            emitted = False
-            for event in agent_store.list_events(turn_id):
-                sequence = int(event["sequence"])
-                if sequence <= cursor:
-                    continue
-                payload = {
-                    "event_id": event["event_id"],
-                    "turn_id": event["turn_id"],
-                    "sequence": sequence,
-                    "type": event.get("event_type") or (event.get("payload_json") or {}).get("type", "unknown"),
-                    "payload": event.get("payload_json") if isinstance(event.get("payload_json"), dict) else {},
-                }
-                cursor = sequence
-                emitted = True
-                yield f"id: {sequence}\nevent: {payload['type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-            turn = agent_store.get_turn(turn_id)
-            if turn is None:
-                return
-            if str(turn.get("status")) in agent_store.TERMINAL_STATUSES:
-                return
-            idle_rounds = 0 if emitted else idle_rounds + 1
-            await asyncio.sleep(0.1)
-
+        async for event in _events.subscribe(turn_id, after_sequence=cursor):
+            payload = {
+                "event_id": event["event_id"],
+                "turn_id": event.get("turn_id") or turn_id,
+                "sequence": int(event.get("sequence", -1)),
+                "schema_version": str(event.get("schema_version") or "1"),
+                "type": event.get("type") or event.get("event_type") or "agent.event",
+                "payload": event.get("payload") if isinstance(event.get("payload"), dict) else {},
+            }
+            cursor = int(payload["sequence"])
+            yield f"id: {cursor}\nevent: {payload['type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 

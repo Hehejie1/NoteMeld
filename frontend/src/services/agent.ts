@@ -10,13 +10,30 @@ export type AgentEvent = {
   payload?: Record<string, unknown>
 }
 
+export type AgentContextRef = {
+  type: string
+  [key: string]: unknown
+}
+
+export type AgentAttachment = {
+  type: string
+  content: string
+  [key: string]: unknown
+}
+
+export type AgentTurnInput = {
+  text: string
+  attachments?: AgentAttachment[]
+  context_refs?: AgentContextRef[]
+}
+
 export type AgentTurnRequest = {
-  input: string
+  input: string | AgentTurnInput
   model?: string
   idempotency_key?: string
   linked_task_id?: string
   asset_content?: string
-  context_refs?: unknown[]
+  context_refs?: AgentContextRef[]
 }
 
 const baseUrl = () => String(getRuntimeApiBaseUrl() || import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
@@ -45,17 +62,29 @@ export const createAgentSession = (sessionId?: string) =>
 export const cancelAgentTurn = (turnId: string) => json(`/agent/v1/turns/${turnId}/cancel`, { method: 'POST' })
 export const steerAgentTurn = (turnId: string, input: string) =>
   json(`/agent/v1/turns/${turnId}/steer`, { method: 'POST', body: JSON.stringify({ input }) })
-export const resolveAgentApproval = (approvalId: string, approved: boolean) =>
-  json(`/agent/v1/approvals/${approvalId}`, { method: 'POST', body: JSON.stringify({ approved }) })
+export const resolveAgentApproval = (
+  approvalId: string,
+  decision: 'approve' | 'deny' | boolean,
+) =>
+  json(`/agent/v1/approvals/${approvalId}`, {
+    method: 'POST',
+    body: JSON.stringify(
+      typeof decision === 'boolean' ? { approved: decision } : { decision },
+    ),
+  })
 
 export async function* streamAgentEvents(turnId: string, afterSequence = -1): AsyncGenerator<AgentEvent> {
+  const headers: Record<string, string> = { Accept: 'text/event-stream' }
+  if (afterSequence >= 0) headers['Last-Event-ID'] = String(afterSequence)
   const response = await fetch(`${baseUrl()}/agent/v1/turns/${turnId}/events?after_sequence=${afterSequence}`, {
-    headers: { Accept: 'text/event-stream' },
+    headers,
   })
   if (!response.ok || !response.body) throw new Error(`Agent 事件请求失败: ${response.status}`)
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let lastEventId: number | null = null
+  let currentEventType = 'agent.event'
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
@@ -63,10 +92,32 @@ export async function* streamAgentEvents(turnId: string, afterSequence = -1): As
     const frames = buffer.split('\n\n')
     buffer = frames.pop() || ''
     for (const frame of frames) {
-      const line = frame.split('\n').find(item => item.startsWith('data:'))
-      if (!line) continue
-      const event = JSON.parse(line.slice(5).trim()) as AgentEvent
-      if (event.type && event.type !== 'agent.schema') yield event
+      const dataLines: string[] = []
+      const lines = frame.split('\n')
+      for (const line of lines) {
+        if (!line || line.startsWith(':')) continue
+        if (line.startsWith('event:')) currentEventType = line.slice(6).trim()
+        else if (line.startsWith('id:')) lastEventId = Number.parseInt(line.slice(3).trim(), 10)
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+      }
+      if (!dataLines.length) continue
+      const eventText = dataLines.join('\n')
+      if (!eventText) continue
+      let event: AgentEvent
+      try {
+        event = JSON.parse(eventText) as AgentEvent
+      } catch (error) {
+        continue
+      }
+      if (event.type && event.type !== 'agent.schema') {
+        yield {
+          ...event,
+          type: event.type || currentEventType,
+          event_id: event.event_id || String(lastEventId || event.sequence || 0),
+          sequence: event.sequence ?? (Number.isFinite(lastEventId) ? lastEventId : -1),
+          turn_id: event.turn_id || turnId,
+        }
+      }
     }
   }
 }

@@ -9,6 +9,7 @@ from typing import Any
 
 SDK_VERSION = "0.1.0"
 SCHEMA_VERSION = "1"
+ABI_VERSION = 2
 
 
 class AgentSdkUnavailable(RuntimeError):
@@ -29,6 +30,7 @@ class AgentSdkRuntime:
     mode: str
     sdk_version: str | None
     schema_version: str | None
+    abi_version: int | None
 
     @classmethod
     def load(
@@ -49,11 +51,23 @@ class AgentSdkRuntime:
             binding = cls._load_binding(binding_path or "packaged")
             sdk_version = str(getattr(binding, "SDK_VERSION", ""))
             schema_version = str(getattr(binding, "SCHEMA_VERSION", ""))
+            abi_version = getattr(binding, "ABI_VERSION", None)
+            if abi_version is None:
+                try:
+                    abi_version = getattr(importlib.import_module("notemeld_agent_sdk"), "ABI_VERSION", None)
+                except Exception:
+                    abi_version = None
+            try:
+                abi_version = int(abi_version)
+            except (TypeError, ValueError):
+                raise AgentSdkUnavailable("SDK ABI version mismatch")
             if sdk_version != SDK_VERSION:
                 raise AgentSdkUnavailable("SDK version mismatch")
             if schema_version != SCHEMA_VERSION:
                 raise AgentSdkUnavailable("schema version mismatch")
-            return cls(binding, "rust", sdk_version, schema_version)
+            if abi_version != ABI_VERSION:
+                raise AgentSdkUnavailable("SDK ABI version mismatch")
+            return cls(binding, "rust", sdk_version, schema_version, abi_version)
         except AgentSdkUnavailable:
             raise
         except Exception as error:  # noqa: BLE001 - startup must fail closed

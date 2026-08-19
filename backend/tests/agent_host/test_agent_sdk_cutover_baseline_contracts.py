@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
 from app.agent_host import native_executor
 from app.routers import agent as agent_router
 
 
-@pytest.mark.xfail(reason="Task1 baseline: 需要在SDK运行时提交中保留会话历史", strict=True)
 def test_submit_turn_should_include_session_history(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -20,7 +17,7 @@ def test_submit_turn_should_include_session_history(monkeypatch):
         def submit_turn(self, request):
             captured["request"] = request
             self._on_event({"schema_version": "1", "type": "turn.succeeded", "sequence": 0, "payload": {"answer": "ok"}})
-            return "token-1"
+            return 1
 
         def wait(self, *_):
             return None
@@ -53,24 +50,26 @@ def test_submit_turn_should_include_session_history(monkeypatch):
     assert "history" in input_payload, (
         "目标契约要求在 submit_turn.input 中包含会话历史；当前实现返回空上下文。"
     )
+    assert "messages" in request, "SDK 入口必须接受按消息序列组织的上下文快照。"
+    assert request["messages"] and request["messages"][-1]["role"] == "user"
+    assert request["messages"] == input_payload["history"] + [{"role": "user", "content": "你好"}]
+    assert "tools" in request, "SDK 入口必须回传工具描述清单。"
+    assert "tools" in input_payload, "input schema 约束要求 tools 与 request 的顶层保持一致。"
+    assert request["tools"] == input_payload["tools"]
 
 
-@pytest.mark.xfail(reason="Task1 baseline: turn/events 需要订阅 EventBroker 实现 live 推送", strict=True)
 def test_turn_events_api_should_be_live_stream():
     source = inspect.getsource(agent_router.get_turn_events)
     assert "await _events.subscribe(" in source
 
 
-@pytest.mark.xfail(reason="Task1 baseline: steer 应该写入当前 Turn 并返回可确认 ack", strict=True)
 def test_steer_turn_should_support_mid_turn_control(monkeypatch):
     monkeypatch.setattr(agent_router.agent_store, "get_turn", lambda *_: {"turn_id": "turn-1"})
-    response = agent_router.steer_turn("turn-1")
+    response = agent_router.steer_turn("turn-1", {})
     assert response.get("data", {}).get("status") == "accepted"
 
 
-@pytest.mark.xfail(reason="Task1 baseline: approval 解析链应可完成 resolve 流程", strict=True)
 def test_approval_resolve_should_ack_decision():
-    result = agent_router.resolve_approval("approval-1")
+    result = agent_router.resolve_approval("approval-1", agent_router.ApprovalRequest(decision="approve"))
     assert isinstance(result, dict)
     assert result.get("data", {}).get("approval_id") == "approval-1"
-

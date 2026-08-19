@@ -106,8 +106,21 @@ export interface FreeChatStreamHandlers {
 
 export const askFreeChat = async (data: FreeChatPayload): Promise<FreeChatResponse> => {
   const session = data.conversation_id || (await createAgentSession()).data.id
+  const input: {
+    text: string
+    attachments?: Array<{ type: string; content: string }>
+    context_refs?: ConversationContextRef[]
+  } = {
+    text: data.question,
+  }
+  if (data.asset_content) {
+    input.attachments = [{ type: 'text', content: data.asset_content }]
+  }
+  if (data.context_refs?.length) {
+    input.context_refs = data.context_refs
+  }
   const turn = await startAgentTurn(session, {
-    input: data.question,
+    input,
     model: data.model_name,
     linked_task_id: data.linked_task_id,
     asset_content: data.asset_content,
@@ -140,8 +153,21 @@ export const streamFreeChat = async (
     return
   }
   const session = data.conversation_id || (await createAgentSession()).data.id
+  const input: {
+    text: string
+    attachments?: Array<{ type: string; content: string }>
+    context_refs?: ConversationContextRef[]
+  } = {
+    text: data.question,
+  }
+  if (data.asset_content) {
+    input.attachments = [{ type: 'text', content: data.asset_content }]
+  }
+  if (data.context_refs?.length) {
+    input.context_refs = data.context_refs
+  }
   const turn = await startAgentTurn(session, {
-    input: data.question,
+    input,
     model: data.model_name,
     linked_task_id: data.linked_task_id,
     asset_content: data.asset_content,

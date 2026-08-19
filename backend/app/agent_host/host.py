@@ -33,6 +33,21 @@ class AgentSdkHost:
         self._lock = RLock()
         self._closed = False
 
+    @staticmethod
+    def _coerce_turn_token(value: Any, *, allow_zero: bool = False) -> int:
+        if isinstance(value, bool):
+            raise AgentSdkUnavailable("invalid turn token type")
+        try:
+            token = int(value)
+        except (TypeError, ValueError) as error:
+            raise AgentSdkUnavailable("invalid native turn token") from error
+        if allow_zero:
+            if token < 0:
+                raise AgentSdkUnavailable("invalid native turn token")
+        elif token <= 0:
+            raise AgentSdkUnavailable("invalid native turn token")
+        return token
+
     @property
     def started(self) -> bool:
         return self._runtime is not None and not self._closed
@@ -55,7 +70,14 @@ class AgentSdkHost:
             return self
 
     def _dispatch_driver(self, request: dict[str, Any]) -> Mapping[str, Any]:
-        token = int(request.get("turn_token") or 0)
+        raw_token = request.get("turn_token")
+        if raw_token is None:
+            token = 0
+        else:
+            try:
+                token = self._coerce_turn_token(raw_token, allow_zero=True)
+            except AgentSdkUnavailable:
+                token = 0
         with self._lock:
             driver = self._drivers.get(token)
             if driver is None:
@@ -84,7 +106,7 @@ class AgentSdkHost:
         with self._lock:
             if not self.started:
                 self.start()
-            handle = NativeTurnHandle(turn_id, int(token))
+            handle = NativeTurnHandle(turn_id, self._coerce_turn_token(token))
             self._handles[turn_id] = handle
             return handle
 
@@ -101,11 +123,18 @@ class AgentSdkHost:
             request_id = str(request.get("request_id") or turn_id)
             self._pending_drivers[request_id] = driver
             self._pending_events[turn_id] = on_event
-            token = int(runtime.submit_turn(dict(request)))
-            if not token:
+            try:
+                raw_token = runtime.submit_turn(dict(request))
+            except Exception as error:
                 self._pending_drivers.pop(request_id, None)
                 self._pending_events.pop(turn_id, None)
-                raise AgentSdkUnavailable("native turn submission failed")
+                raise AgentSdkUnavailable("native turn submission failed") from error
+            try:
+                token = self._coerce_turn_token(raw_token)
+            except AgentSdkUnavailable as error:
+                self._pending_drivers.pop(request_id, None)
+                self._pending_events.pop(turn_id, None)
+                raise AgentSdkUnavailable("native turn submission failed") from error
             handle = NativeTurnHandle(turn_id, token)
             self._handles[turn_id] = handle
             self._drivers[token] = driver

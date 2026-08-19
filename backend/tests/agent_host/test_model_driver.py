@@ -72,3 +72,24 @@ def test_model_driver_does_not_turn_provider_error_into_empty_success():
     result = asyncio.run(NoteMeldModelDriver(ErrorModels(), model=object()).stream({"messages": []}))
     assert result["ok"] is False
     assert result["error"]["code"] == "model_unavailable"
+
+
+def test_model_driver_parses_toolcall_arguments_from_json_string():
+    class Tools:
+        async def stream(self, model, ctx, options=None, signal=None):
+            yield type("Event", (), {
+                "type": "toolcall_end",
+                "tool_call_id": "call-1",
+                "tool_name": "wiki:search",
+                "arguments": '{"query":"note"}',
+            })()
+            yield type("Event", (), {"type": "done", "usage": None})()
+
+    result = asyncio.run(NoteMeldModelDriver(Tools(), model=object()).stream({"messages": [{"role": "user", "content": "hi"}]}))
+    tool_calls = result["tool_calls"]
+    assert tool_calls == [{
+        "type": "tool_call",
+        "call_id": "call-1",
+        "tool_name": "wiki:search",
+        "arguments": {"query": "note"},
+    }]

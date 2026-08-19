@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Awaitable, Callable, Mapping
 
 from app.ai.errors import (
@@ -17,6 +18,65 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _compose_user_message(input_payload: Mapping[str, Any]) -> str:
+    text = str(input_payload.get("text") or "")
+    attachments = input_payload.get("attachments") or []
+    context_refs = input_payload.get("context_refs") or []
+    if attachments or context_refs:
+        return json.dumps(
+            {
+                "text": text,
+                "attachments": attachments,
+                "context_refs": context_refs,
+            },
+            ensure_ascii=False,
+        )
+    return text
+
+
+def _coerce_tool_arguments(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    return {}
+
+
+def _normalize_history_records(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    output: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        role = str(item.get("role") or "")
+        if role not in {"system", "user", "assistant", "tool"}:
+            continue
+        if "content" not in item:
+            continue
+        content = item.get("content")
+        if content is None:
+            continue
+        normalized = {
+            "role": role,
+            "content": json.dumps(content, ensure_ascii=False) if isinstance(content, (dict, list)) else str(content),
+        }
+        if item.get("tool_calls") is not None:
+            normalized["tool_calls"] = item.get("tool_calls")
+        if item.get("tool_call_id") is not None:
+            normalized["tool_call_id"] = item.get("tool_call_id")
+        output.append(normalized)
+    return output
+
+
 def _model_tools(raw_tools: Any) -> list[dict[str, Any]] | None:
     """Translate SDK descriptors to the provider's OpenAI tool envelope."""
     if not raw_tools:
@@ -28,14 +88,15 @@ def _model_tools(raw_tools: Any) -> list[dict[str, Any]] | None:
         name = str(descriptor.get("name") or "").strip()
         if not name:
             continue
+        parameters = descriptor.get("input_schema")
+        if not isinstance(parameters, Mapping):
+            parameters = descriptor.get("parameters")
         result.append({
             "type": "function",
             "function": {
                 "name": name,
                 "description": str(descriptor.get("description") or ""),
-                "parameters": descriptor.get("input_schema")
-                if isinstance(descriptor.get("input_schema"), Mapping)
-                else {"type": "object"},
+                "parameters": parameters if isinstance(parameters, Mapping) else {"type": "object"},
             },
         })
     return result or None
@@ -74,6 +135,11 @@ class NoteMeldModelDriver:
         emit: Callable[[dict[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
         messages = list(request.get("messages") or [])
+        if not messages:
+            messages = _normalize_history_records(request.get("history"))
+            user_message = _compose_user_message(request.get("input") or {})
+            if user_message:
+                messages.append({"role": "user", "content": user_message})
         ctx = LLMContext(messages=messages, tools=_model_tools(request.get("tools")))
         chunks: list[str] = []
         usage_payload: dict[str, int] = {
@@ -108,7 +174,7 @@ class NoteMeldModelDriver:
                         "type": "tool_call",
                         "call_id": str(getattr(event, "tool_call_id", "") or ""),
                         "tool_name": str(getattr(event, "tool_name", "") or ""),
-                        "arguments": getattr(event, "arguments", "") or "{}",
+                        "arguments": _coerce_tool_arguments(getattr(event, "arguments", "")),
                     }
                     tool_calls.append(tool_call)
                     await send(tool_call)

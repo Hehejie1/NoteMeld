@@ -5,10 +5,11 @@ import types
 import pytest
 
 from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable
+from app.agent_host import runtime as runtime_module
 
 
 def test_loader_accepts_compatible_installed_binding(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1", ABI_VERSION=2)
     monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
 
     runtime = AgentSdkRuntime.load(binding_path="packaged")
@@ -16,10 +17,40 @@ def test_loader_accepts_compatible_installed_binding(monkeypatch):
     assert runtime.mode == "rust"
     assert runtime.sdk_version == "0.1.0"
     assert runtime.schema_version == "1"
+    assert runtime.abi_version == 2
+
+
+def test_loader_falls_back_to_sdk_package_abi_when_binding_missing(monkeypatch):
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
+    package = types.SimpleNamespace(ABI_VERSION=2)
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
+    monkeypatch.setattr(runtime_module.importlib, "import_module", lambda name: package if name == "notemeld_agent_sdk" else module)
+
+    runtime = AgentSdkRuntime.load(binding_path="packaged")
+
+    assert runtime.abi_version == 2
+
+
+def test_loader_fails_closed_on_incompatible_abi(monkeypatch):
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1", ABI_VERSION=99)
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
+
+    with pytest.raises(AgentSdkUnavailable, match="ABI"):
+        AgentSdkRuntime.load(binding_path="packaged")
+
+
+def test_loader_fails_closed_on_missing_abi(monkeypatch):
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
+    empty_package = types.SimpleNamespace()
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
+    monkeypatch.setattr(runtime_module.importlib, "import_module", lambda name: empty_package if name == "notemeld_agent_sdk" else module)
+
+    with pytest.raises(AgentSdkUnavailable, match="ABI"):
+        AgentSdkRuntime.load(binding_path="packaged")
 
 
 def test_loader_fails_closed_on_incompatible_schema(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="99")
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="99", ABI_VERSION=2)
     monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: module))
 
     with pytest.raises(AgentSdkUnavailable, match="schema"):
@@ -33,7 +64,7 @@ def test_loader_rejects_legacy_python_runtime(mode):
 
 
 def test_loader_does_not_expose_provider_payload(monkeypatch):
-    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1")
+    module = types.SimpleNamespace(SDK_VERSION="0.1.0", SCHEMA_VERSION="1", ABI_VERSION=2)
     monkeypatch.setattr(
         AgentSdkRuntime,
         "_load_binding",

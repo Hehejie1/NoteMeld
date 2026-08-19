@@ -31,6 +31,11 @@ class TurnAlreadyExistsError(AgentStoreError):
     """Raised when non-null idempotency key is already used."""
 
 
+class SessionBusyError(AgentStoreError):
+    """Raised when the same session has an active non-terminal turn."""
+    code = "session_busy"
+
+
 class PreferenceError(AgentStoreError):
     """Raised when preference payload is invalid."""
 
@@ -133,6 +138,17 @@ def _is_terminal_status(status: str) -> bool:
     return status in TERMINAL_STATUSES
 
 
+def _coerce_stored_event_payload(event_type: str, payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+
+    if payload.get("type") == event_type and "payload" in payload:
+        inner_payload = payload.get("payload")
+        return {} if inner_payload is None else inner_payload
+
+    return payload
+
+
 def create_turn(
     session_id: str,
     *,
@@ -145,34 +161,47 @@ def create_turn(
     try:
         _ensure_session_exists(db, session_id)
 
-        if idempotency_key is not None:
-            existing = (
+        with db.begin():
+            if idempotency_key is not None:
+                existing = (
+                    db.query(AgentTurn)
+                    .filter_by(session_id=session_id, idempotency_key=idempotency_key)
+                    .with_for_update()
+                    .first()
+                )
+                if existing is not None:
+                    value = _serialize_turn(existing)
+                    # Internal marker consumed by HTTP projection;
+                    # callers must not create another message pair or native turn.
+                    value["_replayed"] = True
+                    return value
+
+            active = (
                 db.query(AgentTurn)
-                .filter_by(session_id=session_id, idempotency_key=idempotency_key)
+                .filter(
+                    AgentTurn.session_id == session_id,
+                    ~AgentTurn.status.in_(tuple(TERMINAL_STATUSES)),
+                )
+                .with_for_update()
                 .first()
             )
-            if existing is not None:
-                value = _serialize_turn(existing)
-                # Internal marker consumed by TurnManager/HTTP projection;
-                # callers must not create another message pair or native turn.
-                value["_replayed"] = True
-                return value
+            if active is not None:
+                raise SessionBusyError("同一会话当前已有活动 Turn")
 
-        turn = AgentTurn(
-            turn_id=turn_id or str(uuid.uuid4()),
-            session_id=session_id,
-            idempotency_key=idempotency_key,
-            status=status,
-            model_name=model_name,
-        )
-        db.add(turn)
-        try:
-            db.commit()
-        except IntegrityError as error:
-            db.rollback()
-            if _is_idempotency_conflict(error):
-                raise TurnAlreadyExistsError("同一会话的幂等键已存在") from error
-            raise
+            turn = AgentTurn(
+                turn_id=turn_id or str(uuid.uuid4()),
+                session_id=session_id,
+                idempotency_key=idempotency_key,
+                status=status,
+                model_name=model_name,
+            )
+            db.add(turn)
+            try:
+                db.flush()
+            except IntegrityError as error:
+                if _is_idempotency_conflict(error):
+                    raise TurnAlreadyExistsError("同一会话的幂等键已存在") from error
+                raise
 
         db.refresh(turn)
         value = _serialize_turn(turn)
@@ -264,7 +293,10 @@ def transition_turn(
                     db,
                     turn_id=turn_id,
                     event_type=terminal_event_type,
-                    payload=terminal_event,
+                    payload=_coerce_stored_event_payload(
+                        terminal_event_type,
+                        terminal_event,
+                    ),
                     sequence=None,
                 )
             elif terminal_event is not None:
@@ -275,7 +307,10 @@ def transition_turn(
                     db,
                     turn_id=turn_id,
                     event_type=terminal_event_type,
-                    payload=terminal_event,
+                    payload=_coerce_stored_event_payload(
+                        terminal_event_type,
+                        terminal_event,
+                    ),
                     sequence=None,
                 )
 
@@ -323,7 +358,7 @@ def recover_nonterminal() -> list[str]:
                     db,
                     turn_id=turn.turn_id,
                     event_type="turn.interrupted",
-                    payload={"type": "turn.interrupted", "reason": "host_restart"},
+                    payload={"reason": "host_restart"},
                     sequence=None,
                 )
                 turn.status = "interrupted"
@@ -412,6 +447,7 @@ class TurnStoreSequenceError(AgentStoreError):
 __all__ = [
     "AgentStoreError",
     "TurnAlreadyExistsError",
+    "SessionBusyError",
     "TurnNotFoundError",
     "TurnStoreSequenceError",
     "TurnTerminalError",

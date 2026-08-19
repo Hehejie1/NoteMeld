@@ -10,6 +10,7 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
     events = []
     persisted = []
     finished = []
+    captured = {}
 
     class FakeRuntime:
         def __init__(self, *_args, driver, on_event, **_kwargs):
@@ -17,7 +18,21 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
             self.on_event = on_event
 
         def submit_turn(self, request):
+            captured["request"] = request
             assert request["input"]["text"] == "hello"
+            assert request["input"]["attachments"] == [{"type": "text", "content": "ctx-asset"}]
+            assert request["input"]["context_refs"] == [{"type": "whiteboard_selection"}]
+            assert request["history"] == [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "previous"},
+            ]
+            assert request["messages"] == [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "previous"},
+                {"role": "user", "content": "hello"},
+            ]
+            assert request["tools"] and isinstance(request["tools"][0].get("name"), str)
+            assert request["input"]["tools"] == request["tools"]
             assert request["model_override"] == {
                 "provider_id": "demo-provider",
                 "model_name": "demo",
@@ -57,11 +72,14 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
             pass
 
         async def stream(self, _request):
-            assert _request["messages"] == [{"role": "user", "content": "hello"}]
+            assert _request["messages"] == [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "previous"},
+                {"role": "user", "content": "hello"},
+            ]
             return {"ok": True, "content": "hi", "tool_calls": [], "finish_reason": "stop", "usage": {}}
 
     monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
-    monkeypatch.setattr("app.agent_host.native_executor.get_conversation", lambda _session_id: {})
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.get_turn", lambda _turn_id: {"status": "running"})
     monkeypatch.setattr("app.agent_host.native_executor.create_models", lambda: object())
     monkeypatch.setattr("app.agent_host.native_executor.NoteMeldModelDriver", FakeModelDriver)
@@ -69,15 +87,88 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
         "app.agent_host.native_executor._resolve_saved_model",
         lambda _name: (object(), SimpleNamespace(provider_id="demo-provider", name="demo")),
     )
+    monkeypatch.setattr("app.agent_host.native_executor.append_message", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.append_event", lambda _turn, event, **_kw: persisted.append(event))
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.transition_turn", lambda *args, **kwargs: finished.append((args, kwargs)))
 
     executor = NativeAgentExecutor(event_sink=events.append)
-    executor.run_sync("turn-1", "session-1", "hello", model_name="demo")
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.ConversationHistoryStore.load_history",
+        lambda _self, _session_id: [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "previous"},
+        ],
+    )
+    executor.run_sync("turn-1", "session-1", "hello", model_name="demo", asset_content="ctx-asset", context_refs=[{"type": "whiteboard_selection"}])
 
     assert [event["type"] for event in events] == ["message.delta", "turn.succeeded"], finished
     assert [event["type"] for event in persisted] == ["message.delta"]
     assert finished[-1][0][1] == "succeeded"
+    assert captured["request"]["history"] == [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "previous"},
+    ]
+
+
+def test_native_executor_loads_async_tool_descriptors_when_tool_driver_not_provided(monkeypatch):
+    from app.agent_host.native_executor import NativeAgentExecutor
+
+    calls = []
+    descriptors_seen = {}
+
+    class FakeRuntime:
+        def __init__(self, *_args, driver, on_event, **_kwargs):
+            self.driver = driver
+            self.on_event = on_event
+
+        def submit_turn(self, request):
+            descriptors_seen["request"] = request
+            assert isinstance(request.get("tools"), list) and request["tools"], "tools should be discovered before submit"
+            tool_names = [item.get("name") for item in request.get("tools", [])]
+            assert "article_lookup" in tool_names or any(item.startswith("knowledge:") for item in tool_names if isinstance(item, str))
+            self.on_event({"schema_version": "1", "type": "turn.succeeded", "payload": {}})
+            return 1
+
+        def wait(self, _token, _timeout):
+            return None
+
+    class FakeHost:
+        def submit(self, _turn_id, request, *, driver, on_event):
+            self.runtime = FakeRuntime(driver=driver, on_event=on_event)
+            self.runtime.submit_turn(request)
+            return type("Token", (), {"token": 1})
+
+        def forget(self, _turn_id):
+            return None
+
+    class FakeModelDriver:
+        async def stream(self, request):
+            calls.append(request)
+            return {"ok": True, "content": "", "tool_calls": [], "finish_reason": "stop", "usage": {}}
+
+    monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
+    monkeypatch.setattr("app.agent_host.native_executor.agent_store.get_turn", lambda _turn_id: {"status": "running"})
+    monkeypatch.setattr("app.agent_host.native_executor._resolve_saved_model", lambda _name: (object(), type("m", (), {"provider_id": "demo-provider", "name": "demo"})()))
+    monkeypatch.setattr("app.agent_host.native_executor.create_models", lambda: object())
+    monkeypatch.setattr("app.agent_host.native_executor.NoteMeldModelDriver", FakeModelDriver)
+    monkeypatch.setattr("app.agent_host.native_executor.append_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.agent_host.native_executor.agent_store.append_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.agent_host.native_executor.agent_store.transition_turn", lambda *args, **kwargs: None)
+
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.ConversationHistoryStore.load_history",
+        lambda _self, _session_id: [],
+    )
+
+    executor = NativeAgentExecutor()
+    executor.run_sync("turn-1", "session-1", "hello", model_name="demo", tool_driver=None)
+
+    assert "request" in descriptors_seen
+    assert descriptors_seen["request"]["input"]["tools"]
+    assert calls
+    call = calls[0]
+    assert call["messages"] == [{"role": "user", "content": "hello"}]
+    assert call["tools"] == descriptors_seen["request"]["tools"]
 
 
 def test_native_executor_routes_tool_calls_to_product_driver(monkeypatch):
@@ -141,17 +232,21 @@ def test_native_executor_routes_tool_calls_to_product_driver(monkeypatch):
             return {"items": []}
 
     monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
-    monkeypatch.setattr("app.agent_host.native_executor.get_conversation", lambda _session_id: {})
     monkeypatch.setattr(
         "app.agent_host.native_executor._resolve_saved_model",
         lambda _name: (object(), SimpleNamespace(provider_id="demo-provider", name="demo")),
     )
+    monkeypatch.setattr("app.agent_host.native_executor.append_message", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("app.agent_host.native_executor.NoteMeldModelDriver", lambda *_args, **_kwargs: object())
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.append_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.get_turn", lambda _turn_id: {"status": "running"})
     monkeypatch.setattr("app.agent_host.native_executor.agent_store.transition_turn", lambda *args, **kwargs: finished.append((args, kwargs)))
 
     executor = NativeAgentExecutor(tool_driver=FakeToolDriver())
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.ConversationHistoryStore.load_history",
+        lambda _self, _session_id: [],
+    )
     executor.run_sync("turn-1", "session-1", "hello", model_name="demo")
 
     assert requested == [({

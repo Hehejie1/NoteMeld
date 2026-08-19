@@ -16,6 +16,7 @@ def test_source_launcher_installs_and_validates_external_sdk_wheel() -> None:
     assert "import notemeld_agent_sdk.runtime as sdk_runtime" in source
     assert 'SDK_VERSION == "0.1.0"' in source
     assert 'SCHEMA_VERSION == "1"' in source
+    assert 'ABI_VERSION == "2"' in source
     assert "Installed notemeld-agent-sdk is incompatible" in source
 
 
@@ -26,6 +27,7 @@ def test_installed_launcher_keeps_sdk_install_contract() -> None:
     assert "import notemeld_agent_sdk.runtime as sdk_runtime" in source
     assert 'SDK_VERSION == "0.1.0"' in source
     assert 'SCHEMA_VERSION == "1"' in source
+    assert 'ABI_VERSION == "2"' in source
     assert "Installed notemeld-agent-sdk is incompatible" in source
 
 

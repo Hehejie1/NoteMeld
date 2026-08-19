@@ -566,6 +566,16 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     if (!matchedModel) return
     if (!ensureBackendReady()) return
 
+    const input: { text: string; attachments?: Array<{ type: string; content: string; source?: string }>; context_refs?: typeof contextRefs } = {
+      text: question,
+    }
+    if (assetContent) {
+      input.attachments = [{ type: 'text', content: assetContent, source: 'upload_asset' }]
+    }
+    if (contextRefs?.length) {
+      input.context_refs = contextRefs as typeof contextRefs
+    }
+
     const assistantMessageId = uuidv4()
     const assistantMessage = {
       id: assistantMessageId,
@@ -584,7 +594,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     let streamError = ''
 
     const turn = await startAgentTurn(conversationId, {
-      input: question,
+      input,
       model: modelName,
       idempotency_key: assistantMessageId,
       linked_task_id: linkedTaskId,

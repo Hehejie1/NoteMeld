@@ -7,12 +7,13 @@ from typing import Any, Callable
 
 from app.agent_host.drivers.model import NoteMeldModelDriver
 from app.agent_host.drivers.tools import NoteMeldToolDriver
+from app.agent_host.drivers.storage import ConversationHistoryStore
 from app.agent_host.host import AgentSdkHost, get_agent_sdk_host
 from app.agent_host.knowledge_provider import NoteMeldKnowledgeProvider
 from app.ai import create_models
 from app.db.model_dao import get_all_models
 from app.services import agent_store
-from app.services.conversation_store import get_conversation, update_message
+from app.services.conversation_store import append_message, update_message
 from app.utils.logger import get_logger
 
 
@@ -56,11 +57,22 @@ class NativeAgentExecutor:
         self.tool_driver = tool_driver
 
     def start(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None,
-              assistant_message_id: str | None = None) -> threading.Thread:
+              user_message_id: str | None = None, assistant_message_id: str | None = None, asset_content: str | None = None,
+              attachments: list[dict[str, Any]] | None = None,
+              context_refs: list[dict[str, Any]] | None = None,
+              event_sink: Callable[[dict[str, Any]], Any] | None = None) -> threading.Thread:
         worker = threading.Thread(
             target=self.run_sync,
             args=(turn_id, session_id, content),
-            kwargs={"model_name": model_name, "assistant_message_id": assistant_message_id},
+            kwargs={
+                "model_name": model_name,
+                "user_message_id": user_message_id,
+                "assistant_message_id": assistant_message_id,
+                "asset_content": asset_content,
+                "attachments": attachments,
+                "context_refs": context_refs,
+                "event_sink": event_sink,
+            },
             name=f"notemeld-agent-{turn_id[:8]}",
             daemon=True,
         )
@@ -68,10 +80,21 @@ class NativeAgentExecutor:
         return worker
 
     def run_sync(self, turn_id: str, session_id: str, content: str, *, model_name: str | None = None,
-                 assistant_message_id: str | None = None) -> None:
+                 user_message_id: str | None = None, assistant_message_id: str | None = None, asset_content: str | None = None,
+                 attachments: list[dict[str, Any]] | None = None,
+                 context_refs: list[dict[str, Any]] | None = None,
+                 event_sink: Callable[[dict[str, Any]], Any] | None = None) -> None:
         terminal: dict[str, Any] | None = None
         assistant_content = ""
+        sink = event_sink or self.event_sink
+        history_store = ConversationHistoryStore()
         try:
+            self._seed_conversation_messages(
+                session_id=session_id,
+                user_message_id=user_message_id,
+                assistant_message_id=assistant_message_id,
+                content=content,
+            )
             models, model = _resolve_saved_model(model_name)
             knowledge_provider = NoteMeldKnowledgeProvider()
             model_override = {
@@ -155,53 +178,142 @@ class NativeAgentExecutor:
             def on_event(event: dict[str, Any]) -> None:
                 nonlocal terminal, assistant_content
                 event_type = str(event.get("type") or "")
-                if self.event_sink is not None:
-                    self.event_sink(event)
+                payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
                 if event_type in _TERMINAL:
                     terminal = event
+                    error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
                     if assistant_message_id:
-                        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-                        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
-                        update_message(session_id, assistant_message_id, {
+                        self._safe_update_message(session_id, assistant_message_id, {
                             "status": "completed" if event_type == "turn.succeeded" else "failed",
                             "content": assistant_content,
                             "error": event_type != "turn.succeeded",
                             "meta": {"turn_id": turn_id, "error": error},
                         })
+                    if sink is not None:
+                        sink(event)
                 else:
-                    if event_type == "message.delta":
-                        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+                    if event_type == "message.started":
+                        if assistant_message_id and str(payload.get("role") or "").lower() == "assistant":
+                            self._safe_update_message(session_id, assistant_message_id, {
+                                "status": "running",
+                                "content": str(payload.get("content") or ""),
+                            })
+                    elif event_type == "message.delta":
                         assistant_content += str(payload.get("delta") or payload.get("content") or "")
                         if assistant_message_id:
-                            update_message(session_id, assistant_message_id, {"content": assistant_content, "status": "streaming"})
-                    agent_store.append_event(
-                        turn_id,
-                        event,
-                        sequence=event.get("sequence"),
-                        event_type=event_type,
-                    )
+                            self._safe_update_message(session_id, assistant_message_id, {"content": assistant_content, "status": "streaming"})
+                    elif event_type == "message.completed":
+                        content_payload = payload.get("content")
+                        if content_payload is not None:
+                            assistant_content = str(content_payload)
+                            if assistant_message_id:
+                                self._safe_update_message(session_id, assistant_message_id, {"content": assistant_content, "status": "streaming"})
+                    elif event_type == "usage.updated":
+                        if assistant_message_id and payload:
+                            self._safe_update_message(session_id, assistant_message_id, {"meta": {"usage": payload}})
+
+                    try:
+                        agent_store.append_event(
+                            turn_id,
+                            payload,
+                            sequence=event.get("sequence"),
+                            event_type=event_type,
+                        )
+                    except agent_store.TurnTerminalError:
+                        logger.debug(
+                            "skip appending event for terminal turn=%s type=%s",
+                            turn_id,
+                            event_type,
+                        )
+                    if sink is not None:
+                        sink(event)
 
             def driver(request: dict[str, Any]) -> dict[str, Any]:
                 return asyncio.run(call_driver(request))
 
+            def _coerce_tool_schema(value: Any) -> list[dict[str, Any]]:
+                if not isinstance(value, list):
+                    return []
+                result: list[dict[str, Any]] = []
+                for item in value:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name") or "").strip()
+                    if not name:
+                        continue
+                    descriptor = {
+                        "name": name,
+                        "description": str(item.get("description") or ""),
+                        "input_schema": item.get("input_schema") or {"type": "object"},
+                    }
+                    result.append(descriptor)
+                return result
+
+            def _coerce_history_item(item: Any) -> dict[str, Any] | None:
+                if not isinstance(item, dict):
+                    return None
+                role = str(item.get("role") or "")
+                if role not in {"system", "user", "assistant", "tool"}:
+                    return None
+                content = item.get("content")
+                if content is None:
+                    return None
+                payload = {"role": role, "content": str(content) if not isinstance(content, (dict, list)) else json.dumps(content, ensure_ascii=False)}
+                if item.get("tool_calls") is not None:
+                    payload["tool_calls"] = item.get("tool_calls")
+                if item.get("tool_call_id") is not None:
+                    payload["tool_call_id"] = item.get("tool_call_id")
+                return payload
+
             host: AgentSdkHost = AgentSdkHost(binding_path=self.library) if self.library else get_agent_sdk_host()
-            conversation = get_conversation(session_id) or {}
+            normalized_context_refs = context_refs if isinstance(context_refs, list) else []
+            normalized_attachments: list[dict[str, Any]] = []
+            for attachment in attachments or []:
+                if isinstance(attachment, dict):
+                    normalized_attachments.append({
+                        "type": str(attachment.get("type") or "text"),
+                        "content": str(attachment.get("content") or ""),
+                    })
+            if asset_content:
+                normalized_attachments.append({"type": "text", "content": str(asset_content)})
             history = [
-                {"role": str(message.get("role") or ""), "content": str(message.get("content") or "")}
-                for message in conversation.get("messages", [])
-                if str(message.get("role") or "") in {"user", "assistant", "tool"}
-                and str(message.get("content") or "")
+                item
+                for item in history_store.load_history(session_id)
+                if str(item.get("role") or "") in {"system", "user", "assistant", "tool"}
+                and str(item.get("content") or "")
             ][-40:]
             if history and history[-1] == {"role": "user", "content": content}:
                 history.pop()
+            tool_provider = self.tool_driver.registry if self.tool_driver is not None else knowledge_provider
+            tool_descriptors: list[dict[str, Any]] = []
+            try:
+                describe_result = tool_provider.describe([])
+                if asyncio.iscoroutine(describe_result):
+                    describe_result = asyncio.run(describe_result)
+                tool_descriptors = _coerce_tool_schema(describe_result)
+            except Exception:
+                logger.exception("Tool discovery unavailable while building SDK turn request")
+                tool_descriptors = []
+            normalized_input = {
+                "text": content,
+                "attachments": normalized_attachments,
+                "context_refs": normalized_context_refs,
+                "history": history,
+                "tools": tool_descriptors,
+            }
+            sdk_messages = [_coerce_history_item(item) for item in history]
+            sdk_messages = [item for item in sdk_messages if item is not None]
+            sdk_messages.append({"role": "user", "content": content})
             handle = host.submit(
                 turn_id,
                 {
                     "schema_version": "1",
                     "request_id": turn_id,
                     "session_id": session_id,
-                    "input": {"text": content, "attachments": [], "context_refs": []},
+                    "input": normalized_input,
                     "history": history,
+                    "messages": sdk_messages,
+                    "tools": tool_descriptors,
                     "model_override": model_override,
                     "approval_mode": "interactive",
                 },
@@ -228,9 +340,43 @@ class NativeAgentExecutor:
             # and native driver integration failures are diagnosable.
             logger.exception("Agent SDK turn failed at host boundary: turn_id=%s", turn_id)
             event = {"type": "turn.failed", "payload": {"error": {"code": "sdk_internal_error", "message": "Agent 执行失败"}}}
-            if self.event_sink is not None:
-                self.event_sink(event)
+            if sink is not None:
+                sink(event)
             self._finish(turn_id, session_id, "failed", event, event["payload"]["error"])
+
+    def _seed_conversation_messages(
+        self,
+        session_id: str,
+        user_message_id: str | None,
+        assistant_message_id: str | None,
+        content: str,
+    ) -> None:
+        # Route/CLI should remain intent-only. Host owns the canonical message
+        # projection so conversations remain a single source of truth.
+        if user_message_id:
+            append_message(session_id, {
+                "id": user_message_id,
+                "role": "user",
+                "message_type": "user_input",
+                "content": content,
+                "status": "completed",
+            })
+        if assistant_message_id:
+            append_message(session_id, {
+                "id": assistant_message_id,
+                "role": "assistant",
+                "message_type": "assistant_text",
+                "content": "",
+                "status": "streaming",
+            })
+
+    def _safe_update_message(self, session_id: str, message_id: str, patch: dict[str, Any]) -> None:
+        try:
+            update_message(session_id, message_id, patch)
+        except ValueError as error:
+            logger.debug("skip message projection because message not ready: session=%s message=%s err=%s", session_id, message_id, error)
+        except Exception:  # noqa: BLE001 - projection boundary
+            logger.exception("message projection failed for session=%s message=%s", session_id, message_id)
 
     def _finish(self, turn_id: str, session_id: str, status: str, event: dict[str, Any], error: dict[str, Any]) -> None:
         callback = self.finish_turn

@@ -8,6 +8,9 @@ LOG_DIR="${APP_DIR}/logs"
 MODEL_DIR="${DATA_ROOT}/models"
 RUN_DIR="${DATA_ROOT}/run"
 NOTEMELD_RUNTIME_MODE="${NOTEMELD_RUNTIME_MODE:-source-cli}"
+EXPECTED_NOTEMELD_AGENT_SDK_VERSION="0.1.0"
+EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION="1"
+EXPECTED_NOTEMELD_AGENT_ABI_VERSION="2"
 
 BACKEND_PORT="${NOTEMELD_BACKEND_PORT:-8483}"
 FRONTEND_PORT="${NOTEMELD_FRONTEND_PORT:-3015}"
@@ -88,7 +91,14 @@ export_runtime_env() {
 
 ensure_agent_sdk() {
   local python_bin="$APP_DIR/.venv/bin/python"
-  if "$python_bin" -c 'import notemeld_agent_sdk.runtime as sdk_runtime; raise SystemExit(0 if sdk_runtime.SDK_VERSION == "0.1.0" and sdk_runtime.SCHEMA_VERSION == "1" else 1)' >/dev/null 2>&1; then
+  local check_code='import notemeld_agent_sdk.runtime as sdk_runtime
+if str(getattr(sdk_runtime, "SDK_VERSION", "")) == "0.1.0" and \
+   str(getattr(sdk_runtime, "SCHEMA_VERSION", "")) == "1" and \
+   str(getattr(sdk_runtime, "ABI_VERSION", "")) == "2":
+    raise SystemExit(0)
+raise SystemExit(1)
+'
+  if "$python_bin" -c "$check_code" >/dev/null 2>&1; then
     return 0
   fi
 
@@ -99,8 +109,8 @@ ensure_agent_sdk() {
   [[ -f "$wheel" ]] || fail "Agent SDK wheel not found: ${wheel}"
   log "Installing standalone Agent SDK wheel"
   "$python_bin" -m pip install --disable-pip-version-check --no-deps --force-reinstall "$wheel"
-  "$python_bin" -c 'import notemeld_agent_sdk.runtime as sdk_runtime; raise SystemExit(0 if sdk_runtime.SDK_VERSION == "0.1.0" and sdk_runtime.SCHEMA_VERSION == "1" else 1)' >/dev/null 2>&1 \
-    || fail "Installed notemeld-agent-sdk is incompatible (expected SDK_VERSION=0.1.0 SCHEMA_VERSION=1)"
+  "$python_bin" -c "$check_code" >/dev/null 2>&1 \
+    || fail "Installed notemeld-agent-sdk is incompatible (expected SDK_VERSION=${EXPECTED_NOTEMELD_AGENT_SDK_VERSION} SCHEMA_VERSION=${EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION} ABI_VERSION=${EXPECTED_NOTEMELD_AGENT_ABI_VERSION})"
 }
 
 ensure_installed() {

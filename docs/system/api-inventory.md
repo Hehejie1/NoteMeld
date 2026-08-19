@@ -54,9 +54,9 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/chat/index` | JSON: task/note 等 | 索引结果 | 聊天检索 | 本地 | 索引失败 | Chroma 持久化兼容 |
 | GET | `/api/chat/status` | query | 索引/聊天状态 | 聊天 UI | 本地 | 返回状态错误 | 不阻塞页面加载 |
-| POST | `/api/chat/ask` | JSON: question/context | 回答 | 聊天 UI | 本地+LLM | LLM 错误返回失败 | 需保留来源引用；P2 内部实现已迁移到 Agent（feature flag `AGENT_CHAT_ENABLED`） |
-| POST | `/api/chat/free` | JSON: messages/model，含 `use_wiki`；可选 `context_refs[]` | 非索引自由聊天 `{answer,sources}` | 聊天 UI | 本地+LLM | LLM/能力错误 | `context_refs` 最多 8 条、单条快照 2000 字，后端重新校验并作为资料上下文隔离；Agent/Wiki 语义保持兼容 |
-| POST | `/api/chat/free/stream` | JSON: messages/model，含 `use_wiki`；可选 `context_refs[]` | 流式响应 | 聊天 UI fetch | 本地+LLM | 流中错误事件 | SSE 事件不变；引用规则同 `/chat/free`。Agent 路径只初始暴露 3 个元工具，L3 结果进入 `done.sources` |
+| POST | `/api/chat/ask` | 已下线 | 已下线 | 聊天 UI | 本地+LLM | 404/移除 | 已收口到 `/api/agent/v1/sessions/{session_id}/turns`（保留向后兼容入口请另行评审） |
+| POST | `/api/chat/free` | 已下线 | 已下线 | 聊天 UI | 本地+LLM | 404/移除 | 已收口到 `/api/agent/v1`；历史兼容由会话迁移脚本处理 |
+| POST | `/api/chat/free/stream` | 已下线 | 已下线 | 聊天 UI fetch | 本地+LLM | 404/移除 | 已收口到 `/api/agent/v1` |
 | GET | `/api/conversations` | query | 会话列表 | 侧边栏/工作区 | 本地 | 空列表 | 软删除过滤 |
 | GET | `/api/conversations/{conversation_id}` | path | 会话详情 | 工作区 | 本地 | 不存在 404 | 消息和文档结构兼容 |
 | PUT/PATCH | `/api/conversations/{conversation_id}` | JSON patch | 更新会话 | 工作区 | 本地 | 更新失败 | 不能破坏 linked task |
@@ -127,14 +127,14 @@
 | GET | `/api/agent/v1/turns/{turn_id}/events` | `after_sequence?` | `{data: AgentEvent[]}` | UI/CLI | `turn_not_found` |
 | POST | `/api/agent/v1/turns/{turn_id}/cancel` | 无 | `{data:{turn_id,accepted,status:cancelling}}` | UI/CLI | 404/409 | 只请求 native Turn 取消；最终 `cancelled` 由 SDK terminal event 写入 |
 | POST | `/api/agent/v1/turns/{turn_id}/steer` | JSON steer payload | `{data:{turn_id,accepted}}` | UI/CLI | 404/409 | 不伪造 steer；native handle 不存在时返回 `steer_unsupported` |
-| POST | `/api/agent/v1/approvals/{approval_id}` | `approved` | 尚未接入 | UI/CLI | 501 `approval_not_ready` | SDK FFI 尚无 approval resolve ABI，本阶段 fail-closed |
+| POST | `/api/agent/v1/approvals/{approval_id}` | `approved` / `decision`（兼容） | `approve`\|`deny` | UI/CLI | 404/409 | 仅将请求透传至 SDK |
 | GET/PUT | `/api/agent/v1/sessions/{session_id}/model-preference` | `default_model_id/fallback_models` | `{data: Preference}` | 设置/CLI | `invalid_input` |
 
 这些接口复用 `conversations` 作为 Session 主表；Agent 表只保存 Turn、Event 和模型偏好，不建立第二套历史。
 
 CLI 契约：`notemeld agent -p/--prompt` 提交单次 Turn；`--conversation/--session` 继续指定 Conversation；`--model` 传递模型覆盖；`--output/--format text|json|jsonl` 控制输出。REPL 的 `/new`、`/resume ID`、`/sessions`、`/model [NAME]`、`/exit` 只组合本表接口，不直接写数据库，也不加载另一套 Agent runtime。
 
-Agent Host 控制约束：SDK 原生 driver 请求包含 `model.stream`、`tool.describe` 和 `tool.invoke`；Host 对 `tool.describe` 只返回 bounded namespaced capabilities。审批由 `POST /api/agent/v1/approvals/{approval_id}` 发送 `{"decision":"approve|deny"}` 到同一个 native runtime；Host 不直接修改 Turn 终态。
+Agent Host 控制约束：SDK 原生 driver 请求包含 `model.stream`、`tool.describe` 和 `tool.invoke`；Host 对 `tool.describe` 只返回 bounded namespaced capabilities。审批由 `POST /api/agent/v1/approvals/{approval_id}` 发送 `{"decision":"approve|deny"}` 或兼容 `{"approved":true|false}` 到同一个 native runtime；Host 不直接修改 Turn 终态。
 
 白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
 

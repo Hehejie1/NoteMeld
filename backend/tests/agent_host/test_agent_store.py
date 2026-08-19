@@ -42,9 +42,31 @@ def test_create_turn_idempotency_and_missing_session(monkeypatch, tmp_path):
 
     assert first["turn_id"] == "turn-1"
     assert second["turn_id"] == "turn-1"
+    assert second["_replayed"] is True
 
     with pytest.raises(agent_store.TurnNotFoundError):
         agent_store.create_turn("missing-session", turn_id="turn-missing")
+
+
+def test_create_turn_blocks_parallel_active_turn_in_same_session(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+
+    agent_store.create_turn("conv-1", turn_id="turn-1", status="running")
+
+    with pytest.raises(agent_store.SessionBusyError):
+        agent_store.create_turn("conv-1", turn_id="turn-2")
+
+
+def test_create_turn_allows_replay_when_session_is_busy(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+
+    first = agent_store.create_turn("conv-1", turn_id="turn-1", idempotency_key="reuse", status="running")
+    second = agent_store.create_turn("conv-1", turn_id="turn-2", idempotency_key="reuse")
+
+    assert first["turn_id"] == second["turn_id"]
+    assert second["_replayed"] is True
 
 
 def test_append_event_sequence_and_list(monkeypatch, tmp_path):

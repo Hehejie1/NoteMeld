@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import sys
 import time
 import urllib.error
@@ -15,7 +16,7 @@ from typing import Any
 
 BASE = f"http://127.0.0.1:{os.getenv('NOTEMELD_BACKEND_PORT', '8483')}/api/agent/v1"
 EVENT_POLL_TIMEOUT_SECONDS = 30.0
-EVENT_POLL_INTERVAL_SECONDS = 0.1
+EVENT_POLL_INTERVAL_SECONDS = 0.5
 TERMINAL_EVENT_TYPES = frozenset({"turn.succeeded", "turn.failed", "turn.interrupted", "turn.cancelled"})
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "interrupted", "cancelled"})
 
@@ -44,19 +45,27 @@ def _event_batch(turn_id: str, after_sequence: int) -> list[dict[str, Any]]:
     )
     values: list[dict[str, Any]] = []
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=EVENT_POLL_TIMEOUT_SECONDS) as response:
             for raw in response.read().decode().split("\n\n"):
                 data = next((line[6:] for line in raw.splitlines() if line.startswith("data: ")), None)
-                if data:
+                if not data:
+                    continue
+                try:
                     values.append(json.loads(data))
+                except json.JSONDecodeError:
+                    continue
     except urllib.error.HTTPError as error:
         raise RuntimeError("agent event request failed") from error
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, (socket.timeout, TimeoutError)):
+            return values
+        raise RuntimeError("agent event connection failed") from error
+    except (TimeoutError, socket.timeout, OSError) as error:
         raise RuntimeError("agent event connection failed") from error
     return values
 
 
-def events(turn_id: str) -> list[dict[str, Any]]:
+def events(turn_id: str, *, after_sequence: int = -1) -> list[dict[str, Any]]:
     """Replay a turn and return its event envelopes.
 
     The API is the only source of truth for CLI output.  Keeping replay and
@@ -65,8 +74,7 @@ def events(turn_id: str) -> list[dict[str, Any]]:
     """
     result: list[dict[str, Any]] = []
     seen_sequences: set[int] = set()
-    after_sequence = -1
-    deadline = time.monotonic() + EVENT_POLL_TIMEOUT_SECONDS
+    after_sequence = after_sequence
 
     def collect(values: list[dict[str, Any]]) -> bool:
         nonlocal after_sequence
@@ -109,8 +117,6 @@ def events(turn_id: str) -> list[dict[str, Any]]:
                 }
             result.append({"sequence": after_sequence + 1, "type": terminal_type, "payload": payload})
             return result
-        if time.monotonic() >= deadline:
-            raise RuntimeError("timed out waiting for agent turn")
         time.sleep(EVENT_POLL_INTERVAL_SECONDS)
 
 
@@ -160,17 +166,18 @@ def print_value(value: Any, output_format: str) -> None:
             print(value)
 
 
-def submit_turn(session: str, text: str, model: str | None, output_format: str) -> None:
+def submit_turn(session: str, text: str, model: str | None, output_format: str, after_sequence: int = -1) -> None:
     payload: dict[str, Any] = {"input": text}
     if model:
         payload["model"] = model
     turn = unwrap(request("POST", f"/sessions/{session}/turns", payload))
-    render_events(events(str(turn["turn_id"])), output_format)
+    render_events(events(str(turn["turn_id"]), after_sequence=after_sequence), output_format)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="notemeld-agent")
     parser.add_argument("-p", "--prompt", dest="prompt", help="submit one prompt and exit")
+    parser.add_argument("--after-sequence", type=int, default=-1, help="resume turn event stream from this sequence")
     parser.add_argument("--conversation", "--session", dest="session", help="conversation/session ID to resume")
     parser.add_argument("--model", help="override the saved Agent model for this session")
     parser.add_argument("--output", "--format", dest="output_format", choices=("text", "json", "jsonl"), default="text")
@@ -179,7 +186,7 @@ def main() -> int:
     prompt = args.prompt if args.prompt is not None else args.positional_prompt
     session = args.session or create_session()
     if prompt:
-        submit_turn(session, prompt, args.model, args.output_format)
+        submit_turn(session, prompt, args.model, args.output_format, args.after_sequence)
         return 0
 
     if args.output_format == "text":
@@ -241,7 +248,7 @@ def main() -> int:
             print("当前 CLI turn 已由同步事件回放完成；如需取消，请通过 Agent v1 API 提交 cancel。", file=sys.stderr)
             continue
         try:
-            submit_turn(session, text, model, args.output_format)
+            submit_turn(session, text, model, args.output_format, args.after_sequence)
             if args.output_format == "text":
                 print()
         except RuntimeError as error:
