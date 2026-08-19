@@ -161,3 +161,89 @@ def test_events_replays_terminal_after_terminal_status_race(monkeypatch):
     assert values == [{"sequence": 0, "type": "turn.succeeded", "payload": {"answer": "done"}}]
     assert len(urls) == 2
     assert all("after_sequence=-1" not in url for url in urls)
+
+
+def test_event_batch_returns_immediately_at_approval_pause(monkeypatch):
+    class StreamingResponse:
+        def __init__(self):
+            self.lines = iter([
+                b'id: 0\n',
+                b'event: approval.required\n',
+                b'data: {"sequence":0,"type":"approval.required","payload":{"approval_id":"approval-1"}}\n',
+                b'\n',
+                b'id: 1\n',
+                b'event: turn.succeeded\n',
+                b'data: {"sequence":1,"type":"turn.succeeded","payload":{}}\n',
+                b'\n',
+            ])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def readline(self):
+            return next(self.lines, b'')
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", lambda *_args, **_kwargs: StreamingResponse())
+    values = cli._event_batch("turn-1", -1)
+    assert [value["type"] for value in values] == ["approval.required"]
+
+
+def test_text_cli_resolves_approval_and_continues_same_turn(monkeypatch, capsys):
+    calls = []
+
+    def fake_request(method, path, payload=None):
+        calls.append((method, path, payload))
+        if path == "/sessions/s-1/turns":
+            return {"data": {"turn_id": "turn-1"}}
+        if path == "/approvals/approval-1":
+            return {"data": {"accepted": True}}
+        raise AssertionError((method, path, payload))
+
+    def fake_events(turn_id, *, after_sequence=-1, on_approval=None):
+        assert turn_id == "turn-1"
+        assert on_approval is not None
+        on_approval({
+            "type": "approval.required",
+            "payload": {"approval_id": "approval-1", "summary": "write", "risk": "high"},
+        })
+        return [{"type": "turn.succeeded", "payload": {}}]
+
+    monkeypatch.setattr(cli, "request", fake_request)
+    monkeypatch.setattr(cli, "events", fake_events)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    cli.submit_turn("s-1", "continue", None, "text")
+
+    assert calls == [
+        ("POST", "/sessions/s-1/turns", {"input": "continue"}),
+        ("POST", "/approvals/approval-1", {"decision": "approve"}),
+    ]
+    assert "turn.succeeded" in capsys.readouterr().out
+
+
+def test_cli_can_resolve_from_another_entry_then_continue_existing_turn(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "request",
+        lambda method, path, payload=None: calls.append((method, path, payload))
+        or {"data": {"approval_id": "approval-1", "accepted": True}},
+    )
+    monkeypatch.setattr(
+        cli,
+        "events",
+        lambda turn_id, **kwargs: [{"type": "turn.succeeded", "payload": {"turn_id": turn_id}}],
+    )
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["notemeld-agent", "--approve", "approval-1", "--turn", "turn-ui", "--output", "jsonl"],
+    )
+
+    assert cli.main() == 0
+    assert calls == [("POST", "/approvals/approval-1", {"decision": "approve"})]
+    output = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert len(output) == 1
+    assert output[-1]["payload"]["turn_id"] == "turn-ui"

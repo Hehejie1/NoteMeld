@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { generateNote, type GenerateNotePayload } from '@/services/note'
-import { startAgentTurn, streamAgentEvents } from '@/services/agent'
+import { resolveAgentApproval, startAgentTurn, streamAgentEvents } from '@/services/agent'
 import { createLearningCanvas } from '@/services/learning'
 import {
   appendConversationMessage,
@@ -616,6 +616,20 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       } else if (event.type === 'turn.failed' || event.type === 'turn.cancelled' || event.type === 'turn.interrupted') {
         const error = payload.error
         streamError = typeof error === 'object' && error && 'message' in error ? String(error.message) : 'Agent 执行失败'
+      } else if (event.type === 'approval.required') {
+        const approvalId = String(payload.approval_id || '')
+        if (!approvalId) {
+          streamError = 'Agent 审批事件缺少 approval_id'
+          continue
+        }
+        const summary = String(payload.summary || 'Agent 请求执行受保护操作')
+        const risk = String(payload.risk || 'unknown')
+        const approved = window.confirm(`${summary}\n\n风险级别：${risk}\n\n是否批准继续执行？`)
+        try {
+          await resolveAgentApproval(approvalId, approved ? 'approve' : 'deny')
+        } catch {
+          toast.error('审批提交失败，可从另一个 NoteMeld 入口重试')
+        }
       } else if (event.type === 'tool.started' || event.type === 'tool.progress' || event.type === 'tool.completed') {
         const toolName = String(payload.tool_name || payload.name || '工具执行')
         const cardMessageId = `agent-tool-${event.turn_id}`

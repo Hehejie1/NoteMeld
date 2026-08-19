@@ -84,6 +84,21 @@ class AgentHostEntry:
             terminal_event_type="turn.cancelling",
         )
 
+    def record_control_event(
+        self,
+        turn_id: str,
+        status: str,
+        event: dict[str, Any],
+    ) -> dict[str, Any]:
+        return agent_store.transition_turn(
+            turn_id,
+            status,
+            terminal_event=event,
+            terminal_event_type=str(event.get("type") or "agent.control"),
+            event_sequence=event.get("sequence"),
+            event_id=event.get("event_id"),
+        )
+
     def is_terminal(self, turn: dict[str, Any]) -> bool:
         return str(turn.get("status")) in agent_store.TERMINAL_STATUSES
 

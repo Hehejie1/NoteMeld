@@ -19,6 +19,12 @@ class NativeTurnHandle:
     token: int
 
 
+class ApprovalControlError(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class AgentSdkHost:
     def __init__(self, *, binding_path: str | None = None, runtime_factory: Callable[..., Any] | None = None) -> None:
         self.binding_path = binding_path
@@ -173,7 +179,23 @@ class AgentSdkHost:
         resolver = getattr(self.runtime, "resolve_approval", None)
         if not callable(resolver):
             raise AgentSdkUnavailable("installed Agent SDK does not expose approval control")
-        resolver(approval_id, decision)
+        try:
+            resolver(approval_id, decision)
+        except Exception as error:  # noqa: BLE001 - typed native control boundary
+            code = {
+                -2: "invalid_approval_decision",
+                -3: "approval_not_found",
+                -4: "approval_already_resolved",
+                -8: "approval_turn_terminal",
+            }.get(getattr(error, "code", None), "approval_unavailable")
+            messages = {
+                "invalid_approval_decision": "审批决定无效",
+                "approval_not_found": "审批不存在",
+                "approval_already_resolved": "审批已处理",
+                "approval_turn_terminal": "审批所属 Turn 已结束",
+                "approval_unavailable": "审批控制不可用",
+            }
+            raise ApprovalControlError(code, messages[code]) from error
 
     def forget(self, turn_id: str) -> None:
         with self._lock:

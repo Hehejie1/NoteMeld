@@ -417,3 +417,87 @@ def test_native_executor_runs_in_background(monkeypatch):
     monkeypatch.setattr("app.agent_host.native_executor.NativeAgentExecutor.run_sync", lambda self, *_args, **_kwargs: done.set())
     NativeAgentExecutor().start("turn-1", "session-1", "hello", model_name="demo")
     assert done.wait(1)
+
+
+def test_native_executor_keeps_waiting_through_approval_pause(monkeypatch):
+    from app.agent_host.native_executor import NativeAgentExecutor
+
+    control_events = []
+    finished = []
+
+    class Timeout(RuntimeError):
+        code = -10
+
+    class Runtime:
+        waits = 0
+        on_event = None
+
+        @classmethod
+        def wait(cls, _token, _timeout):
+            cls.waits += 1
+            if cls.waits == 1:
+                raise Timeout("poll timeout")
+            cls.on_event({
+                "event_id": "event-resolved",
+                "sequence": 2,
+                "type": "approval.resolved",
+                "payload": {"approval_id": "approval-1", "decision": "approve"},
+            })
+            cls.on_event({
+                "event_id": "event-terminal",
+                "sequence": 3,
+                "type": "turn.succeeded",
+                "payload": {"answer": "done"},
+            })
+
+    class FakeHost:
+        runtime = Runtime
+
+        def submit(self, _turn_id, _request, *, driver, on_event):
+            del driver
+            Runtime.on_event = on_event
+            on_event({
+                "event_id": "event-required",
+                "sequence": 1,
+                "type": "approval.required",
+                "payload": {"approval_id": "approval-1", "risk": "high"},
+            })
+            return SimpleNamespace(token=1)
+
+        def forget(self, _turn_id):
+            return None
+
+    monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
+    monkeypatch.setattr(
+        "app.agent_host.native_executor._resolve_saved_model",
+        lambda _name: (object(), SimpleNamespace(provider_id="demo-provider", name="demo")),
+    )
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.NoteMeldModelDriver",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.ConversationHistoryStore.load_history",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr("app.agent_host.native_executor.append_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.agent_host.native_executor.agent_store.get_turn", lambda _turn_id: {"status": "running"})
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.get_agent_host_entry",
+        lambda: SimpleNamespace(
+            record_control_event=lambda turn_id, status, event: control_events.append((turn_id, status, event["type"]))
+        ),
+    )
+    monkeypatch.setattr(
+        "app.agent_host.native_executor.agent_store.transition_turn",
+        lambda *args, **kwargs: finished.append((args, kwargs)),
+    )
+
+    NativeAgentExecutor().run_sync("turn-1", "session-1", "hello", model_name="demo")
+
+    assert Runtime.waits == 2
+    assert control_events == [
+        ("turn-1", "waiting_approval", "approval.required"),
+        ("turn-1", "running", "approval.resolved"),
+    ]
+    assert finished[-1][0][1] == "succeeded"

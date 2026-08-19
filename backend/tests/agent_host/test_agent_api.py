@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from app.routers import agent
+from app.agent_host.host import ApprovalControlError
 from app.services import agent_store
 from fastapi import HTTPException
 
@@ -168,3 +170,31 @@ def test_resolve_approval_routes_to_native_host(monkeypatch):
     result = agent.resolve_approval("approval-1", agent.ApprovalRequest(decision="approve"))
     assert result["data"] == {"approval_id": "approval-1", "decision": "approve", "accepted": True}
     assert calls == [("approval-1", "approve")]
+
+
+def test_resolve_approval_has_stable_invalid_unknown_and_duplicate_errors(monkeypatch):
+    for code, status in [
+        ("approval_not_found", 404),
+        ("approval_already_resolved", 409),
+        ("approval_turn_terminal", 409),
+    ]:
+        monkeypatch.setattr(
+            agent.get_agent_sdk_host(),
+            "resolve_approval",
+            lambda *_args, code=code: (_ for _ in ()).throw(ApprovalControlError(code, "safe")),
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            agent.resolve_approval("approval-1", agent.ApprovalRequest(decision="approve"))
+        assert exc_info.value.status_code == status
+        assert exc_info.value.detail["code"] == code
+
+    with pytest.raises(HTTPException) as exc_info:
+        agent.resolve_approval("approval-1", agent.ApprovalRequest(decision="later"))
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "invalid_approval_decision"
+
+    for payload in [agent.ApprovalRequest(), agent.ApprovalRequest(decision="approve", approved=False)]:
+        with pytest.raises(HTTPException) as exc_info:
+            agent.resolve_approval("approval-1", payload)
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail["code"] == "invalid_approval_decision"

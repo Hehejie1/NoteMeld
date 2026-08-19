@@ -17,7 +17,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 桌面端：`desktop/src-tauri/`，Tauri v2。负责启动 Python backend sidecar、注入运行时配置、控制窗口展示、桌面文件能力和自动更新。
 - 打包层：`packaging/` + `.trae/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
 - 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
-- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；Web、Tauri 和 CLI 都只调用 `/api/agent/v1`，Router 再通过无内存状态的 `AgentHostEntry` 进入同一 Host 生命周期。Turn 由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成；approval resolve 通过同一个 native runtime 控制面回传。
+- Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；Web、Tauri 和 CLI 都只调用 `/api/agent/v1`，Router 再通过无内存状态的 `AgentHostEntry` 进入同一 Host 生命周期。Turn 由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成。危险或未知工具由 SDK 发出 `approval.required` 并暂停原 Turn；Web/CLI 的 approval resolve 通过同一个 native runtime 控制面原子唤醒，Host 只投影 `waiting_approval/running` 与事件。
 
 ## 前端入口
 
@@ -196,7 +196,7 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 
 源码启动和已安装 CLI 启动都会调用同一个 `AgentSdkRuntime.load()` 校验 SDK/schema/ABI metadata 和 native artifact；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。缺包、缺 native、架构不可加载和版本漂移均使用固定分类错误，不回显 wheel 路径、Provider payload 或凭证。`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop，支持一次性和交互式会话、会话恢复、模型切换与 JSON/JSONL 输出。
 
-当前 Host 已提供三个只读产品能力适配：`wiki:search`、`note:search`、`note:read`。`NoteMeldToolDriver` 只通过请求级 `NoteMeldCapabilityRegistry` 调用现有 Wiki/Note 产品服务，不维护 Agent 状态机，也不直接调度下一轮模型。工具描述由 Host 在 Turn 开始时有界解析，并附着到每轮模型请求；模型返回 tool call 后，Rust SDK 的 `execute_tool_round` 是唯一调度者。产品成功或可恢复失败统一转换为 `{call_id, output}` ToolResult；`output` 使用 `{ok:true,result}` 或 `{ok:false,error}`，SDK 把它写入带同一 call id 的 canonical tool message 后继续下一轮模型。未知工具、非法参数、权限、业务失败和未预期执行异常分别使用 `unknown_tool`、`invalid_arguments`、`permission_denied`、`business_error`、`tool_execution_error`，公开结果和日志不包含参数、Provider payload 或异常原文。共享进程级 SDK Host 仍按 native turn token 路由 callback，不新增 Session 状态缓存。approval resolve 仍只透传独立 SDK 的 native control ABI；在 ABI 不支持时 Host 不伪造审批成功。
+当前 Host 已提供三个只读产品能力适配：`wiki:search`、`note:search`、`note:read`。`NoteMeldToolDriver` 只通过请求级 `NoteMeldCapabilityRegistry` 调用现有 Wiki/Note 产品服务，不维护 Agent 状态机，也不直接调度下一轮模型。工具描述由 Host 在 Turn 开始时有界解析，并附着到每轮模型请求；模型返回 tool call 后，Rust SDK 的 `execute_tool_round` 是唯一调度者。产品成功或可恢复失败统一转换为 `{call_id, output}` ToolResult；`output` 使用 `{ok:true,result}` 或 `{ok:false,error}`，SDK 把它写入带同一 call id 的 canonical tool message 后继续下一轮模型。未知工具、非法参数、权限、业务失败和未预期执行异常分别使用 `unknown_tool`、`invalid_arguments`、`permission_denied`、`business_error`、`tool_execution_error`，公开结果和日志不包含参数、Provider payload 或异常原文。共享进程级 SDK Host 仍按 native turn token 路由 callback，不新增 Session 状态缓存。approval resolve 只透传独立 SDK 的 native control ABI，并把 unknown、duplicate、terminal 与 invalid decision 映射为稳定 HTTP 错误；只有 native manager 接受决策后才返回成功。
 
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和兼容调用层都基于同一事件信封工作。Host descriptor 以原子方式写入数据根目录的 `run/agent-runtime.json`，供 Host 生命周期诊断复用。
 

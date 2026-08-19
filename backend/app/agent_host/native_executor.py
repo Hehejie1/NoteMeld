@@ -8,6 +8,7 @@ from typing import Any, Callable
 from app.agent_host.drivers.model import NoteMeldModelDriver
 from app.agent_host.drivers.tools import NoteMeldToolDriver
 from app.agent_host.drivers.storage import ConversationHistoryStore
+from app.agent_host.entry import get_agent_host_entry
 from app.agent_host.host import AgentSdkHost, get_agent_sdk_host
 from app.agent_host.knowledge_provider import NoteMeldKnowledgeProvider
 from app.ai import create_models
@@ -307,12 +308,25 @@ class NativeAgentExecutor:
                             self._safe_update_message(session_id, assistant_message_id, {"meta": {"usage": payload}})
 
                     try:
-                        agent_store.append_event(
-                            turn_id,
-                            payload,
-                            sequence=event.get("sequence"),
-                            event_type=event_type,
-                        )
+                        if event_type in {"approval.required", "approval.resolved"}:
+                            status = "waiting_approval" if event_type == "approval.required" else "running"
+                            get_agent_host_entry().record_control_event(turn_id, status, event)
+                            if assistant_message_id:
+                                self._safe_update_message(session_id, assistant_message_id, {
+                                    "status": "waiting_approval" if event_type == "approval.required" else "streaming",
+                                    "meta": {
+                                        "turn_id": turn_id,
+                                        "approval": payload if event_type == "approval.required" else None,
+                                    },
+                                })
+                        else:
+                            agent_store.append_event(
+                                turn_id,
+                                payload,
+                                sequence=event.get("sequence"),
+                                event_type=event_type,
+                                event_id=event.get("event_id"),
+                            )
                     except agent_store.TurnTerminalError:
                         logger.debug(
                             "skip appending event for terminal turn=%s type=%s",
@@ -343,6 +357,8 @@ class NativeAgentExecutor:
                             or item.get("parameters")
                             or {"type": "object"}
                         ),
+                        "risk": str(item.get("risk") or "high"),
+                        "safe": bool(item.get("safe", False)),
                     }
                     result.append(descriptor)
                 return result
@@ -431,7 +447,14 @@ class NativeAgentExecutor:
             current = agent_store.get_turn(turn_id)
             if current is not None and str(current.get("status")) == "cancelling":
                 host.cancel(turn_id)
-            host.runtime.wait(handle.token, 30_000)
+            while terminal is None:
+                try:
+                    host.runtime.wait(handle.token, 30_000)
+                    break
+                except Exception as error:  # noqa: BLE001 - typed native polling boundary
+                    if getattr(error, "code", None) == -10:
+                        continue
+                    raise
             host.forget(turn_id)
             if terminal is None:
                 raise RuntimeError("Agent SDK did not emit a terminal event")

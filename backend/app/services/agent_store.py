@@ -289,6 +289,8 @@ def transition_turn(
     error_message: str | None = None,
     terminal_event: dict[str, Any] | None = None,
     terminal_event_type: str = "terminal",
+    event_sequence: int | None = None,
+    event_id: str | None = None,
 ) -> dict[str, Any]:
     db = _db()
     try:
@@ -312,7 +314,8 @@ def transition_turn(
                         terminal_event_type,
                         terminal_event,
                     ),
-                    sequence=None,
+                    sequence=event_sequence,
+                    event_id=event_id,
                 )
             elif terminal_event is not None:
                 # Control-plane transitions such as ``cancelling`` are not
@@ -326,7 +329,8 @@ def transition_turn(
                         terminal_event_type,
                         terminal_event,
                     ),
-                    sequence=None,
+                    sequence=event_sequence,
+                    event_id=event_id,
                 )
 
             turn.status = status

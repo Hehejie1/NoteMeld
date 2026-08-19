@@ -284,6 +284,13 @@
 - 检查方式：`backend/tests/agent_host/test_agent_store.py` 覆盖同 Session 并发一成一拒、不同 Session 均可创建、existing Conversation 不新增第二状态；`test_agent_route_cutover.py` 覆盖 Web/Tauri/CLI 的 `/api/agent/v1` 单一路径。
 - 修复经验：入口只提交 Host lifecycle command；Agent Store 在短 SQLite `BEGIN IMMEDIATE` 写事务内完成 Conversation/幂等/活动检查和插入，Turn 创建后模型执行不持有该锁。
 
+## Agent approval 只返回成功但没有恢复 native Turn
+
+- 发生过的问题/风险：HTTP approval 接口存在，但 ABI 固定返回 unsupported；或 Host 只写 `running`/成功响应，原 Rust Turn 仍永久等待，UI/CLI 看似批准却不能继续。
+- 不允许重新引入的错误做法：在 NoteMeld Host/UI/CLI 重写 Agent loop；用 HTTP ACK 冒充 SDK 已恢复；为 approval 新建第二套 Session/Message 状态；把 30 秒 wait timeout 当成 Turn 失败；重复 resolve 静默成功。
+- 检查方式：独立 SDK 的 `agent-core/tests/approval_resume.rs` 与 `agent-ffi/tests/abi_contract.rs`，以及 `backend/tests/agent_host/` 的 Host/Router/store/CLI/executor approval 回归。
+- 修复经验：SDK canonical loop 创建并等待 approval，FFI runtime 持有同一 manager 并原子唤醒；NoteMeld 只把 `approval.required/resolved` 与 `waiting_approval/running` 原子投影到 Conversation→Turn→Event 数据链。unknown、duplicate、terminal 和 invalid decision 使用稳定错误，长暂停通过有界 wait 轮询保持活动。
+
 ## K0-K3 检索不能重新退回文件遍历
 
 - 发生过的问题/风险：如果在 10 万篇文章规模继续逐个读取 contribution/Markdown 或为每篇文章创建 Chroma collection，画像筛选和跨文章检索会随文章数线性放大，并且结果无法统一返回 `article_id`。

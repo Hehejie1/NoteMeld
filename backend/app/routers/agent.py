@@ -23,7 +23,7 @@ from app.agent_host.entry import (
 from app.agent_host.native_executor import NativeAgentExecutor
 from app.agent_host.preferences import ModelConfigurationRequired
 from app.agent_host.preferences import select_model
-from app.agent_host.host import get_agent_sdk_host
+from app.agent_host.host import ApprovalControlError, get_agent_sdk_host
 from app.db.model_dao import get_all_models
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
@@ -59,15 +59,14 @@ class PreferenceRequest(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    decision: str | None = Field(default=None, pattern="^(approve|deny)$")
+    decision: str | None = None
     approved: bool | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "ApprovalRequest":
         if self.decision is None:
-            if self.approved is None:
-                raise ValueError("approval payload must include decision or approved")
-            self.decision = "approve" if self.approved else "deny"
+            if self.approved is not None:
+                self.decision = "approve" if self.approved else "deny"
         return self
 
 
@@ -250,15 +249,22 @@ def steer_turn(turn_id: str, payload: dict | None = None):
 
 @router.post("/approvals/{approval_id}")
 def resolve_approval(approval_id: str, payload: ApprovalRequest):
+    normalized_approved = None if payload.approved is None else "approve" if payload.approved else "deny"
+    if payload.decision not in {"approve", "deny"} or (
+        normalized_approved is not None and normalized_approved != payload.decision
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_approval_decision", "message": "decision 必须是 approve 或 deny"},
+        )
     try:
         get_agent_sdk_host().resolve_approval(approval_id, payload.decision)
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail={"code": "approval_not_found"}) from error
-    except Exception as error:  # noqa: BLE001 - map native control boundary
-        code = getattr(error, "code", None)
-        if code == -3:
-            raise HTTPException(status_code=404, detail={"code": "approval_not_found"}) from error
-        raise HTTPException(status_code=409, detail={"code": "approval_unavailable", "message": "审批控制不可用"}) from error
+    except ApprovalControlError as error:
+        status_code = 404 if error.code == "approval_not_found" else 400 if error.code == "invalid_approval_decision" else 409
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": error.code, "message": str(error)},
+        ) from error
     return _ok({"approval_id": approval_id, "decision": payload.decision, "accepted": True})
 
 

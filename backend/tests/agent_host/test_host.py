@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.agent_host.host import AgentSdkHost
+import pytest
+
+from app.agent_host.host import AgentSdkHost, ApprovalControlError
 
 
 def test_host_creates_one_runtime_and_routes_turn_callbacks(monkeypatch):
@@ -56,3 +58,37 @@ def test_host_creates_one_runtime_and_routes_turn_callbacks(monkeypatch):
     host.forget("turn-1")
     host.close()
     assert captured["closed"] is True
+
+
+@pytest.mark.parametrize(
+    ("native_code", "expected"),
+    [
+        (-2, "invalid_approval_decision"),
+        (-3, "approval_not_found"),
+        (-4, "approval_already_resolved"),
+        (-8, "approval_turn_terminal"),
+        (-9, "approval_unavailable"),
+    ],
+)
+def test_host_maps_native_approval_errors_without_exposing_details(monkeypatch, native_code, expected):
+    class NativeError(RuntimeError):
+        def __init__(self):
+            super().__init__("SENSITIVE_NATIVE_PAYLOAD")
+            self.code = native_code
+
+    class FakeRuntime:
+        def __init__(self, **_kwargs):
+            pass
+
+        def resolve_approval(self, _approval_id, _decision):
+            raise NativeError()
+
+    monkeypatch.setattr(
+        "app.agent_host.host.AgentSdkRuntime.load",
+        lambda **_: SimpleNamespace(binding=SimpleNamespace(Runtime=FakeRuntime)),
+    )
+    host = AgentSdkHost().start()
+    with pytest.raises(ApprovalControlError) as exc_info:
+        host.resolve_approval("approval-1", "approve")
+    assert exc_info.value.code == expected
+    assert "SENSITIVE" not in str(exc_info.value)

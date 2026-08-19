@@ -198,6 +198,38 @@ def test_transition_turn_atomic_terminal_event(monkeypatch, tmp_path):
         agent_store.append_event("not-found", {"type": "miss"})
 
 
+def test_approval_events_atomically_persist_waiting_and_running_status(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+    agent_store.create_turn("conv-1", turn_id="turn-approval", status="running")
+
+    waiting = agent_store.transition_turn(
+        "turn-approval",
+        "waiting_approval",
+        terminal_event={"type": "approval.required", "payload": {"approval_id": "approval-1"}},
+        terminal_event_type="approval.required",
+        event_sequence=4,
+        event_id="event-required",
+    )
+    running = agent_store.transition_turn(
+        "turn-approval",
+        "running",
+        terminal_event={"type": "approval.resolved", "payload": {"approval_id": "approval-1", "decision": "approve"}},
+        terminal_event_type="approval.resolved",
+        event_sequence=5,
+        event_id="event-resolved",
+    )
+
+    assert waiting["status"] == "waiting_approval"
+    assert running["status"] == "running"
+    events = agent_store.list_events("turn-approval")
+    assert [(event["sequence"], event["event_type"]) for event in events] == [
+        (4, "approval.required"),
+        (5, "approval.resolved"),
+    ]
+    assert events[0]["event_id"] == "event-required"
+
+
 def test_model_preference_get_set_and_update(monkeypatch, tmp_path):
     session_factory = _make_session_factory(tmp_path)
     monkeypatch.setattr(agent_store, "_db", session_factory)

@@ -37,6 +37,8 @@ class NoteMeldCapabilityRegistry:
         "wiki:search": {
             "name": "wiki:search",
             "description": "在 NoteMeld 已编译 Wiki 中搜索相关知识和来源。",
+            "risk": "safe",
+            "safe": True,
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -49,6 +51,8 @@ class NoteMeldCapabilityRegistry:
         "note:search": {
             "name": "note:search",
             "description": "按标题搜索用户保存的 Note。",
+            "risk": "safe",
+            "safe": True,
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -61,6 +65,8 @@ class NoteMeldCapabilityRegistry:
         "note:read": {
             "name": "note:read",
             "description": "按标题读取一篇用户保存的 Note。",
+            "risk": "safe",
+            "safe": True,
             "input_schema": {
                 "type": "object",
                 "properties": {"title": {"type": "string", "minLength": 1}},

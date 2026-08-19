@@ -11,7 +11,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 
 BASE = f"http://127.0.0.1:{os.getenv('NOTEMELD_BACKEND_PORT', '8483')}/api/agent/v1"
@@ -46,14 +46,41 @@ def _event_batch(turn_id: str, after_sequence: int) -> list[dict[str, Any]]:
     values: list[dict[str, Any]] = []
     try:
         with urllib.request.urlopen(req, timeout=EVENT_POLL_TIMEOUT_SECONDS) as response:
-            for raw in response.read().decode().split("\n\n"):
+            if not hasattr(response, "readline"):
+                frames = response.read().decode().split("\n\n")
+            else:
+                frames = []
+                frame: list[str] = []
+                while True:
+                    raw_line = response.readline()
+                    if not raw_line:
+                        if frame:
+                            frames.append("\n".join(frame))
+                        break
+                    line = raw_line.decode(errors="replace").rstrip("\r\n")
+                    if line:
+                        frame.append(line)
+                        continue
+                    if not frame:
+                        continue
+                    current = "\n".join(frame)
+                    frames.append(current)
+                    frame = []
+                    data = next((item[6:] for item in current.splitlines() if item.startswith("data: ")), None)
+                    if data:
+                        try:
+                            event = json.loads(data)
+                        except json.JSONDecodeError:
+                            event = {}
+                        if event.get("type") in TERMINAL_EVENT_TYPES or event.get("type") == "approval.required":
+                            break
+            for raw in frames:
                 data = next((line[6:] for line in raw.splitlines() if line.startswith("data: ")), None)
-                if not data:
-                    continue
-                try:
-                    values.append(json.loads(data))
-                except json.JSONDecodeError:
-                    continue
+                if data:
+                    try:
+                        values.append(json.loads(data))
+                    except json.JSONDecodeError:
+                        continue
     except urllib.error.HTTPError as error:
         raise RuntimeError("agent event request failed") from error
     except urllib.error.URLError as error:
@@ -65,7 +92,12 @@ def _event_batch(turn_id: str, after_sequence: int) -> list[dict[str, Any]]:
     return values
 
 
-def events(turn_id: str, *, after_sequence: int = -1) -> list[dict[str, Any]]:
+def events(
+    turn_id: str,
+    *,
+    after_sequence: int = -1,
+    on_approval: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
     """Replay a turn and return its event envelopes.
 
     The API is the only source of truth for CLI output.  Keeping replay and
@@ -94,8 +126,16 @@ def events(turn_id: str, *, after_sequence: int = -1) -> list[dict[str, Any]]:
         return terminal
 
     while True:
-        if collect(_event_batch(turn_id, after_sequence)):
+        batch = _event_batch(turn_id, after_sequence)
+        if collect(batch):
             return result
+        approvals = [value for value in batch if value.get("type") == "approval.required"]
+        if approvals:
+            if on_approval is None:
+                return result
+            for approval in approvals:
+                on_approval(approval)
+            continue
 
         try:
             turn = unwrap(request("GET", f"/turns/{turn_id}"))
@@ -171,7 +211,25 @@ def submit_turn(session: str, text: str, model: str | None, output_format: str, 
     if model:
         payload["model"] = model
     turn = unwrap(request("POST", f"/sessions/{session}/turns", payload))
-    render_events(events(str(turn["turn_id"]), after_sequence=after_sequence), output_format)
+
+    def decide(event: dict[str, Any]) -> None:
+        approval = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        approval_id = str(approval.get("approval_id") or "")
+        if not approval_id:
+            raise RuntimeError("approval event is missing approval_id")
+        summary = str(approval.get("summary") or "Agent 请求执行受保护操作")
+        risk = str(approval.get("risk") or "unknown")
+        approved = input(f"\n{summary}（风险：{risk}）\n批准继续？[y/N] ").strip().lower() in {"y", "yes"}
+        request("POST", f"/approvals/{approval_id}", {"decision": "approve" if approved else "deny"})
+
+    render_events(
+        events(
+            str(turn["turn_id"]),
+            after_sequence=after_sequence,
+            on_approval=decide if output_format == "text" else None,
+        ),
+        output_format,
+    )
 
 
 def main() -> int:
@@ -181,8 +239,24 @@ def main() -> int:
     parser.add_argument("--conversation", "--session", dest="session", help="conversation/session ID to resume")
     parser.add_argument("--model", help="override the saved Agent model for this session")
     parser.add_argument("--output", "--format", dest="output_format", choices=("text", "json", "jsonl"), default="text")
+    parser.add_argument("--approve", metavar="APPROVAL_ID", help="approve a paused Agent turn")
+    parser.add_argument("--deny", metavar="APPROVAL_ID", help="deny a paused Agent turn")
+    parser.add_argument("--turn", dest="turn_id", help="continue consuming one existing turn")
     parser.add_argument("positional_prompt", nargs="?", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.approve and args.deny:
+        parser.error("--approve and --deny are mutually exclusive")
+    approval_id = args.approve or args.deny
+    if approval_id:
+        decision = "approve" if args.approve else "deny"
+        resolved = unwrap(request("POST", f"/approvals/{approval_id}", {"decision": decision}))
+        if not args.turn_id:
+            print_value(resolved, args.output_format)
+    if args.turn_id:
+        render_events(events(args.turn_id, after_sequence=args.after_sequence), args.output_format)
+        return 0
+    if approval_id:
+        return 0
     prompt = args.prompt if args.prompt is not None else args.positional_prompt
     session = args.session or create_session()
     if prompt:
