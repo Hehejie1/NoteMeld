@@ -290,3 +290,10 @@
 - 不允许重新引入的错误做法：K2 在线逐文件扫描；K1/K2/K3 依赖旧 per-task collection；把 K3 canonical 节点按文章复制；用 `article_ids=[]` 当作全库；要求先调 K3 才能调 K2/K1；把 K0-K3 业务模型写入 SDK。
 - 检查方式：`backend/tests/knowledge/test_knowledge_retrieval.py` 的文章过滤、显式空集合、K3 provenance、四工具独立调用；检查 FTS/向量 collection 数量为固定版本集合。
 - 修复经验：SQLite FTS5 负责共享词法索引，版本化共享 Chroma 负责向量索引，SQLite relation/occurrence 负责图 provenance；查询前校验文章范围，工具由 NoteMeld Provider 独立注册，Note 保存成功边界不受索引失败影响。
+
+## Agent ModelDriver 每轮丢失请求上下文
+
+- 发生过的问题/风险：native Turn submit 时虽然含 Conversation history、模型和工具，但 ABI v1 的 `model.stream.payload` 只带该轮 messages；Host 直接透传后，Provider 请求没有 context refs、工具描述或安全模型配置，structured assistant/tool message 也可能被当成普通 JSON 文本，工具第二轮关系断裂。
+- 不允许重新引入的错误做法：每轮传空 history；用固定消息条数代替统一模型窗口预算；忽略 system/current user；丢弃 assistant tool calls 或 tool result call id；把 Provider 原始异常用 `logger.exception` 写入日志；在 NoteMeld 重做 Agent loop。
+- 检查方式：`backend/tests/agent_host/test_model_driver.py` 与 `test_native_executor.py`；断言两轮 model request 都保留 system/history/current user/tool group，并重复携带 context refs、工具描述和无凭证 model descriptor，同时覆盖 delta、usage、tool call 和安全错误分类。
+- 修复经验：Rust SDK canonical messages 始终是每轮权威；Host 只附着 Turn 级不可变上下文并做 Provider envelope 转换。完整历史交给 SDK，Provider 前裁剪继续复用 `Models.stream()`，空 messages fail-closed。

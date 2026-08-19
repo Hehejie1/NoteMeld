@@ -134,7 +134,7 @@
 
 CLI 契约：`notemeld agent -p/--prompt` 提交单次 Turn；`--conversation/--session` 继续指定 Conversation；`--model` 传递模型覆盖；`--output/--format text|json|jsonl` 控制输出。REPL 的 `/new`、`/resume ID`、`/sessions`、`/model [NAME]`、`/exit` 只组合本表接口，不直接写数据库，也不加载另一套 Agent runtime。
 
-Agent Host 控制约束：SDK 原生 driver 请求包含 `model.stream`、`tool.describe` 和 `tool.invoke`；Host 对 `tool.describe` 只返回 bounded namespaced capabilities。审批由 `POST /api/agent/v1/approvals/{approval_id}` 发送 `{"decision":"approve|deny"}` 或兼容 `{"approved":true|false}` 到同一个 native runtime；Host 不直接修改 Turn 终态。
+Agent Host 控制约束：SDK 原生 driver 请求包含 `model.stream`、`tool.describe` 和 `tool.invoke`；Host 对 `tool.describe` 只返回 bounded namespaced capabilities。ABI v1 每轮 `model.stream` 的 canonical `messages` 是权威，Host 为该轮补齐安全 `model/model_override`、当前 `input/context_refs`、工具描述和显式 generation config；返回继续使用 schema v1 的 chunks/completion envelope。审批由 `POST /api/agent/v1/approvals/{approval_id}` 发送 `{"decision":"approve|deny"}` 或兼容 `{"approved":true|false}` 到同一个 native runtime；Host 不直接修改 Turn 终态。
 
 白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
 
