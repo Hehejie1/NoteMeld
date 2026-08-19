@@ -152,6 +152,7 @@ class NativeAgentExecutor:
             )
             models, model = _resolve_saved_model(model_name)
             knowledge_provider = NoteMeldKnowledgeProvider()
+            product_tool_driver = self.tool_driver or NoteMeldToolDriver(provider=knowledge_provider)
             model_override = {
                 "provider_id": str(getattr(model, "provider_id", "")),
                 "model_name": str(getattr(model, "name", model_name) or ""),
@@ -217,23 +218,19 @@ class NativeAgentExecutor:
                         return {"schema_version": "1", "ok": False,
                                 "error": {"code": "invalid_input", "message": "工具名称必须是字符串数组"}}
                     try:
-                        provider = self.tool_driver.registry if self.tool_driver is not None else knowledge_provider
-                        descriptors = provider.describe(names)
-                        if asyncio.iscoroutine(descriptors):
-                            descriptors = await descriptors
-                    except ValueError as error:
+                        descriptors = await product_tool_driver.describe(names)
+                    except ValueError:
                         return {"schema_version": "1", "ok": False,
-                                "error": {"code": "invalid_input", "message": str(error)}}
-                    except Exception:  # noqa: BLE001 - product capability boundary
-                        logger.exception("Agent SDK product tool discovery failed")
+                                "error": {"code": "invalid_input", "message": "工具发现请求无效"}}
+                    except Exception as error:  # noqa: BLE001 - product capability boundary
+                        logger.warning(
+                            "Agent SDK product tool discovery failed: category=%s",
+                            type(error).__name__,
+                        )
                         return {"schema_version": "1", "ok": False,
                                 "error": {"code": "tool_failed", "message": "工具发现失败"}}
                     return {"schema_version": "1", "ok": True, "result": {"tools": descriptors}}
                 if kind == "tool.invoke":
-                    driver = self.tool_driver or NoteMeldToolDriver(provider=knowledge_provider)
-                    if driver is None:
-                        return {"schema_version": "1", "ok": False,
-                                "error": {"code": "tool_failed", "message": "产品工具驱动未配置"}}
                     arguments = driver_payload.get("arguments", {})
                     if isinstance(arguments, str):
                         try:
@@ -241,10 +238,9 @@ class NativeAgentExecutor:
                         except json.JSONDecodeError:
                             arguments = None
                     if not isinstance(arguments, dict):
-                        return {"schema_version": "1", "ok": False,
-                                "error": {"code": "invalid_input", "message": "工具参数必须是对象"}}
+                        arguments = driver_payload.get("arguments")
                     try:
-                        output = await driver.invoke(
+                        tool_result = await product_tool_driver.invoke(
                             {
                                 "call_id": driver_payload.get("call_id"),
                                 "tool_name": driver_payload.get("tool_name"),
@@ -255,14 +251,21 @@ class NativeAgentExecutor:
                                 "turn_id": driver_payload.get("turn_id") or turn_id,
                             },
                         )
-                    except ValueError as error:
+                    except ValueError:
                         return {"schema_version": "1", "ok": False,
-                                "error": {"code": "invalid_input", "message": str(error)}}
+                                "error": {"code": "invalid_input", "message": "工具调用协议无效"}}
                     except Exception:  # noqa: BLE001 - product tool boundary
-                        logger.exception("Agent SDK product tool failed")
+                        logger.warning("Agent SDK product tool driver failed")
                         return {"schema_version": "1", "ok": False,
                                 "error": {"code": "tool_failed", "message": "工具执行失败"}}
-                    return {"schema_version": "1", "ok": True, "result": {"output": output}}
+                    if (
+                        not isinstance(tool_result, dict)
+                        or str(tool_result.get("call_id") or "") != str(driver_payload.get("call_id") or "")
+                        or "output" not in tool_result
+                    ):
+                        return {"schema_version": "1", "ok": False,
+                                "error": {"code": "tool_failed", "message": "工具结果协议无效"}}
+                    return {"schema_version": "1", "ok": True, "result": {"output": tool_result["output"]}}
                 return {"schema_version": "1", "ok": False,
                         "error": {"code": "invalid_input", "message": "当前能力尚未接入"}}
 
@@ -329,13 +332,17 @@ class NativeAgentExecutor:
                 for item in value:
                     if not isinstance(item, dict):
                         continue
-                    name = str(item.get("name") or "").strip()
+                    name = str(item.get("id") or item.get("name") or "").strip()
                     if not name:
                         continue
                     descriptor = {
                         "name": name,
                         "description": str(item.get("description") or ""),
-                        "input_schema": item.get("input_schema") or {"type": "object"},
+                        "input_schema": (
+                            item.get("input_schema")
+                            or item.get("parameters")
+                            or {"type": "object"}
+                        ),
                     }
                     result.append(descriptor)
                 return result
@@ -381,15 +388,15 @@ class NativeAgentExecutor:
             ]
             if history and history[-1] == {"role": "user", "content": content}:
                 history.pop()
-            tool_provider = self.tool_driver.registry if self.tool_driver is not None else knowledge_provider
             tool_descriptors: list[dict[str, Any]] = []
             try:
-                describe_result = tool_provider.describe([])
-                if asyncio.iscoroutine(describe_result):
-                    describe_result = asyncio.run(describe_result)
+                describe_result = asyncio.run(product_tool_driver.describe([]))
                 tool_descriptors = _coerce_tool_schema(describe_result)
-            except Exception:
-                logger.exception("Tool discovery unavailable while building SDK turn request")
+            except Exception as error:
+                logger.warning(
+                    "Tool discovery unavailable while building SDK turn request: category=%s",
+                    type(error).__name__,
+                )
                 tool_descriptors = []
             normalized_input = {
                 "text": content,

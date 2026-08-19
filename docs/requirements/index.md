@@ -1,6 +1,6 @@
 # Requirements Index
 
-更新时间：2026-08-18
+更新时间：2026-08-19
 
 本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
 
@@ -31,6 +31,7 @@
 | P4.1 | Implemented | 语义无限白板（可编辑卡片、关系、对话引用与显式 Note 发布） | [`2026-08-14-notemeld-semantic-infinite-whiteboard.md`](2026-08-14-notemeld-semantic-infinite-whiteboard.md) | [`plan`](../superpowers/plans/2026-08-14-notemeld-semantic-infinite-whiteboard.md) + [`spec`](../superpowers/specs/2026-08-14-notemeld-semantic-infinite-whiteboard-design.md) + [`证据`](../superpowers/tests/2026-08-14-notemeld-semantic-infinite-whiteboard.md) | 主线能力与白板/Note 发布链路已接入；性能基准与浏览器/纵向验收待补充 |
 | P3.1 | Implemented | L0–L3 渐进式能力路由与按需 Wiki 检索 | [`2026-08-11-progressive-capability-routing.md`](2026-08-11-progressive-capability-routing.md) | [`plan`](../superpowers/plans/2026-08-11-progressive-capability-routing.md) + [`spec`](../superpowers/specs/2026-08-11-progressive-capability-routing.md) + [`验收`](../superpowers/tests/2026-08-11-progressive-capability-routing.md) | 首轮固定 3 个元工具；Wiki/Skill/MCP 渐进披露；Agent free-chat 取消默认重型 Wiki 预搜；定向回归通过 |
 | P6 | Implemented | Agent SDK 单一运行时与 NoteMeld 正式切换 | [`2026-08-17-agent-sdk-single-runtime-cutover.md`](2026-08-17-agent-sdk-single-runtime-cutover.md) | [`目标架构`](../superpowers/specs/2026-08-17-agent-sdk-single-runtime-architecture.md) + [`plan`](../superpowers/plans/2026-08-17-agent-sdk-single-runtime-cutover.md) + [`执行规格`](../superpowers/specs/2026-08-17-agent-sdk-single-runtime-execution.md) | Rust SDK 是唯一 Agent 行为事实源；NoteMeld 只消费 artifact，历史 Conversation/Note/Wiki 数据继续可读 |
+| P6.4 | Implemented | SDK ToolScheduler 到 NoteMeld 产品能力的完整 ToolDriver 链路 | [`2026-08-19-agent-tool-driver-chain.md`](2026-08-19-agent-tool-driver-chain.md) | [`plan`](../superpowers/plans/2026-08-19-agent-tool-driver-chain.md) + [`spec`](../superpowers/specs/2026-08-19-agent-tool-driver-chain.md) | 产品成功/失败均形成 ToolResult；真实 SDK 验证第二轮模型与多 Session 隔离；不涉及 approval |
 | P6.3 | Implemented | 独立 Agent SDK 唯一源码仓库收敛 | [`change-spec-agent-sdk-single-source.md`](../system/change-spec-agent-sdk-single-source.md) | 本 Change Spec | NoteMeld 已删除内嵌 `agent-sdk/`、SDK CI 和源码回退；独立仓库承担 Rust/binding/CLI/build/release |
 | P6.2 | Implemented | NoteMeld 消费独立 Agent SDK 产物并统一 CLI | [`2026-08-17-notemeld-agent-sdk-artifact-integration.md`](2026-08-17-notemeld-agent-sdk-artifact-integration.md) | [`plan`](../superpowers/plans/2026-08-17-notemeld-agent-sdk-artifact-integration.md) + [`spec`](../superpowers/specs/2026-08-17-notemeld-agent-sdk-artifact-integration.md) | wheel/native artifact 作为生产输入；源码/安装启动统一校验；CLI 复用 Agent v1；生产 legacy Agent 已删除 |
 | P6.1 | Planned | K0-K3 文章级分层知识检索与独立 Agent 工具 | [`2026-08-18-k0-k3-article-knowledge-retrieval.md`](2026-08-18-k0-k3-article-knowledge-retrieval.md) | [`plan`](../superpowers/plans/2026-08-18-k0-k3-article-knowledge-retrieval.md) + [`执行规格`](../superpowers/specs/2026-08-18-k0-k3-article-knowledge-retrieval-execution.md) | 全层 article_id=task_id；K1/K2/K3 可预过滤；四工具独立/并行；目标 10 万篇单机索引。服务层可并行实施，Agent 接入依赖 P6 正式 Capability/ToolDriver |
@@ -50,6 +51,7 @@
 
 ## 最近变更
 
+- 2026-08-19：完成 P6.4 ToolDriver 产品能力链路；SDK ToolScheduler 保持唯一调度者，NoteMeld Capability Registry 复用现有 Wiki/Note 服务，五类脱敏工具结果进入下一轮模型，并补真实 native SDK 与多 Session 并发回归
 - 2026-08-18：新增 P6.1 K0-K3 文章级分层知识检索 Requirement/Plan/Execution Spec；统一 article_id=task_id，定义四个无顺序依赖的 Knowledge Capability、共享版本化索引、K3 occurrence BM25/vector + SQLite graph provenance 和 10 万篇 benchmark 门槛
 - 2026-08-17：P6 改为 Agent SDK 单一运行时正式切换；用户明确取消旧 Python Agent/compat/rollback，新增清晰分层架构和 SDK/Framework 能力边界，历史 Conversation/Note/Wiki 数据继续保留
 - 2026-08-17：完成 NoteMeld 消费独立 Agent SDK artifact 与统一 CLI；wheel/native artifact 作为生产输入，legacy Python Agent 删除

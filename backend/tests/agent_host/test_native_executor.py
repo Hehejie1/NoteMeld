@@ -343,7 +343,11 @@ def test_native_executor_routes_tool_calls_to_product_driver(monkeypatch):
                     "turn_id": "turn-1",
                 },
             })
-            assert result == {"schema_version": "1", "ok": True, "result": {"output": {"items": []}}}
+            assert result == {
+                "schema_version": "1",
+                "ok": True,
+                "result": {"output": {"ok": True, "result": {"items": []}}},
+            }
             self.on_event({"schema_version": "1", "type": "turn.succeeded", "payload": {}})
             return 1
 
@@ -368,9 +372,15 @@ def test_native_executor_routes_tool_calls_to_product_driver(monkeypatch):
 
         registry = Registry()
 
+        async def describe(self, names):
+            return self.registry.describe(names)
+
         async def invoke(self, call, context, on_progress=None):
             requested.append((call, context))
-            return {"items": []}
+            return {
+                "call_id": call["call_id"],
+                "output": {"ok": True, "result": {"items": []}},
+            }
 
     monkeypatch.setattr("app.agent_host.native_executor.get_agent_sdk_host", lambda: FakeHost())
     monkeypatch.setattr(

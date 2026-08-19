@@ -106,4 +106,5 @@ def test_tool_driver_can_invoke_knowledge_provider_without_prior_tool(tmp_path):
         {"session_id": "s1", "turn_id": "t1"},
     ))
     assert result["call_id"] == "c1"
-    assert result["structured_content"]["capability_id"] == "knowledge:evidence_search"
+    assert result["output"]["ok"] is True
+    assert result["output"]["result"]["capability_id"] == "knowledge:evidence_search"
