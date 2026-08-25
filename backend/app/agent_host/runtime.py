@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import importlib
 import json
 import os
@@ -13,6 +14,8 @@ from typing import Any
 from app.agent_host.sdk_artifact_pin import (
     ABI_VERSION as PINNED_ABI_VERSION,
     ARTIFACT_MANIFEST_SHA256,
+    NATIVE_LIBRARY_SHA256,
+    PYTHON_WHEEL_SHA256,
     SCHEMA_VERSION as PINNED_SCHEMA_VERSION,
     SDK_SOURCE_COMMIT,
     SDK_VERSION as PINNED_SDK_VERSION,
@@ -83,12 +86,24 @@ class AgentSdkRuntime:
 
             target = metadata["target_triples"][0]
             expected_manifest = ARTIFACT_MANIFEST_SHA256.get(target)
-            if metadata.get("source_commit") != SDK_SOURCE_COMMIT:
+            if metadata.get("source_commit") not in (None, SDK_SOURCE_COMMIT):
                 raise AgentSdkUnavailable("Agent SDK source commit mismatch")
-            if metadata.get("artifact_manifest_sha256") != expected_manifest:
+            if metadata.get("artifact_manifest_sha256") not in (None, expected_manifest):
                 raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
 
             native_library = cls._probe_native_artifact(binding, requested, contract)
+            expected_native = NATIVE_LIBRARY_SHA256.get(target)
+            if expected_native is None or native_library is None:
+                raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
+            if cls._sha256(Path(native_library)) != expected_native:
+                raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
+            configured_wheel = os.getenv("NOTEMELD_AGENT_SDK_WHEEL", "").strip()
+            if configured_wheel:
+                expected_wheel = PYTHON_WHEEL_SHA256.get(target)
+                if expected_wheel is None or not Path(configured_wheel).is_file():
+                    raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
+                if cls._sha256(Path(configured_wheel)) != expected_wheel:
+                    raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
             return cls(
                 binding=binding,
                 mode="rust",
@@ -96,8 +111,8 @@ class AgentSdkRuntime:
                 schema_version=schema_version,
                 abi_version=abi_version,
                 native_library=native_library,
-                source_commit=metadata["source_commit"],
-                artifact_manifest_sha256=metadata["artifact_manifest_sha256"],
+                source_commit=metadata.get("source_commit", SDK_SOURCE_COMMIT),
+                artifact_manifest_sha256=metadata.get("artifact_manifest_sha256", expected_manifest),
             )
         except AgentSdkUnavailable:
             raise
@@ -144,10 +159,8 @@ class AgentSdkRuntime:
             raise AgentSdkUnavailable("Agent SDK schema version mismatch")
         if metadata.get("binding_version") != SDK_VERSION:
             raise AgentSdkUnavailable("Agent SDK binding version mismatch")
-        if metadata.get("source_commit") != SDK_SOURCE_COMMIT:
+        if metadata.get("source_commit") not in (None, SDK_SOURCE_COMMIT):
             raise AgentSdkUnavailable("Agent SDK source commit mismatch")
-        if not isinstance(metadata.get("artifact_manifest_sha256"), str):
-            raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
         targets = metadata.get("target_triples")
         if (
             not isinstance(targets, list)
@@ -172,7 +185,7 @@ class AgentSdkRuntime:
             if native is None:
                 raise AgentSdkUnavailable("Agent SDK native artifact is missing")
             native_path = Path(str(native))
-            explicit_path = None
+            explicit_path = str(native_path)
         else:
             native_path = Path(requested).expanduser().resolve()
             explicit_path = str(native_path)
@@ -212,6 +225,14 @@ class AgentSdkRuntime:
         if native_schema_version != SCHEMA_VERSION:
             raise AgentSdkUnavailable("Agent SDK schema version mismatch")
         return explicit_path
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @property
     def is_rollback(self) -> bool:

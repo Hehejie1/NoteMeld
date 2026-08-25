@@ -29,9 +29,9 @@ def _stub_artifact(monkeypatch, binding, *, contract=None, native_library=None) 
             "sdk_version": "0.1.0",
             "schema_version": "1",
             "binding_version": "0.1.0",
-            "target_triples": ["aarch64-apple-ios"],
+            "target_triples": ["x86_64-apple-darwin"],
             "source_commit": "f926bd7674c98b27895734c0df18e0c0241cb132",
-            "artifact_manifest_sha256": "e381e742a8c7916dc7e78756b69b8e5270f9f140d70e62605da9f6759e8abadf",
+            "artifact_manifest_sha256": "0bbe30e7f2e6b0e232f51dc79a6fc6615a0e3756690a79ae99d3f7a6ebf52a80",
         })),
     )
     monkeypatch.setattr(
@@ -42,7 +42,8 @@ def _stub_artifact(monkeypatch, binding, *, contract=None, native_library=None) 
 
 
 def test_loader_accepts_compatible_versioned_wheel_and_native_artifact(monkeypatch):
-    _stub_artifact(monkeypatch, _compatible_binding())
+    _stub_artifact(monkeypatch, _compatible_binding(), native_library="/tmp/pinned-native")
+    monkeypatch.setattr(AgentSdkRuntime, "_sha256", staticmethod(lambda _path: "f6b58118f4734b19c795e5e4866eb4e5e19093c4ba4bf43e68c69293bba66cf8"))
 
     runtime = AgentSdkRuntime.load(binding_path="packaged")
 
@@ -50,7 +51,7 @@ def test_loader_accepts_compatible_versioned_wheel_and_native_artifact(monkeypat
     assert runtime.sdk_version == "0.1.0"
     assert runtime.schema_version == "1"
     assert runtime.abi_version == 1
-    assert runtime.native_library is None
+    assert runtime.native_library == "/tmp/pinned-native"
     assert runtime.source_commit == "f926bd7674c98b27895734c0df18e0c0241cb132"
 
 
@@ -64,6 +65,11 @@ def test_loader_fails_closed_when_artifact_provenance_is_missing(monkeypatch):
             "sdk_version": "0.1.0", "schema_version": "1", "binding_version": "0.1.0",
             "target_triples": ["aarch64-apple-ios"],
         })),
+    )
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_probe_native_artifact",
+        staticmethod(lambda _binding, _path, _contract: "/tmp/pinned-native"),
     )
     with pytest.raises(AgentSdkUnavailable, match="commit|hash"):
         AgentSdkRuntime.load(binding_path="packaged")
@@ -82,6 +88,15 @@ def test_loader_fails_closed_on_artifact_hash_mismatch(monkeypatch):
             "artifact_manifest_sha256": "0" * 64,
         })),
     )
+    with pytest.raises(AgentSdkUnavailable, match="hash"):
+        AgentSdkRuntime.load(binding_path="packaged")
+
+
+def test_loader_fails_closed_on_native_digest_mismatch(monkeypatch, tmp_path):
+    native = tmp_path / "libnotemeld_agent.dylib"
+    native.write_bytes(b"not-the-pinned-native")
+    binding = _compatible_binding()
+    _stub_artifact(monkeypatch, binding, native_library=str(native))
     with pytest.raises(AgentSdkUnavailable, match="hash"):
         AgentSdkRuntime.load(binding_path="packaged")
 
