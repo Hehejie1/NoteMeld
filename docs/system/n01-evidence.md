@@ -9,3 +9,7 @@
 | Note authority / DTO seam | `PYTHONPATH=backend pytest -q backend/tests/agent_host/test_note_contract.py` | `note_documents.task_id` → opaque NoteId；authority/projection boundary 与 SDK DTO/adapter ports 已冻结 | 具体 SDK operation/store adapter 属 N02 |
 
 固定 handoff identity：source commit `f926bd7674c98b27895734c0df18e0c0241cb132`；SDK/schema/ABI `0.1.0 / 1 / 1`；Note wire `note-agent-v1`。N01 不绑定 SDK checkout、当前 HEAD 或开发快照。
+
+当前只读审计（2026-08-26）显示 handoff 的 6 个现有本地 target
+manifest SHA-256 均不匹配，`aarch64-unknown-linux-ohos` 缺失，且本地多出
+未在 handoff 列出的 `aarch64-apple-ios-sim`。这些生成物未被 N01 消费或提交。
