@@ -1,0 +1,115 @@
+{
+  "schema_version": "n01-url-capability-baseline.v1",
+  "generated_from": [
+    "backend/app/services/constant.py",
+    "backend/app/validators/video_url_validator.py",
+    "backend/app/routers/note.py",
+    "backend/app/services/multisource_video_collector.py",
+    "backend/app/services/web_note.py",
+    "backend/tests/**/test_*downloader*.py",
+    "backend/tests/**/test_multisource*.py",
+    "backend/tests/**/test_web_note*.py"
+  ],
+  "pipeline": {
+    "subtitle_first": true,
+    "download": true,
+    "transcription": true,
+    "screenshots": true,
+    "web_fallback": true,
+    "task_state": "backend/app/services/task_status_writer.py",
+    "error_classification": "backend/app/enmus/exception.py"
+  },
+  "platforms": [
+    {
+      "platform": "youtube",
+      "url_pattern": "(https?://)?(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[\\w\\-]+",
+      "downloader": "app.downloaders.youtube_downloader:YoutubeDownloader",
+      "capabilities": {
+        "subtitle_first": true,
+        "download": true,
+        "video_info": false,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    },
+    {
+      "platform": "bilibili",
+      "url_pattern": "(https?://)?(www\\.)?bilibili\\.com/video/[a-zA-Z0-9]+",
+      "downloader": "app.downloaders.bilibili_downloader:BilibiliDownloader",
+      "capabilities": {
+        "subtitle_first": true,
+        "download": true,
+        "video_info": false,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    },
+    {
+      "platform": "tiktok",
+      "url_pattern": "<registry-only>",
+      "downloader": "app.downloaders.douyin_downloader:DouyinDownloader",
+      "capabilities": {
+        "subtitle_first": false,
+        "download": true,
+        "video_info": true,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    },
+    {
+      "platform": "kuaishou",
+      "url_pattern": "kuaishou",
+      "downloader": "app.downloaders.kuaishou_downloader:KuaiShouDownloader",
+      "capabilities": {
+        "subtitle_first": false,
+        "download": true,
+        "video_info": false,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    },
+    {
+      "platform": "douyin",
+      "url_pattern": "douyin",
+      "downloader": "app.downloaders.douyin_downloader:DouyinDownloader",
+      "capabilities": {
+        "subtitle_first": false,
+        "download": true,
+        "video_info": true,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    },
+    {
+      "platform": "wechat_channels",
+      "url_pattern": "channels.weixin.qq.com/finder-preview/pages/feed",
+      "downloader": "app.downloaders.wechat_channels_downloader:WeChatChannelsDownloader",
+      "capabilities": {
+        "subtitle_first": false,
+        "download": true,
+        "video_info": false,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    },
+    {
+      "platform": "local",
+      "url_pattern": "<registry-only>",
+      "downloader": "app.downloaders.local_downloader:LocalDownloader",
+      "capabilities": {
+        "subtitle_first": false,
+        "download": true,
+        "video_info": false,
+        "screenshot": true,
+        "web_fallback": true
+      }
+    }
+  ],
+  "regression_tests": [
+    "backend/tests/test_core_note_task_status_api.py",
+    "backend/tests/test_douyin_downloader_contracts.py",
+    "backend/tests/test_multisource_summary_contracts.py",
+    "backend/tests/test_multisource_video_collector_contracts.py",
+    "backend/tests/test_web_note_contracts.py"
+  ]
+}

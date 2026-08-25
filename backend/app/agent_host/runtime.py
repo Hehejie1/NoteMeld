@@ -10,11 +10,19 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-SDK_VERSION = "0.1.0"
-SCHEMA_VERSION = "1"
+from app.agent_host.sdk_artifact_pin import (
+    ABI_VERSION as PINNED_ABI_VERSION,
+    ARTIFACT_MANIFEST_SHA256,
+    SCHEMA_VERSION as PINNED_SCHEMA_VERSION,
+    SDK_SOURCE_COMMIT,
+    SDK_VERSION as PINNED_SDK_VERSION,
+)
+
+SDK_VERSION = PINNED_SDK_VERSION
+SCHEMA_VERSION = PINNED_SCHEMA_VERSION
 # The standalone SDK publishes abi-v1.json in every wheel/native artifact.
 # abi-v2.json is a future contract and is not part of the current release.
-ABI_VERSION = 1
+ABI_VERSION = PINNED_ABI_VERSION
 _ARTIFACT_METADATA = "notemeld-agent-sdk.json"
 _ABI_CONTRACT = f"abi-v{ABI_VERSION}.json"
 
@@ -37,6 +45,8 @@ class AgentSdkRuntime:
     schema_version: str | None
     abi_version: int | None
     native_library: str | None = None
+    source_commit: str | None = None
+    artifact_manifest_sha256: str | None = None
 
     @classmethod
     def load(
@@ -56,7 +66,7 @@ class AgentSdkRuntime:
         requested = binding_path or "packaged"
         try:
             binding = cls._load_binding(requested)
-            contract = cls._read_artifact_contract(binding)
+            contract, metadata = cls._read_artifact_contract(binding)
             sdk_version = str(getattr(binding, "SDK_VERSION", ""))
             schema_version = str(getattr(binding, "SCHEMA_VERSION", ""))
             try:
@@ -71,6 +81,13 @@ class AgentSdkRuntime:
             if abi_version != ABI_VERSION:
                 raise AgentSdkUnavailable("Agent SDK ABI version mismatch")
 
+            target = metadata["target_triples"][0]
+            expected_manifest = ARTIFACT_MANIFEST_SHA256.get(target)
+            if metadata.get("source_commit") != SDK_SOURCE_COMMIT:
+                raise AgentSdkUnavailable("Agent SDK source commit mismatch")
+            if metadata.get("artifact_manifest_sha256") != expected_manifest:
+                raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
+
             native_library = cls._probe_native_artifact(binding, requested, contract)
             return cls(
                 binding=binding,
@@ -79,6 +96,8 @@ class AgentSdkRuntime:
                 schema_version=schema_version,
                 abi_version=abi_version,
                 native_library=native_library,
+                source_commit=metadata["source_commit"],
+                artifact_manifest_sha256=metadata["artifact_manifest_sha256"],
             )
         except AgentSdkUnavailable:
             raise
@@ -106,7 +125,7 @@ class AgentSdkRuntime:
         return importlib.import_module("notemeld_agent_sdk.runtime")
 
     @staticmethod
-    def _read_artifact_contract(binding: ModuleType) -> dict[str, Any]:
+    def _read_artifact_contract(binding: ModuleType) -> tuple[dict[str, Any], dict[str, Any]]:
         package_name = str(getattr(binding, "__package__", "") or "")
         if package_name != "notemeld_agent_sdk":
             raise AgentSdkUnavailable("Agent SDK artifact metadata is missing or invalid")
@@ -125,6 +144,10 @@ class AgentSdkRuntime:
             raise AgentSdkUnavailable("Agent SDK schema version mismatch")
         if metadata.get("binding_version") != SDK_VERSION:
             raise AgentSdkUnavailable("Agent SDK binding version mismatch")
+        if metadata.get("source_commit") != SDK_SOURCE_COMMIT:
+            raise AgentSdkUnavailable("Agent SDK source commit mismatch")
+        if not isinstance(metadata.get("artifact_manifest_sha256"), str):
+            raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
         targets = metadata.get("target_triples")
         if (
             not isinstance(targets, list)
@@ -132,7 +155,7 @@ class AgentSdkRuntime:
             or any(not isinstance(item, str) or not item for item in targets)
         ):
             raise AgentSdkUnavailable("Agent SDK artifact metadata is missing or invalid")
-        return contract
+        return contract, metadata
 
     @staticmethod
     def _probe_native_artifact(

@@ -40,6 +40,12 @@
 - `conversations`：会话。字段：`id`、`mode`、`title`、`status`、`message`、`platform`、`linked_note_task_id`、`note_state`、表单/转写/音频/Markdown JSON、`research_space_id`（P3 阶段二新增，nullable，cid→rs_id 映射，由 `ensure_conversation_columns` 幂等迁移）、时间戳、`deleted_at`。
 - `conversation_messages`：会话消息。字段：`id`、`conversation_id`、`role`、`message_type`、`content`、`status`、`meta_json`、`sources_json`、`context_refs_authority_version`、`error`、时间戳。authority version 是客户端不可写的服务端 provenance：当前 resolver 成功处理引用后写 1；历史 schema、legacy merge 和未认证内部写入默认 0。
 - `note_documents`：笔记文档索引。字段：`task_id`、`conversation_id`、`title`、`content`、`source_url`、`platform`、`model_name`、`style`、`status`、`wiki_status`、时间戳、`deleted_at`。
+
+N01 冻结 `note_documents.task_id` 为一期 SDK `NoteId` 的 opaque 映射；历史
+task id 不改写，`note_documents` 的标题、Markdown 正文、来源和产品状态是
+Note authority。`note_results/`、conversation message、Wiki/FTS/Chroma 和
+UI 只属于投影或兼容输出，不能因投影失败回滚已成功提交的 Note。产品侧
+DTO/adapter seam 见 `docs/system/n01-note-authority-and-sdk-seam.md`。
 - `note_styles`：笔记样式。字段：`id`、`name`、`description`、`skeleton_html`、`style_constraints`、`rule_config`、`example_content`、`output_formats`、`builtin`、时间戳。
 - `template_extraction_tasks`：样式模板提取任务。字段：`task_id`、`status`、`stage`、`messages_json`、`chunks_json`、`provider_id`、`model_name`、`file_name`、`progress`、请求 payload、结果和错误。
 

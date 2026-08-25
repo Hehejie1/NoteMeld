@@ -25,7 +25,14 @@ def _stub_artifact(monkeypatch, binding, *, contract=None, native_library=None) 
     monkeypatch.setattr(
         AgentSdkRuntime,
         "_read_artifact_contract",
-        staticmethod(lambda _binding: contract or _contract()),
+        staticmethod(lambda _binding: (contract or _contract(), {
+            "sdk_version": "0.1.0",
+            "schema_version": "1",
+            "binding_version": "0.1.0",
+            "target_triples": ["aarch64-apple-ios"],
+            "source_commit": "f926bd7674c98b27895734c0df18e0c0241cb132",
+            "artifact_manifest_sha256": "e381e742a8c7916dc7e78756b69b8e5270f9f140d70e62605da9f6759e8abadf",
+        })),
     )
     monkeypatch.setattr(
         AgentSdkRuntime,
@@ -44,6 +51,39 @@ def test_loader_accepts_compatible_versioned_wheel_and_native_artifact(monkeypat
     assert runtime.schema_version == "1"
     assert runtime.abi_version == 1
     assert runtime.native_library is None
+    assert runtime.source_commit == "f926bd7674c98b27895734c0df18e0c0241cb132"
+
+
+def test_loader_fails_closed_when_artifact_provenance_is_missing(monkeypatch):
+    binding = _compatible_binding()
+    monkeypatch.setattr(AgentSdkRuntime, "_load_binding", staticmethod(lambda _path: binding))
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_read_artifact_contract",
+        staticmethod(lambda _binding: (_contract(), {
+            "sdk_version": "0.1.0", "schema_version": "1", "binding_version": "0.1.0",
+            "target_triples": ["aarch64-apple-ios"],
+        })),
+    )
+    with pytest.raises(AgentSdkUnavailable, match="commit|hash"):
+        AgentSdkRuntime.load(binding_path="packaged")
+
+
+def test_loader_fails_closed_on_artifact_hash_mismatch(monkeypatch):
+    binding = _compatible_binding()
+    _stub_artifact(monkeypatch, binding)
+    monkeypatch.setattr(
+        AgentSdkRuntime,
+        "_read_artifact_contract",
+        staticmethod(lambda _binding: (_contract(), {
+            "sdk_version": "0.1.0", "schema_version": "1", "binding_version": "0.1.0",
+            "target_triples": ["aarch64-apple-ios"],
+            "source_commit": "f926bd7674c98b27895734c0df18e0c0241cb132",
+            "artifact_manifest_sha256": "0" * 64,
+        })),
+    )
+    with pytest.raises(AgentSdkUnavailable, match="hash"):
+        AgentSdkRuntime.load(binding_path="packaged")
 
 
 def test_loader_fails_closed_when_sdk_package_is_missing(monkeypatch):
