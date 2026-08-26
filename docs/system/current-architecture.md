@@ -188,6 +188,15 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 
 `backend/app/agent_host/` 是独立 `notemeld-agent-sdk` Python package 的 NoteMeld Host 适配层。它负责加载版本化 binding、把现有 `app.ai` 模型流和 L0-L3 capability registry 转成 SDK driver 边界，并从现有 `conversations`/`conversation_messages` 读取历史；源码和桌面启动都只允许加载已安装的 standalone wheel/native artifact，禁止从 SDK 源码目录回退。N01 另外固定 S08 source commit、desktop artifact manifest/wheel/native SHA-256、SDK/schema/ABI 和 binding/native contract；缺失或不一致时 loader fail-closed。当前真实发布契约是 `SDK 0.1.0 / Agent Event schema 1 / ABI 1`。`abi-v2.json` 仍是未来契约，不能用包级临时常量绕过 artifact 校验。`python/python-oracle/legacy` runtime mode 已 fail-closed，不再存在静默回退。统一 Agent API 位于 `/api/agent/v1`，源码/安装 CLI 通过 `notemeld agent` 访问同一 Host。旧 `/api/chat/ask`、`/api/chat/free`、`/api/chat/free/stream` 已从生产 Router 移除。
 
+N02 在 `agent_host/note_store_adapter.py` 提供 SDK NoteStore、
+NoteOperationStore 和 NoteAuthority 的产品薄适配。`note_documents.task_id` 直接作为
+opaque NoteId；正文仍只存在 `note_documents`。来源、关系、operation 和 provenance
+写入 `note_agent_*` 元数据表，版本由每次权威提交的 provenance 单调派生。写入使用
+短 `BEGIN IMMEDIATE`：正文、版本、必要 operation/provenance 在同一事务提交；事务
+完成后才运行 Wiki/index/message/UI 投影，投影异常只形成诊断。operation reopen 会把
+未完成的 `begun/checkpointed` 标为 `needs_attention`，不会自动重放可能已发生的副作用。
+该表域由 `note_agent_app_migrations` 独立管理，不读取或写入 `PRAGMA user_version`。
+
 每个 native Turn 只在开始时从 canonical Conversation store 读取一次完整历史；Rust SDK loop 在模型→工具→模型的每一轮维护 canonical messages。ABI v1 的 `model.stream` callback 以该轮 messages 为权威，NoteMeld Host 为每轮补齐同一份安全模型配置、当前 input/context refs 和 bounded 工具描述，再由 `NoteMeldModelDriver` 转成 notemeld-ai `LLMContext`。system、当前 user、assistant tool calls 和 tool result call id 均保留；Provider 前的实际窗口裁剪仍只由 `Models.stream()` 对副本执行，Host 不再固定截成 40 条或伪造空历史。
 
 旧 NoteMeld Python Agent package（`backend/app/agent/`）、Python loop 测试和 `agent_host/compat.py` 已删除；Agent 行为只由独立 `notemeld-agent-sdk` 提供。

@@ -33,6 +33,7 @@
 - 不能删除任务 sidecar 文件，它们是复盘和排障依据。
 - 不能破坏 `task_id` 作为任务、结果文件、状态文件、note document 和 Wiki source 的关联主键。
 - 一期 SDK NoteId 必须 opaque 映射 `note_documents.task_id`；`note_documents` 是 Note 正文/来源/产品状态 authority，note_results、Conversation、Wiki、向量索引和 UI 只能是可重建投影。
+- SDK Note 写操作必须以 request id 和 canonical payload hash 持久幂等：same request/same payload 返回原 outcome，different payload 稳定冲突；未完成 operation 重开后进入 `needs_attention`，禁止自动重放。Note 正文、版本和必要 operation/provenance 原子提交后即成功，后续投影失败不得回滚或重复创建 Note。
 - 不能随意改变 `TaskStatus` 枚举语义，前端轮询和进度 UI 依赖这些状态。
 - 不能把已有文件上传安全校验降级为只看扩展名。
 - 不能在没有兼容层的情况下改变 API response wrapper：`{ code, msg, data }`。

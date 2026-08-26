@@ -173,6 +173,14 @@
 - 检查方式：`backend/tests/learning/test_learning_canvas_service.py::test_note_success_is_not_rolled_back_by_projection_or_message_failure`；前端仍以 create API 返回为成功边界。
 - 修复经验：Note 保存成功即研究正文成功；投影/消息失败只返回 `projection_save_failed/guide_message_failed` 安全诊断，Wiki 状态独立，白板可由 Note 重建。
 
+## Note operation 重放或共享 SQLite migration 相互覆盖
+
+- 发生过的问题/风险：不确定副作用在进程重启后被自动执行两次；或 Note/plugin/candidate 各自升级时覆盖共享 schema version，导致其他表域误判版本。
+- 根因：只在内存记录 request id，未持久化 payload hash/outcome；把 `PRAGMA user_version` 当作多个独立组件的公共 migration registry；把正文和 operation outcome 分成可观察的两个成功事务。
+- 不允许重新引入的错误做法：same request 不比对 payload；恢复 `begun/checkpointed` 后直接重放；在 Note adapter 表保存第二份 title/content；修改 `PRAGMA user_version`；在 Note 提交事务内执行模型、插件、网络或投影。
+- 检查方式：`backend/tests/agent_host/test_note_store_adapter.py`，使用真实临时 SQLite 覆盖 same/different payload、并发 expected version、重开 needs-attention、投影失败和多 registry 共存。
+- 修复经验：短 `BEGIN IMMEDIATE` 原子提交 `note_documents` + version/provenance + operation outcome；未终结 operation 重开只标记 `needs_attention`；各域使用独立 forward-only registry，投影提交后 best-effort 执行。
+
 ## API response wrapper 被破坏
 
 - 发生过的问题/风险：前端 Axios 封装按 `{code,msg,data}` 解包，后端局部返回裸对象会造成调用方类型错乱。
