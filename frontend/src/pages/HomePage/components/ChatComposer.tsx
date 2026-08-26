@@ -601,6 +601,9 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       asset_content: assetContent,
       context_refs: contextRefs,
     })
+    // Open the conversation as soon as the turn is accepted. Provider errors
+    // should still leave the user on the conversation with a visible failure.
+    navigate(`/notes/${conversationId}`)
 
     for await (const event of streamAgentEvents(turn.data.turn_id)) {
       const payload = event.payload || {}
@@ -611,7 +614,21 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           error: false,
           isStreaming: true,
         })
+      } else if (event.type === 'message.completed') {
+        const completedContent = payload.content
+        if (typeof completedContent === 'string' && completedContent) {
+          finalAnswer = completedContent
+          updateMessage(conversationId, assistantMessageId, {
+            content: finalAnswer,
+            error: false,
+            isStreaming: true,
+          })
+        }
       } else if (event.type === 'turn.succeeded') {
+        const terminalAnswer = payload.answer || payload.content
+        if (typeof terminalAnswer === 'string' && terminalAnswer) {
+          finalAnswer = terminalAnswer
+        }
         finalSources = Array.isArray(payload.sources) ? payload.sources : []
       } else if (event.type === 'turn.failed' || event.type === 'turn.cancelled' || event.type === 'turn.interrupted') {
         const error = payload.error
@@ -762,7 +779,6 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         contextRefs: pendingContextRefs,
       })
       clearContextRefs()
-      navigate(`/notes/${conversationId}`)
     } catch (err: any) {
       toast.error(err?.detail || err?.message || '聊天失败，请重试')
     } finally {

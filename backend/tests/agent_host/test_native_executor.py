@@ -9,6 +9,7 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
 
     events = []
     persisted = []
+    message_updates = []
     finished = []
     captured = {}
 
@@ -103,6 +104,10 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
     )
     monkeypatch.setattr("app.agent_host.native_executor.append_message", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
+        "app.agent_host.native_executor.update_message",
+        lambda _session, _message, patch: message_updates.append(patch),
+    )
+    monkeypatch.setattr(
         "app.agent_host.native_executor.agent_store.append_event",
         lambda _turn, event, **kwargs: persisted.append((event, kwargs)),
     )
@@ -116,16 +121,46 @@ def test_native_executor_translates_sdk_events_and_completes_turn(monkeypatch):
             {"role": "assistant", "content": "previous"},
         ],
     )
-    executor.run_sync("turn-1", "session-1", "hello", model_name="demo", asset_content="ctx-asset", context_refs=[{"type": "whiteboard_selection"}])
+    executor.run_sync(
+        "turn-1",
+        "session-1",
+        "hello",
+        model_name="demo",
+        user_message_id="user-1",
+        assistant_message_id="assistant-1",
+        asset_content="ctx-asset",
+        context_refs=[{"type": "whiteboard_selection"}],
+    )
 
     assert [event["type"] for event in events] == ["message.delta", "turn.succeeded"], finished
     assert [kwargs["event_type"] for _event, kwargs in persisted] == ["message.delta"]
     assert persisted[0][0] == {"delta": "hi"}
     assert finished[-1][0][1] == "succeeded"
+    assert message_updates[-1]["content"] == "hi"
     assert captured["request"]["history"] == [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "previous"},
     ]
+
+
+def test_terminal_failure_projects_a_visible_error_when_no_text_was_streamed():
+    from app.agent_host.native_executor import _resolve_terminal_assistant_content
+
+    assert _resolve_terminal_assistant_content(
+        "",
+        {"error": {"message": "模型服务连接失败"}},
+        succeeded=False,
+    ) == "模型服务连接失败"
+
+
+def test_terminal_success_uses_answer_fallback_when_no_delta_was_streamed():
+    from app.agent_host.native_executor import _resolve_terminal_assistant_content
+
+    assert _resolve_terminal_assistant_content(
+        "",
+        {"answer": "你好，我在。"},
+        succeeded=True,
+    ) == "你好，我在。"
 
 
 def test_native_executor_loads_async_tool_descriptors_when_tool_driver_not_provided(monkeypatch):
