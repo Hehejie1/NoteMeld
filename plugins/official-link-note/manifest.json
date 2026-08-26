@@ -1,0 +1,83 @@
+{
+  "manifest_version": 1,
+  "plugin_id": "official.link-note",
+  "plugin_version": "1.0.0",
+  "sdk_requirement": ">=1",
+  "schema_version": "1",
+  "capabilities": [
+    {
+      "id": "official-link-note:create",
+      "name": "Official link to Note",
+      "description": "将受支持的视频或网页链接加工为可追溯 Note。",
+      "input_schema": {
+        "type": "object",
+        "required": [
+          "url",
+          "platform"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1
+          },
+          "force_web_fallback": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "object"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object"
+      },
+      "portable": true
+    }
+  ],
+  "requested_permissions": [
+    {
+      "name": "network",
+      "rationale": "读取用户提交的公开链接和平台媒体内容"
+    },
+    {
+      "name": "note.write",
+      "rationale": "通过宿主 Note operation port 保存生成结果"
+    }
+  ],
+  "dependencies": [],
+  "license": {
+    "spdx": "MIT"
+  },
+  "runtime": {
+    "kind": "python",
+    "entrypoint": "src/official_link_note.py:OfficialLinkNotePlugin"
+  },
+  "transport": {
+    "kind": "host-port",
+    "protocol_version": "1"
+  },
+  "package": {
+    "index_version": 1,
+    "files": [
+      {
+        "path": "README.md",
+        "size": 274,
+        "sha256": "sha256:d75649b16cf6d4882cf17a07f3c476eaea8abc94dce64c5ac9c954730a3850ac",
+        "media_type": "text/plain",
+        "entrypoint": false
+      },
+      {
+        "path": "src/official_link_note.py",
+        "size": 4436,
+        "sha256": "sha256:3f7022aa1d4b694882794bd2b67aca44baa8adf8556d4514f0dce20f22681f42",
+        "media_type": "text/plain",
+        "entrypoint": true
+      }
+    ],
+    "package_digest": "sha256:a5bdfac7f1642b607fae60ab8a2891bd78784ca2c121cf6efbe040b63a24859f"
+  }
+}

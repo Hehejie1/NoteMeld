@@ -220,6 +220,18 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 
 ## Agent Knowledge Capability Contract
 
+## Official Link Note Capability Contract
+
+`official-link-note:create` is an installed-plugin capability, not a new HTTP
+endpoint. The existing `/api/generate_note` task entry delegates both video and
+web links to it. Its host port owns Note/task persistence, progress,
+cancellation and error projection; the plugin owns only URL routing and does
+not access Conversation, Agent Event or SQLite internals.
+
+| capability id | input | output | compatibility |
+| --- | --- | --- | --- |
+| `official-link-note:create` | `url`, `platform`, optional `force_web_fallback` and `options` | host Note result / stable task error | N01 seven platforms plus `web_link`; subtitle-first, download, transcription, screenshots, multi-source summary, web scrape, task state and fallback remain covered by N04 matrix |
+
 更新时间：2026-08-18
 
 本阶段不新增公共 HTTP 或 MCP endpoint。四个能力通过 Agent Host 的通用 `ToolDriver` 注册：
