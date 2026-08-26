@@ -96,6 +96,26 @@ def _is_model_history_item(item: Any) -> bool:
     return role == "tool" and bool(item.get("tool_call_id"))
 
 
+def _resolve_terminal_assistant_content(
+    assistant_content: str,
+    payload: dict[str, Any],
+    *,
+    succeeded: bool,
+) -> str:
+    if assistant_content:
+        return assistant_content
+    for key in ("content", "answer"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    if not succeeded:
+        error = payload.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str) and error["message"]:
+            return error["message"]
+        return "Agent 执行失败"
+    return ""
+
+
 class NativeAgentExecutor:
     """Run one persisted Agent v1 turn through the standalone Rust SDK."""
 
@@ -277,6 +297,11 @@ class NativeAgentExecutor:
                 if event_type in _TERMINAL:
                     terminal = event
                     error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+                    assistant_content = _resolve_terminal_assistant_content(
+                        assistant_content,
+                        payload,
+                        succeeded=event_type == "turn.succeeded",
+                    )
                     if assistant_message_id:
                         self._safe_update_message(session_id, assistant_message_id, {
                             "status": "completed" if event_type == "turn.succeeded" else "failed",
