@@ -10,7 +10,7 @@ from app.db.models.agent import AgentEvent, AgentPreference, AgentTurn  # noqa: 
 from app.db.models.whiteboard import Whiteboard, WhiteboardCard, WhiteboardNoteLink, WhiteboardRelation
 from app.db.models.knowledge import KnowledgeArticle, KnowledgeChunk, KnowledgeIndexState, KnowledgeProfile, KnowledgeRelation, KnowledgeTerm, KnowledgeTermOccurrence  # noqa: F401
 from app.db.models.plugin import PluginAuditEvent, PluginInstallation, PluginMigration, PluginVersion  # noqa: F401
-from app.db.engine import get_engine, Base, DATABASE_URL, migrate_legacy_sqlite_if_needed
+from app.db.engine import get_engine, Base, DATABASE_URL, SessionLocal, migrate_legacy_sqlite_if_needed
 from app.db.conversation_schema import ensure_conversation_columns
 from app.db.note_style_dao import ensure_note_style_columns
 from app.db.model_schema import ensure_model_runtime_schema
@@ -20,6 +20,7 @@ from app.db.knowledge_schema import ensure_knowledge_schema
 from app.db.plugin_migrations import ensure_plugin_migration_registry
 from app.services.conversation_store import bootstrap_conversations_from_storage
 from app.utils.logger import get_logger
+from app.services.official_link_note_host import ensure_official_link_note_installed
 
 
 logger = get_logger(__name__)
@@ -48,3 +49,4 @@ def init_db():
     bootstrapped = bootstrap_conversations_from_storage()
     if bootstrapped:
         logger.info(f"Conversation bootstrap summary: {bootstrapped}")
+    ensure_official_link_note_installed(session_factory=lambda: SessionLocal(bind=engine))

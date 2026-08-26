@@ -1,7 +1,7 @@
 # NoteMeld 桌面 Note Agent 与插件集成验收证据
 
 Canonical requirement：`../../requirements/2026-08-24-desktop-note-agent-plugin-integration.md`
-状态：Wave A in progress
+状态：I03 integrated; release-gate follow-ups remain
 
 ## 前置门禁
 
@@ -17,9 +17,9 @@ Canonical requirement：`../../requirements/2026-08-24-desktop-note-agent-plugin
 | Goal | 命令/证据 | 结果 | 失败或阻塞 |
 | --- | --- | --- | --- |
 | N01 Artifact/baseline | `docs/system/n01-evidence.md`：loader contract、URL inventory、Note authority ADR | Implemented | 平台 waiver/skip 边界见 N01 evidence |
-| N02 Note adapter | focused：`PYTHONPATH=backend .venv/bin/pytest -q backend/tests/agent_host/test_note_contract.py backend/tests/agent_host/test_note_store_adapter.py`；回归：`PYTHONPATH=backend .venv/bin/pytest -q backend/tests/agent_host`、`... pytest -q backend/tests/test_model_runtime_schema.py`；`python3 -m compileall backend/app` | focused 12 passed；Agent Host 113 passed/5 skipped；model migration 5 passed；真实临时 SQLite 覆盖历史 task_id、same/different payload、operation transitions、原子回滚、并发版本、reopen needs-attention、投影失败、关系/authority 和多 registry 共存；compileall 通过 | I03 需统一接入 DB bootstrap 与 SDK/transport composition；2 条既有 downloader regex warning |
-| N03 Plugin control plane | [`system/n03-evidence.md`](../../system/n03-evidence.md)：Release fixture、supply-chain、权限/崩溃、rollback、UI contracts | Implemented | N01 pinned handoff；链接插件迁移留 N04 |
-| N04 Link plugin | `./.venv/bin/python -m pytest -q backend/tests/plugins/test_official_link_note.py backend/tests/test_n04_link_capability_matrix.py backend/tests/test_n01_url_capability_baseline.py backend/tests/test_douyin_downloader_contracts.py backend/tests/test_multisource_summary_contracts.py backend/tests/test_multisource_video_collector_contracts.py backend/tests/test_web_note_contracts.py backend/tests/test_core_note_task_status_api.py`；`plugins/official-link-note/release-fixture/official-link-note-1.0.0.zip`；N01→N04 before/after matrix | Passed: 48 tests；7 N01 platforms + web_link covered，before/after rows identical；manifest/index/digest and local Release fixture present；应用 validator 复用插件 URL contract | Real network/platform media and N03 installer integration remain for I03/N07 |
+| N02 Note adapter | focused DB/adapter/idempotency/migration tests；Agent Host tests；`python3 -m compileall backend/app` | Implemented | I03 已接入同一 DB bootstrap |
+| N03 Plugin control plane | [`system/n03-evidence.md`](../../system/n03-evidence.md)：Release fixture、supply-chain、权限/崩溃、rollback、UI contracts | Implemented | N01 pinned handoff；链接插件迁移由 N04 收口 |
+| N04 Link plugin | focused N04 tests；N01→N04 before/after matrix；临时 SQLite bootstrap + installed pointer/load 验证 | Passed: 48 core link tests；7 N01 platforms + web_link covered，before/after rows identical；官方 fixture 安装到统一 `plugins/versions` 后由 active pointer 加载 | Real network/platform media remains outside this gate |
 | N05 Desktop/MCP/CLI | real desktop→plugin→Note→MCP→CLI vertical | Pending | Pending |
 | N06 Candidate boundary | SDK deny、evidence/test/rollback、no-auto-activation | Pending | Pending |
 | N07 Release gate | full regression/build/package/manual evidence | Pending | Pending |
@@ -34,7 +34,7 @@ pytest backend/tests
 scripts/run_core_regression.sh
 ```
 
-结果：Pending。
+结果：focused tests、contracts/build、compile、Agent Host 与 `scripts/run_core_regression.sh` 均通过；DMG contract 仍引用已删除的 `.trae` skill 文件。
 
 ## 最终纵向证据
 
@@ -47,4 +47,4 @@ scripts/run_core_regression.sh
 - Candidate SDK boundary denial：Pending
 - Same SQLite migration isolation：Pending
 
-最终结论：Pending。
+最终结论：I03 集成提交完成；DMG 发布 contract 作为后续发布收口风险。

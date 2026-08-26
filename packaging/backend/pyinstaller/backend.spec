@@ -11,6 +11,7 @@ ROOT_DIR = Path(os.environ.get("NOTEMELD_ROOT_DIR", Path.cwd())).resolve()
 BACKEND_DIR = ROOT_DIR / "backend"
 DESKTOP_ENTRY = BACKEND_DIR / "desktop_entry.py"
 APP_RESOURCES_DIR = BACKEND_DIR / "app" / "resources"
+OFFICIAL_LINK_PLUGIN_DIR = ROOT_DIR / "plugins" / "official-link-note"
 APP_RESOURCE_DATAS = []
 STYLE_PREVIEW_STANDARD = APP_RESOURCES_DIR / "style_preview_standard.md"
 if STYLE_PREVIEW_STANDARD.exists():
@@ -18,6 +19,8 @@ if STYLE_PREVIEW_STANDARD.exists():
 MODEL_RUNTIME_CATALOG = APP_RESOURCES_DIR / "model_runtime_catalog.json"
 if MODEL_RUNTIME_CATALOG.exists():
     APP_RESOURCE_DATAS.append((str(MODEL_RUNTIME_CATALOG), "app/resources"))
+if OFFICIAL_LINK_PLUGIN_DIR.exists():
+    APP_RESOURCE_DATAS.append((str(OFFICIAL_LINK_PLUGIN_DIR), "plugins/official-link-note"))
 
 hiddenimports = collect_submodules("app")
 sdk_spec = importlib.util.find_spec("notemeld_agent_sdk")

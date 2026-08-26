@@ -2,25 +2,66 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 from app.services.note import NoteGenerator
 from app.services.web_note import WebNoteGenerator
+from app.db.engine import SessionLocal
+from app.db.models.plugin import PluginInstallation, PluginVersion
+from app.services.plugins.verifier import promote_staged, stage_and_verify
+from app.utils.storage_paths import plugin_active_pointer, plugins_root_dir, project_root
 
 
-PLUGIN_SOURCE = (
-    Path(__file__).resolve().parents[3]
-    / "plugins"
-    / "official-link-note"
-    / "src"
-    / "official_link_note.py"
-)
+PLUGIN_ID = "official.link-note"
+
+
+def _bundled_fixture() -> Path:
+    bundle_root = Path(getattr(sys, "_MEIPASS", project_root()))
+    return bundle_root / "plugins" / "official-link-note" / "release-fixture" / "official-link-note-1.0.0.zip"
+
+
+def ensure_official_link_note_installed(session_factory=None) -> None:
+    pointer = plugin_active_pointer(PLUGIN_ID)
+    if pointer.is_file() and pointer.read_text(encoding="utf-8").strip():
+        return
+    fixture = _bundled_fixture()
+    if not fixture.is_file():
+        raise RuntimeError("official link plugin resource is unavailable")
+    staging, manifest, digest = stage_and_verify(fixture.read_bytes(), expected_plugin_id=PLUGIN_ID)
+    version = manifest["version"]
+    target = promote_staged(staging, PLUGIN_ID, version, plugins_root_dir() / "versions")
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    temporary = pointer.with_name(f".{pointer.name}.{os.getpid()}.tmp")
+    temporary.write_text(version, encoding="utf-8")
+    os.replace(temporary, pointer)
+    db = (session_factory or SessionLocal)()
+    try:
+        db.add(PluginVersion(id=f"{PLUGIN_ID}:{version}", plugin_id=PLUGIN_ID, version=version,
+                             sha256=digest, path=str(target), license=manifest["license"],
+                             sdk_version=manifest["sdk_version"], manifest_json=json.dumps(manifest, sort_keys=True)))
+        db.add(PluginInstallation(plugin_id=PLUGIN_ID, active_version=version, enabled=1,
+                                  runtime_status="running", requested_permissions_json=json.dumps(manifest["requested_permissions"]),
+                                  granted_permissions_json=json.dumps(manifest["requested_permissions"]),
+                                  manifest_json=json.dumps(manifest, sort_keys=True)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def _load_plugin_type():
-    spec = importlib.util.spec_from_file_location("notemeld_official_link_note", PLUGIN_SOURCE)
+    pointer = plugin_active_pointer(PLUGIN_ID)
+    version = pointer.read_text(encoding="utf-8").strip() if pointer.is_file() else ""
+    source = plugins_root_dir() / "versions" / PLUGIN_ID / version / "src" / "official_link_note.py"
+    if not version or not source.is_file():
+        raise RuntimeError("official link plugin is not installed")
+    spec = importlib.util.spec_from_file_location("notemeld_official_link_note", source)
     if spec is None or spec.loader is None:
         raise RuntimeError("official link plugin is unavailable")
     module = importlib.util.module_from_spec(spec)
