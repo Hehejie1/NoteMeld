@@ -26,6 +26,7 @@ const TranscriberPage = lazy(() => import('@/pages/SettingPage/transcriber.tsx')
 const DataMigration = lazy(() => import('@/pages/SettingPage/DataMigration.tsx'))
 const McpServers = lazy(() => import('@/pages/SettingPage/McpServers.tsx'))
 const ResearchSearch = lazy(() => import('@/pages/SettingPage/ResearchSearch.tsx'))
+const Plugins = lazy(() => import('@/pages/SettingPage/Plugins.tsx'))
 const WikiPage = lazy(() => import('@/pages/WikiPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const StylesPlaceholder = lazy(() => import('@/pages/StylesPage'))
@@ -76,6 +77,7 @@ const WorkspaceRoutes = () => {
             <Route path="monitor" element={<Monitor />}></Route>
             <Route path="mcp-servers" element={<McpServers />} />
             <Route path="research-search" element={<ResearchSearch />} />
+            <Route path="plugins" element={<Plugins />} />
             <Route path="about" element={<Navigate to="/" replace />}></Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>
