@@ -103,6 +103,20 @@ def test_approval_only_records_decision_and_plugin_requires_n03_flow(service):
         assert db.query(CandidateEvaluation).filter_by(candidate_id=candidate["id"]).count() == 1
 
 
+def test_plugin_candidate_cannot_bypass_installer(service):
+    candidate = service.create(valid_payload(
+        kind="plugin",
+        scope={"kind": "plugin", "targets": ["plugin:not-installed"]},
+        permissions=["plugin.package"],
+    ))
+
+    result = service.validate(candidate["id"])
+    assert result["status"] == "rejected"
+    assert "plugin scope must target an installed plugin" in result["validation"]["errors"]
+    with pytest.raises(CandidateNotApprovable):
+        service.decide(candidate["id"], approved=True, actor="reviewer")
+
+
 def test_candidate_registry_isolated_and_idempotent(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'registry.db'}")
     Base.metadata.create_all(engine, tables=[CandidateMigration.__table__, Candidate.__table__])

@@ -18,6 +18,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 打包层：`packaging/` + `.trae/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
 - 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
 - Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；Web、Tauri 和 CLI 都只调用 `/api/agent/v1`，Router 再通过无内存状态的 `AgentHostEntry` 进入同一 Host 生命周期。Turn 由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成。危险或未知工具由 SDK 发出 `approval.required` 并暂停原 Turn；Web/CLI 的 approval resolve 通过同一个 native runtime 控制面原子唤醒，Host 只投影 `waiting_approval/running` 与事件。
+- I04 集成将 plugin/candidate router 和各自 migration registry 统一挂入同一个 FastAPI/SQLite bootstrap；设置导航同时提供插件运行、Agent 任务诊断和 candidate 审批入口。candidate 只允许人工验证/审批/拒绝，plugin candidate 审批后仍必须回到 N03 installer 的校验、权限和 active-pointer 流程。
 
 ## 前端入口
 
