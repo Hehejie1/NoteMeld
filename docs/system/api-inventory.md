@@ -116,6 +116,14 @@
 
 ## Whiteboard / 语义白板接口
 
+## Candidate boundary（N06）
+
+- `GET /api/candidates`：列出 candidate（session token required）。
+- `POST /api/candidates`：保存 scope、evidence/trace、artifact/patch、tests、risks、permissions、rollback；只接受 Application/plugin 两类。
+- `GET /api/candidates/{candidate_id}`：读取完整 candidate 和下一步提示。
+- `POST /api/candidates/{candidate_id}/validate`：静态边界与证据门禁；缺 evidence/test/rollback、越权、SDK 路径/制品/公共契约触碰时 fail closed。
+- `POST /api/candidates/{candidate_id}/decision`：人工审批/拒绝，只记录决策；不 patch/激活 Application，plugin 仍必须回到 N03 标准包流程。
+
 ## Agent v1 接口（增量迁移）
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 错误语义 |

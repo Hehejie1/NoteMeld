@@ -9,6 +9,7 @@ import {
   Search,
   Puzzle,
   ListChecks,
+  ShieldCheck,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { JSX } from 'react'
@@ -31,6 +32,7 @@ const menuList: MenuItem[] = [
   { id: 'research-search', name: '研究搜索', icon: <Search className="h-4 w-4" />, path: '/settings/research-search' },
   { id: 'plugins', name: '插件运行', icon: <Puzzle className="h-4 w-4" />, path: '/settings/plugins' },
   { id: 'agent-diagnostics', name: 'Agent 任务诊断', icon: <ListChecks className="h-4 w-4" />, path: '/settings/agent-diagnostics' },
+  { id: 'candidates', name: '候选审批', icon: <ShieldCheck className="h-4 w-4" />, path: '/settings/candidates' },
 ]
 
 const Menu = () => {
