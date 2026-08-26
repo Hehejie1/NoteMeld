@@ -24,7 +24,7 @@ from app.services.collector_status import build_collector_timings
 from app.services.note import NoteGenerator, logger
 from app.services.note_document_store import delete_note_task_artifacts
 from app.services.note_task_store import cancel_note_task, is_note_task_canceled
-from app.services.official_link_note_host import create_official_link_note_plugin
+from app.services.official_link_note_host import create_official_link_note_plugin, validate_official_link
 from app.services.conversation_import_service import ConversationImportRequest, ConversationImportService
 from app.services.file_ingest_service import detect_uploaded_file_kind, extract_uploaded_file_content, resolve_uploaded_file_path
 from app.services.task_status_writer import (
@@ -39,7 +39,6 @@ from app.services.task_serial_executor import task_serial_executor
 from app.utils.response import ResponseWrapper as R
 from app.utils.storage_paths import note_output_dir, upload_dir
 from app.utils.url_parser import extract_video_id
-from app.validators.video_url_validator import is_supported_video_url
 from fastapi.responses import FileResponse, Response, StreamingResponse
 import httpx
 from app.enmus.task_status_enums import TaskStatus
@@ -104,7 +103,9 @@ class VideoRequest(BaseModel):
 
         if parsed.scheme in ("http", "https"):
             # 是网络链接，继续用原有平台校验
-            if not is_supported_video_url(url):
+            try:
+                validate_official_link(url, self.platform)
+            except ValueError:
                 raise NoteError(code=NoteErrorEnum.PLATFORM_NOT_SUPPORTED.code,
                                 message=NoteErrorEnum.PLATFORM_NOT_SUPPORTED.message)
         return self

@@ -69,3 +69,7 @@ class NoteMeldLinkNoteHost:
 
 def create_official_link_note_plugin():
     return _load_plugin_type()(NoteMeldLinkNoteHost())
+
+
+def validate_official_link(url: str, platform: str) -> str:
+    return _load_plugin_type().validate_link(url, platform)

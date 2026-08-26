@@ -6,6 +6,7 @@ progress and Note persistence remain in the host supplied ports.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -44,6 +45,33 @@ SUPPORTED_PLATFORMS = (
     "local",
 )
 
+URL_PATTERNS = {
+    "youtube": re.compile(r"^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[\w\-]+"),
+    "bilibili": re.compile(r"^(https?://)?(www\.)?bilibili\.com/video/[a-zA-Z0-9]+"),
+    "kuaishou": re.compile(r"kuaishou"),
+    "douyin": re.compile(r"douyin"),
+    "wechat_channels": re.compile(r"channels\.weixin\.qq\.com/finder-preview/pages/feed"),
+}
+
+
+def validate_link(url: str, platform: str) -> str:
+    """Validate the frozen N01 input contract and return a normalized URL."""
+    value = str(url or "").strip()
+    if not value:
+        raise LinkNoteError("link is required")
+    if platform == "local":
+        return value
+    if platform not in SUPPORTED_PLATFORMS:
+        raise UnsupportedLinkError("link platform is not supported")
+    if platform == "tiktok":
+        return value
+    if platform == "bilibili" and "b23.tv" in value:
+        return value
+    pattern = URL_PATTERNS.get(platform)
+    if pattern is None or not pattern.search(value):
+        raise LinkNoteError("link format is invalid for the selected platform")
+    return value
+
 
 def route_link(url: str, platform: str, *, force_web_fallback: bool = False) -> LinkRoute:
     value = str(url or "").strip()
@@ -53,8 +81,7 @@ def route_link(url: str, platform: str, *, force_web_fallback: bool = False) -> 
         if urlparse(value).scheme not in {"http", "https"}:
             raise LinkNoteError("web link must use http or https")
         return LinkRoute("web_link", "web")
-    if platform not in SUPPORTED_PLATFORMS:
-        raise UnsupportedLinkError("link platform is not supported")
+    validate_link(value, platform)
     return LinkRoute(platform, "video")
 
 
@@ -114,5 +141,7 @@ __all__ = [
     "OfficialLinkNotePlugin",
     "SUPPORTED_PLATFORMS",
     "UnsupportedLinkError",
+    "URL_PATTERNS",
+    "validate_link",
     "route_link",
 ]
