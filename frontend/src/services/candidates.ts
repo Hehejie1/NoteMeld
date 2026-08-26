@@ -15,9 +15,11 @@ export type Candidate = {
   permissions: string[]
   rollback: Record<string, unknown>
   validation: { errors?: string[]; model_safety_claim_used?: boolean }
+  model_safety_claim?: string | null
   next_step: string
 }
 
 export const listCandidates = () => request.get<any, { candidates: Candidate[] }>('/candidates')
 export const validateCandidate = (id: string) => request.post<any, Candidate>(`/candidates/${encodeURIComponent(id)}/validate`)
-export const decideCandidate = (id: string, approved: boolean) => request.post<any, Candidate>(`/candidates/${encodeURIComponent(id)}/decision`, { approved })
+export const approveCandidate = (id: string) => request.post<any, Candidate>(`/candidates/${encodeURIComponent(id)}/approve`)
+export const declineCandidate = (id: string) => request.post<any, Candidate>(`/candidates/${encodeURIComponent(id)}/decline`)

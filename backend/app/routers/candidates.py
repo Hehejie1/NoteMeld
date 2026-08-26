@@ -28,7 +28,6 @@ class CandidatePayload(BaseModel):
 class DecisionPayload(BaseModel):
     approved: bool
     reason: str | None = None
-    actor: str = "user"
 
 
 @router.get("")
@@ -63,8 +62,26 @@ def validate_candidate(candidate_id: str):
 @router.post("/{candidate_id}/decision")
 def decide_candidate(candidate_id: str, payload: DecisionPayload):
     try:
-        return R.success(service.decide(candidate_id, approved=payload.approved, actor=payload.actor, reason=payload.reason))
+        return R.success(service.decide(candidate_id, approved=payload.approved, actor="desktop-user", reason=payload.reason))
     except CandidateNotFound:
         return R.error("candidate not found", code=404)
     except CandidateNotApprovable as exc:
         return R.error(str(exc), code=409)
+
+
+@router.post("/{candidate_id}/approve")
+def approve_candidate(candidate_id: str, payload: DecisionPayload | None = None):
+    try:
+        return R.success(service.decide(candidate_id, approved=True, actor="desktop-user", reason=payload.reason if payload else None))
+    except CandidateNotFound:
+        return R.error("candidate not found", code=404)
+    except CandidateNotApprovable as exc:
+        return R.error(str(exc), code=409)
+
+
+@router.post("/{candidate_id}/decline")
+def decline_candidate(candidate_id: str, payload: DecisionPayload | None = None):
+    try:
+        return R.success(service.decide(candidate_id, approved=False, actor="desktop-user", reason=payload.reason if payload else None))
+    except CandidateNotFound:
+        return R.error("candidate not found", code=404)
