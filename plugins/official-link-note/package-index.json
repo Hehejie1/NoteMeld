@@ -1,0 +1,20 @@
+{
+  "index_version": 1,
+  "files": [
+    {
+      "path": "README.md",
+      "size": 274,
+      "sha256": "sha256:d75649b16cf6d4882cf17a07f3c476eaea8abc94dce64c5ac9c954730a3850ac",
+      "media_type": "text/plain",
+      "entrypoint": false
+    },
+    {
+      "path": "src/official_link_note.py",
+      "size": 3384,
+      "sha256": "sha256:284b7bba07e2a11c1810734569d8ac41e676ed530bb25f852b685e7fb4e2750a",
+      "media_type": "text/plain",
+      "entrypoint": true
+    }
+  ],
+  "package_digest": "sha256:9874170c924de7b81d63663f4d757e6fb2dd9b0b1bc5b999a9923ffcf6f3cc55"
+}

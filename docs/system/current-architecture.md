@@ -82,8 +82,8 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 1. 前端或 MCP 提交来源、模型、Provider、样式和附加参数。
 2. 后端创建或复用 conversation，并通过 `register_task_conversation()` 记录任务输入。
 3. 后端写入任务状态文件 `note_results/{task_id}.status.json`，并在后台执行任务。
-4. 视频链路由 `NoteGenerator.generate()` 处理：平台识别、下载、字幕/转写、截图、LLM 总结、Markdown 渲染、sidecar 保存。
-5. 网页链路由 `WebNoteGenerator` 处理。视频链路下载、音频或转写失败时可降级到网页抓取。
+4. 外部链接入口统一调用 `official-link-note:create` capability；`plugins/official-link-note/` 负责平台路由，稳定 host adapter 再调用现有视频/网页生成服务。
+5. 视频链路仍保留平台识别、下载、字幕/转写优先、截图、多源总结、Markdown 渲染、sidecar 保存；下载/音频/转写失败继续降级到网页抓取。网页链接通过同一 capability 进入网页抓取/总结链路。
 6. 上传文档链路先经过 ingestion pipeline，再复用总结能力生成笔记。
 7. 成功后 `save_note_to_file()` 写 `note_results/{task_id}.json` 等文件，`emit_note_result()` 同步 conversation message 和 `note_documents`。
 8. 前端通过 `/api/task_status/{task_id}` 轮询。成功后读取 Markdown 和相关展示数据。

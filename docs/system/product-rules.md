@@ -19,6 +19,7 @@
 - MCP 必须作为本地知识工具接入 AI IDE，endpoint 保持 `http://127.0.0.1:8483/mcp`。
 - 桌面端不能替代源码启动入口，`run_notemeld.sh` 和 `notemeld` CLI 必须继续可用。
 - Web、Tauri 和 `notemeld agent` 只能通过 `/api/agent/v1` 使用同一个 Agent Host；Session 复用 Conversation，同一 Session 同时只能有一个活动 Turn，不得由入口维护第二套 Agent 状态或直接写 Agent 数据库。
+- 外部链接转 Note 只能通过已安装并校验的 `official.link-note` capability；插件通过 host port 使用现有字幕优先、下载、转写、截图、多源总结、网页抓取、任务状态和降级能力，不直接写 Conversation、Agent Event 或内部 SQLite。
 - 危险或未知 Agent 工具必须由 SDK 在原 Turn 内发起 approval 并暂停；UI/CLI 只能通过 Agent v1 resolve 同一个 native 暂停点。HTTP 成功不得伪装 runtime 已恢复，拒绝不得执行受保护工具，approval 事件与 `waiting_approval/running` 必须进入既有 Conversation/Turn/Event 链。
 
 ## 不允许被改坏的行为

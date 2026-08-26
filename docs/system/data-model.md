@@ -188,6 +188,8 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 - 桌面自动更新元数据来自远端 endpoint，但用户数据仍在本地 App Data。
 ## Agent Host 数据边界
 
+外部链接插件不新增正文或 Agent 状态表。`official.link-note` 通过 host operation port 交付 NoteMeld 现有 `task_id`、任务状态和投影边界；插件包的 manifest、版本和 digest 由 plugin control-plane 管理，不能成为 Note 正文事实源。
+
 Agent Host 使用 `agent_turns`, `agent_events`, `agent_preferences` 三张附加表。`agent_turns.session_id` 外键指向 `conversations.id`；不存在 `agent_sessions`、`agent_messages` 或独立 approval 表，消息历史仍来自 `conversation_messages`。UI-only 的 `note_progress`、`task_card`、`parameter_request` 等消息不会进入 SDK model history。模型选择顺序为显式 Turn 模型、会话偏好默认模型、偏好 fallback 第一项、用户可用模型第一项。同一 Session 只允许一个非终态 Turn；SQLite 创建 Turn 时使用短 `BEGIN IMMEDIATE` 事务原子完成 Conversation 存在性、幂等键和活动 Turn 检查及插入，不维护进程内第二状态。审批暂停时，同一事务写入 `approval.required` 并把 Turn 置为非终态 `waiting_approval`；SDK 收到决定后写入 `approval.resolved` 并回到 `running`。客户端断线或 UI/CLI 切换通过 `agent_events.sequence` 重放同一 Turn；进程重启仍按既有恢复规则把无法恢复 native 栈帧的非终态 Turn 标为 `interrupted`。
 
 ## K0-K3 Article Knowledge Index
