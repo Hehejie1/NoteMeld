@@ -54,12 +54,17 @@ def stage_and_verify(content: bytes, *, expected_sha256: str | None = None, expe
             archive.extractall(staging / "payload")
         manifest_path = staging / "payload" / "plugin.json"
         if not manifest_path.is_file():
-            raise PluginVerificationError("plugin.json is required")
+            manifest_path = staging / "payload" / "manifest.json"
+        if not manifest_path.is_file():
+            raise PluginVerificationError("plugin.json or manifest.json is required")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict):
             raise PluginVerificationError("plugin manifest must be an object")
-        plugin_id, version = manifest.get("id"), manifest.get("version")
-        license_name, sdk_version = manifest.get("license"), manifest.get("sdk_version")
+        plugin_id = manifest.get("id") or manifest.get("plugin_id")
+        version = manifest.get("version") or manifest.get("plugin_version")
+        license_value = manifest.get("license")
+        license_name = license_value.get("spdx") if isinstance(license_value, dict) else license_value
+        sdk_version = manifest.get("sdk_version") or manifest.get("schema_version")
         if not all(isinstance(value, str) and value.strip() for value in (plugin_id, version, license_name, sdk_version)):
             raise PluginVerificationError("plugin id, version, sdk_version and license are required")
         if expected_plugin_id and plugin_id != expected_plugin_id:
@@ -70,7 +75,14 @@ def stage_and_verify(content: bytes, *, expected_sha256: str | None = None, expe
             raise PluginVerificationError("plugin license is not allowed")
         if any(char in plugin_id for char in "/\\"):
             raise PluginVerificationError("invalid plugin id")
-        manifest["requested_permissions"] = sorted(set(manifest.get("requested_permissions", [])))
+        manifest["id"] = plugin_id
+        manifest["version"] = version
+        manifest["license"] = license_name
+        manifest["sdk_version"] = sdk_version
+        requested_permissions = manifest.get("requested_permissions", [])
+        if isinstance(requested_permissions, list) and all(isinstance(item, dict) for item in requested_permissions):
+            requested_permissions = [item.get("name") for item in requested_permissions]
+        manifest["requested_permissions"] = sorted(item for item in set(requested_permissions) if isinstance(item, str) and item)
         manifest["runtime"] = manifest.get("runtime") or {}
         runtime_command = manifest["runtime"].get("command")
         if isinstance(runtime_command, list) and any(PurePosixPath(str(item)).name.lower() in FORBIDDEN_INSTALL_NAMES for item in runtime_command):

@@ -184,6 +184,7 @@ class TestCoreMigrationContracts(unittest.TestCase):
                 current_db_path=current_db,
                 note_output_root=note_output_dir,
                 uploads_root=uploads_dir,
+                static_root=static_dir,
                 packages_dir=packages_dir,
                 job_store=MigrationJobStore(root / "jobs"),
             )
