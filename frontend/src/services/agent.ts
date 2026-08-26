@@ -124,3 +124,7 @@ export async function* streamAgentEvents(turnId: string, afterSequence = -1): As
 export const getModelPreference = (sessionId: string) => json(`/agent/v1/sessions/${sessionId}/model-preference`)
 export const setModelPreference = (sessionId: string, payload: { default_model_id?: string; fallback_models?: string[] }) =>
   json(`/agent/v1/sessions/${sessionId}/model-preference`, { method: 'PUT', body: JSON.stringify(payload) })
+
+export const listAgentSessions = () => json<{ data: Array<{ id: string }> }>('/agent/v1/sessions')
+export const getAgentTurnDiagnostics = (turnId: string) =>
+  json<{ data: { turn: Record<string, unknown>; events: AgentEvent[]; event_count: number; last_sequence: number } }>(`/agent/v1/turns/${encodeURIComponent(turnId)}/diagnostics`)

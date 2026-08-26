@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import re
 import time
 import uuid
@@ -13,6 +14,8 @@ import httpx
 from app.services.conversation_import_service import ConversationImportRequest, ConversationImportService
 from app.services.note_import_service import NoteImportService, NoteTitleAmbiguousError
 from app.utils.storage_paths import note_output_dir
+from app.agent_host.capabilities import NoteMeldCapabilityRegistry
+from app.agent_host.drivers.tools import NoteMeldToolDriver
 
 
 FORBIDDEN_KEYS = {
@@ -113,6 +116,28 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "notemeld_create_note",
+        "description": "通过公开 Note capability 创建一篇 Note，可选关联父 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "title": {"type": "string"}, "content": {"type": "string"},
+            "source_url": {"type": "string"}, "parent_note_id": {"type": "string"},
+            "request_id": {"type": "string"}}, "required": ["title", "content"]},
+    },
+    {
+        "name": "notemeld_link_notes",
+        "description": "通过公开 Note capability 关联两篇 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "source_note_id": {"type": "string"}, "target_note_id": {"type": "string"},
+            "kind": {"type": "string"}, "request_id": {"type": "string"}},
+            "required": ["source_note_id", "target_note_id"]},
+    },
+    {
+        "name": "notemeld_note_relations",
+        "description": "读取 Note 的关系、来源和 provenance。",
+        "inputSchema": {"type": "object", "properties": {"note_id": {"type": "string"}},
+            "required": ["note_id"]},
+    },
+    {
         "name": "notemeld_read_note",
         "description": "Read a note by title without exposing internal task IDs.",
         "inputSchema": {
@@ -187,12 +212,28 @@ class McpToolService:
         self.wiki_store = wiki_store
         self.generation_client = generation_client or LocalNoteGenerationClient()
         self.model_catalog = model_catalog or list_enabled_model_catalog
+        self.capabilities = NoteMeldCapabilityRegistry()
 
     def list_tools(self) -> list[dict[str, Any]]:
         return TOOL_DEFINITIONS
 
     def call_tool(self, name: str, arguments: Optional[dict[str, Any]] = None) -> Any:
         args = arguments or {}
+        capability_names = {
+            "notemeld_create_note": "note:create",
+            "notemeld_link_notes": "note:link",
+            "notemeld_note_relations": "note:relations",
+        }
+        if name in capability_names:
+            call_id = str(args.get("request_id") or uuid.uuid4())
+            result = asyncio.run(NoteMeldToolDriver(self.capabilities).invoke(
+                {"name": capability_names[name], "call_id": call_id, "arguments": args},
+                {"actor_id": "mcp"},
+            ))
+            output = result.get("output", {}) if isinstance(result, dict) else {}
+            if not output.get("ok"):
+                raise ValueError(str((output.get("error") or {}).get("message") or "MCP capability failed"))
+            return output.get("result")
         if name == "generate_note":
             return self.generate_note(args)
         if name == "get_task":

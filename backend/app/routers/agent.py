@@ -24,6 +24,7 @@ from app.agent_host.native_executor import NativeAgentExecutor
 from app.agent_host.preferences import ModelConfigurationRequired
 from app.agent_host.preferences import select_model
 from app.agent_host.host import ApprovalControlError, get_agent_sdk_host
+from app.agent_host.capabilities import NoteMeldCapabilityRegistry
 from app.db.model_dao import get_all_models
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
@@ -33,6 +34,7 @@ _executor = NativeAgentExecutor(
     finish_turn=_entry.finish_turn,
     tool_driver=NoteMeldToolDriver(NoteMeldCapabilityRegistry()),
 )
+_capabilities = NoteMeldCapabilityRegistry()
 
 
 def _ok(data):
@@ -68,6 +70,12 @@ class ApprovalRequest(BaseModel):
             if self.approved is not None:
                 self.decision = "approve" if self.approved else "deny"
         return self
+
+
+class CapabilityRequest(BaseModel):
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    request_id: str | None = None
+    actor_id: str = "agent"
 
 
 def _normalize_refs(raw_refs: Any) -> list[dict[str, Any]]:
@@ -182,6 +190,31 @@ def get_turn(turn_id: str):
     if value is None:
         raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
     return _ok(value)
+
+
+@router.get("/turns/{turn_id}/diagnostics")
+def get_turn_diagnostics(turn_id: str):
+    value = _entry.get_turn(turn_id)
+    if value is None:
+        raise HTTPException(status_code=404, detail={"code": "turn_not_found"})
+    events = _entry.list_events(turn_id)
+    return _ok({"turn": value, "events": events, "event_count": len(events),
+                "last_sequence": max((int(item.get("sequence", -1)) for item in events), default=-1)})
+
+
+@router.get("/capabilities")
+async def list_capabilities():
+    names = list(_capabilities._DESCRIPTORS)
+    return _ok(await NoteMeldToolDriver(_capabilities).describe(names))
+
+
+@router.post("/capabilities/{name:path}")
+async def invoke_capability(name: str, payload: CapabilityRequest):
+    result = await NoteMeldToolDriver(_capabilities).invoke(
+        {"name": name, "call_id": payload.request_id or str(uuid.uuid4()), "arguments": payload.arguments},
+        {"actor_id": payload.actor_id},
+    )
+    return _ok(result)
 
 
 @router.get("/turns/{turn_id}/events")
