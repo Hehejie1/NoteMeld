@@ -4,6 +4,12 @@
 
 本文记录历史踩坑和回归防线。修 Bug、新需求或重构前必须确认不会重新引入这些问题。
 
+## 官方链接插件回退能力丢失
+
+- 风险：链接插件化后只保留少数平台或只迁移下载路径，导致字幕优先、转写、截图、多源总结、网页抓取、任务状态或网页降级静默丢失。
+- 防线：`backend/tests/fixtures/n01-url-capability-baseline.json` 是平台硬基线，`backend/tests/fixtures/n04-url-capability-matrix.json` 必须逐行 before/after 相等；入口只能调用 `official-link-note:create`，插件只能通过 host port 访问应用能力。
+- 不允许：在 router 中恢复按平台分支的第二实现；插件直接写 SQLite、Conversation 或 Agent Event；视频/音频/转写失败后返回伪成功 Note。
+
 ## Wiki 同步 materialize 卡死 UI
 
 - 发生过的问题：Wiki 总结阶段出现长时间卡顿，任务卡在 `materialize`。

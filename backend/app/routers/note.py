@@ -24,7 +24,7 @@ from app.services.collector_status import build_collector_timings
 from app.services.note import NoteGenerator, logger
 from app.services.note_document_store import delete_note_task_artifacts
 from app.services.note_task_store import cancel_note_task, is_note_task_canceled
-from app.services.web_note import WebNoteGenerator
+from app.services.official_link_note_host import create_official_link_note_plugin, validate_official_link
 from app.services.conversation_import_service import ConversationImportRequest, ConversationImportService
 from app.services.file_ingest_service import detect_uploaded_file_kind, extract_uploaded_file_content, resolve_uploaded_file_path
 from app.services.task_status_writer import (
@@ -39,7 +39,6 @@ from app.services.task_serial_executor import task_serial_executor
 from app.utils.response import ResponseWrapper as R
 from app.utils.storage_paths import note_output_dir, upload_dir
 from app.utils.url_parser import extract_video_id
-from app.validators.video_url_validator import is_supported_video_url
 from fastapi.responses import FileResponse, Response, StreamingResponse
 import httpx
 from app.enmus.task_status_enums import TaskStatus
@@ -104,7 +103,9 @@ class VideoRequest(BaseModel):
 
         if parsed.scheme in ("http", "https"):
             # 是网络链接，继续用原有平台校验
-            if not is_supported_video_url(url):
+            try:
+                validate_official_link(url, self.platform)
+            except ValueError:
                 raise NoteError(code=NoteErrorEnum.PLATFORM_NOT_SUPPORTED.code,
                                 message=NoteErrorEnum.PLATFORM_NOT_SUPPORTED.message)
         return self
@@ -440,25 +441,27 @@ def run_note_task(task_id: str, video_url: str, platform: str, quality: Download
         raise HTTPException(status_code=400, detail="请选择模型和提供者")
 
     def _execute_note_task():
-        return NoteGenerator().generate(
-            video_url=video_url,
-            platform=platform,
-            quality=quality,
+        return create_official_link_note_plugin().execute(
             task_id=task_id,
-            model_name=model_name,
-            provider_id=provider_id,
-            link=link,
-            _format=_format,
-            style=style,
-            extras=extras,
-            screenshot=screenshot,
-            video_understanding=video_understanding,
-            video_interval=video_interval,
-            grid_size=grid_size,
-            vision_mode=vision_mode,
-            max_sampling_points=max_sampling_points,
-            enable_refine_engine=enable_refine_engine,
-            output_type=output_type,
+            url=video_url,
+            platform=platform,
+            options={
+                "quality": quality,
+                "model_name": model_name,
+                "provider_id": provider_id,
+                "link": link,
+                "screenshot": screenshot,
+                "format": _format,
+                "style": style,
+                "extras": extras,
+                "video_understanding": video_understanding,
+                "video_interval": video_interval,
+                "grid_size": grid_size,
+                "vision_mode": vision_mode,
+                "max_sampling_points": max_sampling_points,
+                "enable_refine_engine": enable_refine_engine,
+                "output_type": output_type,
+            },
         )
 
     logger.info(f"任务进入执行队列 (task_id={task_id})")
@@ -504,15 +507,18 @@ def run_web_note_task(
         raise HTTPException(status_code=400, detail="请选择模型和提供者")
 
     logger.info(f"网页任务进入执行队列 (task_id={task_id})")
-    note = WebNoteGenerator().generate(
-        web_url=web_url,
+    note = create_official_link_note_plugin().execute(
         task_id=task_id,
-        model_name=model_name,
-        provider_id=provider_id,
-        _format=_format,
-        style=style,
-        extras=extras,
-        output_type=output_type,
+        url=web_url,
+        platform="web_link",
+        options={
+            "model_name": model_name,
+            "provider_id": provider_id,
+            "format": _format,
+            "style": style,
+            "extras": extras,
+            "output_type": output_type,
+        },
     )
     logger.info(f"Web note generated: {task_id}")
     if not note or not note.markdown:
