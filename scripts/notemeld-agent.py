@@ -206,6 +206,17 @@ def print_value(value: Any, output_format: str) -> None:
             print(value)
 
 
+def create_related_note(title: str, content: str, parent_note_id: str | None, output_format: str) -> None:
+    arguments: dict[str, Any] = {"title": title, "content": content}
+    if parent_note_id:
+        arguments["parent_note_id"] = parent_note_id
+    result = unwrap(request("POST", "/capabilities/note:create", {
+        "arguments": arguments,
+        "actor_id": "cli",
+    }))
+    print_value(result, output_format)
+
+
 def submit_turn(session: str, text: str, model: str | None, output_format: str, after_sequence: int = -1) -> None:
     payload: dict[str, Any] = {"input": text}
     if model:
@@ -242,6 +253,9 @@ def main() -> int:
     parser.add_argument("--approve", metavar="APPROVAL_ID", help="approve a paused Agent turn")
     parser.add_argument("--deny", metavar="APPROVAL_ID", help="deny a paused Agent turn")
     parser.add_argument("--turn", dest="turn_id", help="continue consuming one existing turn")
+    parser.add_argument("--create-note-title", help="create a Note through the Agent Host")
+    parser.add_argument("--create-note-content", help="Markdown content for --create-note-title")
+    parser.add_argument("--parent-note-id", help="associate the created Note with an existing Note")
     parser.add_argument("positional_prompt", nargs="?", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.approve and args.deny:
@@ -254,6 +268,11 @@ def main() -> int:
             print_value(resolved, args.output_format)
     if args.turn_id:
         render_events(events(args.turn_id, after_sequence=args.after_sequence), args.output_format)
+        return 0
+    if args.create_note_title:
+        if not args.create_note_content:
+            parser.error("--create-note-content is required with --create-note-title")
+        create_related_note(args.create_note_title, args.create_note_content, args.parent_note_id, args.output_format)
         return 0
     if approval_id:
         return 0

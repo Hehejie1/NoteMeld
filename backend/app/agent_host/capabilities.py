@@ -7,9 +7,14 @@ It deliberately exposes bounded, read-only capabilities first.
 from __future__ import annotations
 
 import inspect
+import uuid
 from typing import Any, Callable
 
-from app.services.note_document_store import read_note_document_by_title, search_note_documents_by_title
+from app.agent_host.note_contract import NoteId, SdkNoteDto
+from app.agent_host.note_store_adapter import NoteActorDto, NoteMeldNoteStoreAdapter, NoteProvenanceDto
+from app.utils.storage_paths import database_path
+from app.services.note_document_store import read_note_document_by_title
+from app.services.conversation_store import upsert_conversation
 from app.services.wiki_search import WikiSearch
 from app.utils.storage_paths import note_output_dir
 
@@ -73,10 +78,42 @@ class NoteMeldCapabilityRegistry:
                 "required": ["title"],
             },
         },
+        "note:create": {
+            "name": "note:create",
+            "description": "通过 NoteMeld Note authority 创建一篇带 provenance 的 Note。",
+            "risk": "write",
+            "safe": False,
+            "input_schema": {"type": "object", "properties": {
+                "title": {"type": "string", "minLength": 1},
+                "content": {"type": "string", "minLength": 1},
+                "source_url": {"type": "string"}, "platform": {"type": "string"},
+                "parent_note_id": {"type": "string"}, "request_id": {"type": "string"},
+            }, "required": ["title", "content"]},
+        },
+        "note:link": {
+            "name": "note:link",
+            "description": "通过 NoteMeld Note authority 关联两篇 Note。",
+            "risk": "write",
+            "safe": False,
+            "input_schema": {"type": "object", "properties": {
+                "source_note_id": {"type": "string", "minLength": 1},
+                "target_note_id": {"type": "string", "minLength": 1},
+                "kind": {"type": "string"}, "request_id": {"type": "string"},
+            }, "required": ["source_note_id", "target_note_id"]},
+        },
+        "note:relations": {
+            "name": "note:relations",
+            "description": "读取 Note 的来源关系和 provenance。",
+            "risk": "safe",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "note_id": {"type": "string", "minLength": 1},
+            }, "required": ["note_id"]},
+        },
     }
 
     def describe(self, names: list[str]) -> list[dict[str, Any]]:
-        selected = names or list(self._DESCRIPTORS)
+        selected = names or ["wiki:search", "note:search", "note:read"]
         return [self._DESCRIPTORS[name] for name in selected if name in self._DESCRIPTORS]
 
     def get_tool(self, name: str) -> dict[str, Any] | None:
@@ -90,7 +127,6 @@ class NoteMeldCapabilityRegistry:
         signal: Any,
         on_update: Callable[[dict[str, Any]], Any],
     ) -> dict[str, Any]:
-        del call_id, signal
         if name not in self._DESCRIPTORS:
             raise UnknownCapabilityError("未知产品能力")
         update_result = on_update({"message": "正在读取 NoteMeld 知识", "progress": 0.0})
@@ -113,7 +149,8 @@ class NoteMeldCapabilityRegistry:
                 limit = max(1, min(int(arguments.get("limit") or 10), 20))
             except (TypeError, ValueError) as error:
                 raise InvalidCapabilityArguments("limit 必须是整数") from error
-            result = search_note_documents_by_title(query, limit=limit)
+            store = NoteMeldNoteStoreAdapter(database_path(), conversation_id=str(getattr(signal, "session_id", "") or "agent"))
+            result = [note.__dict__ for note in store.search(query, limit=limit)]
         elif name == "note:read":
             title = str(arguments.get("title") or "").strip()
             if not title:
@@ -121,6 +158,48 @@ class NoteMeldCapabilityRegistry:
             result = read_note_document_by_title(title)
             if result is None:
                 raise CapabilityBusinessError("Note 不存在")
+        elif name == "note:create":
+            title = str(arguments.get("title") or "").strip()
+            content = str(arguments.get("content") or "")
+            if not title or not content:
+                raise InvalidCapabilityArguments("title 和 content 不能为空")
+            request_id = str(arguments.get("request_id") or call_id or uuid.uuid4())
+            note_id = NoteId(str(arguments.get("note_id") or uuid.uuid4()))
+            provenance = NoteProvenanceDto(
+                actor=NoteActorDto("agent", "agent"),
+                operation_id="",
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+                sources=(),
+            )
+            conversation_id = str(getattr(signal, "session_id", "") or "agent")
+            upsert_conversation({"id": conversation_id, "mode": "chat", "title": "Agent Note"})
+            store = NoteMeldNoteStoreAdapter(database_path(), conversation_id=conversation_id)
+            created = store.create(SdkNoteDto(note_id=note_id, title=title, content=content,
+                                               source_url=str(arguments.get("source_url") or ""),
+                                               platform=str(arguments.get("platform") or "")), request_id,
+                                   provenance=provenance)
+            result = {"note_id": str(created.note.note_id), "title": created.note.title,
+                      "operation_id": created.operation_id, "replayed": created.replayed}
+            if arguments.get("parent_note_id"):
+                linked = store.link(NoteId(str(arguments["parent_note_id"])), note_id,
+                                    f"{request_id}:relation", provenance=provenance)
+                result["relation"] = {"relation_id": linked.relation.relation_id, "kind": linked.relation.kind}
+        elif name == "note:link":
+            request_id = str(arguments.get("request_id") or call_id or uuid.uuid4())
+            provenance = NoteProvenanceDto(actor=NoteActorDto("agent", "agent"),
+                                            turn_id=str(getattr(signal, "turn_id", "") or "") or None)
+            store = NoteMeldNoteStoreAdapter(database_path(), conversation_id=str(getattr(signal, "session_id", "") or "agent"))
+            linked = store.link(NoteId(str(arguments.get("source_note_id") or "")),
+                                NoteId(str(arguments.get("target_note_id") or "")), request_id,
+                                provenance=provenance, kind=str(arguments.get("kind") or "related"))
+            result = {"relation_id": linked.relation.relation_id, "source_note_id": str(linked.relation.source),
+                      "target_note_id": str(linked.relation.target), "kind": linked.relation.kind,
+                      "operation_id": linked.operation_id, "replayed": linked.replayed}
+        elif name == "note:relations":
+            note_id = NoteId(str(arguments.get("note_id") or ""))
+            store = NoteMeldNoteStoreAdapter(database_path(), conversation_id=str(getattr(signal, "session_id", "") or "agent"))
+            result = {"note_id": str(note_id), "relations": [r.__dict__ for r in store.relations(note_id)],
+                      "provenance": list(store.provenance(note_id)), "sources": [s.__dict__ for s in store.sources(note_id)]}
         update_result = on_update({"message": "知识读取完成", "progress": 1.0})
         if inspect.isawaitable(update_result):
             await update_result

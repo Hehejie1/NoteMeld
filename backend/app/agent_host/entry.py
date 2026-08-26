@@ -61,6 +61,9 @@ class AgentHostEntry:
     def get_turn(self, turn_id: str) -> dict[str, Any] | None:
         return agent_store.get_turn(turn_id)
 
+    def list_events(self, turn_id: str) -> list[dict[str, Any]]:
+        return agent_store.list_events(turn_id)
+
     def finish_turn(
         self,
         _session_id: str,

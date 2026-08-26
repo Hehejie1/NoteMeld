@@ -101,7 +101,7 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 - MCP endpoint 固定为 `http://127.0.0.1:8483/mcp`。
 - MCP 是 FastAPI 路由，不是独立 daemon。NoteMeld 退出时 MCP 随后端停止。
 - 本地请求默认免 token；远程或强制配置时使用 `NOTEMELD_MCP_TOKEN` Bearer Token。
-- MCP 工具包括 `generate_note`、`get_task`、`get_note`、`list_models`、导入/搜索/读取笔记和 Wiki 页面。
+- MCP 工具包括 `generate_note`、`get_task`、`get_note`、`list_models`、导入/搜索/读取笔记和 Wiki 页面；N05 新增 `notemeld_create_note`、`notemeld_link_notes`、`notemeld_note_relations`，这些写入经 Agent Host 的 `NoteMeldCapabilityRegistry`、N02 Note adapter 和 Note authority 完成，MCP/CLI 不直接写 SQLite/Event。Agent capability discovery/invoke 也通过 `/api/agent/v1/capabilities*` 提供同一 Host seam。
 
 ### Agent free-chat 渐进式能力路由
 

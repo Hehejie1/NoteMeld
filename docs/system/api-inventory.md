@@ -129,6 +129,9 @@
 | POST | `/api/agent/v1/turns/{turn_id}/steer` | JSON steer payload | `{data:{turn_id,accepted}}` | UI/CLI | 404/409 | 不伪造 steer；native handle 不存在时返回 `steer_unsupported` |
 | POST | `/api/agent/v1/approvals/{approval_id}` | `decision=approve\|deny`；兼容 `approved: bool` | `{data:{approval_id,decision,accepted:true}}` | UI/CLI | 400 `invalid_approval_decision`；404 `approval_not_found`；409 `approval_already_resolved` / `approval_turn_terminal` | 仅将请求原子透传至同一 SDK runtime；成功才表示原暂停点已被唤醒，不伪造 ACK |
 | GET/PUT | `/api/agent/v1/sessions/{session_id}/model-preference` | `default_model_id/fallback_models` | `{data: Preference}` | 设置/CLI | `invalid_input` |
+| GET | `/api/agent/v1/turns/{turn_id}/diagnostics` | path | `{data:{turn,events,event_count,last_sequence}}` | 桌面任务诊断 | `turn_not_found` |
+| GET | `/api/agent/v1/capabilities` | 无 | `{data: Capability[]}` | MCP/外部 Agent/桌面 | bounded capability schema |
+| POST | `/api/agent/v1/capabilities/{name}` | `{arguments,request_id?,actor_id?}` | `{data: ToolResult}` | CLI/外部 Agent | stable ToolResult error codes |
 
 这些接口是 Web、Tauri、CLI、源码和桌面打包运行的唯一 Agent HTTP 入口。它们复用 `conversations` 作为 Session 主表；Agent 表只保存 Turn、Event 和模型偏好，不建立第二套历史。Router 只向 `AgentHostEntry` 提交生命周期命令，不直接写 Agent 表；同一 Session 的并发 Turn 返回 409 `session_busy`，不同 Session 可各自运行活动 Turn。
 
@@ -140,7 +143,10 @@ N02 只新增内部 SDK host ports，不新增 HTTP API：`NoteMeldNoteStoreAdap
 read/search/create/update/link/relations，`NoteMeldOperationStore` 提供
 begin/checkpoint/commit/fail/mark-needs-attention/get-by-request，
 `NoteMeldNoteAuthority` 裁决 actor 与 source locator。N05/I03 才负责把这些 ports
-接入公开 Agent/MCP transport；当前 router、response wrapper 和前端契约不变。
+接入公开 Agent/MCP transport。N05 的 capability endpoint、CLI 和 MCP Note
+create/link/read/search 共享 `NoteMeldCapabilityRegistry` 与 Note authority；入口不直接写
+SQLite 或 Agent Event。MCP 仍使用根路径 `/mcp`，新增公开工具
+`notemeld_create_note`、`notemeld_link_notes`、`notemeld_note_relations`。
 
 白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
 

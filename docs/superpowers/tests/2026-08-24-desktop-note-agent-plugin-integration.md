@@ -20,7 +20,7 @@ Canonical requirement：`../../requirements/2026-08-24-desktop-note-agent-plugin
 | N02 Note adapter | focused DB/adapter/idempotency/migration tests；Agent Host tests；`python3 -m compileall backend/app` | Implemented | I03 已接入同一 DB bootstrap |
 | N03 Plugin control plane | [`system/n03-evidence.md`](../../system/n03-evidence.md)：Release fixture、supply-chain、权限/崩溃、rollback、UI contracts | Implemented | N01 pinned handoff；链接插件迁移由 N04 收口 |
 | N04 Link plugin | focused N04 tests；N01→N04 before/after matrix；临时 SQLite bootstrap + installed pointer/load 验证 | Passed: 48 core link tests；7 N01 platforms + web_link covered，before/after rows identical；官方 fixture 安装到统一 `plugins/versions` 后由 active pointer 加载 | Real network/platform media remains outside this gate |
-| N05 Desktop/MCP/CLI | real desktop→plugin→Note→MCP→CLI vertical | Pending | Pending |
+| N05 Desktop/MCP/CLI | Host capability endpoints；MCP Note create/link/relations；CLI `--create-note-title/--parent-note-id`；插件管理 ready gate；Agent diagnostics UI；focused Host/MCP/CLI/SSE/approval/cancel/session-busy regression | Implemented (focused) | 真实 DMG sidecar 与网络 Release fixture 仍由 N07 release gate 执行 |
 | N06 Candidate boundary | SDK deny、evidence/test/rollback、no-auto-activation | Pending | Pending |
 | N07 Release gate | full regression/build/package/manual evidence | Pending | Pending |
 
@@ -35,6 +35,16 @@ scripts/run_core_regression.sh
 ```
 
 结果：focused tests、contracts/build、compile、Agent Host 与 `scripts/run_core_regression.sh` 均通过；DMG contract 仍引用已删除的 `.trae` skill 文件。
+
+## N05 纵向与自动化证据
+
+- I03 fixed base: `ffbe4e4c40d2e4f7f14a33b2326b1d558e2f1667`。
+- `PYTHONPATH=backend pytest -q backend/tests/agent_host backend/tests/test_core_mcp_generation_tools.py backend/tests/test_plugin_control_plane.py`: `130 passed, 5 skipped`。
+- `python3 -m compileall -q backend/app scripts/notemeld-agent.py`: passed（既有 invalid escape warnings）。
+- `(cd frontend && corepack pnpm test:contracts)`: passed。
+- `(cd frontend && corepack pnpm build)`: passed。
+- Agent v1 regression covers SSE replay, approval, cancel and session-busy; Host capability transport now covers shared Note registry and N02 adapter boundary. CLI transport uses `/api/agent/v1/capabilities/note:create`, never product SQLite/Event.
+- Real local MCP protocol client against the actual FastAPI app and temporary SQLite (`initialize`, `tools/list`, `notemeld_create_note`, relation continuation, `notemeld_note_relations`): `real-local-mcp-protocol: ok`。
 
 ## 最终纵向证据
 
