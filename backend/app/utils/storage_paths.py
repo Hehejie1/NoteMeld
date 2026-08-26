@@ -86,3 +86,19 @@ def screenshot_dir() -> Path:
 def temp_dir() -> Path:
     """Application-owned temporary files must remain inside the data root."""
     return data_root() / "tmp"
+
+
+def plugins_root_dir() -> Path:
+    return data_root() / "plugins"
+
+
+def plugin_staging_dir() -> Path:
+    return plugins_root_dir() / "staging"
+
+
+def plugin_versions_dir(plugin_id: str) -> Path:
+    return plugins_root_dir() / "versions" / plugin_id
+
+
+def plugin_active_pointer(plugin_id: str) -> Path:
+    return plugins_root_dir() / "active" / f"{plugin_id}.pointer"

@@ -14,6 +14,7 @@ from app.db.models.knowledge import (
     KnowledgeTerm,
     KnowledgeTermOccurrence,
 )
+from app.db.models.plugin import PluginAuditEvent, PluginInstallation, PluginMigration, PluginVersion
 
 __all__ = [
     "Whiteboard",
@@ -30,4 +31,8 @@ __all__ = [
     "KnowledgeRelation",
     "KnowledgeTerm",
     "KnowledgeTermOccurrence",
+    "PluginAuditEvent",
+    "PluginInstallation",
+    "PluginMigration",
+    "PluginVersion",
 ]

@@ -16,9 +16,15 @@ Canonical requirement：`../../requirements/2026-08-24-desktop-note-agent-plugin
 
 | Goal | 命令/证据 | 结果 | 失败或阻塞 |
 | --- | --- | --- | --- |
+<<<<<<< HEAD
 | N01 Artifact/baseline | `docs/system/n01-evidence.md`：loader contract、URL inventory、Note authority ADR | Implemented | 平台 waiver/skip 边界见 N01 evidence |
 | N02 Note adapter | focused：`PYTHONPATH=backend .venv/bin/pytest -q backend/tests/agent_host/test_note_contract.py backend/tests/agent_host/test_note_store_adapter.py`；回归：`PYTHONPATH=backend .venv/bin/pytest -q backend/tests/agent_host`、`... pytest -q backend/tests/test_model_runtime_schema.py`；`python3 -m compileall backend/app` | focused 12 passed；Agent Host 113 passed/5 skipped；model migration 5 passed；真实临时 SQLite 覆盖历史 task_id、same/different payload、operation transitions、原子回滚、并发版本、reopen needs-attention、投影失败、关系/authority 和多 registry 共存；compileall 通过 | I03 需统一接入 DB bootstrap 与 SDK/transport composition；2 条既有 downloader regex warning |
 | N03 Plugin control plane | Release fixture、supply-chain、rollback、UI contracts | Pending | Pending |
+=======
+| N01 Artifact/baseline | `docs/system/n01-evidence.md`：loader contract、URL inventory、Note authority ADR | Implemented | 平台 waiver/skip 边界见 N01 evidence |
+| N02 Note adapter | focused DB/adapter/idempotency/migration tests；Agent Host tests；`python3 -m compileall backend/app` | Implemented | I03 需统一接入 DB bootstrap 与 SDK/transport composition |
+| N03 Plugin control plane | [`system/n03-evidence.md`](../../system/n03-evidence.md)：Release fixture、supply-chain、权限/崩溃、rollback、UI contracts | Implemented | N01 pinned handoff；链接插件迁移由 N04 收口 |
+>>>>>>> feat/n03-plugin-runtime-control
 | N04 Link plugin | before/after URL baseline matrix、package fixture | Pending | Pending |
 | N05 Desktop/MCP/CLI | real desktop→plugin→Note→MCP→CLI vertical | Pending | Pending |
 | N06 Candidate boundary | SDK deny、evidence/test/rollback、no-auto-activation | Pending | Pending |
