@@ -21,7 +21,7 @@ Canonical requirement：`../../requirements/2026-08-24-desktop-note-agent-plugin
 | N03 Plugin control plane | [`system/n03-evidence.md`](../../system/n03-evidence.md)：Release fixture、supply-chain、权限/崩溃、rollback、UI contracts | Implemented | N01 pinned handoff；链接插件迁移由 N04 收口 |
 | N04 Link plugin | focused N04 tests；N01→N04 before/after matrix；临时 SQLite bootstrap + installed pointer/load 验证 | Passed: 48 core link tests；7 N01 platforms + web_link covered，before/after rows identical；官方 fixture 安装到统一 `plugins/versions` 后由 active pointer 加载 | Real network/platform media remains outside this gate |
 | N05 Desktop/MCP/CLI | real desktop→plugin→Note→MCP→CLI vertical | Pending | Pending |
-| N06 Candidate boundary | SDK deny、evidence/test/rollback、no-auto-activation | Pending | Pending |
+| N06 Candidate boundary | `pytest backend/tests/test_candidate_boundary.py`：SDK/public-contract deny、evidence/test/rollback gate、越权权限、model self-report 无效、no-auto-activation、plugin→N03 handoff；`python3 -m compileall backend/app`；`(cd frontend && corepack pnpm test:contracts)`；`(cd frontend && corepack pnpm build)` | Implemented on `ffbe4e4` via `feat/application-candidate-boundary` | I04 仍需合并 candidate router/db bootstrap、settings route/nav；未做真实桌面激活（一期明确禁止） |
 | N07 Release gate | full regression/build/package/manual evidence | Pending | Pending |
 
 ## 最终自动化

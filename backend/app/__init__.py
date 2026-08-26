@@ -25,7 +25,7 @@ def _default_cors_origins() -> list[str]:
 
 
 def create_app(lifespan) -> FastAPI:
-    from .routers import agent, chat, config, conversation, imported_notes, ingestion, learning, mcp, migration, model, note, note_style, plugins, provider, usage, whiteboard, wiki
+    from .routers import agent, candidates, chat, config, conversation, imported_notes, ingestion, learning, mcp, migration, model, note, note_style, plugins, provider, usage, whiteboard, wiki
 
     app = FastAPI(title="NoteMeld",lifespan=lifespan)
     app.add_middleware(
@@ -71,5 +71,6 @@ def create_app(lifespan) -> FastAPI:
     app.include_router(mcp.router)
     app.include_router(agent.router, prefix="/api")
     app.include_router(plugins.router, prefix="/api")
+    app.include_router(candidates.router, prefix="/api")
 
     return app
