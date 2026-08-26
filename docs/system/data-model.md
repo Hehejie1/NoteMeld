@@ -46,6 +46,21 @@ task id 不改写，`note_documents` 的标题、Markdown 正文、来源和产�
 Note authority。`note_results/`、conversation message、Wiki/FTS/Chroma 和
 UI 只属于投影或兼容输出，不能因投影失败回滚已成功提交的 Note。产品侧
 DTO/adapter seam 见 `docs/system/n01-note-authority-and-sdk-seam.md`。
+
+N02 新增独立 registry `note_agent_app_migrations`，并新增以下只保存 SDK
+operation 元数据的表；该 registry 不使用共享 `PRAGMA user_version`：
+
+| 表 | 关键字段 | 语义 |
+| --- | --- | --- |
+| `note_agent_sources` | `source_id`, `note_id`, `authority`, `locator`, `digest`, `operation_id` | 每次 SDK 写操作验证后的来源引用；不复制正文，主来源仍同步到 `note_documents.source_url`。 |
+| `note_agent_relations` | `relation_id`, `from_note_id`, `to_note_id`, `kind`, `operation_id` | Note 间的 typed relation；两端都复用 `note_documents.task_id`。 |
+| `note_agent_operations` | `operation_id`, `request_id`, `payload_hash`, `status`, `outcome_json` | request 幂等和恢复 ledger；`request_id` 唯一。 |
+| `note_agent_provenance` | `note_id`, `note_version`, `operation_id`, actor/plugin/turn/source ids | Note 版本及提交 provenance；`(note_id, note_version)` 唯一，历史无行 Note 懒映射为 version 1。 |
+
+operation 状态为 `begun → checkpointed → committed|failed`，进程重开把未终结
+的 `begun/checkpointed` 转为 `needs_attention`。权威写事务原子包含
+`note_documents` 正文、对应版本 provenance、来源/关系和 committed outcome；
+Wiki、FTS/Chroma、Conversation message 与 UI projection 不在该事务内。
 - `note_styles`：笔记样式。字段：`id`、`name`、`description`、`skeleton_html`、`style_constraints`、`rule_config`、`example_content`、`output_formats`、`builtin`、时间戳。
 - `template_extraction_tasks`：样式模板提取任务。字段：`task_id`、`status`、`stage`、`messages_json`、`chunks_json`、`provider_id`、`model_name`、`file_name`、`progress`、请求 payload、结果和错误。
 

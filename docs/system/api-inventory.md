@@ -136,6 +136,12 @@ CLI 契约：`notemeld agent -p/--prompt` 提交单次 Turn；`--conversation/--
 
 Agent Host 控制约束：SDK 原生 driver 请求包含 `model.stream`、`tool.describe` 和 `tool.invoke`；Host 对 `tool.describe` 只返回 bounded namespaced capabilities。ABI v1 每轮 `model.stream` 的 canonical `messages` 是权威，Host 为该轮补齐安全 `model/model_override`、当前 `input/context_refs`、工具描述和显式 generation config；返回继续使用 schema v1 的 chunks/completion envelope。`tool.invoke` 的 Host adapter 返回 SDK ToolResult wire shape `{call_id, output}`，FFI driver completion 只把 `output` 交给 Rust scheduler；成功 output 为 `{ok:true,result}`，可恢复失败为 `{ok:false,error:{code,message}}`。稳定产品错误 code 为 `unknown_tool`、`invalid_arguments`、`permission_denied`、`business_error`、`tool_execution_error`，且不得携带原参数、Provider payload、凭证或异常原文。产品级失败仍形成 ToolResult 并触发下一轮模型；只有 Host/ABI 协议损坏才返回 driver-level `ok:false` 并终止 Turn。危险或未知工具由 SDK 发出 `approval.required` 并暂停原 Turn；approve 后 SDK 才调用工具，deny 形成带原 call id 的拒绝 ToolResult。审批 API 把决定原子传给同一个 native runtime；Host 只把 `approval.required/resolved` 与 `waiting_approval/running` 投影到既有 Event/Turn，不直接修改终态或实现 Agent loop。
 
+N02 只新增内部 SDK host ports，不新增 HTTP API：`NoteMeldNoteStoreAdapter` 提供
+read/search/create/update/link/relations，`NoteMeldOperationStore` 提供
+begin/checkpoint/commit/fail/mark-needs-attention/get-by-request，
+`NoteMeldNoteAuthority` 裁决 actor 与 source locator。N05/I03 才负责把这些 ports
+接入公开 Agent/MCP transport；当前 router、response wrapper 和前端契约不变。
+
 白板采用 `{code,msg,data}` 包装；`whiteboard_selection` 经过后端 resolver 后改写为 authority snapshot。
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |
