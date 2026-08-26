@@ -21,7 +21,8 @@ Requirements (auto-installed if missing on macOS with Homebrew):
 - corepack
 
 Agent SDK:
-- set NOTEMELD_AGENT_SDK_WHEEL to the compiled notemeld-agent-sdk wheel
+- uses the sibling ../notemeld-agent-sdk fixed wheel automatically when present
+- set NOTEMELD_AGENT_SDK_WHEEL to override the wheel path explicitly
 - the wheel is installed into the source-mode virtualenv automatically
 
 After startup:
@@ -389,6 +390,20 @@ except AgentSdkUnavailable as error:
   if sdk_error="$(PYTHONPATH="${VENV_DIR}/../backend${PYTHONPATH:+:${PYTHONPATH}}" \
     "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
     return 0
+  fi
+
+  if [[ -z "${NOTEMELD_AGENT_SDK_WHEEL}" ]]; then
+    local sdk_root="${ROOT_DIR}/../notemeld-agent-sdk"
+    local wheel_candidates=()
+    shopt -s nullglob
+    wheel_candidates+=("${sdk_root}/dist-native/x86_64-apple-darwin/"*.whl)
+    wheel_candidates+=("${sdk_root}/dist-wheel/"*.whl)
+    shopt -u nullglob
+    if (( ${#wheel_candidates[@]} > 0 )); then
+      NOTEMELD_AGENT_SDK_WHEEL="${wheel_candidates[0]}"
+      export NOTEMELD_AGENT_SDK_WHEEL
+      log "Using local Agent SDK wheel: ${NOTEMELD_AGENT_SDK_WHEEL}"
+    fi
   fi
   [[ -n "${NOTEMELD_AGENT_SDK_WHEEL}" ]] \
     || fail "${sdk_error:-Agent SDK is missing or incompatible}. Set NOTEMELD_AGENT_SDK_WHEEL to the compiled wheel before starting NoteMeld."
