@@ -28,6 +28,7 @@ const McpServers = lazy(() => import('@/pages/SettingPage/McpServers.tsx'))
 const ResearchSearch = lazy(() => import('@/pages/SettingPage/ResearchSearch.tsx'))
 const Plugins = lazy(() => import('@/pages/SettingPage/Plugins.tsx'))
 const AgentDiagnostics = lazy(() => import('@/pages/SettingPage/AgentDiagnostics.tsx'))
+const Candidates = lazy(() => import('@/pages/SettingPage/Candidates.tsx'))
 const WikiPage = lazy(() => import('@/pages/WikiPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const StylesPlaceholder = lazy(() => import('@/pages/StylesPage'))
@@ -80,6 +81,7 @@ const WorkspaceRoutes = () => {
             <Route path="research-search" element={<ResearchSearch />} />
             <Route path="plugins" element={<Plugins />} />
             <Route path="agent-diagnostics" element={<AgentDiagnostics />} />
+            <Route path="candidates" element={<Candidates />} />
             <Route path="about" element={<Navigate to="/" replace />}></Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

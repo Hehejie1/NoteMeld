@@ -10,6 +10,7 @@ from app.db.models.agent import AgentEvent, AgentPreference, AgentTurn  # noqa: 
 from app.db.models.whiteboard import Whiteboard, WhiteboardCard, WhiteboardNoteLink, WhiteboardRelation
 from app.db.models.knowledge import KnowledgeArticle, KnowledgeChunk, KnowledgeIndexState, KnowledgeProfile, KnowledgeRelation, KnowledgeTerm, KnowledgeTermOccurrence  # noqa: F401
 from app.db.models.plugin import PluginAuditEvent, PluginInstallation, PluginMigration, PluginVersion  # noqa: F401
+from app.db.models.candidate import Candidate, CandidateArtifact, CandidateDecision, CandidateEvaluation, CandidateEvidence, CandidateMigration  # noqa: F401
 from app.db.engine import get_engine, Base, DATABASE_URL, SessionLocal, migrate_legacy_sqlite_if_needed
 from app.db.conversation_schema import ensure_conversation_columns
 from app.db.note_style_dao import ensure_note_style_columns
@@ -18,6 +19,7 @@ from app.db.provider_schema import ensure_provider_schema
 from app.db.database import ensure_agent_schema
 from app.db.knowledge_schema import ensure_knowledge_schema
 from app.db.plugin_migrations import ensure_plugin_migration_registry
+from app.db.candidate_migrations import ensure_candidate_migration_registry
 from app.services.conversation_store import bootstrap_conversations_from_storage
 from app.utils.logger import get_logger
 from app.services.official_link_note_host import ensure_official_link_note_installed
@@ -31,6 +33,7 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     ensure_plugin_migration_registry(engine)
+    ensure_candidate_migration_registry(engine)
     ensure_knowledge_schema(engine)
     model_runtime_schema = ensure_model_runtime_schema(engine)
     if model_runtime_schema["upgraded"]:
