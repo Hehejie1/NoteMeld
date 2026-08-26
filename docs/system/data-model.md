@@ -33,7 +33,7 @@
 
 #### Candidate boundary（N06）
 
-`application_candidates`、追加式 `candidate_decisions` 与 `candidate_app_migrations` 是独立表域。candidate 以 JSON 保存 scope、evidence、trace、artifact、patch、tests、risks、permissions、rollback 及验证结果；决策历史单独追加且不覆盖。记录只描述候选，不写入源码、安装包或 plugin active pointer。`kind` 仅允许 `application` / `plugin`；plugin scope 必须引用 N03 已安装的 `plugin:<id>`。Application 审批没有激活路径，plugin 审批的下一步固定为 N03 标准包校验、权限和 active-pointer 流程。
+`application_candidates`、追加式 `candidate_evidence`、`candidate_artifacts`、`candidate_evaluations`、`candidate_decisions` 与 `candidate_app_migrations` 是独立表域。candidate 聚合记录保存 scope、evidence、trace、artifact、patch、tests、risks、permissions、rollback 及验证结果；evidence/artifact/evaluation/decision 以追加式记录保存且没有更新 API。记录只描述候选，不写入源码、安装包或 plugin active pointer。`kind` 仅允许 `application` / `plugin`；plugin scope 必须引用 N03 已安装的 `plugin:<id>`。Application 审批没有激活路径，plugin 审批的下一步固定为 N03 标准包校验、权限和 active-pointer 流程。
 
 - `providers`：LLM Provider 配置。字段：`id`、`name`、`logo`、`api_key`、`base_url`、`enabled`、`created_at`。
 - `provider_templates`：Provider 模板。字段：`id`、`name`、`logo`、`base_url`、`created_at`；`name` 唯一。

@@ -10,7 +10,7 @@ from app.db.models.agent import AgentEvent, AgentPreference, AgentTurn  # noqa: 
 from app.db.models.whiteboard import Whiteboard, WhiteboardCard, WhiteboardNoteLink, WhiteboardRelation
 from app.db.models.knowledge import KnowledgeArticle, KnowledgeChunk, KnowledgeIndexState, KnowledgeProfile, KnowledgeRelation, KnowledgeTerm, KnowledgeTermOccurrence  # noqa: F401
 from app.db.models.plugin import PluginAuditEvent, PluginInstallation, PluginMigration, PluginVersion  # noqa: F401
-from app.db.models.candidate import Candidate, CandidateDecision, CandidateMigration  # noqa: F401
+from app.db.models.candidate import Candidate, CandidateArtifact, CandidateDecision, CandidateEvaluation, CandidateEvidence, CandidateMigration  # noqa: F401
 from app.db.engine import get_engine, Base, DATABASE_URL, SessionLocal, migrate_legacy_sqlite_if_needed
 from app.db.conversation_schema import ensure_conversation_columns
 from app.db.note_style_dao import ensure_note_style_columns

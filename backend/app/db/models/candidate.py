@@ -43,3 +43,33 @@ class CandidateDecision(Base):
     actor = Column(String, nullable=False)
     reason = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class CandidateEvidence(Base):
+    __tablename__ = "candidate_evidence"
+
+    id = Column(String, primary_key=True)
+    candidate_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    payload_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CandidateArtifact(Base):
+    __tablename__ = "candidate_artifacts"
+
+    id = Column(String, primary_key=True)
+    candidate_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    payload_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CandidateEvaluation(Base):
+    __tablename__ = "candidate_evaluations"
+
+    id = Column(String, primary_key=True)
+    candidate_id = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False)
+    payload_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, server_default=func.now())

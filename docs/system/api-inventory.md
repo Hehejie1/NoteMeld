@@ -122,7 +122,8 @@
 - `POST /api/candidates`：保存 scope、evidence/trace、artifact/patch、tests、risks、permissions、rollback；只接受 Application/plugin 两类。
 - `GET /api/candidates/{candidate_id}`：读取完整 candidate 和下一步提示。
 - `POST /api/candidates/{candidate_id}/validate`：静态边界与证据门禁；缺 evidence/test/rollback、越权、SDK 路径/制品/公共契约触碰时 fail closed。
-- `POST /api/candidates/{candidate_id}/decision`：人工审批/拒绝，只记录决策；不 patch/激活 Application，plugin 仍必须回到 N03 标准包流程。
+- `POST /api/candidates/{candidate_id}/approve`、`POST /api/candidates/{candidate_id}/decline`：显式人工审批/拒绝入口。
+- `POST /api/candidates/{candidate_id}/decision`：人工审批/拒绝，只记录追加式决策（审批主体由受保护桌面 API 固定为 `desktop-user`）；不 patch/激活 Application，plugin 仍必须回到 N03 标准包流程。
 
 ## Agent v1 接口（增量迁移）
 

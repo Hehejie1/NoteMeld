@@ -5,15 +5,21 @@ import uuid
 from typing import Any
 
 from app.db.engine import SessionLocal
-from app.db.models.candidate import Candidate, CandidateDecision
+from app.db.models.candidate import Candidate, CandidateArtifact, CandidateDecision, CandidateEvaluation, CandidateEvidence
 from app.db.models.plugin import PluginInstallation
 
 
 ALLOWED_KINDS = {"application", "plugin"}
-ALLOWED_PERMISSIONS = {"application.read", "application.test", "plugin.package"}
+ALLOWED_PERMISSIONS = {"application.read", "application.test", "application.patch.review", "plugin.package"}
 SDK_DENY_MARKERS = (
     "notemeld-agent-sdk",
+    "notemeld_agent",
+    "notemeld-agent",
     "agent-sdk",
+    "agent_sdk",
+    "sdk_path",
+    "sdk_artifact",
+    "sdk_source",
     "/crates/agent-",
     "crates/agent-",
     "/bindings/",
@@ -22,7 +28,12 @@ SDK_DENY_MARKERS = (
     "include/notemeld_agent",
     "/schemas/",
     "abi-v",
+    "abi_path",
+    "binding_path",
+    "schema_path",
     "public-contract",
+    "public_contract",
+    "public contract",
 )
 APP_SCOPE_PREFIXES = ("backend/", "frontend/", "desktop/", "packaging/", "docs/")
 
@@ -86,6 +97,13 @@ class CandidateService:
         )
         with self.session_factory.begin() as db:
             db.add(candidate)
+            for kind, entries in (("evidence", payload.get("evidence", [])), ("trace", payload.get("trace", []))):
+                for entry in entries if isinstance(entries, list) else []:
+                    db.add(CandidateEvidence(id=uuid.uuid4().hex, candidate_id=candidate.id, kind=kind, payload_json=_json(entry)))
+            for kind, entry in (("artifact", payload.get("artifact", {})), ("patch", payload.get("patch", {}))):
+                db.add(CandidateArtifact(id=uuid.uuid4().hex, candidate_id=candidate.id, kind=kind, payload_json=_json(entry)))
+            for entry in payload.get("tests", []) if isinstance(payload.get("tests", []), list) else []:
+                db.add(CandidateEvaluation(id=uuid.uuid4().hex, candidate_id=candidate.id, status=entry.get("status", "unknown") if isinstance(entry, dict) else "unknown", payload_json=_json(entry)))
             return self.serialize(candidate)
 
     def list(self) -> list[dict[str, Any]]:
@@ -105,6 +123,7 @@ class CandidateService:
             candidate = db.get(Candidate, candidate_id)
             if candidate is None:
                 raise CandidateNotFound(candidate_id)
+            candidate.status = "validating"
             errors = self._validation_errors(candidate, db)
             candidate.validation_json = _json({"errors": errors, "model_safety_claim_used": False})
             candidate.status = "approvable" if not errors else "rejected"
