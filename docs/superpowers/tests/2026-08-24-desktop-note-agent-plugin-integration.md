@@ -18,7 +18,7 @@ Canonical requirement：`../../requirements/2026-08-24-desktop-note-agent-plugin
 | --- | --- | --- | --- |
 | N01 Artifact/baseline | loader contract、URL inventory、Note authority ADR | Pending | SDK S08 |
 | N02 Note adapter | focused DB/adapter/idempotency/migration tests | Pending | Pending |
-| N03 Plugin control plane | Release fixture、supply-chain、rollback、UI contracts | Pending | Pending |
+| N03 Plugin control plane | [`system/n03-evidence.md`](../../system/n03-evidence.md)：Release fixture、supply-chain、权限/崩溃、rollback、UI contracts | Implemented | N01 pinned handoff；链接插件迁移留 N04 |
 | N04 Link plugin | before/after URL baseline matrix、package fixture | Pending | Pending |
 | N05 Desktop/MCP/CLI | real desktop→plugin→Note→MCP→CLI vertical | Pending | Pending |
 | N06 Candidate boundary | SDK deny、evidence/test/rollback、no-auto-activation | Pending | Pending |

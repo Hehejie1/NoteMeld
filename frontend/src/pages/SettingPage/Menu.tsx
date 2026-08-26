@@ -7,6 +7,7 @@ import {
   Database,
   Plug,
   Search,
+  Puzzle,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { JSX } from 'react'
@@ -27,6 +28,7 @@ const menuList: MenuItem[] = [
   { id: 'monitor', name: '部署监控', icon: <Activity className="h-4 w-4" />, path: '/settings/monitor' },
   { id: 'mcp-servers', name: 'MCP 服务器', icon: <Plug className="h-4 w-4" />, path: '/settings/mcp-servers' },
   { id: 'research-search', name: '研究搜索', icon: <Search className="h-4 w-4" />, path: '/settings/research-search' },
+  { id: 'plugins', name: '插件运行', icon: <Puzzle className="h-4 w-4" />, path: '/settings/plugins' },
 ]
 
 const Menu = () => {
