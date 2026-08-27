@@ -77,10 +77,17 @@ notemeld
 git clone https://github.com/Hehejie1/NoteMeld.git
 cd NoteMeld
 cp .env.example .env
+# 可选：插件仓库默认查找 NoteMeld 同级目录的 notemeld-plugins；
+# 若插件仓库在其他位置，在 .env 中设置 NOTEMELD_PLUGINS_DIR
 bash run_notemeld.sh
 ```
 
 访问：<http://127.0.0.1:3015>
+
+官方插件源码和 Release 包位于独立的
+[`notemeld-plugins`](../notemeld-plugins/) 仓库。NoteMeld 只负责插件安装、
+权限、运行时和 Note 宿主适配，不在本仓库维护插件实现；生产环境应通过
+GitHub/Gitee Release 安装并经过 manifest、版本和 hash 校验。
 
 ## 🔌 MCP 接入
 

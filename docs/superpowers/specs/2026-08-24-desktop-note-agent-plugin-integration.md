@@ -35,7 +35,7 @@ Plan：`../plans/2026-08-24-desktop-note-agent-plugin-integration.md`
 
 ## N04：官方链接转 Note 插件
 
-建议创建可独立打包的 `plugins/official-link-note/`，代码边界不得 import React/router 或直接写 Agent Event/SQLite 内表。
+建议在独立 `notemeld-plugins` 仓库维护可独立打包的 `plugins/official-link-note/`，代码边界不得 import React/router 或直接写 Agent Event/SQLite 内表。
 
 - 把 N01 inventory 中所有 URL 路径迁入插件或插件可调用的稳定 host adapter；最终 Application 入口只调用 capability，不保留平台分支双实现。
 - 保留官方字幕优先、视频/音频下载、转写、截图、多源汇总、网页抓取和失败降级。

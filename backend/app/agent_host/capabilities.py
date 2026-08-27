@@ -6,6 +6,7 @@ It deliberately exposes bounded, read-only capabilities first.
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 import uuid
 from typing import Any, Callable
@@ -17,6 +18,9 @@ from app.services.note_document_store import read_note_document_by_title
 from app.services.conversation_store import upsert_conversation
 from app.services.wiki_search import WikiSearch
 from app.utils.storage_paths import note_output_dir
+from app.services.document_conversion_plugin import convert_document_to_markdown
+from app.services.image_ocr_plugin import extract_image_ocr
+from app.services.media_atomic_plugins import extract_audio, extract_video_frames, fetch_video_media, transcribe_audio
 
 
 class CapabilityError(Exception):
@@ -110,6 +114,70 @@ class NoteMeldCapabilityRegistry:
                 "note_id": {"type": "string", "minLength": 1},
             }, "required": ["note_id"]},
         },
+        "document:to_markdown": {
+            "name": "document:to_markdown",
+            "description": "将 PDF、Word、PowerPoint、Excel、CSV、RTF、EPUB 等文档转换为带来源的 GFM Markdown 中间产物。插件不创建 Note，由 Agent 决定如何总结和写入。",
+            "risk": "safe",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "file_url": {"type": "string", "minLength": 1},
+                "file_name": {"type": "string", "minLength": 1},
+                "source": {"type": "object"}, "request_id": {"type": "string"},
+            }, "required": ["file_url", "file_name"]},
+        },
+        "image:ocr": {
+            "name": "image:ocr",
+            "description": "识别图片中的文字，并保留页码、顺序、置信度和基础 bbox 定位；不做 ASCII 图像转换，不创建 Note。",
+            "risk": "safe",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "file_url": {"type": "string", "minLength": 1},
+                "file_name": {"type": "string", "minLength": 1},
+                "source": {"type": "object"}, "request_id": {"type": "string"},
+            }, "required": ["file_url", "file_name"]},
+        },
+        "video:fetch": {
+            "name": "video:fetch",
+            "description": "获取视频或音频来源的媒体元信息；可按需准备视频资源，不总结、不创建 Note。",
+            "risk": "network",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "source_url": {"type": "string", "minLength": 1},
+                "platform": {"type": "string"}, "include_video": {"type": "boolean"},
+                "source": {"type": "object"}, "request_id": {"type": "string"},
+            }, "required": ["source_url"]},
+        },
+        "audio:extract": {
+            "name": "audio:extract",
+            "description": "从本地或受支持的视频来源提取音频元信息和可继续处理的音频产物，不创建 Note。",
+            "risk": "network",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "source_url": {"type": "string", "minLength": 1}, "platform": {"type": "string"},
+                "source": {"type": "object"}, "request_id": {"type": "string"},
+            }, "required": ["source_url"]},
+        },
+        "audio:transcribe": {
+            "name": "audio:transcribe",
+            "description": "优先读取平台字幕，否则使用 NoteMeld 配置的转写引擎输出带时间段的文本；不总结、不创建 Note。",
+            "risk": "compute",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "source_url": {"type": "string", "minLength": 1}, "platform": {"type": "string"},
+                "source": {"type": "object"}, "request_id": {"type": "string"},
+            }, "required": ["source_url"]},
+        },
+        "video:frames": {
+            "name": "video:frames",
+            "description": "按时间点提取视频帧并执行基础 OCR，返回时间戳和文字位置结果；不做 ASCII、不创建 Note。",
+            "risk": "compute",
+            "safe": True,
+            "input_schema": {"type": "object", "properties": {
+                "source_url": {"type": "string", "minLength": 1}, "platform": {"type": "string"},
+                "timestamps": {"type": "array", "items": {"type": "number"}},
+                "source": {"type": "object"}, "request_id": {"type": "string"},
+            }, "required": ["source_url"]},
+        },
     }
 
     def describe(self, names: list[str]) -> list[dict[str, Any]]:
@@ -158,6 +226,85 @@ class NoteMeldCapabilityRegistry:
             result = read_note_document_by_title(title)
             if result is None:
                 raise CapabilityBusinessError("Note 不存在")
+        elif name == "document:to_markdown":
+            file_url = str(arguments.get("file_url") or "").strip()
+            file_name = str(arguments.get("file_name") or "").strip()
+            if not file_url or not file_name:
+                raise InvalidCapabilityArguments("file_url 和 file_name 不能为空")
+            result = await asyncio.to_thread(
+                convert_document_to_markdown,
+                file_url=file_url,
+                file_name=file_name,
+                source=arguments.get("source") if isinstance(arguments.get("source"), dict) else None,
+                request_id=str(arguments.get("request_id") or call_id or uuid.uuid4()),
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+            )
+        elif name == "image:ocr":
+            file_url = str(arguments.get("file_url") or "").strip()
+            file_name = str(arguments.get("file_name") or "").strip()
+            if not file_url or not file_name:
+                raise InvalidCapabilityArguments("file_url 和 file_name 不能为空")
+            result = await asyncio.to_thread(
+                extract_image_ocr,
+                file_url=file_url,
+                file_name=file_name,
+                source=arguments.get("source") if isinstance(arguments.get("source"), dict) else None,
+                request_id=str(arguments.get("request_id") or call_id or uuid.uuid4()),
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+            )
+        elif name == "video:fetch":
+            source_url = str(arguments.get("source_url") or "").strip()
+            if not source_url:
+                raise InvalidCapabilityArguments("source_url 不能为空")
+            result = await asyncio.to_thread(
+                fetch_video_media,
+                source_url=source_url,
+                platform=str(arguments.get("platform") or ""),
+                include_video=bool(arguments.get("include_video", False)),
+                source=arguments.get("source") if isinstance(arguments.get("source"), dict) else None,
+                request_id=str(arguments.get("request_id") or call_id or uuid.uuid4()),
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+            )
+        elif name == "audio:extract":
+            source_url = str(arguments.get("source_url") or "").strip()
+            if not source_url:
+                raise InvalidCapabilityArguments("source_url 不能为空")
+            result = await asyncio.to_thread(
+                extract_audio,
+                source_url=source_url,
+                platform=str(arguments.get("platform") or ""),
+                source=arguments.get("source") if isinstance(arguments.get("source"), dict) else None,
+                request_id=str(arguments.get("request_id") or call_id or uuid.uuid4()),
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+            )
+        elif name == "audio:transcribe":
+            source_url = str(arguments.get("source_url") or "").strip()
+            if not source_url:
+                raise InvalidCapabilityArguments("source_url 不能为空")
+            result = await asyncio.to_thread(
+                transcribe_audio,
+                source_url=source_url,
+                platform=str(arguments.get("platform") or ""),
+                source=arguments.get("source") if isinstance(arguments.get("source"), dict) else None,
+                request_id=str(arguments.get("request_id") or call_id or uuid.uuid4()),
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+            )
+        elif name == "video:frames":
+            source_url = str(arguments.get("source_url") or "").strip()
+            if not source_url:
+                raise InvalidCapabilityArguments("source_url 不能为空")
+            timestamps = arguments.get("timestamps")
+            if timestamps is not None and (not isinstance(timestamps, list) or any(not isinstance(item, (int, float)) for item in timestamps)):
+                raise InvalidCapabilityArguments("timestamps 必须是数字数组")
+            result = await asyncio.to_thread(
+                extract_video_frames,
+                source_url=source_url,
+                platform=str(arguments.get("platform") or ""),
+                timestamps=[float(item) for item in timestamps] if timestamps is not None else None,
+                source=arguments.get("source") if isinstance(arguments.get("source"), dict) else None,
+                request_id=str(arguments.get("request_id") or call_id or uuid.uuid4()),
+                turn_id=str(getattr(signal, "turn_id", "") or "") or None,
+            )
         elif name == "note:create":
             title = str(arguments.get("title") or "").strip()
             content = str(arguments.get("content") or "")

@@ -21,7 +21,17 @@ PLUGIN_ID = "official.link-note"
 
 def _bundled_fixture() -> Path:
     bundle_root = Path(getattr(sys, "_MEIPASS", project_root()))
-    return bundle_root / "plugins" / "official-link-note" / "release-fixture" / "official-link-note-1.0.0.zip"
+    bundled = bundle_root / "plugins" / "official-link-note" / "release-fixture" / "official-link-note-1.0.0.zip"
+    if bundled.is_file():
+        return bundled
+    configured = str(os.environ.get("NOTEMELD_PLUGINS_DIR") or "").strip()
+    candidates = []
+    if configured:
+        configured_root = Path(configured).expanduser().resolve()
+        candidates.append(configured_root / "plugins" / "official-link-note" / "release-fixture" / "official-link-note-1.0.0.zip")
+        candidates.append(configured_root / "official-link-note" / "release-fixture" / "official-link-note-1.0.0.zip")
+    candidates.append(project_root().parent / "notemeld-plugins" / "plugins" / "official-link-note" / "release-fixture" / "official-link-note-1.0.0.zip")
+    return next((candidate for candidate in candidates if candidate.is_file()), candidates[0] if candidates else bundled)
 
 
 def ensure_official_link_note_installed(session_factory=None) -> None:

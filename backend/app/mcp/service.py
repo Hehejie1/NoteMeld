@@ -172,6 +172,56 @@ TOOL_DEFINITIONS = [
             "required": ["page_type", "title"],
         },
     },
+    {
+        "name": "notemeld_document_to_markdown",
+        "description": "将支持的文档转换为带 provenance 的 GFM Markdown 中间产物；不直接创建 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "file_url": {"type": "string"}, "file_name": {"type": "string"},
+            "source": {"type": "object"}, "request_id": {"type": "string"},
+        }, "required": ["file_url", "file_name"]},
+    },
+    {
+        "name": "notemeld_image_ocr",
+        "description": "识别图片文字并保留基础 bbox、顺序和置信度；不做 ASCII 转换，也不直接创建 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "file_url": {"type": "string"}, "file_name": {"type": "string"},
+            "source": {"type": "object"}, "request_id": {"type": "string"},
+        }, "required": ["file_url", "file_name"]},
+    },
+    {
+        "name": "notemeld_video_fetch",
+        "description": "获取视频/音频来源的媒体元信息，可按需准备视频资源；不总结、不创建 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "source_url": {"type": "string"}, "platform": {"type": "string"},
+            "include_video": {"type": "boolean"}, "source": {"type": "object"},
+            "request_id": {"type": "string"},
+        }, "required": ["source_url"]},
+    },
+    {
+        "name": "notemeld_audio_extract",
+        "description": "从视频或音频来源提取可继续处理的音频产物；不总结、不创建 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "source_url": {"type": "string"}, "platform": {"type": "string"},
+            "source": {"type": "object"}, "request_id": {"type": "string"},
+        }, "required": ["source_url"]},
+    },
+    {
+        "name": "notemeld_audio_transcribe",
+        "description": "优先使用平台字幕，否则调用 NoteMeld 转写引擎输出带时间段的文本；不总结、不创建 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "source_url": {"type": "string"}, "platform": {"type": "string"},
+            "source": {"type": "object"}, "request_id": {"type": "string"},
+        }, "required": ["source_url"]},
+    },
+    {
+        "name": "notemeld_video_frames",
+        "description": "按时间点提取视频帧并执行基础 OCR，返回时间戳和位置结果；不做 ASCII、不创建 Note。",
+        "inputSchema": {"type": "object", "properties": {
+            "source_url": {"type": "string"}, "platform": {"type": "string"},
+            "timestamps": {"type": "array", "items": {"type": "number"}},
+            "source": {"type": "object"}, "request_id": {"type": "string"},
+        }, "required": ["source_url"]},
+    },
 ]
 
 RESOURCE_DEFINITIONS = [
@@ -223,6 +273,12 @@ class McpToolService:
             "notemeld_create_note": "note:create",
             "notemeld_link_notes": "note:link",
             "notemeld_note_relations": "note:relations",
+            "notemeld_document_to_markdown": "document:to_markdown",
+            "notemeld_image_ocr": "image:ocr",
+            "notemeld_video_fetch": "video:fetch",
+            "notemeld_audio_extract": "audio:extract",
+            "notemeld_audio_transcribe": "audio:transcribe",
+            "notemeld_video_frames": "video:frames",
         }
         if name in capability_names:
             call_id = str(args.get("request_id") or uuid.uuid4())

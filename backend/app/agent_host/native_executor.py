@@ -27,6 +27,32 @@ _TERMINAL = {
 
 logger = get_logger(__name__)
 
+_CONTENT_CONVERSION_TOOLS = [
+    "document:to_markdown",
+    "image:ocr",
+    "video:fetch",
+    "audio:extract",
+    "audio:transcribe",
+    "video:frames",
+]
+
+
+def _conversion_discovery_names(content: str, attachments: list[dict[str, Any]] | None) -> list[str]:
+    """Expose conversion tools when a turn contains an input to convert.
+
+    The bounded default discovery remains unchanged for ordinary chat. File
+    attachments and explicit media/link requests opt into the atomic tools so a
+    model can discover them without making every chat turn carry heavy schemas.
+    """
+    attachment_text = " ".join(
+        str(item.get("type") or "") + " " + str(item.get("content") or "")
+        for item in attachments or []
+        if isinstance(item, dict)
+    )
+    haystack = f"{content} {attachment_text}".lower()
+    markers = ("/uploads/", "http://", "https://", "pdf", "docx", "pptx", "xlsx", "epub", "图片", "图像", "视频", "音频", "ocr", "转写")
+    return list(_CONTENT_CONVERSION_TOOLS) if any(marker in haystack for marker in markers) else []
+
 
 def _resolve_saved_model(model_name: str | None) -> tuple[Any, Any]:
     rows = get_all_models()
@@ -431,7 +457,8 @@ class NativeAgentExecutor:
                 history.pop()
             tool_descriptors: list[dict[str, Any]] = []
             try:
-                describe_result = asyncio.run(product_tool_driver.describe([]))
+                discovery_names = _conversion_discovery_names(content, attachments)
+                describe_result = asyncio.run(product_tool_driver.describe(discovery_names))
                 tool_descriptors = _coerce_tool_schema(describe_result)
             except Exception as error:
                 logger.warning(

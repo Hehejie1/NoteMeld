@@ -158,6 +158,14 @@ class PluginManager:
     @staticmethod
     def _start_runtime(installation: PluginInstallation, db) -> None:
         manifest = json.loads(installation.manifest_json)
+        runtime_kind = str((manifest.get("runtime") or {}).get("kind") or "")
+        transport_kind = str((manifest.get("transport") or {}).get("kind") or "")
+        if runtime_kind in {"host-port", "process-jsonl", "stdin-stdout-jsonl"} or transport_kind in {"host-port", "process-jsonl", "stdin-stdout-jsonl"}:
+            # These runtimes are started per invocation or owned by the Host.
+            # There is no persistent process for the control plane to supervise.
+            installation.runtime_status = "running"
+            installation.runtime_pid = None
+            return
         command = (manifest.get("runtime") or {}).get("command")
         if not isinstance(command, list) or not command or not all(isinstance(item, str) and item for item in command):
             raise PluginVerificationError("plugin runtime command is missing")

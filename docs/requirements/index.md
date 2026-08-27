@@ -1,6 +1,6 @@
 # Requirements Index
 
-更新时间：2026-08-24
+更新时间：2026-08-27
 
 本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
 
@@ -35,6 +35,7 @@
 | P6.5 | Implemented | Agent approval 暂停、持久化与跨入口恢复 | [`2026-08-19-agent-approval-resume.md`](2026-08-19-agent-approval-resume.md) | [`plan`](../superpowers/plans/2026-08-19-agent-approval-resume.md) + [`spec`](../superpowers/specs/2026-08-19-agent-approval-resume.md) + [`验证`](../superpowers/tests/2026-08-19-agent-approval-resume.md) | 复用 Conversation/Turn/Event；resolve 真正唤醒 native Turn；UI/CLI 共享同一暂停链路 |
 | P7 | Planned | Note Agent 与插件化个人知识库一期总需求 | [`2026-08-24-note-agent-plugin-foundation.md`](2026-08-24-note-agent-plugin-foundation.md) | [SDK child](../../../notemeld-agent-sdk/docs/requirements/2026-08-24-stateless-note-agent-foundation.md) → [Application child](2026-08-24-desktop-note-agent-plugin-integration.md) | 两个独立仓库任务；SDK S08 artifact gate 通过后才允许 NoteMeld N01 实现，最终由 N07 关闭总需求 |
 | P7-App | Planned | NoteMeld 桌面 Note Agent 与插件集成 | [`2026-08-24-desktop-note-agent-plugin-integration.md`](2026-08-24-desktop-note-agent-plugin-integration.md) | [`plan`](../superpowers/plans/2026-08-24-desktop-note-agent-plugin-integration.md) + [`spec`](../superpowers/specs/2026-08-24-desktop-note-agent-plugin-integration.md) + [`tests`](../superpowers/tests/2026-08-24-desktop-note-agent-plugin-integration.md) + Goal 手册 | N04 已在独立 worktree 完成；N02/N03/N05/N06/N07 仍待集成；一期桌面、同机 CLI/MCP/外部 Agent、链接插件、candidate 安全边界 |
+| P7.1 | Implemented（一期桌面 Host） | 内容转换工具插件与 Agent 总结链路 | [`2026-08-27-content-conversion-tool-plugins.md`](2026-08-27-content-conversion-tool-plugins.md) | [`change-spec-content-conversion-tool-plugins.md`](../system/change-spec-content-conversion-tool-plugins.md) + [`plan`](../superpowers/plans/2026-08-27-content-conversion-tool-plugins.md) + [`spec`](../superpowers/specs/2026-08-27-content-conversion-tool-plugins.md) + [`tests`](../superpowers/tests/2026-08-27-content-conversion-tool-plugins.md) | Rust/anydoc 文档插件、媒体/OCR 原子 capability、MCP 与统一 artifact 已接入；server 仅 contract-ready，mobile/WASM 未接入，本期不做 ASCII |
 | P6.3 | Implemented | 独立 Agent SDK 唯一源码仓库收敛 | [`change-spec-agent-sdk-single-source.md`](../system/change-spec-agent-sdk-single-source.md) | 本 Change Spec | NoteMeld 已删除内嵌 `agent-sdk/`、SDK CI 和源码回退；独立仓库承担 Rust/binding/CLI/build/release |
 | P6.2 | Implemented | NoteMeld 消费独立 Agent SDK 产物并统一 CLI | [`2026-08-17-notemeld-agent-sdk-artifact-integration.md`](2026-08-17-notemeld-agent-sdk-artifact-integration.md) | [`plan`](../superpowers/plans/2026-08-17-notemeld-agent-sdk-artifact-integration.md) + [`spec`](../superpowers/specs/2026-08-17-notemeld-agent-sdk-artifact-integration.md) | wheel/native artifact 作为生产输入；源码/安装启动统一校验；CLI 复用 Agent v1；生产 legacy Agent 已删除 |
 | P6.1 | Planned | K0-K3 文章级分层知识检索与独立 Agent 工具 | [`2026-08-18-k0-k3-article-knowledge-retrieval.md`](2026-08-18-k0-k3-article-knowledge-retrieval.md) | [`plan`](../superpowers/plans/2026-08-18-k0-k3-article-knowledge-retrieval.md) + [`执行规格`](../superpowers/specs/2026-08-18-k0-k3-article-knowledge-retrieval-execution.md) | 全层 article_id=task_id；K1/K2/K3 可预过滤；四工具独立/并行；目标 10 万篇单机索引。服务层可并行实施，Agent 接入依赖 P6 正式 Capability/ToolDriver |
@@ -56,6 +57,7 @@
 
 - 2026-08-24：按用户要求将 P7 拆成 SDK-first 与 Application 两个大任务；各自生成 Requirement/Plan/Spec/Test/Goal 手册，SDK S08 artifact handoff 成为 NoteMeld N01 硬门禁
 - 2026-08-24：用户确认 P7 canonical requirement，状态更新为 Ready for Plan
+- 2026-08-27：P7.1 一期实现完成：文档转 Markdown、视频/音频原子能力、OCR、MCP 映射和桌面 Host 回归通过；移动端/服务端 runtime 不虚报通过
 - 2026-08-24：新增 P7 Note Agent 与插件化个人知识库一期基础；用户确认 SDK 采用无状态 Loop + 无业务状态 Note Agent 两层，Application 一期只做桌面端，插件从 GitHub/Gitee Release 安装并优先公开标准协议，现有全部链接转 Note 能力整体插件化，Application 自升级一期只建立 candidate 安全边界
 - 2026-08-19：新增 P6.5 Agent approval 暂停/恢复需求、计划与执行规格；不新增第二状态链，SDK 保持唯一 Agent loop
 - 2026-08-19：完成 P6.4 ToolDriver 产品能力链路；SDK ToolScheduler 保持唯一调度者，NoteMeld Capability Registry 复用现有 Wiki/Note 服务，五类脱敏工具结果进入下一轮模型，并补真实 native SDK 与多 Session 并发回归

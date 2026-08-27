@@ -226,6 +226,30 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 - `notemeld_read_note`
 - `notemeld_search_wiki`
 - `notemeld_read_wiki_page`
+- `notemeld_document_to_markdown`
+- `notemeld_image_ocr`
+- `notemeld_video_fetch`
+- `notemeld_audio_extract`
+- `notemeld_audio_transcribe`
+- `notemeld_video_frames`
+
+## Agent Content Conversion Capabilities
+
+这些能力通过 `/api/agent/v1/capabilities` 和 Agent Host 的通用
+`ToolDriver` 暴露；MCP 使用同一 capability registry 和
+`conversion-artifact.v1` 结果 envelope。工具只返回中间产物，不直接创建 Note。
+
+| capability id | 输入 | 输出 | 一期 Host | 说明 |
+| --- | --- | --- | --- | --- |
+| `document:to_markdown` | `file_url`, `file_name` | Markdown artifact + provenance | desktop | Rust/anydoc；图片型 PDF 可能返回 OCR required/failed |
+| `image:ocr` | `file_url`, `file_name` | OCR text + lines/pages/bbox/confidence | desktop | 不提供 image ASCII |
+| `video:fetch` | `source_url`, `platform?` | media metadata artifact | desktop | 复用现有下载器 |
+| `audio:extract` | `source_url`, `platform?` | audio metadata artifact | desktop | 复用 ffmpeg/下载器 |
+| `audio:transcribe` | `source_url`, `platform?` | timestamped transcript artifact | desktop | 字幕优先、配置转写 fallback |
+| `video:frames` | `source_url`, `platform?`, `timestamps?` | frame/OCR artifact | desktop | 当前关闭视觉总结，只返回基础 OCR 结果 |
+
+服务端列为 contract-ready，部署时必须提供对应运行时依赖；mobile-native
+和 WASM 列为一期 unsupported，不对未接入平台声称通过测试。
 
 ## 远端接口边界
 

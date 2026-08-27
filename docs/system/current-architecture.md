@@ -83,7 +83,7 @@ Wiki 文件位于 `vector_db/note_results/wiki/`：
 1. 前端或 MCP 提交来源、模型、Provider、样式和附加参数。
 2. 后端创建或复用 conversation，并通过 `register_task_conversation()` 记录任务输入。
 3. 后端写入任务状态文件 `note_results/{task_id}.status.json`，并在后台执行任务。
-4. 外部链接入口统一调用 `official-link-note:create` capability；`plugins/official-link-note/` 负责平台路由，稳定 host adapter 再调用现有视频/网页生成服务。
+4. 外部链接入口统一调用 `official-link-note:create` capability；独立 `notemeld-plugins/plugins/official-link-note/` 负责平台路由，稳定 Host adapter 再调用现有视频/网页生成服务。
 5. 视频链路仍保留平台识别、下载、字幕/转写优先、截图、多源总结、Markdown 渲染、sidecar 保存；下载/音频/转写失败继续降级到网页抓取。网页链接通过同一 capability 进入网页抓取/总结链路。
 6. 上传文档链路先经过 ingestion pipeline，再复用总结能力生成笔记。
 7. 成功后 `save_note_to_file()` 写 `note_results/{task_id}.json` 等文件，`emit_note_result()` 同步 conversation message 和 `note_documents`。
@@ -206,7 +206,7 @@ opaque NoteId；正文仍只存在 `note_documents`。来源、关系、operatio
 
 源码启动和已安装 CLI 启动都会调用同一个 `AgentSdkRuntime.load()` 校验 SDK/schema/ABI metadata 和 native artifact；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。缺包、缺 native、架构不可加载和版本漂移均使用固定分类错误，不回显 wheel 路径、Provider payload 或凭证。`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop，支持一次性和交互式会话、会话恢复、模型切换与 JSON/JSONL 输出。
 
-当前 Host 已提供三个只读产品能力适配：`wiki:search`、`note:search`、`note:read`。`NoteMeldToolDriver` 只通过请求级 `NoteMeldCapabilityRegistry` 调用现有 Wiki/Note 产品服务，不维护 Agent 状态机，也不直接调度下一轮模型。工具描述由 Host 在 Turn 开始时有界解析，并附着到每轮模型请求；模型返回 tool call 后，Rust SDK 的 `execute_tool_round` 是唯一调度者。产品成功或可恢复失败统一转换为 `{call_id, output}` ToolResult；`output` 使用 `{ok:true,result}` 或 `{ok:false,error}`，SDK 把它写入带同一 call id 的 canonical tool message 后继续下一轮模型。未知工具、非法参数、权限、业务失败和未预期执行异常分别使用 `unknown_tool`、`invalid_arguments`、`permission_denied`、`business_error`、`tool_execution_error`，公开结果和日志不包含参数、Provider payload 或异常原文。共享进程级 SDK Host 仍按 native turn token 路由 callback，不新增 Session 状态缓存。approval resolve 只透传独立 SDK 的 native control ABI，并把 unknown、duplicate、terminal 与 invalid decision 映射为稳定 HTTP 错误；只有 native manager 接受决策后才返回成功。
+当前 Host 已提供基础只读知识能力适配：`wiki:search`、`note:search`、`note:read`。`NoteMeldToolDriver` 只通过请求级 `NoteMeldCapabilityRegistry` 调用现有 Wiki/Note 产品服务，不维护 Agent 状态机，也不直接调度下一轮模型。工具描述由 Host 在 Turn 开始时有界解析，并附着到每轮模型请求；模型返回 tool call 后，Rust SDK 的 `execute_tool_round` 是唯一调度者。产品成功或可恢复失败统一转换为 `{call_id, output}` ToolResult；`output` 使用 `{ok:true,result}` 或 `{ok:false,error}`，SDK 把它写入带同一 call id 的 canonical tool message 后继续下一轮模型。未知工具、非法参数、权限、业务失败和未预期执行异常分别使用 `unknown_tool`、`invalid_arguments`、`permission_denied`、`business_error`、`tool_execution_error`，公开结果和日志不包含参数、Provider payload 或异常原文。共享进程级 SDK Host 仍按 native turn token 路由 callback，不新增 Session 状态缓存。approval resolve 只透传独立 SDK 的 native control ABI，并把 unknown、duplicate、terminal 与 invalid decision 映射为稳定 HTTP 错误；只有 native manager 接受决策后才返回成功。
 
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和兼容调用层都基于同一事件信封工作。Host descriptor 以原子方式写入数据根目录的 `run/agent-runtime.json`，供 Host 生命周期诊断复用。
 
@@ -284,3 +284,21 @@ scripts/run_core_regression.sh
 - `KnowledgeArticleService` 从现有 Note JSON、Wiki contribution 或 ingestion chunk 增量写入 K0-K3。旧 per-task Chroma collection、Wiki contribution 和 materialized pages 继续保留；共享索引失败只记录可重试 warning，不回滚已保存 Note。
 - `KnowledgeQueryService` 提供 K0 article lookup、K1 evidence、K2 profile、K3 semantic 四类独立查询。`article_ids` 缺省为全库，显式空数组是参数错误；结果统一携带 `article_id` 和来源 provenance。
 - `NoteMeldKnowledgeProvider` 通过现有 `NoteMeldToolDriver` 向 SDK 提供四个同级 capability。Host 不维护 K3→K2→K1 顺序，也不把 K0-K3 数据模型写入 SDK。
+
+## Content Conversion Plugin Boundary
+
+内容转换工具以独立插件目录和 `conversion-artifact.v1` envelope 接入
+Agent Host。`official.document-to-markdown` 是 Rust process/JSONL 插件，内嵌
+MIT `anydoc`，只读取宿主授权的输入文档并返回 Markdown；它不访问 NoteMeld
+SQLite，也不负责总结或创建 Note。`official.image-ocr`、`official.video-fetch`、
+`official.audio-extract`、`official.audio-transcribe` 和 `official.video-frames`
+当前复用宿主已有的 OCR、下载器、ffmpeg、转写和视频帧
+服务，通过相同的 capability/Artifact contract 暴露。
+
+首批原子能力为 `document:to_markdown`、`image:ocr`、`video:fetch`、
+`audio:extract`、`audio:transcribe` 和 `video:frames`。文档转换和 OCR 的产物
+包含工具/插件版本、输入 hash、来源和 Turn；OCR 行包含 `bbox`、顺序和置信度。
+Agent 负责读取这些产物、总结、决定关系，再调用 Note authority 写入 Note。
+桌面 Host 已接入；服务端是 contract-ready 但需自行提供 ffmpeg、下载器和
+转写/OCR 运行时；移动 native 和 WASM 在一期明确未打包/未接入。图片 ASCII
+能力不在 capability registry 中。
