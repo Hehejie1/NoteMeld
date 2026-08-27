@@ -22,7 +22,7 @@
 
 ## 需求列表
 
-| P8 | Ready for Plan | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | 待生成 plan/spec | 小程序式 HTML 应用；桌面独立进程、Web 托管 worker；应用自有后端通过 SDK 调用 Agent/插件/Note/Wiki/文件能力；Wiki 作为首个内建应用 |
+| P8 | Implemented | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | [`plan`](../superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`spec`](../superpowers/specs/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`验证`](../superpowers/tests/2026-08-27-notemeld-application-runtime-and-wiki-app.md) | v1 协议、Host 生命周期/策略、应用 workspace 设置和 Wiki 内建应用已接入；真实外部 worker、应用包安装、移动端 UI、Agent 生成应用后置 |
 
 | 阶段 | 状态 | 需求 | 文件 | 关联 plan/spec | 备注 |
 | --- | --- | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Data Model
 
-更新时间：2026-08-19
+更新时间：2026-08-27
 
 本文记录当前数据模型和字段语义。修改数据结构、状态、缓存、统计或文件布局前必须先阅读本文，并搜索相关代码和测试。
 
@@ -26,6 +26,7 @@
 - 研究搜索配置：`<data_dir>/config/research_search.json`。
 - 第三方 MCP 配置：`<note_output_dir>/settings/mcp_servers.json`。
 - 会话学习空间：`<note_output_dir>/workspaces/{conversation_id}/canvases/{canvas_id}.json`。
+- 应用实例 workspace：默认 `<data_dir>/data/applications/{app_id}/{instance_id}/`；用户可在应用设置中指定新的根目录，应用只能获得逻辑 `workspace://applications/...` 引用。
 
 ## 核心表/集合/文件结构
 
@@ -44,6 +45,21 @@
 - `conversations`：会话。字段：`id`、`mode`、`title`、`status`、`message`、`platform`、`linked_note_task_id`、`note_state`、表单/转写/音频/Markdown JSON、`research_space_id`（P3 阶段二新增，nullable，cid→rs_id 映射，由 `ensure_conversation_columns` 幂等迁移）、时间戳、`deleted_at`。
 - `conversation_messages`：会话消息。字段：`id`、`conversation_id`、`role`、`message_type`、`content`、`status`、`meta_json`、`sources_json`、`context_refs_authority_version`、`error`、时间戳。authority version 是客户端不可写的服务端 provenance：当前 resolver 成功处理引用后写 1；历史 schema、legacy merge 和未认证内部写入默认 0。
 - `note_documents`：笔记文档索引。字段：`task_id`、`conversation_id`、`title`、`content`、`source_url`、`platform`、`model_name`、`style`、`status`、`wiki_status`、时间戳、`deleted_at`。
+
+#### Application Host（P8）
+
+应用域使用独立的 `application_app_migrations` forward-only registry，不修改共享 `PRAGMA user_version`、plugin registry 或 candidate registry。首个内建应用 `wiki` 在启动时由 `ApplicationService.sync_registry()` 写入清单摘要；应用 UI 不复制 Note/Wiki 正文。
+
+| 表 | 关键字段 | 语义 |
+| --- | --- | --- |
+| `applications` | `id`, `version`, `manifest_json`, `manifest_sha256`, `enabled`, `status` | 已注册应用 manifest 和 Host 可见状态 |
+| `application_instances` | `id`, `app_id`, `workspace_ref`, `status` | 应用实例与逻辑 workspace 绑定 |
+| `application_runs` | `run_id`, `app_id`, `instance_id`, `request_id`, `payload_hash`, `runtime_kind`, `status`, `cancel_requested` | 一次应用启动/invocation 的幂等、状态和取消投影 |
+| `application_artifacts` | `artifact_id`, `app_id`, `instance_id`, `run_id`, `kind`, `data_json` | 应用产物引用；当前 API 仅建立模型边界 |
+| `application_settings` | `app_id`, `key`, `value_json` | 应用级或全局应用设置；默认 workspace 使用 `app_id=NULL` |
+| `application_app_migrations` | `migration_id`, `applied_at` | 应用域独立迁移记录 |
+
+应用 manifest 协议名为 `notemeld.application.v1`。当前 Host 支持 `process-jsonl` 与 `managed-worker` 的策略 seam，桌面实际独立进程监督和 Web 外部 worker 部署属于后续 adapter；manifest 禁止公开 listener、绝对路径和路径穿越。应用 workspace 通过 `Path.resolve()` 校验必须位于配置根目录下，Wiki graph/article 继续读取既有 `note_results/wiki` store。
 
 N01 冻结 `note_documents.task_id` 为一期 SDK `NoteId` 的 opaque 映射；历史
 task id 不改写，`note_documents` 的标题、Markdown 正文、来源和产品状态是
