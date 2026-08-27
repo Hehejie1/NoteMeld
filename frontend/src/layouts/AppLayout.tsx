@@ -5,7 +5,7 @@ import {
   PanelLeftOpen,
   FilePlus2,
   LayoutTemplate,
-  Network,
+  AppWindow,
   Settings,
   GithubIcon,
   Trash2,
@@ -57,7 +57,7 @@ const AboutIcon = (props: SVGProps<SVGSVGElement>) => (
 const navItems: NavItem[] = [
   { to: '/new', label: '新建笔记', icon: <FilePlus2 className="h-[18px] w-[18px]" />, exact: true, guideId: 'nav-new-note' },
   { to: '/styles', label: '风格模板', icon: <LayoutTemplate className="h-[18px] w-[18px]" />, guideId: 'nav-styles' },
-  { to: '/wiki', label: '知识库', icon: <Network className="h-[18px] w-[18px]" />, guideId: 'nav-wiki' },
+  { to: '/applications', label: '应用', icon: <AppWindow className="h-[18px] w-[18px]" />, guideId: 'nav-applications' },
   { to: '/settings', label: '设置', icon: <Settings className="h-[18px] w-[18px]" />, guideId: 'nav-settings' },
   { to: '/about', label: '关于', icon: <AboutIcon className="h-[18px] w-[18px]" />, guideId: 'nav-about' },
 ]
@@ -162,7 +162,7 @@ const AppLayout: FC<IProps> = ({ children }) => {
   if (isMobile) {
     const mobileNavItems = [
       { to: '/new', label: '新建', icon: <FilePlus2 className="h-5 w-5" />, guideId: 'nav-new-note' },
-      { to: '/wiki', label: '知识库', icon: <Network className="h-5 w-5" />, guideId: 'nav-wiki' },
+      { to: '/applications', label: '应用', icon: <AppWindow className="h-5 w-5" />, guideId: 'nav-applications' },
       { to: '/styles', label: '风格', icon: <LayoutTemplate className="h-5 w-5" />, guideId: 'nav-styles' },
       { to: '/settings', label: '设置', icon: <Settings className="h-5 w-5" />, guideId: 'nav-settings' },
     ]

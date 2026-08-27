@@ -1,6 +1,6 @@
 import './App.css'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BrowserRouter, HashRouter, Navigate, Outlet, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Navigate, Outlet, Routes, Route, useLocation, useParams } from 'react-router-dom'
 import { useTaskPolling } from '@/hooks/useTaskPolling.ts'
 import { BackendInitProvider, useBackendInitContext } from '@/contexts/BackendInitContext.tsx'
 import { systemCheck } from '@/services/system.ts'
@@ -29,7 +29,8 @@ const ResearchSearch = lazy(() => import('@/pages/SettingPage/ResearchSearch.tsx
 const Plugins = lazy(() => import('@/pages/SettingPage/Plugins.tsx'))
 const AgentDiagnostics = lazy(() => import('@/pages/SettingPage/AgentDiagnostics.tsx'))
 const Candidates = lazy(() => import('@/pages/SettingPage/Candidates.tsx'))
-const WikiPage = lazy(() => import('@/pages/WikiPage'))
+const ApplicationList = lazy(() => import('@/pages/Applications'))
+const ApplicationHost = lazy(() => import('@/app-host/ApplicationHost').then(module => ({ default: module.ApplicationHost })))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const StylesPlaceholder = lazy(() => import('@/pages/StylesPage'))
 const AboutPage = lazy(() => import('@/pages/AboutPage.tsx'))
@@ -40,6 +41,11 @@ const WorkspaceLayout = () => (
   </AppLayout>
 )
 
+const ApplicationHostRoute = () => {
+  const { appId } = useParams<{ appId: string }>()
+  return <ApplicationHost applicationId={appId ?? ''} />
+}
+
 const PublicLandingRoutes = () => (
   <Routes>
     <Route path="/" element={<LandingPage />} />
@@ -48,10 +54,8 @@ const PublicLandingRoutes = () => (
 )
 
 const WorkspaceRoutes = () => {
-  const location = useLocation()
   const { backendReady } = useBackendInitContext()
-  const shouldPollTasks = !location.pathname.startsWith('/wiki')
-  useTaskPolling(3000, shouldPollTasks && backendReady)
+  useTaskPolling(3000, backendReady)
 
   return (
     <Suspense fallback={<div className="flex h-app items-center justify-center">加载中…</div>}>
@@ -62,7 +66,8 @@ const WorkspaceRoutes = () => {
           <Route path="/new" element={<HomePage />} />
           <Route path="/notes/:taskId" element={<HomePage />} />
           <Route path="/styles" element={<StylesPlaceholder />} />
-          <Route path="/wiki" element={<WikiPage />} />
+          <Route path="/applications" element={<ApplicationList />} />
+          <Route path="/applications/:appId" element={<ApplicationHostRoute />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/settings" element={<SettingPage />}>
             <Route index element={<Navigate to="model" replace />} />
