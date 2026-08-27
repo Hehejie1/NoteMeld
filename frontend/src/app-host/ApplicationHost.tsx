@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle, Ban, CircleAlert, LoaderCircle, RefreshCw, ShieldAlert } from 'lucide-react'
 
 import KnowledgeEmptyState from '@/components/KnowledgeEmptyState'
 import { Button } from '@/components/ui/button'
-import { getBuiltInApplication } from '@/apps/registry'
+import { loadBuiltInApplication } from '@/apps/registry'
 import {
   createApplicationInstance,
   getApplication,
@@ -53,13 +53,14 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
   const [run, setRun] = useState<ApplicationRun | null>(null)
   const [state, setState] = useState<HostUiState>('starting')
   const [error, setError] = useState('')
-  const builtInApplication = useMemo(() => getBuiltInApplication(applicationId), [applicationId])
+  const [builtInApplication, setBuiltInApplication] = useState<Awaited<ReturnType<typeof loadBuiltInApplication>>>(undefined)
 
   const start = useCallback(async () => {
     if (!backendReady) return
     setState('starting')
     setError('')
     setRun(null)
+    setBuiltInApplication(undefined)
     try {
       const nextDetail = await getApplication(applicationId)
       setDetail(nextDetail)
@@ -71,6 +72,13 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
         setState('capability-missing')
         return
       }
+      const loadedApplication = await loadBuiltInApplication(applicationId)
+      if (!loadedApplication) {
+        setState('failed')
+        setError('未找到对应的应用包')
+        return
+      }
+      setBuiltInApplication(loadedApplication)
       const instances = await listApplicationInstances(applicationId)
       const instance = instances[0] || await createApplicationInstance(applicationId, { title: nextDetail.name })
       const nextRun = await startApplicationRun(applicationId, instance.id)

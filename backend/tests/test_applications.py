@@ -59,6 +59,12 @@ def test_builtin_registry_and_manifest_validation(service):
     assert svc.list()[0]["id"] == "wiki"
 
 
+def test_builtin_registry_discovers_manifest_from_application_directory(service):
+    svc, _ = service
+    assert svc.registry.package_root.name == "applications"
+    assert svc.registry.get("wiki")["ui"]["entry"] == "ui/index.html"
+
+
 @pytest.mark.parametrize("field,value", [("ui", {"entry": "../index.html"}), ("id", "../evil"), ("capabilities", ["wiki.read", "wiki.read"])])
 def test_manifest_rejects_unsafe_or_duplicate_declarations(field, value):
     from app.applications.manifest import ApplicationManifestError, validate_manifest

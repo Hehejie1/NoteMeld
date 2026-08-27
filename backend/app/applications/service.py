@@ -36,8 +36,21 @@ class ApplicationRegistry:
         }
     }
 
-    def __init__(self, manifests: dict[str, dict[str, Any]] | None = None):
-        self.manifests = manifests or self.BUILTIN
+    def __init__(self, manifests: dict[str, dict[str, Any]] | None = None, package_root: Path | None = None):
+        self.package_root = package_root or Path(__file__).resolve().parents[3] / "applications"
+        self.manifests = manifests if manifests is not None else self._discover()
+
+    def _discover(self) -> dict[str, dict[str, Any]]:
+        discovered: dict[str, dict[str, Any]] = {}
+        if self.package_root.is_dir():
+            for manifest_path in sorted(self.package_root.glob("*/manifest.json")):
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    validated = validate_manifest(manifest)
+                    discovered[validated["id"]] = validated
+                except (OSError, ValueError, json.JSONDecodeError):
+                    continue
+        return discovered or self.BUILTIN
 
     def list(self) -> list[dict[str, Any]]:
         return [validate_manifest(item) for item in self.manifests.values()]

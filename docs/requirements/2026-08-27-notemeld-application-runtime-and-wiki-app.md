@@ -2,7 +2,7 @@
 
 日期：2026-08-27
 作者 / Agent：Codex
-状态：Ready for Plan
+状态：Planned
 关联对话 / 任务：应用宿主、小程序式 HTML 应用、SDK 能力调用与 Wiki 抽离
 关联系统文档：
 
@@ -45,6 +45,7 @@
 - 移动端可以采用同一应用的独立 UI/实现；本期允许声明不支持移动端。
 - 当前 Wiki 成为第一个内建应用，保留现有图谱、页面、文章、社区、文件页、Note 权威和 Wiki rebuild 链路。
 - 第一版本先冻结 Application Package、Application SDK、Capability、权限、workspace、运行和 Artifact 协议，并用内建 Wiki 验证协议；Agent 自动生成应用只保留为后续方向，不进入本期验收。
+- 应用以独立目录作为交付边界，宿主启动时只发现并校验 manifest/目录元数据；用户点击应用后才加载 UI bundle、创建实例并启动 runtime，不因打开 NoteMeld 而加载所有应用代码。
 
 ## 4. 非目标
 
@@ -76,6 +77,7 @@
 - 作为桌面用户，我希望每个应用拥有默认本地工作目录，以便管理输入文件、应用数据、缓存和 Artifact。
 - 作为未来的应用作者，我希望应用协议可被工具和 Agent 生成，以便后续自动创建应用；本期不要求自动生成流程。
 - 作为知识库用户，我希望 Wiki 应用化后能打开图谱、切换展示方式、选择节点并查看对应文章，而不需要重新生成知识库。
+- 作为应用用户，我希望应用在进入前可以展示自己的配置项，保存后再按配置启动，以便不同应用实例可以有不同的工作方式。
 
 ## 7. 验收标准
 
@@ -113,8 +115,26 @@
 21. GIVEN 应用需要长任务，WHEN Web 或桌面端发起任务，THEN 宿主将其登记为可观察、可取消、可恢复的 Application Run；运行时退出或 transport 中断不会自动重放未知非幂等操作。
 22. GIVEN 应用访问自己的数据或默认 workspace，WHEN 用户在设置中改变应用根目录，THEN 新请求使用新的逻辑 workspace 映射，历史 file/artifact reference 保持可解释且不越权访问其他应用目录。
 23. GIVEN 本期不启用 Agent 自动生成应用，WHEN 用户在普通对话中描述一个应用，THEN 系统不会未经确认创建、安装或启动应用；协议仍可被后续生成工具校验。
+24. GIVEN 应用位于可信应用目录，WHEN NoteMeld 启动或刷新应用列表，THEN Host 只读取 `manifest.json` 和安全元数据，不执行 UI/backend，不创建实例，不启动进程。
+25. GIVEN 用户点击已启用应用，WHEN Host 加载应用，THEN 按“校验 manifest → 读取配置 → 创建/恢复 instance → 启动 runtime → 建立 Host bridge → 加载 UI → handshake → ready”顺序执行；任一步失败都进入可观察失败状态且不显示空白页面。
+26. GIVEN 应用声明配置 schema，WHEN 用户首次进入或配置版本变化，THEN Host 展示宿主配置界面或应用声明的配置 UI，按 schema 校验并按 app/instance 命名空间保存；未通过校验不得启动 runtime。
+27. GIVEN 用户离开应用或关闭窗口，WHEN 应用没有活动长任务，THEN Host 可以停止 UI bridge、回收 worker/独立进程并保留 instance/run 状态；有活动任务时先进入可观察的 stopping 状态，不直接丢弃任务。
 
 ## 8. 输入 / 输出样例
+
+### Application Package 目录
+
+```text
+applications/<application-id>/
+├── manifest.json          # 唯一入口：协议、版本、平台、能力、权限、配置和 runtime
+├── ui/                     # HTML/CSS/JS bundle，entry 由 manifest 指定
+├── backend/                # 可选 backend；desktop 进程或 Web managed worker 的入口
+├── assets/                 # UI 静态资源
+├── migrations/             # 应用自己的 forward-only 数据迁移
+└── README.md
+```
+
+应用目录是包边界，不等同于 NoteMeld 页面目录。内建目录和未来用户安装目录必须分开；用户安装包不能覆盖内建应用 ID/version。Host 发现阶段不执行 `ui/` 或 `backend/`，点击加载阶段才根据平台选择 UI/runtime adapter。
 
 ### 输入
 
@@ -148,6 +168,7 @@
 - 安全：权限声明是申请，不是授权；文件、网络、Note 写入、插件和 Agent 敏感操作由宿主 authority/用户授权决定。
 - 可靠性：安装、启动、transport、长任务、取消、恢复、幂等和非幂等副作用必须有可观察状态。
 - 分发：第一期冻结协议并支持内建应用包；用户本地包、Release 分发和 Agent 生成包不进入本期安装流程，但包格式必须可扩展。
+- 加载：应用列表是 manifest catalog，应用代码只在用户明确点击后按需加载；应用配置属于 Host lifecycle 的前置阶段，不得由应用代码自行绕过 Host 写入。
 - 隐私：禁止写入或返回 Provider key、Cookie、token、绝对私有路径和原始敏感内容。
 
 ## 10. 边界场景

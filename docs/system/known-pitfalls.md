@@ -8,6 +8,7 @@
 - 防线：应用必须声明 `notemeld.application.v1` manifest；桌面使用 Host 监督的私有 process-JSONL/RPC，Web 使用 Host gateway 的 managed-worker seam；所有调用重新检查 session、app/instance、平台、权限和 capability。
 - 不允许：把宿主 session token 放入应用环境变量/UI；应用使用绝对系统路径或 `..`；Wiki 应用复制 graph/article 作为第二事实源；用旧 `/wiki` UI route 作为兼容入口。
 - 当前边界：本期只实现本地可测 Host 生命周期、清单策略、Wiki capability 和设置 API；用户应用包安装、真正外部 worker 部署、移动端 UI 和 Agent 自动生成应用仍未实现，不得在发布说明中宣称已完成。
+- 加载边界：应用中心只能读取 manifest catalog；不得在应用列表 import 全部应用组件或启动所有 backend。只有用户点击应用后，Host 才能动态加载对应 bundle 并创建 instance/run。
 
 ## Application workspace 配置泄露或跨实例访问
 

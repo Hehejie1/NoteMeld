@@ -7,6 +7,7 @@ const read = file => readFile(path.join(root, file), 'utf8')
 
 const appService = await read('src/services/applications.ts')
 const registry = await read('src/apps/registry.ts')
+const wikiManifest = await read('src/apps/wiki/manifest.json')
 const host = await read('src/app-host/ApplicationHost.tsx')
 const wiki = await read('src/apps/wiki/WikiApplication.tsx')
 const app = await read('src/App.tsx')
@@ -20,7 +21,9 @@ assert.match(appService, /settings\/workspace/, '应用默认 workspace 必须�
 assert.doesNotMatch(appService, /['"]\/wiki\//, '应用 service 不应把旧 Wiki router 作为数据入口')
 
 assert.match(registry, /WIKI_APPLICATION_ID\s*=\s*['"]wiki['"]/, '内建 registry 必须注册 Wiki 应用')
-assert.match(registry, /component:\s*WikiApplication/, 'Wiki 应用必须由 registry 提供给 Host 容器')
+assert.match(registry, /loadBuiltInApplication/, '应用 UI 必须通过 loader 按需加载')
+assert.match(registry, /import\(['"]@\/apps\/wiki\/WikiApplication['"]\)/, 'Wiki 应用组件必须动态加载')
+assert.match(wikiManifest, /notemeld\.application\.v1/, 'Wiki 必须拥有独立应用 manifest')
 assert.match(host, /capability-missing/, 'Host 必须展示能力缺失状态')
 assert.match(host, /state\s*===\s*['"]disabled['"]/, 'Host 必须展示禁用状态')
 assert.match(host, /state\s*===\s*['"]interrupted['"]/, 'Host 必须展示运行中断状态')

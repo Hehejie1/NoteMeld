@@ -27,6 +27,50 @@ Plan：[`docs/superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki
 
 Host 必须拒绝：路径穿越、绝对路径、重复 capability、缺失 UI entry、未支持 runtime、非法平台值、空 id/version、未知权限、超过包大小限制的包和声明访问宿主内部 API/数据库的包。
 
+### 1.1 应用目录与信任边界
+
+应用的独立目录结构为：
+
+```text
+applications/<id>/
+├── manifest.json
+├── ui/<entry bundle>
+├── backend/<entrypoint>       # 可选
+├── assets/
+├── migrations/
+└── README.md
+```
+
+Host 只扫描配置的 trusted application roots 下的一级目录。发现阶段只读取 `manifest.json`，计算目录/package digest，校验路径和声明并生成 catalog；不执行 JavaScript、HTML 或 backend。内建应用和未来用户安装应用使用不同 root，应用 ID/version 由 Host 统一去重，不能以目录名代替 manifest identity。
+
+manifest 可选声明：
+
+```json
+{
+  "config": {"schema": "config.schema.json", "ui": "host-form"},
+  "migrations": {"dir": "migrations", "registry": "application"}
+}
+```
+
+配置 schema 只描述字段、默认值、敏感字段标记和校验规则；Host 保存配置，不把 secret 注入 UI 或普通应用日志。
+
+### 1.2 按需加载状态机
+
+```text
+discovered
+  → validated
+  → cataloged                  # 启动/刷新列表，只有 manifest 元数据
+  → configuring                # 用户点击后，如有配置 schema
+  → instance_ready
+  → runtime_starting
+  → bridge_ready
+  → ui_loading
+  → ready
+  → stopping → stopped
+```
+
+任一阶段失败进入 `failed` 或 `needs_attention`，保留诊断和 run，不降级成旧页面。用户点击应用是唯一触发 `runtime_starting` 和 UI bundle 加载的默认入口；刷新列表、后台启动 NoteMeld、打开设置都不能隐式加载应用代码。
+
 ## 2. 后端运行时
 
 ### Desktop adapter
@@ -100,7 +144,16 @@ Host 必须拒绝：路径穿越、绝对路径、重复 capability、缺失 UI 
 - `frontend/src/apps/wiki/`：Wiki 应用 UI 和图谱适配；
 - `frontend/src/apps/registry.ts`：内建应用 registry。
 
-应用 UI 不直接 import NoteMeld 的内部 service；Wiki 应用通过 app host bridge 或 applications service 获取 host-provided 数据。Bridge 必须只暴露声明过的 capability，并对消息来源、request id 和 payload 大小做校验。
+应用 UI 不直接 import NoteMeld 的内部 service；Wiki 应用通过 app host bridge 或 applications service 获取 host-provided 数据。Bridge 必须只暴露声明过的 capability，并对消息来源、request id 和 payload 大小做校验。应用 registry 只保存 catalog metadata，应用组件使用动态 loader；Application Host 在收到用户点击后才加载对应 UI bundle。
+
+Host 的加载顺序固定为：
+
+1. 读取并校验 server 返回的 manifest 摘要和当前平台。
+2. 读取应用/实例配置；存在 schema 时先完成 Host 配置表单和校验。
+3. 创建或恢复 `ApplicationInstance`，分配逻辑 workspace。
+4. 创建 `ApplicationRun`，按平台启动 process-jsonl 或 managed-worker adapter。
+5. 建立受限 bridge，完成 `hello/ready` handshake，校验 app/instance/run/protocol/sdk version。
+6. 仅在 handshake 成功后加载或显示 UI；离开页面时按活动 Run 决定 stop/reclaim。
 
 ## 7. Wiki 应用迁移
 
