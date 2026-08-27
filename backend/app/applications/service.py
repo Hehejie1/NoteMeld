@@ -271,7 +271,11 @@ class ApplicationService:
         db = self.session_factory()
         try:
             configured = db.query(ApplicationSetting).filter_by(app_id=None, key="default_workspace_root").one_or_none() is not None
-            return {"workspace_ref": "workspace://default", "configured": configured}
+            return {
+                "workspace_ref": "workspace://default",
+                "configured": configured,
+                "root": str(self.workspace.configured_root(db)),
+            }
         finally:
             db.close()
 
@@ -280,7 +284,7 @@ class ApplicationService:
         try:
             result = self.workspace.set_root(db, root)
             db.commit()
-            return result
+            return {**result, "root": str(self.workspace.configured_root(db))}
         except Exception:
             db.rollback()
             raise

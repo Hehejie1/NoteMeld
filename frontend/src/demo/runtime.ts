@@ -95,8 +95,10 @@ export const createDemoRuntime = (): DemoRuntime => {
     if (method === 'GET' && pathname === '/applications/wiki') return { id: 'wiki', name: 'Wiki', version: '1.0.0', description: '浏览由 NoteMeld 编译的来源、实体、概念和关系图谱。', status: 'running', enabled: true, capabilities: ['wiki.read'] } as T
     if (method === 'GET' && pathname === '/applications/wiki/instances') return [{ id: 'demo-wiki-instance', app_id: 'wiki', title: 'Wiki' }] as T
     if (method === 'POST' && pathname === '/applications/wiki/instances') return { id: 'demo-wiki-instance', app_id: 'wiki', title: 'Wiki' } as T
-    if (method === 'POST' && /^\/applications\/wiki\/instances\/[^/]+\/runs$/.test(pathname)) return { id: 'demo-wiki-run', app_id: 'wiki', instance_id: 'demo-wiki-instance', status: 'running' } as T
-    if (method === 'GET' && pathname === '/applications/runs/demo-wiki-run') return { id: 'demo-wiki-run', app_id: 'wiki', instance_id: 'demo-wiki-instance', status: 'running' } as T
+    if (method === 'POST' && /^\/applications\/wiki\/instances\/[^/]+\/runs$/.test(pathname)) return { run_id: 'demo-wiki-run', app_id: 'wiki', instance_id: 'demo-wiki-instance', status: 'running' } as T
+    if (method === 'GET' && pathname === '/applications/runs/demo-wiki-run') return { run_id: 'demo-wiki-run', app_id: 'wiki', instance_id: 'demo-wiki-instance', status: 'running' } as T
+    if (method === 'GET' && pathname === '/applications/settings/workspace') return { workspace_ref: 'workspace://default', configured: false, root: '/Users/demo/NoteMeld Applications' } as T
+    if (method === 'PUT' && pathname === '/applications/settings/workspace') return { workspace_ref: 'workspace://default', configured: true, root: '/Users/demo/NoteMeld Applications' } as T
     if (method === 'GET' && pathname === '/applications/wiki/wiki/graph') return clone(state.wikiGraph) as T
     if (method === 'GET' && pathname.startsWith('/applications/wiki/wiki/articles/')) return { id: pathname.split('/').pop() || 'demo-source', title: 'AI Agent 演示笔记', summary: '这是静态演示中的 Wiki 文章详情。', entities: [{ name: 'AI Agent', entity_type: 'concept', description: '能够规划并调用工具的智能系统。' }], concepts: [{ name: '工具调用', description: '模型通过宿主能力读取和操作知识。' }], claims: [{ claim: 'Agent 通过规划、工具和反馈形成闭环。' }], evidence: [{ evidence_id: 'demo-evidence', text: 'Agent 通过规划、工具和反馈形成闭环。' }], relations: [], markdown: '# AI Agent\n\n这是静态演示文章。' } as T
     if (method === 'GET' && pathname === '/wiki/graph') return clone(state.wikiGraph) as T

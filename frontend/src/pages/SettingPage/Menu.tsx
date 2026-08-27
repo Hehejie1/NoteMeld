@@ -31,6 +31,7 @@ const menuList: MenuItem[] = [
   { id: 'mcp-servers', name: 'MCP 服务器', icon: <Plug className="h-4 w-4" />, path: '/settings/mcp-servers' },
   { id: 'research-search', name: '研究搜索', icon: <Search className="h-4 w-4" />, path: '/settings/research-search' },
   { id: 'plugins', name: '插件运行', icon: <Puzzle className="h-4 w-4" />, path: '/settings/plugins' },
+  { id: 'applications', name: '应用设置', icon: <Puzzle className="h-4 w-4" />, path: '/settings/applications' },
   { id: 'agent-diagnostics', name: 'Agent 任务诊断', icon: <ListChecks className="h-4 w-4" />, path: '/settings/agent-diagnostics' },
   { id: 'candidates', name: '候选审批', icon: <ShieldCheck className="h-4 w-4" />, path: '/settings/candidates' },
 ]

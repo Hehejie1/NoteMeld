@@ -86,7 +86,8 @@ def test_application_api_core_lifecycle_workspace_and_wiki(service, monkeypatch,
     assert client.post("/api/applications/wiki/enable").json()["data"]["enabled"] is True
 
     configured = client.put("/api/applications/settings/workspace", json={"root": str(tmp_path / "workspace")})
-    assert configured.json()["data"] == {"workspace_ref": "workspace://default", "configured": True}
+    assert configured.json()["data"] == {"workspace_ref": "workspace://default", "configured": True, "root": str(tmp_path / "workspace")}
+    assert client.get("/api/applications/settings/workspace").json()["data"]["root"] == str(tmp_path / "workspace")
     instance = client.post("/api/applications/wiki/instances", json={"instance_id": "one"}).json()["data"]
     assert instance["workspace_ref"] == "workspace://applications/wiki/instances/one"
     instance_two = client.post("/api/applications/wiki/instances", json={"instance_id": "two"}).json()["data"]

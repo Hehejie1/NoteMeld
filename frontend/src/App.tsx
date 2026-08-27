@@ -27,6 +27,7 @@ const DataMigration = lazy(() => import('@/pages/SettingPage/DataMigration.tsx')
 const McpServers = lazy(() => import('@/pages/SettingPage/McpServers.tsx'))
 const ResearchSearch = lazy(() => import('@/pages/SettingPage/ResearchSearch.tsx'))
 const Plugins = lazy(() => import('@/pages/SettingPage/Plugins.tsx'))
+const ApplicationSettings = lazy(() => import('@/pages/SettingPage/Applications.tsx'))
 const AgentDiagnostics = lazy(() => import('@/pages/SettingPage/AgentDiagnostics.tsx'))
 const Candidates = lazy(() => import('@/pages/SettingPage/Candidates.tsx'))
 const ApplicationList = lazy(() => import('@/pages/Applications'))
@@ -85,6 +86,7 @@ const WorkspaceRoutes = () => {
             <Route path="mcp-servers" element={<McpServers />} />
             <Route path="research-search" element={<ResearchSearch />} />
             <Route path="plugins" element={<Plugins />} />
+            <Route path="applications" element={<ApplicationSettings />} />
             <Route path="agent-diagnostics" element={<AgentDiagnostics />} />
             <Route path="candidates" element={<Candidates />} />
             <Route path="about" element={<Navigate to="/" replace />}></Route>

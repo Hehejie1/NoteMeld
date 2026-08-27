@@ -15,6 +15,8 @@ const layout = await read('src/layouts/AppLayout.tsx')
 assert.match(appService, /export\s+interface\s+ApplicationSummary/, '应用 service 必须导出应用列表类型')
 assert.match(appService, /applicationPath\(appId\).*wiki\/graph/, 'Wiki 必须通过 Application Host capability 读取图谱')
 assert.match(appService, /applicationPath\(appId\).*wiki\/articles/, 'Wiki 必须通过 Application Host capability 读取文章')
+assert.match(appService, /run_id/, '应用运行实例必须使用后端定义的 run_id')
+assert.match(appService, /settings\/workspace/, '应用默认 workspace 必须提供设置 API')
 assert.doesNotMatch(appService, /['"]\/wiki\//, '应用 service 不应把旧 Wiki router 作为数据入口')
 
 assert.match(registry, /WIKI_APPLICATION_ID\s*=\s*['"]wiki['"]/, '内建 registry 必须注册 Wiki 应用')
@@ -34,6 +36,7 @@ assert.match(wiki, /已保留当前图谱/, '刷新失败时必须保留已加�
 
 assert.match(app, /path="\/applications"/, 'App 必须注册应用列表路由')
 assert.match(app, /path="\/applications\/:appId"/, 'App 必须注册应用容器路由')
+assert.match(app, /SettingPage\/Applications/, '设置必须提供应用默认 workspace 配置页')
 assert.doesNotMatch(app, /path="\/wiki"/, '旧 /wiki 路由必须移除')
 assert.doesNotMatch(app, /pages\/WikiPage/, 'App 不得继续直接引用旧 Wiki 页面')
 assert.match(layout, /to:\s*['"]\/applications['"]/, '主导航必须提供应用入口')

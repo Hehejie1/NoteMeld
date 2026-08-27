@@ -56,6 +56,12 @@ export interface ApplicationDetail extends ApplicationSummary {
   }
 }
 
+export interface ApplicationWorkspaceSetting {
+  workspace_ref: string
+  configured: boolean
+  root: string
+}
+
 export interface ApplicationInstance {
   id: string
   app_id: string
@@ -65,12 +71,14 @@ export interface ApplicationInstance {
 }
 
 export interface ApplicationRun {
-  id: string
+  run_id: string
   app_id: string
   instance_id: string
   status: ApplicationRunStatus
-  error?: string | null
-  diagnostic?: ApplicationDiagnostic | null
+  request_id?: string | null
+  runtime_kind?: string
+  cancel_requested?: boolean
+  error?: { code?: string | null; message?: string | null } | null
 }
 
 export interface WikiGraphNode {
@@ -165,6 +173,12 @@ export interface WikiArticleDetail {
 
 const applicationPath = (appId: string) => `/applications/${encodeURIComponent(appId)}`
 
+export const getApplicationWorkspaceSetting = async (): Promise<ApplicationWorkspaceSetting> =>
+  request.get<ApplicationWorkspaceSetting>('/applications/settings/workspace') as unknown as Promise<ApplicationWorkspaceSetting>
+
+export const setApplicationWorkspaceSetting = async (root: string): Promise<ApplicationWorkspaceSetting> =>
+  request.put<ApplicationWorkspaceSetting>('/applications/settings/workspace', { root }) as unknown as Promise<ApplicationWorkspaceSetting>
+
 export const listApplications = async (): Promise<ApplicationSummary[]> =>
   request.get<ApplicationSummary[]>('/applications') as unknown as Promise<ApplicationSummary[]>
 
@@ -190,7 +204,7 @@ export const startApplicationRun = async (
   appId: string,
   instanceId: string,
 ): Promise<ApplicationRun> =>
-  request.post<ApplicationRun>(`${applicationPath(appId)}/instances/${encodeURIComponent(instanceId)}/runs`) as unknown as Promise<ApplicationRun>
+  request.post<ApplicationRun>(`${applicationPath(appId)}/instances/${encodeURIComponent(instanceId)}/runs`, {}) as unknown as Promise<ApplicationRun>
 
 export const getApplicationRun = async (runId: string): Promise<ApplicationRun> =>
   request.get<ApplicationRun>(`/applications/runs/${encodeURIComponent(runId)}`) as unknown as Promise<ApplicationRun>

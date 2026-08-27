@@ -91,7 +91,7 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
   useEffect(() => {
     if (!run || !['queued', 'running', 'waiting_user'].includes(run.status)) return
     const timer = window.setInterval(() => {
-      void getApplicationRun(run.id).then(nextRun => {
+      void getApplicationRun(run.run_id).then(nextRun => {
         setRun(nextRun)
         if (nextRun.status === 'interrupted') setState('interrupted')
         if (nextRun.status === 'failed') setState('failed')
@@ -102,7 +102,7 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
 
   if (!backendReady) return <KnowledgeEmptyState status="loading" title="等待后端就绪" description="应用请求会在桌面 sidecar ready 后自动开始。" />
   if (!builtInApplication) return <HostState state="failed" error="未找到对应的内建应用包" onRetry={() => undefined} />
-  if (state !== 'running') return <HostState state={state} detail={detail} error={error || run?.error || undefined} onRetry={() => void start()} />
+  if (state !== 'running') return <HostState state={state} detail={detail} error={error || run?.error?.message || undefined} onRetry={() => void start()} />
 
   const ApplicationComponent = builtInApplication.component
   return (
