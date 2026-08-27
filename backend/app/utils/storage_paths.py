@@ -67,6 +67,11 @@ def app_data_dir() -> Path:
     return data_root() / "data"
 
 
+def application_workspaces_root() -> Path:
+    """Default physical root for isolated application instance workspaces."""
+    return app_data_dir() / "applications"
+
+
 def frame_output_dir() -> Path:
     return app_data_dir() / "output_frames"
 
