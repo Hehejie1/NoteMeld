@@ -1,6 +1,6 @@
 # Current Architecture
 
-更新时间：2026-08-19
+更新时间：2026-08-27
 
 本文只记录当前仓库真实系统事实，不描述理想化重构方案。新需求、方案、Bug 修复和代码改动前必须先阅读本文。
 
@@ -19,13 +19,15 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
 - Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；Web、Tauri 和 CLI 都只调用 `/api/agent/v1`，Router 再通过无内存状态的 `AgentHostEntry` 进入同一 Host 生命周期。Turn 由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成。危险或未知工具由 SDK 发出 `approval.required` 并暂停原 Turn；Web/CLI 的 approval resolve 通过同一个 native runtime 控制面原子唤醒，Host 只投影 `waiting_approval/running` 与事件。
 - I04 集成将 plugin/candidate router 和各自 migration registry 统一挂入同一个 FastAPI/SQLite bootstrap；设置导航同时提供插件运行、Agent 任务诊断和 candidate 审批入口。candidate 只允许人工验证/审批/拒绝，plugin candidate 审批后仍必须回到 N03 installer 的校验、权限和 active-pointer 流程。
+- Application Host：`backend/app/applications/` 是独立于 Agent/Plugin 的应用域。`notemeld.application.v1` manifest 约束 UI、可选 runtime、平台、capability、permission 和 application-instance workspace；应用 API 统一挂载在 `/api/applications`，通过 `ResponseWrapper` 和 session token 保护。桌面协议固定为 Host 监督的私有 process-JSONL/RPC，应用不得监听公开端口；Web 协议固定为 Host gateway 管理的 `managed-worker` invocation；当前实现提供可测试的生命周期/策略 seam，尚未声称完成外部 worker 部署或用户应用包执行。
+- Wiki application：Wiki 由 `frontend/src/apps/wiki/` 作为第一个内建应用 UI，通过 Application API 的 `wiki.read` capability 读取既有 Wiki store 的 graph/article。旧 `/wiki` 前端 route 和导航已移除；Wiki pipeline、`note_results/wiki`、Note authority 和旧 Wiki API 仍是数据事实源，其他学习组件可复用图谱渲染原语。应用入口为 `/applications` 与 `/applications/:appId`，默认 application workspace 可在 `/settings/applications` 配置。
 
 ## 前端入口
 
 - React 挂载入口：`frontend/src/main.tsx`。
 - 路由入口：`frontend/src/App.tsx`。
 - 桌面环境使用 `HashRouter`，普通 Web 使用 `BrowserRouter`，避免桌面静态资源刷新路径问题。
-- 主要路由包括 `/`、`/new`、`/notes/:taskId`、`/wiki`、`/settings/*`、`/styles`、`/about`。
+- 主要路由包括 `/`、`/new`、`/notes/:taskId`、`/applications`、`/applications/:appId`、`/settings/*`、`/styles`、`/about`；不存在旧 Wiki UI route `/wiki`。
 - Axios 请求封装：`frontend/src/utils/request.ts`。`baseURL` 优先取桌面注入的 `window.__NOTEMELD_RUNTIME__.apiBaseUrl`，其次 `VITE_API_BASE_URL`，最后 `/api`。
 - 桌面 session token 通过 `X-NoteMeld-Session` header 注入所有 Axios 请求。
 - 后端就绪门禁：`frontend/src/hooks/useCheckBackend.ts` 和 `BackendInitContext`。桌面 sidecar 未就绪时业务请求不能抢跑。

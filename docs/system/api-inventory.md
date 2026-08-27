@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-08-19
+更新时间：2026-08-27
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -47,6 +47,22 @@
 | GET | `/api/wiki/articles/{source_id}` | path: source_id | 单篇 article detail，含 entities/concepts/claims/evidence/relations | WikiViewer | 本地 | contribution 不存在 404 | 前端字段名需与 contribution 对齐 |
 | GET | `/api/wiki/file-pages` | 无 | source/entity/concept file page summaries | 旧 Wiki 文件页 | 本地 | 空列表 | 保留旧 Wiki 导航兼容 |
 | GET | `/api/wiki/file-pages/{page_type}/{page_id}` | path: type/id | file page detail | 旧 Wiki 文件页 | 本地 | 不存在 404 | page_type 限 source/entity/concept 语义 |
+
+## Application Host 接口
+
+应用接口统一使用 `{code,msg,data}` wrapper，并要求现有 session token。Wiki 应用只通过下面的 `applications` capability API 读取数据，不直接调用旧 `/api/wiki/*` UI 入口。
+
+| 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 |
+| --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/applications` | 无 | 应用摘要列表 | 应用列表 | 本地 | 应用不存在/清单损坏返回错误 |
+| GET | `/api/applications/{app_id}` | path: app_id | manifest 摘要、启用状态和运行状态 | Application Host | 本地 | 不存在 404 |
+| POST | `/api/applications/{app_id}/enable`、`/disable` | path: app_id | 更新后的应用摘要 | 应用设置/Host | 本地 | 不存在 404；禁用应用启动返回 409 |
+| POST/GET | `/api/applications/{app_id}/instances` | title、可选 instance_id | 应用实例及逻辑 workspace 引用 | Application Host | 本地 | 越权/冲突返回错误 |
+| POST/GET | `/api/applications/{app_id}/instances/{instance_id}/runs`、`/api/applications/runs/{run_id}` | run payload / run_id | `run_id`、runtime kind、Run status | Application Host | 本地 | 幂等 payload 冲突、运行策略拒绝、找不到 run |
+| POST | `/api/applications/runs/{run_id}/cancel` | path: run_id | 取消后的 Run | Application Host | 本地 | 已终态运行保持终态 |
+| GET/PUT | `/api/applications/settings/workspace` | PUT: 绝对 root | 默认 workspace ref、root、configured | Settings | 本地 | 非绝对路径或越权路径 400 |
+| GET | `/api/applications/{app_id}/wiki/graph` | 无 | `{nodes,edges,clusters}` | Wiki application | 本地 | capability 拒绝或 Wiki 读取失败 |
+| GET | `/api/applications/{app_id}/wiki/articles/{source_id}` | source_id | Wiki article detail | Wiki application | 本地 | 文章不存在 404 |
 
 ## Chat / Conversation 接口
 

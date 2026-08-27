@@ -1,6 +1,19 @@
 # Known Pitfalls
 
-更新时间：2026-08-19
+更新时间：2026-08-27
+
+## Application Host 越权或假运行
+
+- 风险：应用 UI 直接调用旧产品 router/SQLite，应用 backend 自行监听公网端口，或 Host 仅把 Run 标记为 running 却绕过 manifest、workspace 和 capability 校验。
+- 防线：应用必须声明 `notemeld.application.v1` manifest；桌面使用 Host 监督的私有 process-JSONL/RPC，Web 使用 Host gateway 的 managed-worker seam；所有调用重新检查 session、app/instance、平台、权限和 capability。
+- 不允许：把宿主 session token 放入应用环境变量/UI；应用使用绝对系统路径或 `..`；Wiki 应用复制 graph/article 作为第二事实源；用旧 `/wiki` UI route 作为兼容入口。
+- 当前边界：本期只实现本地可测 Host 生命周期、清单策略、Wiki capability 和设置 API；用户应用包安装、真正外部 worker 部署、移动端 UI 和 Agent 自动生成应用仍未实现，不得在发布说明中宣称已完成。
+
+## Application workspace 配置泄露或跨实例访问
+
+- 风险：默认目录设置错误导致应用实例互相读写，或把宿主绝对路径暴露给应用协议。
+- 防线：Settings 只配置 Host 根目录；应用收到逻辑 `workspace://applications/{app_id}/instances/{instance_id}`，Host 在 resolve 后确认目标仍位于根目录，并为每个实例创建独立子目录。路径设置必须是绝对路径且禁止 `..`。
+- 检查方式：运行 `backend/tests/test_applications.py` 的 workspace 隔离、非法路径和迁移 registry 测试；检查 `/api/applications/settings/workspace` 始终使用 response wrapper。
 
 本文记录历史踩坑和回归防线。修 Bug、新需求或重构前必须确认不会重新引入这些问题。
 
