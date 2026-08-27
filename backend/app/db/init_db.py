@@ -20,6 +20,9 @@ from app.db.database import ensure_agent_schema
 from app.db.knowledge_schema import ensure_knowledge_schema
 from app.db.plugin_migrations import ensure_plugin_migration_registry
 from app.db.candidate_migrations import ensure_candidate_migration_registry
+from app.db.application_migrations import ensure_application_migration_registry
+from app.applications.models import Application, ApplicationArtifact, ApplicationInstance, ApplicationMigration, ApplicationRun, ApplicationSetting  # noqa: F401
+from app.applications.service import ApplicationService
 from app.services.conversation_store import bootstrap_conversations_from_storage
 from app.utils.logger import get_logger
 from app.services.official_link_note_host import ensure_official_link_note_installed
@@ -34,6 +37,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     ensure_plugin_migration_registry(engine)
     ensure_candidate_migration_registry(engine)
+    ensure_application_migration_registry(engine)
     ensure_knowledge_schema(engine)
     model_runtime_schema = ensure_model_runtime_schema(engine)
     if model_runtime_schema["upgraded"]:
@@ -53,3 +57,4 @@ def init_db():
     if bootstrapped:
         logger.info(f"Conversation bootstrap summary: {bootstrapped}")
     ensure_official_link_note_installed(session_factory=lambda: SessionLocal(bind=engine))
+    ApplicationService(session_factory=lambda: SessionLocal(bind=engine)).sync_registry()
