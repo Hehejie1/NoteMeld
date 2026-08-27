@@ -56,7 +56,8 @@ const guide = (
 export const featureGuideCatalog: Record<string, FeatureGuideEntry> = {
   'nav-new-note': guide('nav-new-note', '新建笔记', '进入统一输入工作台。', '把网页、视频、文件、对话或研究主题交给 NoteMeld 处理。', 'frontend/src/layouts/AppLayout.tsx', ['清空当前选择并进入 /new', '在输入框中选择聊天、笔记或学习意图'], ['会话列表', '模型列表', '笔记风格'], '静态演示只模拟提交，不调用真实生成后端。'),
   'nav-styles': guide('nav-styles', '风格模板', '管理笔记输出结构和表达风格。', '让同一份来源按知识卡片、深度研究、会议纪要等方式编译。', 'frontend/src/pages/StylesPage/index.tsx', ['搜索模板', '创建或编辑模板', '预览输出'], ['note_styles', '模板提取任务'], '创建、保存和删除只修改演示内存。'),
-  'nav-wiki': guide('nav-wiki', '知识库', '查看 NoteMeld 编译出的知识关系图。', '从单篇笔记继续核验实体、概念、来源和关系。', 'frontend/src/pages/WikiPage/index.tsx', ['切换类型/社群视图', '缩放或聚焦节点'], ['wiki/graph.json', 'entities', 'concepts', 'sources'], '图数据来自固定 fixture，不执行 Wiki rebuild。'),
+  'nav-wiki': guide('nav-wiki', 'Wiki 应用', '查看 NoteMeld 编译出的知识关系图。', '从应用入口继续核验实体、概念、来源和关系。', 'frontend/src/apps/wiki/WikiApplication.tsx', ['打开应用入口', '切换类型/社群视图', '缩放或聚焦节点'], ['applications', 'wiki.read', 'entities', 'concepts', 'sources'], '图数据来自固定 fixture，不执行 Wiki rebuild。'),
+  'nav-applications': guide('nav-applications', '应用', '打开由 NoteMeld Host 管理的应用。', '从应用入口进入 Wiki 等内建应用并查看运行状态。', 'frontend/src/pages/Applications/index.tsx', ['查看应用状态', '打开 Wiki 应用'], ['applications', 'Application Host'], '静态演示使用固定应用清单。'),
   'nav-settings': guide('nav-settings', '设置', '配置模型、转写、下载、迁移和集成。', '让本地优先的知识编译链路适配用户设备和服务。', 'frontend/src/pages/SettingPage/index.tsx', ['进入设置后选择子页面'], ['providers', 'models', '本地配置文件'], '所有保存、下载和连接测试均为模拟。'),
   'nav-about': guide('nav-about', '关于', '查看版本与更新状态。', '确认当前 NoteMeld 版本并了解更新能力。', 'frontend/src/pages/AboutPage.tsx', ['检查更新', '展示下载进度'], ['桌面 updater'], '不会访问更新服务器或重启应用。'),
   'composer-submit': guide('composer-submit', '提交输入', '按当前意图提交聊天、笔记或研究任务。', '把一次输入转化为对话、结构化 Note 或研究白板。', 'frontend/src/pages/HomePage/components/ChatComposer.tsx', ['校验输入和模型', '创建/复用会话', '触发对应 service'], ['conversations', 'conversation_messages', 'note task'], '演示使用内存回复和模拟任务状态机。'),
