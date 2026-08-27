@@ -22,6 +22,8 @@
 
 ## 需求列表
 
+| P8 | Ready for Plan | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | 待生成 plan/spec | 小程序式 HTML 应用；桌面独立进程、Web 托管 worker；应用自有后端通过 SDK 调用 Agent/插件/Note/Wiki/文件能力；Wiki 作为首个内建应用 |
+
 | 阶段 | 状态 | 需求 | 文件 | 关联 plan/spec | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | P0 | Implemented | notemeld-ai：统一 LLM Provider 抽象与 Token 统计 | [`2026-08-01-notemeld-ai-llm-abstraction.md`](2026-08-01-notemeld-ai-llm-abstraction.md) | [`specs/2026-08-01-notemeld-ai-llm-abstraction.md`](../superpowers/specs/2026-08-01-notemeld-ai-llm-abstraction.md) + [验收](../superpowers/tests/2026-08-01-notemeld-ai-llm-abstraction.md) | 已验收通过：抹平 30+ Provider；替换 GPTFactory；用量口径兼容 |
