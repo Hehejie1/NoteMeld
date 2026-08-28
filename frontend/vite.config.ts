@@ -10,7 +10,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.resolve(__dirname, '../'))
 
-  const apiBaseUrl = env.VITE_API_BASE_URL || 'http://127.0.0.1:8483'
+  // The client API base includes `/api`, while Vite's proxy target must be
+  // the origin so `/api/*` is forwarded exactly once.
+  const apiBaseUrl = (env.VITE_API_BASE_URL || 'http://127.0.0.1:8483').replace(/\/api\/?$/, '')
   const port = parseInt(env.VITE_FRONTEND_PORT || '3015', 10)
 
   return {

@@ -209,16 +209,20 @@ export const startApplicationRun = async (
 export const getApplicationRun = async (runId: string): Promise<ApplicationRun> =>
   request.get<ApplicationRun>(`/applications/runs/${encodeURIComponent(runId)}`) as unknown as Promise<ApplicationRun>
 
+export const invokeApplicationRun = async (
+  runId: string,
+  method: string,
+  input: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> =>
+  request.post<Record<string, unknown>>(`/applications/runs/${encodeURIComponent(runId)}/invoke`, { method, input }) as unknown as Promise<Record<string, unknown>>
+
+export const invokeApplicationCapability = async <T>(
+  runId: string,
+  capability: string,
+  method: string,
+  input: Record<string, unknown> = {},
+): Promise<T> =>
+  request.post<T>(`/applications/runs/${encodeURIComponent(runId)}/capability`, { capability, method, input }) as unknown as Promise<T>
+
 export const cancelApplicationRun = async (runId: string): Promise<ApplicationRun> =>
   request.post<ApplicationRun>(`/applications/runs/${encodeURIComponent(runId)}/cancel`) as unknown as Promise<ApplicationRun>
-
-export const getApplicationWikiGraph = async (appId: string): Promise<WikiGraph> =>
-  request.get<WikiGraph>(`${applicationPath(appId)}/wiki/graph`) as unknown as Promise<WikiGraph>
-
-export const getApplicationWikiArticle = async (
-  appId: string,
-  sourceId: string,
-): Promise<WikiArticleDetail> =>
-  request.get<WikiArticleDetail>(
-    `${applicationPath(appId)}/wiki/articles/${encodeURIComponent(sourceId)}`,
-  ) as unknown as Promise<WikiArticleDetail>

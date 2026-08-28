@@ -1,6 +1,6 @@
 # NoteMeld 应用运行时与 Wiki 应用化执行计划
 
-状态：Planned
+状态：Implemented (v1 core)
 Canonical requirement：[`docs/requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md`](../../requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md)
 
 ## 1. 目标与交付边界

@@ -2,7 +2,7 @@
 
 日期：2026-08-27
 作者 / Agent：Codex
-状态：Planned
+状态：Implemented (v1 core) — 协议核心与 Wiki 应用垂直切片已完成；扩展运行时后续实现
 关联对话 / 任务：应用宿主、小程序式 HTML 应用、SDK 能力调用与 Wiki 抽离
 关联系统文档：
 
@@ -206,8 +206,8 @@ applications/<application-id>/
 
 ## 13. Superpowers 交接
 
-- 是否已达到 Ready for Plan：是。用户已确认后端、Web 托管、第一版本范围、Wiki 路由、Wiki 抽离范围和默认目录策略。
+- 当前实现状态：已完成协议核心、内建应用目录发现、按需加载 Host、桌面 process-JSONL handshake、Web managed-worker seam、Wiki capability bridge 和 Wiki 应用垂直切片。
 - 推荐下一步：
-  - [ ] 生成 Application Host/SDK、Wiki 应用化、桌面/Web 适配和安全回归的执行计划
-  - [ ] 再生成执行规格和验证证据文档
+  - [ ] 实现用户应用包安装/升级、真正 Web worker 托管和移动端独立 UI
+  - [ ] 扩展 Agent、Plugin、workspace、app.data 和 Artifact capability adapter
 - 计划必须覆盖验收标准 1–23，并补充应用包恶意 corpus、容器隔离、目录越权、SDK deny、崩溃/EOF/取消/恢复、旧 `/wiki` 移除、Wiki 数据读取前后对比和应用运行回收验证。

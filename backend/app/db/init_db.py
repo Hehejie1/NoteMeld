@@ -57,4 +57,8 @@ def init_db():
     if bootstrapped:
         logger.info(f"Conversation bootstrap summary: {bootstrapped}")
     ensure_official_link_note_installed(session_factory=lambda: SessionLocal(bind=engine))
-    ApplicationService(session_factory=lambda: SessionLocal(bind=engine)).sync_registry()
+    application_service = ApplicationService(session_factory=lambda: SessionLocal(bind=engine))
+    application_service.sync_registry()
+    recovered_application_runs = application_service.recover_nonterminal_runs()
+    if recovered_application_runs:
+        logger.info("Application Host 启动恢复完成，interrupted_runs=%s", len(recovered_application_runs))

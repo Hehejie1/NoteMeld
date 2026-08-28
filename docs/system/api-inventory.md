@@ -50,7 +50,7 @@
 
 ## Application Host 接口
 
-应用接口统一使用 `{code,msg,data}` wrapper，并要求现有 session token。Wiki 应用只通过下面的 `applications` capability API 读取数据，不直接调用旧 `/api/wiki/*` UI 入口。
+应用接口统一使用 `{code,msg,data}` wrapper，并要求现有 session token。应用 UI 通过带 run context 的 capability bridge 读取数据，不直接调用旧 `/api/wiki/*` UI 入口。
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -59,10 +59,10 @@
 | POST | `/api/applications/{app_id}/enable`、`/disable` | path: app_id | 更新后的应用摘要 | 应用设置/Host | 本地 | 不存在 404；禁用应用启动返回 409 |
 | POST/GET | `/api/applications/{app_id}/instances` | title、可选 instance_id | 应用实例及逻辑 workspace 引用 | Application Host | 本地 | 越权/冲突返回错误 |
 | POST/GET | `/api/applications/{app_id}/instances/{instance_id}/runs`、`/api/applications/runs/{run_id}` | run payload / run_id | `run_id`、runtime kind、Run status | Application Host | 本地 | 幂等 payload 冲突、运行策略拒绝、找不到 run |
+| POST | `/api/applications/runs/{run_id}/invoke` | method、input | 应用 runtime result | Application UI/SDK | 本地 | Run 非活动、transport/协议错误 |
+| POST | `/api/applications/runs/{run_id}/capability` | capability、method、input | capability result | Application UI/SDK | 本地 | Run 非活动；未声明 capability 403；不支持 method 501 |
 | POST | `/api/applications/runs/{run_id}/cancel` | path: run_id | 取消后的 Run | Application Host | 本地 | 已终态运行保持终态 |
 | GET/PUT | `/api/applications/settings/workspace` | PUT: 绝对 root | 默认 workspace ref、root、configured | Settings | 本地 | 非绝对路径或越权路径 400 |
-| GET | `/api/applications/{app_id}/wiki/graph` | 无 | `{nodes,edges,clusters}` | Wiki application | 本地 | capability 拒绝或 Wiki 读取失败 |
-| GET | `/api/applications/{app_id}/wiki/articles/{source_id}` | source_id | Wiki article detail | Wiki application | 本地 | 文章不存在 404 |
 
 ## Chat / Conversation 接口
 

@@ -7,13 +7,15 @@
 | 命令 | 结果 |
 | --- | --- |
 | `python3 -m compileall -q backend/app` | 通过 |
-| `PYTHONPATH=backend pytest -q backend/tests/test_applications.py` | 通过：8 passed |
-| `PYTHONPATH=backend pytest -q backend/tests` | 通过：715 passed, 6 skipped, 13 subtests passed |
+| `PYTHONPATH=backend pytest -q backend/tests/test_applications.py` | 通过：12 passed |
+| `PYTHONPATH=backend pytest -q backend/tests` | 通过：719 passed, 6 skipped, 13 subtests passed |
 | `scripts/run_core_regression.sh` | 通过：33 passed；前端既有 core contract 通过 |
 | `cd frontend && node tests/applicationHostContracts.test.mjs` | 通过 |
 | `cd frontend && corepack pnpm test:contracts` | 通过 |
 | `cd frontend && corepack pnpm build` | 通过；仅有既有第三方 eval/chunk size warning |
 | `git diff --check` | 通过 |
+| 本地启动 `uvicorn` + Vite，浏览器打开 `/applications/wiki` | 通过：应用中心加载 Wiki；Host 显示运行中；真实图谱渲染；刷新无错误；浏览器 console 无 error/warning |
+| 后端重启恢复 smoke | 通过：启动时将 5 个失联应用 Run 收敛为 `interrupted`；`/api/sys_check` 与 `/api/applications` 均返回 200 |
 
 ## 已覆盖的验收点
 
@@ -27,6 +29,7 @@
 ## 未在本期宣称完成
 
 - 用户应用包上传/安装、公开分发和自动升级。
-- 真正的桌面独立应用进程执行、完整 JSONL frame transport 和外部 Web worker 部署；当前实现冻结协议并提供本地 runtime policy/lifecycle seam。
+- 外部 Web worker 部署和云端资源配额托管；桌面独立进程与 hello/ready、invoke/result JSONL frame 已由 runtime fixture 验证。
 - 移动端应用 UI bundle 与 Agent 自动生成应用。
 - `agent.run`、`plugin.invoke`、文件/Artifact 的完整应用 SDK 执行面；本期只冻结 capability 名称和 Host 边界。
+- Web 开发代理会把含 `/api` 的 `VITE_API_BASE_URL` 归一化为 origin，避免本地启动时出现 `/api/api/*`；普通 Web 页面不会再误触发 Tauri runtime 注册。

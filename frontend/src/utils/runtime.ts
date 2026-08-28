@@ -129,7 +129,7 @@ async function registerDesktopRuntimeWithRetry(): Promise<void> {
 }
 
 export function registerDesktopRuntimeOnPageLoad(): Promise<void> {
-  if (typeof window === 'undefined' || window.__NOTEMELD_RUNTIME__) {
+  if (typeof window === 'undefined' || window.__NOTEMELD_RUNTIME__ || !shouldUseDesktopRuntime()) {
     return Promise.resolve();
   }
 

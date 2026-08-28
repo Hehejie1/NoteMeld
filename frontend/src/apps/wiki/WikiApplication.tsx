@@ -9,8 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { FeatureGuideTarget } from '@/demo/FeatureGuideTarget'
 import {
-  getApplicationWikiArticle,
-  getApplicationWikiGraph,
+  invokeApplicationCapability,
   type WikiArticleDetail,
   type WikiGraph,
   type WikiGraphNode,
@@ -36,6 +35,7 @@ interface DisplayNode extends WikiGraphNode {
 
 interface WikiApplicationProps {
   applicationId: string
+  runId: string
 }
 
 const buildDegreeMap = (graph: WikiGraph) => {
@@ -120,7 +120,7 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
   </div>
 )
 
-const WikiApplication = ({ applicationId }: WikiApplicationProps) => {
+const WikiApplication = ({ applicationId: _applicationId, runId }: WikiApplicationProps) => {
   const { backendReady } = useBackendInitContext()
   const [graph, setGraph] = useState<WikiGraph>(emptyGraph)
   const [selectedNodeId, setSelectedNodeId] = useState('')
@@ -138,7 +138,7 @@ const WikiApplication = ({ applicationId }: WikiApplicationProps) => {
     setLoading(true)
     setError('')
     try {
-      const result = await getApplicationWikiGraph(applicationId)
+      const result = await invokeApplicationCapability<WikiGraph>(runId, 'wiki.read', 'graph')
       setGraph({ nodes: result.nodes || [], edges: result.edges || [], clusters: result.clusters || [] })
       setHasLoaded(true)
     } catch {
@@ -147,7 +147,7 @@ const WikiApplication = ({ applicationId }: WikiApplicationProps) => {
     } finally {
       setLoading(false)
     }
-  }, [applicationId])
+  }, [runId])
 
   useEffect(() => {
     if (backendReady) void loadWiki()
@@ -205,7 +205,7 @@ const WikiApplication = ({ applicationId }: WikiApplicationProps) => {
     setArticleLoading(true)
     setArticleError('')
     try {
-      setArticle(await getApplicationWikiArticle(applicationId, selectedNode.id))
+      setArticle(await invokeApplicationCapability<WikiArticleDetail>(runId, 'wiki.read', 'article', { source_id: selectedNode.id }))
     } catch {
       setArticleError('文章详情暂时无法打开，请稍后重试')
     } finally {

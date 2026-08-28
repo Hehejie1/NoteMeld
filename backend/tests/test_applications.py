@@ -126,11 +126,46 @@ def test_application_api_core_lifecycle_workspace_and_wiki(service, monkeypatch,
 
     run = client.post("/api/applications/wiki/instances/one/runs", json={"request_id": "req-1"}).json()["data"]
     assert run["status"] == "running"
+    capability = client.post(
+        f"/api/applications/runs/{run['run_id']}/capability",
+        json={"capability": "wiki.read", "method": "graph"},
+    )
+    assert capability.json()["data"]["nodes"] == [{"id": "n1"}]
+    invoke = client.post(f"/api/applications/runs/{run['run_id']}/invoke", json={"method": "refresh"})
+    assert invoke.json()["data"]["accepted"] is True
+    article = client.post(
+        f"/api/applications/runs/{run['run_id']}/capability",
+        json={"capability": "wiki.read", "method": "article", "input": {"source_id": "source-1"}},
+    )
+    assert article.json()["data"]["id"] == "source-1"
     assert client.post(f"/api/applications/runs/{run['run_id']}/cancel").json()["data"]["status"] == "cancelled"
     assert client.post(f"/api/applications/runs/{run['run_id']}/cancel").json()["data"]["status"] == "cancelled"
 
-    assert client.get("/api/applications/wiki/wiki/graph").json()["data"]["nodes"] == [{"id": "n1"}]
-    assert client.get("/api/applications/wiki/wiki/articles/source-1").json()["data"]["id"] == "source-1"
+
+def test_application_service_recovers_orphaned_runs(service):
+    svc, engine = service
+    factory = svc.session_factory
+    db = factory()
+    try:
+        row = ApplicationRun(
+            run_id="orphaned-run",
+            app_id="wiki",
+            instance_id="orphaned-instance",
+            request_id=None,
+            payload_hash="hash",
+            runtime_kind="managed-worker",
+            status="running",
+        )
+        db.add(ApplicationInstance(id="orphaned-instance", app_id="wiki", title="Orphaned", workspace_ref="workspace://applications/wiki/instances/orphaned-instance"))
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+    assert svc.recover_nonterminal_runs() == ["orphaned-run"]
+    with engine.connect() as connection:
+        recovered = connection.execute(text("SELECT status, error_code FROM application_runs WHERE run_id = 'orphaned-run'")).one()
+    assert recovered == ("interrupted", "host_restarted")
 
 
 def test_run_request_id_is_idempotent_and_conflicting_payload_is_denied(service):
@@ -174,7 +209,8 @@ def test_desktop_process_runtime_uses_private_jsonl_transport_and_reclaims_proce
         "import json, sys\n"
         "for line in sys.stdin:\n"
         " request = json.loads(line)\n"
-        " print(json.dumps({'request_id': request['request_id'], 'ok': True}), flush=True)\n",
+        " response = {'protocol': request['protocol'], 'type': 'ready' if request['type'] == 'hello' else 'result', 'request_id': request['request_id'], 'app_id': request.get('app_id'), 'instance_id': request.get('instance_id'), 'run_id': request.get('run_id'), 'sdk_version': request.get('sdk_version'), 'ok': True}\n"
+        " print(json.dumps(response), flush=True)\n",
         encoding="utf-8",
     )
     worker.chmod(worker.stat().st_mode | 0o111)

@@ -6,7 +6,7 @@ export interface BuiltInApplicationDefinition {
   name: string
   description: string
   capabilities: string[]
-  component: ComponentType<{ applicationId: string }>
+  component: ComponentType<{ applicationId: string; runId: string }>
 }
 
 export const WIKI_APPLICATION_ID = 'wiki'

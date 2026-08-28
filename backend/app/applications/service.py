@@ -128,7 +128,7 @@ class ApplicationService:
     def __init__(self, session_factory=SessionLocal, registry=None, runtime=None, workspace=None, wiki=None):
         self.session_factory = session_factory
         self.registry = registry or ApplicationRegistry()
-        self.runtime = runtime or ApplicationRuntime()
+        self.runtime = runtime or ApplicationRuntime(package_root=self.registry.package_root)
         self.workspace = workspace or WorkspaceManager()
         self.wiki = wiki or WikiCapabilityAdapter()
 
@@ -279,6 +279,29 @@ class ApplicationService:
         finally:
             db.close()
 
+    def recover_nonterminal_runs(self):
+        """Converge runs from a previous Host process to a safe terminal state.
+
+        Runtime adapters are Host-owned and their in-memory transport state is
+        not durable across a backend restart.  Until a worker provider offers
+        durable resume, an orphaned run must not remain deceptively active.
+        """
+        db = self.session_factory()
+        try:
+            rows = db.query(ApplicationRun).filter(ApplicationRun.status.in_(("queued", "running", "waiting_user"))).all()
+            recovered = []
+            now = datetime.now(timezone.utc)
+            for row in rows:
+                row.status = "interrupted"
+                row.error_code, row.error_message = "host_restarted", "application Host restarted before the run reached a terminal state"
+                row.finished_at = now
+                recovered.append(row.run_id)
+            if recovered:
+                db.commit()
+            return recovered
+        finally:
+            db.close()
+
     def cancel_run(self, run_id):
         db = self.session_factory()
         try:
@@ -292,6 +315,61 @@ class ApplicationService:
             row.finished_at = datetime.now(timezone.utc)
             db.commit()
             return self._run(row)
+        finally:
+            db.close()
+
+    def invoke_run(self, run_id, method, input_data):
+        db = self.session_factory()
+        try:
+            row = db.get(ApplicationRun, run_id)
+            if row is None:
+                raise ApplicationError("run_not_found", "application run not found", 404)
+            if row.status not in {"queued", "running", "waiting_user"}:
+                raise ApplicationError("run_not_active", "application run is not active", 409)
+            app = db.get(Application, row.app_id)
+            if app is None:
+                raise ApplicationError("application_not_found", "application not found", 404)
+            platform = os.getenv("NOTEMELD_PLATFORM", "desktop")
+            try:
+                return self.runtime.invoke(
+                    self._manifest(app),
+                    RuntimeContext(row.app_id, row.instance_id, row.run_id, platform),
+                    method,
+                    input_data,
+                )
+            except ApplicationRuntimeError as exc:
+                raise ApplicationError(exc.code, exc.message, 409) from exc
+        finally:
+            db.close()
+
+    def invoke_capability(self, run_id, capability, method, input_data):
+        db = self.session_factory()
+        try:
+            row = db.get(ApplicationRun, run_id)
+            if row is None:
+                raise ApplicationError("run_not_found", "application run not found", 404)
+            if row.status not in {"queued", "running", "waiting_user"}:
+                raise ApplicationError("run_not_active", "application run is not active", 409)
+            app = db.get(Application, row.app_id)
+            if app is None:
+                raise ApplicationError("application_not_found", "application not found", 404)
+            manifest = self._manifest(app)
+            if not app.enabled:
+                raise ApplicationError("application_disabled", "application is disabled", 409)
+            if capability not in manifest.get("capabilities", []):
+                raise ApplicationError("capability_denied", "application capability is not granted", 403)
+            if capability == "wiki.read":
+                if method == "graph":
+                    return self.wiki.read_graph()
+                if method == "article":
+                    source_id = input_data.get("source_id") if isinstance(input_data, dict) else None
+                    if not isinstance(source_id, str) or not source_id:
+                        raise ApplicationError("invalid_invocation", "source_id is required")
+                    article = self.wiki.read_article(source_id)
+                    if article is None:
+                        raise ApplicationError("wiki_article_not_found", "Wiki article not found", 404)
+                    return article
+            raise ApplicationError("capability_unavailable", "application capability is not available", 501)
         finally:
             db.close()
 
@@ -318,21 +396,3 @@ class ApplicationService:
             raise
         finally:
             db.close()
-
-    def wiki_graph(self, app_id):
-        self._require_capability(app_id, "wiki.read")
-        return self.wiki.read_graph()
-
-    def wiki_article(self, app_id, source_id):
-        self._require_capability(app_id, "wiki.read")
-        article = self.wiki.read_article(source_id)
-        if article is None:
-            raise ApplicationError("wiki_article_not_found", "Wiki article not found", 404)
-        return article
-
-    def _require_capability(self, app_id, capability):
-        app = self.get(app_id)
-        if not app["enabled"]:
-            raise ApplicationError("application_disabled", "application is disabled", 409)
-        if capability not in app["manifest"].get("capabilities", []):
-            raise ApplicationError("capability_denied", "application capability is not granted", 403)

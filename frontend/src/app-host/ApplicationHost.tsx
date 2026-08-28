@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, Ban, CircleAlert, LoaderCircle, RefreshCw, ShieldAlert } from 'lucide-react'
 
 import KnowledgeEmptyState from '@/components/KnowledgeEmptyState'
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { loadBuiltInApplication } from '@/apps/registry'
 import {
   createApplicationInstance,
+  cancelApplicationRun,
   getApplication,
   getApplicationRun,
   listApplicationInstances,
@@ -72,20 +73,22 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
         setState('capability-missing')
         return
       }
-      const loadedApplication = await loadBuiltInApplication(applicationId)
-      if (!loadedApplication) {
-        setState('failed')
-        setError('未找到对应的应用包')
-        return
-      }
-      setBuiltInApplication(loadedApplication)
       const instances = await listApplicationInstances(applicationId)
       const instance = instances[0] || await createApplicationInstance(applicationId, { title: nextDetail.name })
       const nextRun = await startApplicationRun(applicationId, instance.id)
       setRun(nextRun)
       if (nextRun.status === 'interrupted') setState('interrupted')
       else if (nextRun.status === 'failed') setState('failed')
-      else setState('running')
+      else {
+        const loadedApplication = await loadBuiltInApplication(applicationId)
+        if (!loadedApplication) {
+          setState('failed')
+          setError('未找到对应的应用包')
+          return
+        }
+        setBuiltInApplication(loadedApplication)
+        setState('running')
+      }
     } catch (cause) {
       setState('failed')
       setError(cause && typeof cause === 'object' && 'msg' in cause ? String(cause.msg) : 'Host 无法建立应用运行实例')
@@ -108,9 +111,18 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
     return () => window.clearInterval(timer)
   }, [run])
 
+  const activeRunRef = useRef<ApplicationRun | null>(null)
+  activeRunRef.current = run
+  useEffect(() => () => {
+    const activeRun = activeRunRef.current
+    if (activeRun && ['queued', 'running', 'waiting_user'].includes(activeRun.status)) {
+      void cancelApplicationRun(activeRun.run_id)
+    }
+  }, [])
+
   if (!backendReady) return <KnowledgeEmptyState status="loading" title="等待后端就绪" description="应用请求会在桌面 sidecar ready 后自动开始。" />
-  if (!builtInApplication) return <HostState state="failed" error="未找到对应的内建应用包" onRetry={() => undefined} />
   if (state !== 'running') return <HostState state={state} detail={detail} error={error || run?.error?.message || undefined} onRetry={() => void start()} />
+  if (!builtInApplication) return <HostState state="failed" error="未找到对应的内建应用包" onRetry={() => void start()} />
 
   const ApplicationComponent = builtInApplication.component
   return (
@@ -119,7 +131,7 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
         <div className="flex min-w-0 items-center gap-3"><span className="h-2 w-2 rounded-full bg-emerald-500" aria-label="运行中" /><div className="min-w-0"><div className="truncate text-sm font-semibold text-on-surface">{builtInApplication.name}</div><div className="truncate text-[11px] text-on-surface-variant">{builtInApplication.description}</div></div></div>
         <span className="shrink-0 text-[11px] font-medium text-emerald-700">Host 运行中</span>
       </div>
-      <div className="min-h-0 flex-1"><ApplicationComponent applicationId={applicationId} /></div>
+      <div className="min-h-0 flex-1"><ApplicationComponent applicationId={applicationId} runId={run.run_id} /></div>
     </div>
   )
 }

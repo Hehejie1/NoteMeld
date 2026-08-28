@@ -1,6 +1,6 @@
 # NoteMeld 应用运行时与 Wiki 应用化执行规格
 
-状态：Ready for Implementation
+状态：Implemented — v1 protocol core and Wiki vertical slice
 Canonical requirement：[`docs/requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md`](../../requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md)
 Plan：[`docs/superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md`](../plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md)
 
@@ -90,6 +90,16 @@ discovered
 - 长任务必须转换为 Host Application Run/Job，由 Host 负责取消、恢复和最终状态；worker 不得自行保持不可控后台进程。
 - 本仓库第一版实现本地可测试的 managed-worker seam 和策略拒绝；不宣称完成外部云平台部署。
 
+### 2.1 Wire frame
+
+桌面 process-jsonl 与 Host 使用一行一个 JSON object，禁止混入日志输出。Host 首先发送：
+
+```json
+{"protocol":"notemeld.application.v1","type":"hello","request_id":"<uuid>","app_id":"example.app","instance_id":"<id>","run_id":"<id>","sdk_version":"1.0.0"}
+```
+
+应用必须返回同一身份和 `request_id` 的 `type=ready` frame；校验失败或超时即终止进程并将 Run 标记为 failed。后续请求使用 `type=invoke`，应用必须返回同一 `request_id`、身份、协议和 SDK 版本的 `type=result` frame。EOF、非法 JSON、身份不匹配和超时均不得被当作成功，也不得自动重放未知的非幂等请求。
+
 ## 3. Host SDK 与 capability
 
 应用 SDK 只提供深接口，不暴露内部 router、ORM、SQLite connection 或宿主文件路径。第一版 capability 包含：
@@ -101,7 +111,7 @@ discovered
 - `agent.run`：通过现有 Agent Host 发起受 app/instance/run 约束的 Agent Turn；
 - `plugin.invoke`：调用已安装、启用且获授权的插件 capability。
 
-每次调用都由 Host 重新检查 manifest、当前平台、用户授权、应用实例和 capability authority。manifest 的 `safe` 或低风险声明不能替代 Host 授权。
+每次调用都由 Host 重新检查 manifest、当前平台、用户授权、应用实例和 capability authority。应用 UI/SDK 使用 `POST /api/applications/runs/{run_id}/capability` 进入 bridge；应用 backend 使用 `POST /api/applications/runs/{run_id}/invoke` 进入 runtime。manifest 的 `safe` 或低风险声明不能替代 Host 授权。
 
 ## 4. 数据和状态
 
@@ -130,7 +140,7 @@ discovered
 - `POST /api/applications/runs/{run_id}/cancel`：请求取消运行；
 - `GET /api/applications/runs/{run_id}`：读取运行状态和安全诊断；
 - `GET /api/applications/settings/workspace`、`PUT /api/applications/settings/workspace`：读取/修改默认 workspace 配置；
-- `GET /api/applications/{app_id}/wiki/graph`、`GET /api/applications/{app_id}/wiki/articles/{source_id}`：由 Wiki capability adapter 提供当前 Wiki 应用所需数据。
+- `POST /api/applications/runs/{run_id}/capability`：由 Wiki capability adapter 提供当前 Wiki 应用所需数据；`capability=wiki.read` 时支持 `method=graph|article`。
 
 旧 `/api/wiki/*` 是否仍作为内部 domain router 保留由实现决定，但应用 UI 不得直接调用它；旧前端 `/wiki` route 和导航 wiring 必须删除。
 
@@ -144,7 +154,7 @@ discovered
 - `frontend/src/apps/wiki/`：Wiki 应用 UI 和图谱适配；
 - `frontend/src/apps/registry.ts`：内建应用 registry。
 
-应用 UI 不直接 import NoteMeld 的内部 service；Wiki 应用通过 app host bridge 或 applications service 获取 host-provided 数据。Bridge 必须只暴露声明过的 capability，并对消息来源、request id 和 payload 大小做校验。应用 registry 只保存 catalog metadata，应用组件使用动态 loader；Application Host 在收到用户点击后才加载对应 UI bundle。
+应用 UI 不直接 import NoteMeld 的内部 service；Wiki 应用通过 app host bridge 获取 host-provided 数据。Bridge 必须只暴露声明过的 capability，并对消息来源、request id 和 payload 大小做校验。应用 registry 只保存 catalog metadata，应用组件使用动态 loader；Application Host 在收到用户点击后才加载对应 UI bundle。当前内建 Wiki 使用受 Host 控制的 React UI adapter 验证协议；任意用户 HTML bundle 的隔离加载仍属于后续实现。
 
 Host 的加载顺序固定为：
 

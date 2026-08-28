@@ -5,6 +5,7 @@ import os
 import queue
 import subprocess
 import threading
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,9 @@ class RuntimeContext:
     instance_id: str
     run_id: str
     platform: str = "desktop"
+
+
+APPLICATION_SDK_VERSION = "1.0.0"
 
 
 class ApplicationRuntime:
@@ -59,10 +63,12 @@ class ApplicationRuntime:
                 raise ApplicationRuntimeError("runtime_unavailable", "application process is not running")
             request = {
                 "protocol": "notemeld.application.v1",
-                "request_id": f"invoke-{context.run_id}",
+                "request_id": str(uuid.uuid4()),
                 "app_id": context.app_id,
                 "instance_id": context.instance_id,
                 "run_id": context.run_id,
+                "sdk_version": APPLICATION_SDK_VERSION,
+                "type": "invoke",
                 "method": method,
                 "input": input_data,
             }
@@ -75,7 +81,15 @@ class ApplicationRuntime:
                 raise
             except (BrokenPipeError, OSError, ValueError) as exc:
                 raise ApplicationRuntimeError("runtime_transport_error", "application process transport failed") from exc
-            if response.get("request_id") not in {request["request_id"], None}:
+            if (
+                response.get("protocol") != "notemeld.application.v1"
+                or response.get("type") != "result"
+                or response.get("request_id") != request["request_id"]
+                or response.get("app_id") != context.app_id
+                or response.get("instance_id") != context.instance_id
+                or response.get("run_id") != context.run_id
+                or response.get("sdk_version") != APPLICATION_SDK_VERSION
+            ):
                 raise ApplicationRuntimeError("runtime_protocol_error", "application process returned a mismatched request")
             return response
         return {"accepted": True, "method": method, "input": input_data}
@@ -124,6 +138,37 @@ class ApplicationRuntime:
         if process.poll() is not None:
             self._processes.pop(context.run_id, None)
             raise ApplicationRuntimeError("runtime_start_failed", "application process exited during startup")
+        hello = {
+            "protocol": "notemeld.application.v1",
+            "type": "hello",
+            "request_id": str(uuid.uuid4()),
+            "app_id": context.app_id,
+            "instance_id": context.instance_id,
+            "run_id": context.run_id,
+            "sdk_version": APPLICATION_SDK_VERSION,
+        }
+        try:
+            assert process.stdin is not None
+            process.stdin.write(json.dumps(hello, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+            ready = self._read_json_line(process, timeout=5)
+        except ApplicationRuntimeError:
+            self._terminate(context.run_id)
+            raise
+        except (BrokenPipeError, OSError, ValueError) as exc:
+            self._terminate(context.run_id)
+            raise ApplicationRuntimeError("runtime_transport_error", "application process handshake failed") from exc
+        if (
+            ready.get("protocol") != "notemeld.application.v1"
+            or ready.get("type") != "ready"
+            or ready.get("request_id") != hello["request_id"]
+            or ready.get("app_id") != context.app_id
+            or ready.get("instance_id") != context.instance_id
+            or ready.get("run_id") != context.run_id
+            or ready.get("sdk_version") != APPLICATION_SDK_VERSION
+        ):
+            self._terminate(context.run_id)
+            raise ApplicationRuntimeError("runtime_protocol_error", "application process handshake was invalid")
 
     @staticmethod
     def _read_json_line(process: subprocess.Popen[str], timeout: float) -> dict[str, Any]:
