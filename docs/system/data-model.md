@@ -1,5 +1,7 @@
 # Data Model
 
+应用包、运行时、权限和 capability 语义以 [`application-protocol-v1.md`](application-protocol-v1.md) 为准；本文件只描述数据权威和存储边界。
+
 更新时间：2026-08-27
 
 本文记录当前数据模型和字段语义。修改数据结构、状态、缓存、统计或文件布局前必须先阅读本文，并搜索相关代码和测试。

@@ -2,6 +2,8 @@
 
 日期：2026-08-27
 
+Canonical protocol：[`docs/system/application-protocol-v1.md`](../../system/application-protocol-v1.md)
+
 ## 自动化验证
 
 | 命令 | 结果 |

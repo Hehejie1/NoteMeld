@@ -3,8 +3,15 @@
 状态：Implemented — v1 protocol core and Wiki vertical slice
 Canonical requirement：[`docs/requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md`](../../requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md)
 Plan：[`docs/superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md`](../plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md)
+Canonical protocol：[`docs/system/application-protocol-v1.md`](../../system/application-protocol-v1.md)
 
-## 1. 协议范围
+## 1. 协议引用
+
+本文件是本次实现的执行规格，不是协议的权威定义。Application Package、Runtime、Host Bridge、Capability、权限、存储和错误语义统一以 [`docs/system/application-protocol-v1.md`](../../system/application-protocol-v1.md) 为准；本文件后续章节只记录本次 NoteMeld 实现的落点、取舍和验收范围。若本文件与系统协议冲突，以系统协议为准。
+
+## 本次实现范围
+
+下面的运行时、Host 和 Wiki 条目是本次实现的落点摘要；协议字段和跨实现约束以系统协议为准。
 
 第一版协议名称为 `notemeld.application.v1`，由 NoteMeld Host 负责解析和执行。应用包是静态 UI、可选后端入口和声明文件的版本化单元。
 

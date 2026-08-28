@@ -6,6 +6,7 @@
 关联对话 / 任务：应用宿主、小程序式 HTML 应用、SDK 能力调用与 Wiki 抽离
 关联系统文档：
 
+- [`docs/system/application-protocol-v1.md`](../system/application-protocol-v1.md)
 - [`docs/system/current-architecture.md`](../system/current-architecture.md)
 - [`docs/system/product-rules.md`](../system/product-rules.md)
 - [`docs/system/data-model.md`](../system/data-model.md)

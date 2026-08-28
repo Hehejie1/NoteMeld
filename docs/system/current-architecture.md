@@ -1,5 +1,7 @@
 # Current Architecture
 
+Application Package 与运行时协议的唯一规范源是 [`application-protocol-v1.md`](application-protocol-v1.md)。
+
 更新时间：2026-08-27
 
 本文只记录当前仓库真实系统事实，不描述理想化重构方案。新需求、方案、Bug 修复和代码改动前必须先阅读本文。

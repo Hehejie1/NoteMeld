@@ -1,5 +1,7 @@
 # Known Pitfalls
 
+应用协议唯一规范源：[`application-protocol-v1.md`](application-protocol-v1.md)。插件协议由 `notemeld-plugins/docs/system/plugin-protocol-v1.md` 维护。
+
 更新时间：2026-08-27
 
 ## Application Host 越权或假运行

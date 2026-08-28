@@ -50,6 +50,8 @@
 
 ## Application Host 接口
 
+协议定义：[`application-protocol-v1.md`](application-protocol-v1.md)。本节只记录当前 API 实现，不替代协议。
+
 应用接口统一使用 `{code,msg,data}` wrapper，并要求现有 session token。应用 UI 通过带 run context 的 capability bridge 读取数据，不直接调用旧 `/api/wiki/*` UI 入口。
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 |

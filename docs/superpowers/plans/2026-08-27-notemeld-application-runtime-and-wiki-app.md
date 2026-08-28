@@ -2,6 +2,9 @@
 
 状态：Implemented (v1 core)
 Canonical requirement：[`docs/requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md`](../../requirements/2026-08-27-notemeld-application-runtime-and-wiki-app.md)
+Canonical protocol：[`docs/system/application-protocol-v1.md`](../../system/application-protocol-v1.md)
+
+本计划只描述实现顺序、任务拆分和验证，不重新定义应用协议；协议变更必须先更新系统目录中的 canonical protocol。
 
 ## 1. 目标与交付边界
 
