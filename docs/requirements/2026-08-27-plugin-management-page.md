@@ -1,11 +1,11 @@
 # NoteMeld 插件管理与内置目录页面
 
-日期：2026-08-27  
-状态：Ready for Plan  
-需求类型：产品 UI 与既有插件控制面增量  
-视觉参考：用户提供的 WorkBuddy 风格“专家 / 技能 / 连接器”页面截图；截图只作为信息架构和交互意图参考，不作为实现指令。  
-相关系统文档：`../system/current-architecture.md`、`../system/product-rules.md`、`../system/data-model.md`、`../system/api-inventory.md`、`../system/known-pitfalls.md`  
-相关既有需求：`2026-08-24-desktop-note-agent-plugin-integration.md`  
+日期：2026-08-27
+状态：Ready for Plan
+需求类型：产品 UI 与既有插件控制面增量
+视觉参考：用户提供的 WorkBuddy 风格“专家 / 技能 / 连接器”页面截图；截图只作为信息架构和交互意图参考，不作为实现指令。
+相关系统文档：`../system/current-architecture.md`、`../system/product-rules.md`、`../system/data-model.md`、`../system/api-inventory.md`、`../system/known-pitfalls.md`
+相关既有需求：`2026-08-24-desktop-note-agent-plugin-integration.md`
 Change Spec：本文件第 8 节，执行前需复制为独立 `docs/system/change-spec-*.md` 或在 Plan/Spec 中保持同等内容。
 
 ## 1. 原始需求
@@ -111,68 +111,68 @@ Change Spec：本文件第 8 节，执行前需复制为独立 `docs/system/chan
 
 ### AC-01 页面入口与目录首屏
 
-**GIVEN** 用户打开 NoteMeld 设置且 backend 已 ready  
-**WHEN** 用户进入 `/settings/plugins`  
+**GIVEN** 用户打开 NoteMeld 设置且 backend 已 ready
+**WHEN** 用户进入 `/settings/plugins`
 **THEN** 页面展示插件目录、已安装视图入口、搜索/筛选入口和“添加插件/内容”入口；页面名称和“插件运行”旧入口语义兼容，既有链接不失效。
 
 ### AC-02 内置默认配置准确
 
-**GIVEN** 应用首次启动或本地没有插件安装记录  
-**WHEN** 用户打开插件目录  
+**GIVEN** 应用首次启动或本地没有插件安装记录
+**WHEN** 用户打开插件目录
 **THEN** 页面展示版本化内置 catalog；每个目录项明确标注 `内置/推荐`、`已安装/未安装`、`已启用/已禁用`、`运行中/不可用/未验证` 等状态，不把仅有 manifest 的项目伪装成已安装运行项。
 
 ### AC-03 已安装状态唯一
 
-**GIVEN** PluginManager 返回某插件的 installation/version 状态  
-**WHEN** 页面刷新、切换筛选或打开详情  
+**GIVEN** PluginManager 返回某插件的 installation/version 状态
+**WHEN** 页面刷新、切换筛选或打开详情
 **THEN** active version、enabled、runtime status、permissions 和 versions 与 `/api/plugins` 一致；页面不自行维护第二份可写状态。
 
 ### AC-04 详情与权限可理解
 
-**GIVEN** 用户打开一个目录项或已安装插件详情  
-**WHEN** 页面渲染详情  
+**GIVEN** 用户打开一个目录项或已安装插件详情
+**WHEN** 页面渲染详情
 **THEN** 至少展示插件 ID/显示名、简介、能力摘要、当前版本、兼容 target 状态、请求权限、已授予权限、来源/许可证及运行诊断入口；权限展示人类可读的用途说明，且不显示密钥、token 或内部绝对路径。
 
 ### AC-05 添加前确认
 
-**GIVEN** 用户从添加入口提交受支持的 HTTPS GitHub/Gitee Release ZIP 来源  
-**WHEN** 后端完成来源解析和 staging manifest 校验、页面收到预览信息  
-**THEN** 页面先展示 plugin id、version、license、requested permissions、包 digest、兼容性和风险提示，用户明确确认后才调用正式安装；同一页面提供取消操作。
+**GIVEN** 用户从添加入口提交受支持的 HTTPS GitHub/Gitee Release ZIP 来源
+**WHEN** 用户填写来源、可选 SHA-256 和待授予权限
+**THEN** 页面展示来源、hash、权限和“安装脚本不会执行”的风险提示，用户明确确认后才调用正式安装；plugin id、version、license、digest 和兼容性仍以既有后端最终校验结果为准；同一页面提供取消操作。
 
 ### AC-06 添加成功
 
-**GIVEN** 包来源、manifest、hash、license、版本和权限全部通过，且用户授予所需权限  
-**WHEN** 用户确认安装  
+**GIVEN** 包来源、manifest、hash、license、版本和权限全部通过，且用户授予所需权限
+**WHEN** 用户确认安装
 **THEN** 页面显示安装成功并刷新目录/已安装状态；版本进入既有不可变版本记录，首次安装按现有规则设置 active version，审计记录可查询。
 
 ### AC-07 添加失败 fail closed
 
-**GIVEN** 来源不是允许的 HTTPS host、重定向越界、包过大/超时、hash 不匹配、路径穿越、安装脚本、license/version/sdk 不兼容、未知权限或用户拒绝权限  
-**WHEN** 用户确认安装  
+**GIVEN** 来源不是允许的 HTTPS host、重定向越界、包过大/超时、hash 不匹配、路径穿越、安装脚本、license/version/sdk 不兼容、未知权限或用户拒绝权限
+**WHEN** 用户确认安装
 **THEN** 页面显示稳定的安全错误分类，插件不进入 active pointer、不显示为已启用，已有 active version 和其他插件继续可用。
 
 ### AC-08 生命周期操作
 
-**GIVEN** 插件存在 active version  
-**WHEN** 用户执行启用、禁用、版本激活或回滚  
+**GIVEN** 插件存在 active version
+**WHEN** 用户执行启用、禁用、版本激活或回滚
 **THEN** 页面展示 pending/loading、成功或失败状态；所有结果以现有 control-plane 返回为准；回滚保留旧版本和审计记录。
 
 ### AC-09 搜索、分类和空状态
 
-**GIVEN** catalog 中有多个插件，或用户输入没有匹配项  
-**WHEN** 用户搜索/分类/切换“已安装”  
+**GIVEN** catalog 中有多个插件，或用户输入没有匹配项
+**WHEN** 用户搜索/分类/切换“已安装”
 **THEN** 列表结果稳定且不改变安装状态；无匹配、无安装项、catalog 加载失败和 backend 未 ready 各有明确空/错误状态及可操作提示。
 
 ### AC-10 ready gate 与安全响应
 
-**GIVEN** backend/desktop sidecar 尚未 ready  
-**WHEN** 用户打开页面或点击安装、启停、激活、回滚  
+**GIVEN** backend/desktop sidecar 尚未 ready
+**WHEN** 用户打开页面或点击安装、启停、激活、回滚
 **THEN** 页面不发起业务 mutation/list 请求，显示等待或诊断提示；任何接口错误遵循 response wrapper，日志和 UI 均不泄露凭证、token、用户本地绝对路径或原始敏感 payload。
 
 ### AC-11 回归兼容
 
-**GIVEN** 现有插件 control-plane 契约测试和既有 `/settings/plugins` URL  
-**WHEN** 完成页面升级  
+**GIVEN** 现有插件 control-plane 契约测试和既有 `/settings/plugins` URL
+**WHEN** 完成页面升级
 **THEN** 现有安装、权限、启停、版本激活/回滚、崩溃 fail-closed 和 I04 路由契约继续通过；旧已安装数据无需用户重新安装即可展示。
 
 ## 8. 增量 Change Spec（执行前依据）
@@ -182,7 +182,7 @@ Change Spec：本文件第 8 节，执行前需复制为独立 `docs/system/chan
 #### 后端
 
 - 增加只读 catalog 读取能力，优先从随应用发布/内建插件包携带的 manifest 生成目录；不把 catalog 记录写入 `PluginInstallation`。
-- 如需要安装前预览，增加一个只做下载/校验、不激活、不写 active pointer 的 preview seam；正式安装仍唯一调用现有 `PluginManager.install`。如果现有 resolver 无法安全复用，先在 service 层抽取共享校验，不复制规则。
+- 本期不增加安装前 preview API；安装弹窗只确认来源、hash、权限和安全提示，正式安装仍唯一调用现有 `PluginManager.install`，其返回结果是 plugin id/version/license/digest 的权威来源。
 - 继续复用现有 plugin response wrapper、session token、权限 authority、审计、独立 migration registry 和失败回滚边界。
 - 对自定义“添加内容”限定为标准插件包/manifest，不提供任意文本直接变成可执行插件的路径。
 
@@ -258,17 +258,3 @@ Change Spec：本文件第 8 节，执行前需复制为独立 `docs/system/chan
 - **影响模块**：设置页、插件前端 service、插件 catalog/preview（若需要）、既有 plugin control-plane、桌面打包资源和契约测试。
 - **是否已有类似能力**：已有 `/settings/plugins` 安装/运行控制台；本需求是目录化和默认配置升级。
 - **是否与产品规则冲突**：不冲突，前提是 Host authority、权限确认、Note/Agent/插件边界不变。
-- **是否与数据模型冲突**：不冲突，但必须分离 catalog 与 `PluginInstallation`，candidate 仍只引用真实安装插件。
-- **是否重新引入 known pitfalls**：主要风险是权限自授权、敏感信息回显、ready gate 抢跑、崩溃状态误报和 migration registry 复用错误；验收标准已覆盖。
-- **是否影响本地数据或线上服务**：默认只影响本地设置 UI 和本地插件 control-plane；若后续 catalog 来自网络，需要另增来源、签名、缓存和隐私评估，不在本期默认范围。
-- **最小可行改动**：复用 `/settings/plugins` 路由和现有 API，增加版本化内置 catalog、目录/详情/筛选/安装确认 UI；仅在安装前预览确有必要时增加只读 preview seam。
-- **需要补的测试**：目录与状态投影、默认内置项不误报、安装确认和 fail-closed、错误脱敏、ready gate、生命周期操作、旧数据兼容和桌面打包资源。
-
-## 12. Superpowers 交接
-
-本需求已达到 `Ready for Plan`。下一步应由 Plan/Spec 流程：
-
-1. 先确定 catalog 的发布载体和 preview 是否可从现有 verifier 最小抽取；
-2. 再生成独立 Change Spec、实施计划和测试规格；
-3. 按“后端事实/契约 → 前端页面 → 桌面资源 → 回归证据”顺序执行；
-4. 在没有完成内置项真实性、权限 fail-closed 和旧插件兼容验证前，不得标记 Implemented。
