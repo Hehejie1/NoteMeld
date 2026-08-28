@@ -57,7 +57,7 @@ class ApplicationRegistry:
                     discovered[validated["id"]] = validated
                 except (OSError, ValueError, json.JSONDecodeError):
                     continue
-        return discovered or self.BUILTIN
+        return discovered if discovered or self.package_root.exists() else self.BUILTIN
 
     def list(self) -> list[dict[str, Any]]:
         return [validate_manifest(item) for item in self.manifests.values()]
@@ -65,6 +65,23 @@ class ApplicationRegistry:
     def get(self, app_id: str) -> dict[str, Any] | None:
         item = self.manifests.get(app_id)
         return validate_manifest(item) if item else None
+
+    def asset_path(self, app_id: str, asset_path: str) -> Path:
+        manifest = self.get(app_id)
+        if manifest is None:
+            raise ApplicationError("application_not_found", "application not found", 404)
+        relative = Path(asset_path)
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            raise ApplicationError("invalid_application_asset", "application asset path is invalid", 400)
+        package_dir = (self.package_root / app_id).resolve()
+        target = (package_dir / relative).resolve()
+        try:
+            target.relative_to(package_dir)
+        except ValueError as exc:
+            raise ApplicationError("application_asset_denied", "application asset is outside the package", 403) from exc
+        if not target.is_file():
+            raise ApplicationError("application_asset_not_found", "application asset not found", 404)
+        return target
 
 
 class WorkspaceManager:
@@ -156,7 +173,23 @@ class ApplicationService:
 
     @classmethod
     def _app(cls, row):
-        return {"id": row.id, "version": row.version, "name": row.name, "enabled": bool(row.enabled), "status": row.status, "manifest": cls._manifest(row), "manifest_sha256": row.manifest_sha256}
+        manifest = cls._manifest(row)
+        return {
+            "id": row.id,
+            "version": row.version,
+            "name": row.name,
+            "enabled": bool(row.enabled),
+            "status": row.status,
+            "manifest": manifest,
+            "protocol": manifest.get("protocol"),
+            "description": manifest.get("description", ""),
+            "ui": manifest.get("ui"),
+            "runtime": manifest.get("runtime"),
+            "platforms": manifest.get("platforms"),
+            "capabilities": manifest.get("capabilities", []),
+            "permissions": manifest.get("permissions", []),
+            "manifest_sha256": row.manifest_sha256,
+        }
 
     @staticmethod
     def _instance(row):

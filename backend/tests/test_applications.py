@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.applications.models import Application, ApplicationArtifact, ApplicationInstance, ApplicationMigration, ApplicationRun, ApplicationSetting
 from app.applications.runtime import ApplicationRuntime, ApplicationRuntimeError, RuntimeContext
-from app.applications.service import ApplicationService, WikiCapabilityAdapter
+from app.applications.service import ApplicationRegistry, ApplicationService, WikiCapabilityAdapter
 from app.db.application_migrations import ensure_application_migration_registry
 from app.db.engine import Base
 
@@ -49,7 +49,12 @@ def service(tmp_path):
     tables = [Application.__table__, ApplicationInstance.__table__, ApplicationRun.__table__, ApplicationArtifact.__table__, ApplicationSetting.__table__, ApplicationMigration.__table__]
     Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine)
-    svc = ApplicationService(session_factory=factory, wiki=WikiCapabilityAdapter(store=FakeWiki()))
+    package_root = ROOT.parent / "notemeld-applications" / "apps"
+    svc = ApplicationService(
+        session_factory=factory,
+        registry=ApplicationRegistry(package_root=package_root),
+        wiki=WikiCapabilityAdapter(store=FakeWiki()),
+    )
     svc.sync_registry()
     return svc, engine
 
@@ -64,7 +69,7 @@ def test_builtin_registry_and_manifest_validation(service):
 
 def test_builtin_registry_discovers_manifest_from_application_directory(service):
     svc, _ = service
-    assert svc.registry.package_root.name == "applications"
+    assert svc.registry.package_root.name == "apps"
     assert svc.registry.get("wiki")["ui"]["entry"] == "ui/index.html"
 
 

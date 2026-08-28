@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.applications.manifest import ApplicationManifestError
@@ -11,6 +12,7 @@ from app.security.session_token import require_session_token
 from app.utils.response import ResponseWrapper as R
 
 router = APIRouter(prefix="/applications", dependencies=[Depends(require_session_token)])
+asset_router = APIRouter(prefix="/applications")
 service = ApplicationService()
 
 
@@ -43,6 +45,18 @@ class CapabilityInvokePayload(BaseModel):
 def _call(fn, *args, **kwargs):
     try:
         return R.success(fn(*args, **kwargs))
+    except ApplicationError as exc:
+        return R.error(exc.message, code=exc.status, data={"error_code": exc.code})
+    except ApplicationManifestError as exc:
+        return R.error(exc.message, code=400, data={"error_code": exc.code})
+
+
+@asset_router.get("/{app_id}/assets/{asset_path:path}")
+def get_application_asset(app_id: str, asset_path: str):
+    # Application UI assets contain no host secrets. Capability calls remain
+    # protected by the session-bound API and the iframe Bridge.
+    try:
+        return FileResponse(service.registry.asset_path(app_id, asset_path))
     except ApplicationError as exc:
         return R.error(exc.message, code=exc.status, data={"error_code": exc.code})
     except ApplicationManifestError as exc:

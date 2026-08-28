@@ -36,7 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../applications": "applications"
+      "../../../notemeld-applications/apps": "applications"
     }
   }
 }

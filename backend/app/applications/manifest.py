@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import stat
 import zipfile
@@ -20,9 +21,20 @@ _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 def default_application_package_root() -> Path:
-    """Resolve the trusted package root in source and PyInstaller layouts."""
+    """Resolve the trusted package root without coupling apps to NoteMeld source."""
     module_path = Path(__file__).resolve()
-    candidates = (module_path.parents[3] / "applications", module_path.parents[2] / "applications")
+    configured = os.getenv("NOTEMELD_APPLICATIONS_DIR", "").strip()
+    configured_path = Path(configured).expanduser() if configured else None
+    if configured_path is not None and (configured_path / "apps").is_dir():
+        configured_path = configured_path / "apps"
+    candidates = tuple(
+        path for path in (
+            configured_path,
+            module_path.parents[3] / "applications",
+            module_path.parents[4] / "notemeld-applications" / "apps",
+            module_path.parents[2] / "applications",
+        ) if path is not None
+    )
     for candidate in candidates:
         if candidate.is_dir():
             return candidate

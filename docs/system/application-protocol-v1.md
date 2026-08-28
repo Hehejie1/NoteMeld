@@ -124,6 +124,6 @@ Wiki v1 adapter 实现 `wiki.read` 的 `graph` 和 `article` 方法。其他 cap
 
 ## 8. 当前实现范围
 
-已实现：内建包发现、按需加载、Application Host、workspace/instance/run、桌面 JSONL handshake、Web 本地 managed-worker seam、Wiki capability 和 Wiki 应用 UI。
+已实现：外部应用包发现、按需加载、Application Host、workspace/instance/run、桌面 JSONL handshake、Web 本地 managed-worker seam、Wiki capability 和独立 Wiki 静态 UI 的 iframe/Bridge 加载。
 
-后续实现：用户应用包安装/升级、真实云端 worker、通用 HTML iframe/WebView 隔离加载、完整 Agent/Plugin/File/Artifact adapter、移动端独立 UI 和 Agent 自动生成应用。
+后续实现：用户应用包安装/升级、真实云端 worker、完整 Agent/Plugin/File/Artifact adapter、移动端独立 UI 和 Agent 自动生成应用。

@@ -158,10 +158,10 @@ discovered
 - `frontend/src/pages/Applications/`：应用列表、应用实例和运行容器；
 - `frontend/src/services/applications.ts`：应用/实例/run/workspace API client；
 - `frontend/src/app-host/`：HTML bundle 容器、Host bridge、生命周期和安全事件；
-- `frontend/src/apps/wiki/`：Wiki 应用 UI 和图谱适配；
-- `frontend/src/apps/registry.ts`：内建应用 registry。
+- 外部 `notemeld-applications/apps/<id>/`：应用 UI、manifest 和静态资源；
+- `frontend/src/app-host/ApplicationHost.tsx`：应用 iframe 容器和 Host Bridge，不包含具体应用组件。
 
-应用 UI 不直接 import NoteMeld 的内部 service；Wiki 应用通过 app host bridge 获取 host-provided 数据。Bridge 必须只暴露声明过的 capability，并对消息来源、request id 和 payload 大小做校验。应用 registry 只保存 catalog metadata，应用组件使用动态 loader；Application Host 在收到用户点击后才加载对应 UI bundle。当前内建 Wiki 使用受 Host 控制的 React UI adapter 验证协议；任意用户 HTML bundle 的隔离加载仍属于后续实现。
+应用 UI 不直接 import NoteMeld 的内部 service；Wiki 应用通过 app host bridge 获取 host-provided 数据。Bridge 必须只暴露声明过的 capability，并对消息来源、request id 和 payload 大小做校验。Application Host 只保存 catalog metadata，收到用户点击后才加载 manifest 声明的 UI bundle。Wiki 通过隔离 iframe 和 Host Bridge 运行，NoteMeld 前端不编译或 import Wiki 应用源码。
 
 Host 的加载顺序固定为：
 

@@ -1,5 +1,7 @@
 # AGENTS.md
 
+应用包由独立的 `../notemeld-applications/` 仓库维护；NoteMeld 只能消费其已构建的 manifest/UI 产物和 Application Protocol，不得把应用源码重新放回 `frontend/src/`。
+
 本文件是 NoteMeld 项目中所有 AI Agent 和开发者的硬规则。任何新需求、方案、代码修改、Bug 修复、重构、接口变更、数据模型变更开始前，必须遵守。
 
 ## 产品范式

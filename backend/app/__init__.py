@@ -74,5 +74,6 @@ def create_app(lifespan) -> FastAPI:
     app.include_router(plugins.router, prefix="/api")
     app.include_router(candidates.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
+    app.include_router(applications.asset_router, prefix="/api")
 
     return app

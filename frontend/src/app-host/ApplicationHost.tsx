@@ -3,7 +3,6 @@ import { AlertTriangle, Ban, CircleAlert, LoaderCircle, RefreshCw, ShieldAlert }
 
 import KnowledgeEmptyState from '@/components/KnowledgeEmptyState'
 import { Button } from '@/components/ui/button'
-import { loadBuiltInApplication } from '@/apps/registry'
 import {
   createApplicationInstance,
   cancelApplicationRun,
@@ -11,6 +10,7 @@ import {
   getApplicationRun,
   listApplicationInstances,
   startApplicationRun,
+  invokeApplicationCapability,
   type ApplicationDetail,
   type ApplicationRun,
 } from '@/services/applications'
@@ -54,14 +54,13 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
   const [run, setRun] = useState<ApplicationRun | null>(null)
   const [state, setState] = useState<HostUiState>('starting')
   const [error, setError] = useState('')
-  const [builtInApplication, setBuiltInApplication] = useState<Awaited<ReturnType<typeof loadBuiltInApplication>>>(undefined)
+  const applicationFrameRef = useRef<HTMLIFrameElement | null>(null)
 
   const start = useCallback(async () => {
     if (!backendReady) return
     setState('starting')
     setError('')
     setRun(null)
-    setBuiltInApplication(undefined)
     try {
       const nextDetail = await getApplication(applicationId)
       setDetail(nextDetail)
@@ -79,21 +78,37 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
       setRun(nextRun)
       if (nextRun.status === 'interrupted') setState('interrupted')
       else if (nextRun.status === 'failed') setState('failed')
-      else {
-        const loadedApplication = await loadBuiltInApplication(applicationId)
-        if (!loadedApplication) {
-          setState('failed')
-          setError('未找到对应的应用包')
-          return
-        }
-        setBuiltInApplication(loadedApplication)
-        setState('running')
-      }
+      else setState('running')
     } catch (cause) {
       setState('failed')
       setError(cause && typeof cause === 'object' && 'msg' in cause ? String(cause.msg) : 'Host 无法建立应用运行实例')
     }
   }, [applicationId, backendReady])
+
+  useEffect(() => {
+    if (!run || !detail || state !== 'running') return
+    const frame = applicationFrameRef.current
+    if (!frame) return
+    const onMessage = async (event: MessageEvent) => {
+      if (event.source !== frame.contentWindow) return
+      const message = event.data
+      if (!message || message.app_id !== applicationId || message.run_id !== run.run_id) return
+      if (message.type === 'notemeld.application.ready' && message.app_id === applicationId && message.run_id === run.run_id) {
+        frame.contentWindow?.postMessage({ type: 'notemeld.application.host-ready', app_id: applicationId, run_id: run.run_id }, '*')
+        return
+      }
+      if (message.type !== 'notemeld.application.invoke') return
+      const respond = (payload: Record<string, unknown>) => frame.contentWindow?.postMessage({ type: 'notemeld.application.result', request_id: message.request_id, ...payload }, '*')
+      try {
+        const result = await invokeApplicationCapability(run.run_id, message.capability, message.method, message.input || {})
+        respond({ ok: true, result })
+      } catch (cause) {
+        respond({ ok: false, error: { code: 'capability_failed', message: cause && typeof cause === 'object' && 'msg' in cause ? String(cause.msg) : '应用能力调用失败' } })
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [applicationId, detail, run, state])
 
   useEffect(() => {
     if (backendReady) void start()
@@ -122,16 +137,16 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
 
   if (!backendReady) return <KnowledgeEmptyState status="loading" title="等待后端就绪" description="应用请求会在桌面 sidecar ready 后自动开始。" />
   if (state !== 'running') return <HostState state={state} detail={detail} error={error || run?.error?.message || undefined} onRetry={() => void start()} />
-  if (!builtInApplication) return <HostState state="failed" error="未找到对应的内建应用包" onRetry={() => void start()} />
-
-  const ApplicationComponent = builtInApplication.component
+  if (!run || !detail?.ui?.entry) return <HostState state="failed" detail={detail} error="应用包缺少 UI 入口" onRetry={() => void start()} />
+  const assetEntry = detail.ui.entry.split('/').map(encodeURIComponent).join('/')
+  const applicationUrl = `/api/applications/${encodeURIComponent(applicationId)}/assets/${assetEntry}?app_id=${encodeURIComponent(applicationId)}&run_id=${encodeURIComponent(run.run_id)}`
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle/70 bg-white px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-3"><span className="h-2 w-2 rounded-full bg-emerald-500" aria-label="运行中" /><div className="min-w-0"><div className="truncate text-sm font-semibold text-on-surface">{builtInApplication.name}</div><div className="truncate text-[11px] text-on-surface-variant">{builtInApplication.description}</div></div></div>
+        <div className="flex min-w-0 items-center gap-3"><span className="h-2 w-2 rounded-full bg-emerald-500" aria-label="运行中" /><div className="min-w-0"><div className="truncate text-sm font-semibold text-on-surface">{detail.name}</div><div className="truncate text-[11px] text-on-surface-variant">{detail.description}</div></div></div>
         <span className="shrink-0 text-[11px] font-medium text-emerald-700">Host 运行中</span>
       </div>
-      <div className="min-h-0 flex-1"><ApplicationComponent applicationId={applicationId} runId={run.run_id} /></div>
+      <div className="min-h-0 flex-1"><iframe ref={applicationFrameRef} title={detail.name} src={applicationUrl} onLoad={() => applicationFrameRef.current?.contentWindow?.postMessage({ type: 'notemeld.application.host-ready', run_id: run.run_id }, '*')} className="h-full w-full border-0" sandbox="allow-scripts" /></div>
     </div>
   )
 }
