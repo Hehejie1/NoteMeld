@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
-from app.applications.manifest import validate_manifest
+from app.applications.manifest import default_application_package_root, runtime_kind_for_platform, validate_manifest
 from app.applications.models import Application, ApplicationInstance, ApplicationRun, ApplicationSetting
 from app.applications.runtime import ApplicationRuntime, ApplicationRuntimeError, RuntimeContext
 from app.db.engine import SessionLocal
@@ -37,7 +37,7 @@ class ApplicationRegistry:
     }
 
     def __init__(self, manifests: dict[str, dict[str, Any]] | None = None, package_root: Path | None = None):
-        self.package_root = package_root or Path(__file__).resolve().parents[3] / "applications"
+        self.package_root = (package_root or default_application_package_root()).resolve()
         self.manifests = manifests if manifests is not None else self._discover()
 
     def _discover(self) -> dict[str, dict[str, Any]]:
@@ -47,6 +47,13 @@ class ApplicationRegistry:
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                     validated = validate_manifest(manifest)
+                    package_dir = manifest_path.parent
+                    ui_entry = package_dir / validated["ui"]["entry"]
+                    if not ui_entry.is_file():
+                        continue
+                    runtime_entry = (validated.get("runtime") or {}).get("entry")
+                    if runtime_entry and not (package_dir / runtime_entry).is_file():
+                        continue
                     discovered[validated["id"]] = validated
                 except (OSError, ValueError, json.JSONDecodeError):
                     continue
@@ -237,12 +244,13 @@ class ApplicationService:
                     return self._run(existing)
             run_id = uuid.uuid4().hex
             manifest = self._manifest(app)
-            runtime_kind = (manifest.get("runtime") or {}).get("kind", "managed-worker")
+            platform = os.getenv("NOTEMELD_PLATFORM", "desktop")
+            runtime_kind = runtime_kind_for_platform(manifest, platform)
             row = ApplicationRun(run_id=run_id, app_id=app_id, instance_id=instance_id, request_id=request_id, payload_hash=payload_hash, runtime_kind=runtime_kind, status="queued")
             db.add(row)
             db.flush()
             try:
-                result = self.runtime.start(manifest, RuntimeContext(app_id, instance_id, run_id, os.getenv("NOTEMELD_PLATFORM", "desktop")))
+                result = self.runtime.start(manifest, RuntimeContext(app_id, instance_id, run_id, platform))
             except ApplicationRuntimeError as exc:
                 row.status = "needs_attention" if exc.code == "public_listener_denied" else "failed"
                 row.error_code, row.error_message = exc.code, exc.message
@@ -260,6 +268,13 @@ class ApplicationService:
             row = db.get(ApplicationRun, run_id)
             if row is None:
                 raise ApplicationError("run_not_found", "application run not found", 404)
+            if row.status in {"queued", "running", "waiting_user"}:
+                app = db.get(Application, row.app_id)
+                if app is not None and self.runtime.status(row.run_id) == "interrupted":
+                    row.status = "interrupted"
+                    row.error_code, row.error_message = "runtime_exited", "application process exited unexpectedly"
+                    row.finished_at = datetime.now(timezone.utc)
+                    db.commit()
             return self._run(row)
         finally:
             db.close()

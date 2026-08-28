@@ -11,6 +11,7 @@ ROOT_DIR = Path(os.environ.get("NOTEMELD_ROOT_DIR", Path.cwd())).resolve()
 BACKEND_DIR = ROOT_DIR / "backend"
 DESKTOP_ENTRY = BACKEND_DIR / "desktop_entry.py"
 APP_RESOURCES_DIR = BACKEND_DIR / "app" / "resources"
+APPLICATIONS_DIR = ROOT_DIR / "applications"
 
 
 def external_plugin_dir(plugin_name: str) -> Path | None:
@@ -33,6 +34,12 @@ def external_plugin_dir(plugin_name: str) -> Path | None:
 
 OFFICIAL_LINK_PLUGIN_DIR = external_plugin_dir("official-link-note")
 APP_RESOURCE_DATAS = []
+if APPLICATIONS_DIR.is_dir():
+    # Application packages are data, not Python modules. Keep the package
+    # directory visible to ApplicationRegistry after PyInstaller extracts the
+    # backend so discovery has the same trusted root in source and desktop
+    # builds.
+    APP_RESOURCE_DATAS.append((str(APPLICATIONS_DIR), "applications"))
 STYLE_PREVIEW_STANDARD = APP_RESOURCES_DIR / "style_preview_standard.md"
 if STYLE_PREVIEW_STANDARD.exists():
     APP_RESOURCE_DATAS.append((str(STYLE_PREVIEW_STANDARD), "app/resources"))

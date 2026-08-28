@@ -8,7 +8,7 @@ Plan：[`docs/superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki
 
 第一版协议名称为 `notemeld.application.v1`，由 NoteMeld Host 负责解析和执行。应用包是静态 UI、可选后端入口和声明文件的版本化单元。
 
-应用包必须声明以下语义：
+应用包必须声明以下语义。`runtime.kind` 是默认运行时；可用 `desktop_kind` 和 `web_kind` 为平台声明不同的 Host adapter。桌面第一版使用 Host 监督的私有 stdin/stdout `process-jsonl`，Web 使用受控 `managed-worker` invocation：
 
 ```json
 {
@@ -17,7 +17,7 @@ Plan：[`docs/superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki
   "version": "1.0.0",
   "name": "Example",
   "ui": {"entry": "ui/index.html"},
-  "runtime": {"kind": "process-jsonl", "entry": "backend/entrypoint"},
+  "runtime": {"kind": "managed-worker", "desktop_kind": "process-jsonl", "web_kind": "managed-worker", "entry": "backend/entrypoint"},
   "platforms": {"desktop": "supported", "web": "supported", "mobile": "unsupported"},
   "capabilities": ["wiki.read", "workspace.file.read", "artifact.create"],
   "permissions": ["workspace.read"],

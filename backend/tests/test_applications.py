@@ -1,6 +1,9 @@
 import json
+import io
 import pathlib
+import os
 import sys
+import zipfile
 
 import pytest
 from fastapi import FastAPI
@@ -55,7 +58,7 @@ def test_builtin_registry_and_manifest_validation(service):
     svc, _ = service
     app = svc.get("wiki")
     assert app["manifest"]["protocol"] == "notemeld.application.v1"
-    assert app["manifest"]["runtime"]["kind"] == "managed-worker"
+    assert "runtime" not in app["manifest"]
     assert svc.list()[0]["id"] == "wiki"
 
 
@@ -63,6 +66,26 @@ def test_builtin_registry_discovers_manifest_from_application_directory(service)
     svc, _ = service
     assert svc.registry.package_root.name == "applications"
     assert svc.registry.get("wiki")["ui"]["entry"] == "ui/index.html"
+
+
+def test_application_package_requires_declared_ui_and_runtime_entries():
+    from app.applications.manifest import ApplicationManifestError, validate_package
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("manifest.json", json.dumps(VALID_MANIFEST))
+        package.writestr("ui/index.html", "<!doctype html>")
+    with pytest.raises(ApplicationManifestError, match="runtime.entry"):
+        validate_package(archive.getvalue())
+
+    complete = io.BytesIO()
+    with zipfile.ZipFile(complete, "w") as package:
+        package.writestr("manifest.json", json.dumps(VALID_MANIFEST))
+        package.writestr("ui/index.html", "<!doctype html>")
+        package.writestr("backend/worker", "#!/usr/bin/env python3\n")
+    manifest, digest = validate_package(complete.getvalue())
+    assert manifest["id"] == "example.app"
+    assert len(digest) == 64
 
 
 @pytest.mark.parametrize("field,value", [("ui", {"entry": "../index.html"}), ("id", "../evil"), ("capabilities", ["wiki.read", "wiki.read"])])
@@ -140,3 +163,31 @@ def test_runtime_policy_rejects_unsupported_platform_and_public_listener():
     unsafe = {**VALID_MANIFEST, "runtime": {"kind": "managed-worker", "public_listener": True}}
     with pytest.raises(ApplicationRuntimeError, match="listener"):
         runtime.start(unsafe, RuntimeContext("example.app", "i", "r"))
+
+
+def test_desktop_process_runtime_uses_private_jsonl_transport_and_reclaims_process(tmp_path):
+    package = tmp_path / "example.app"
+    package.mkdir()
+    worker = package / "worker"
+    worker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "for line in sys.stdin:\n"
+        " request = json.loads(line)\n"
+        " print(json.dumps({'request_id': request['request_id'], 'ok': True}), flush=True)\n",
+        encoding="utf-8",
+    )
+    worker.chmod(worker.stat().st_mode | 0o111)
+    manifest = {**VALID_MANIFEST, "id": "example.app", "runtime": {"kind": "process-jsonl", "entry": "worker"}}
+    runtime = ApplicationRuntime(package_root=tmp_path)
+    context = RuntimeContext("example.app", "instance", "run", platform="desktop")
+
+    assert runtime.start(manifest, context)["runtime_kind"] == "process-jsonl"
+    assert runtime.invoke(manifest, context, "ping", {})["ok"] is True
+    process = runtime._processes[context.run_id]
+    process.terminate()
+    process.wait(timeout=2)
+    assert runtime.status(context.run_id) == "interrupted"
+    assert runtime.stop(manifest, context)["status"] == "stopped"
+    with pytest.raises(ApplicationRuntimeError, match="not running"):
+        runtime.invoke(manifest, context, "ping", {})

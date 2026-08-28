@@ -39,7 +39,7 @@ Canonical requirement：[`docs/requirements/2026-08-27-notemeld-application-runt
 - 定义并校验 `ApplicationManifest v1`、package metadata、platform/capability/permission/storage/runtime 声明。
 - 实现应用包注册/加载、内建包解析、应用实例和 Application Run 状态。
 - 实现应用 workspace 路径配置和逻辑 file reference；默认根目录可被设置服务读写。
-- 实现 desktop `process-jsonl` runtime adapter 的受控生命周期和 web `managed-worker` invocation adapter 的统一接口；第一版不允许应用监听公开端口。
+- 实现 desktop `process-jsonl` runtime adapter 的受控生命周期和 web `managed-worker` invocation adapter 的统一接口；桌面 adapter 实际监督 stdin/stdout 子进程，第一版不允许应用监听公开端口。
 - 提供 Host gateway/capability adapter，至少覆盖 Wiki read、workspace file、Artifact，以及已有 Agent/Plugin 调用的边界描述。
 - 将应用 API 统一使用现有 response wrapper，加入权限拒绝、缺能力、运行时异常、取消和 needs-attention 错误。
 - 添加应用域独立迁移 registry，不改变既有表和 migration registry。

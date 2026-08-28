@@ -2,6 +2,7 @@
   "bundle": {
     "resources": {
       "bin/backend/notemeld-backend.exe": "bin/backend/notemeld-backend.exe",
+      "../../applications": "applications",
       "resources/ffmpeg/ffmpeg-runtime-windows.zip": "ffmpeg/ffmpeg-runtime.zip"
     }
   }

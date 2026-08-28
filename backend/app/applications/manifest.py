@@ -6,7 +6,7 @@ import json
 import re
 import stat
 import zipfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 PROTOCOL = "notemeld.application.v1"
@@ -17,6 +17,16 @@ PERMISSIONS = {"workspace.read", "workspace.write", "network.egress", "agent.run
 MAX_PACKAGE_BYTES = 64 * 1024 * 1024
 _ID_RE = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
+
+
+def default_application_package_root() -> Path:
+    """Resolve the trusted package root in source and PyInstaller layouts."""
+    module_path = Path(__file__).resolve()
+    candidates = (module_path.parents[3] / "applications", module_path.parents[2] / "applications")
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]
 
 
 class ApplicationManifestError(ValueError):
@@ -62,6 +72,10 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     if runtime is not None:
         if not isinstance(runtime, dict) or runtime.get("kind") not in SUPPORTED_RUNTIME_KINDS:
             raise ApplicationManifestError("unsupported_runtime", "application runtime is unsupported")
+        for platform in ("desktop", "web"):
+            platform_kind = runtime.get(f"{platform}_kind")
+            if platform_kind is not None and platform_kind not in SUPPORTED_RUNTIME_KINDS:
+                raise ApplicationManifestError("unsupported_runtime", f"{platform} application runtime is unsupported")
         if runtime.get("entry") is not None:
             _path(runtime.get("entry"), "runtime.entry")
         if runtime.get("public_listener") is True or runtime.get("listen"):
@@ -77,10 +91,20 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(manifest, ensure_ascii=False))
 
 
+def runtime_kind_for_platform(manifest: dict[str, Any], platform: str) -> str:
+    runtime = manifest.get("runtime") or {}
+    return runtime.get(f"{platform}_kind") or runtime.get("kind", "managed-worker")
+
+
 def _zip_member(name: str, info: zipfile.ZipInfo) -> None:
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or "" in path.parts or stat.S_ISLNK((info.external_attr >> 16) & 0xFFFF):
         raise ApplicationManifestError("unsafe_package_path", "application package contains an unsafe path")
+
+
+def _require_zip_entry(names: set[str], entry: str, field: str) -> None:
+    if entry not in names:
+        raise ApplicationManifestError("missing_package_entry", f"{field} points to a missing package entry")
 
 
 def validate_package(content: bytes, *, max_bytes: int = MAX_PACKAGE_BYTES) -> tuple[dict[str, Any], str]:
@@ -95,8 +119,14 @@ def validate_package(content: bytes, *, max_bytes: int = MAX_PACKAGE_BYTES) -> t
             if item is None:
                 raise ApplicationManifestError("missing_manifest", "manifest.json is required")
             manifest = json.loads(archive.read(item).decode("utf-8"))
+            validated = validate_manifest(manifest)
+            names = {info.filename for info in infos}
+            _require_zip_entry(names, validated["ui"]["entry"], "ui.entry")
+            runtime = validated.get("runtime") or {}
+            if runtime.get("entry"):
+                _require_zip_entry(names, runtime["entry"], "runtime.entry")
     except ApplicationManifestError:
         raise
     except (OSError, ValueError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ApplicationManifestError("invalid_package", "application package is invalid") from exc
-    return validate_manifest(manifest), hashlib.sha256(content).hexdigest()
+    return validated, hashlib.sha256(content).hexdigest()

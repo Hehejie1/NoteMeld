@@ -5,7 +5,6 @@
   "name": "Wiki",
   "description": "浏览由 NoteMeld 编译的来源、实体、概念和关系图谱。",
   "ui": { "entry": "ui/index.html" },
-  "runtime": { "kind": "managed-worker", "entry": "backend/worker" },
   "platforms": { "desktop": "supported", "web": "supported", "mobile": "unsupported" },
   "capabilities": ["wiki.read"],
   "permissions": [],

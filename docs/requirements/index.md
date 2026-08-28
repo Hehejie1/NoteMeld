@@ -22,7 +22,8 @@
 
 ## 需求列表
 
-| P8 | Implemented | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | [`plan`](../superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`spec`](../superpowers/specs/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`验证`](../superpowers/tests/2026-08-27-notemeld-application-runtime-and-wiki-app.md) | v1 协议、Host 生命周期/策略、应用 workspace 设置和 Wiki 内建应用已接入；真实外部 worker、应用包安装、移动端 UI、Agent 生成应用后置 |
+| P8 | Planned | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | [`plan`](../superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`spec`](../superpowers/specs/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`验证`](../superpowers/tests/2026-08-27-notemeld-application-runtime-and-wiki-app.md) | 内建包发现、桌面 process-JSONL、Web managed-worker seam、workspace 和 Wiki 应用已接入；用户包安装、真实外部 Web worker、移动端 UI、Agent 生成应用后置 |
+| P8.1 | Ready for Plan | NoteMeld 插件管理与内置目录页面 | [`2026-08-27-plugin-management-page.md`](2026-08-27-plugin-management-page.md) | 本需求第 8 节增量 Change Spec；待生成 plan/spec | 在既有 `/settings/plugins` 安装/运行控制台上增加内置 catalog、搜索/筛选、详情、添加插件/内容和安装前确认；不修改插件协议与 SDK |
 
 | 阶段 | 状态 | 需求 | 文件 | 关联 plan/spec | 备注 |
 | --- | --- | --- | --- | --- | --- |

@@ -59,7 +59,7 @@
 | `application_settings` | `app_id`, `key`, `value_json` | 应用级或全局应用设置；默认 workspace 使用 `app_id=NULL` |
 | `application_app_migrations` | `migration_id`, `applied_at` | 应用域独立迁移记录 |
 
-应用 manifest 协议名为 `notemeld.application.v1`。内建应用包位于 `applications/<id>/`，其 manifest 是发现和配置的唯一声明入口；发现阶段不执行 UI/backend，用户点击后才进入 runtime/UI 加载。当前 Host 支持 `process-jsonl` 与 `managed-worker` 的策略 seam，桌面实际独立进程监督和 Web 外部 worker 部署属于后续 adapter；manifest 禁止公开 listener、绝对路径和路径穿越。应用 workspace 通过 `Path.resolve()` 校验必须位于配置根目录下，Wiki graph/article 继续读取既有 `note_results/wiki` store。
+应用 manifest 协议名为 `notemeld.application.v1`。内建应用包位于 `applications/<id>/`，其 manifest 是发现和配置的唯一声明入口；发现阶段不执行 UI/backend，用户点击后才进入 runtime/UI 加载。Host 支持按平台选择 `process-jsonl` 与 `managed-worker`：桌面由 Host 监督真实的 stdin/stdout 独立进程，Web 保持受控 invocation seam，外部 worker 部署和用户包安装属于后续 adapter；manifest 禁止公开 listener、绝对路径和路径穿越。应用 workspace 通过 `Path.resolve()` 校验必须位于配置根目录下，Wiki graph/article 继续读取既有 `note_results/wiki` store。
 
 N01 冻结 `note_documents.task_id` 为一期 SDK `NoteId` 的 opaque 映射；历史
 task id 不改写，`note_documents` 的标题、Markdown 正文、来源和产品状态是
