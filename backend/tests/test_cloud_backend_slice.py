@@ -324,7 +324,36 @@ def test_cloud_agent_receives_only_readonly_workspace_tools(tmp_path):
         http.put(f"/v1/workspaces/{session['workspace_id']}/files/readme.md", headers=headers, json={"content": "hello"})
         result = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": "tool-read", "input": "inspect workspace"})
         assert result.status_code == 200
-        assert {tool["name"] for tool in captured["tools"]} == {"workspace.list", "workspace.read"}
+        assert {"workspace.list", "workspace.read"}.issubset({tool["name"] for tool in captured["tools"]})
+        assert {"workspace.write", "workspace.delete"}.issubset({tool["name"] for tool in captured["tools"]})
+
+
+def test_cloud_agent_dangerous_workspace_tool_requires_approval(tmp_path):
+    from cloud.agent import AgentResult
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+
+    class ToolAwareRunner:
+        def complete(self, *, input_text, messages, tools=None, tool_handler=None):
+            del input_text, messages, tools
+            result = tool_handler("workspace.write", {"path": "notes.txt", "content": "safe pending"})
+            assert result["requires_approval"] is True
+            return AgentResult(content=result["error"]["message"], model="test")
+
+    app.state.agent_runner = ToolAwareRunner()
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        response = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": "approval-1", "input": "write a note"})
+        assert response.status_code == 200
+        approvals = http.get(f"/v1/sessions/{session['id']}/approvals", headers=headers).json()["data"]
+        assert len(approvals) == 1 and approvals[0]["status"] == "pending"
+        approval_id = approvals[0]["id"]
+        resolved = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers=headers, json={"status": "approved"})
+        assert resolved.status_code == 200
+        assert resolved.json()["data"]["status"] == "approved"
 
 
 def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):

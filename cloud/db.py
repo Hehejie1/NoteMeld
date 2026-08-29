@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS models (
   api_key_ciphertext TEXT, enabled INTEGER NOT NULL DEFAULT 1, is_default INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS approvals (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id),
+  command_id TEXT, tool_name TEXT NOT NULL, arguments_json TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','expired')),
+  requested_by TEXT NOT NULL, resolved_by TEXT, resolution_note TEXT, created_at INTEGER NOT NULL, resolved_at INTEGER,
+  UNIQUE(session_id, command_id, tool_name, arguments_json)
+);
 """
 
 

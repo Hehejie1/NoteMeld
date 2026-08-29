@@ -131,6 +131,11 @@ class ModelUpdate(BaseModel):
     is_default: bool | None = None
 
 
+class ApprovalResolve(BaseModel):
+    status: str = Field(pattern="^(approved|rejected)$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class SessionImportFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -923,6 +928,33 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _audit(db, current["id"], "session.delete", session_id, {"workspace_id": session["workspace_id"], "workspace_purged": workspace_purged})
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "deleted": True, "workspace_purged": workspace_purged}}
 
+    @app.get("/v1/sessions/{session_id}/approvals")
+    @app.get("/v1/cloud/sessions/{session_id}/approvals")
+    def list_approvals(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,session_id,command_id,tool_name,arguments_json,status,requested_by,resolved_by,resolution_note,created_at,resolved_at FROM approvals WHERE session_id=? AND user_id=? ORDER BY created_at DESC", (session_id, current["id"])).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "arguments": json.loads(row["arguments_json"])} for row in rows]}
+
+    @app.post("/v1/sessions/{session_id}/approvals/{approval_id}/resolve")
+    @app.post("/v1/cloud/sessions/{session_id}/approvals/{approval_id}/resolve")
+    def resolve_approval(session_id: str, approval_id: str, payload: ApprovalResolve, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        _owned_session(db, session_id, current["id"])
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            row = cx.execute("SELECT status FROM approvals WHERE id=? AND session_id=? AND user_id=?", (approval_id, session_id, current["id"])).fetchone()
+            if not row:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "approval not found")
+            if row["status"] != "pending":
+                cx.execute("COMMIT")
+                return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": row["status"], "idempotent": True}}
+            cx.execute("UPDATE approvals SET status=?,resolved_by=?,resolution_note=?,resolved_at=? WHERE id=? AND status='pending'", (payload.status, current["id"], payload.note, now, approval_id))
+            cx.execute("COMMIT")
+        _audit(db, current["id"], f"approval.{payload.status}", approval_id, {"session_id": session_id})
+        return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": payload.status, "resolved_at": now}}
+
     @app.post("/v1/sessions/{session_id}/commands")
     @app.post("/v1/cloud/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
@@ -1237,7 +1269,7 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
             try:
                 session = _owned_session(db, session_id, user_id)
                 messages = _cloud_history(db, session_id, exclude_command_id=command_id)
-                tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id)
+                tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id)
                 result = app.state.agent_runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
             except Exception:
                 _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
@@ -1352,7 +1384,7 @@ def _cloud_history(db: CloudDB, session_id: str, *, exclude_command_id: str | No
     return messages[-200:]
 
 
-def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str) -> tuple[list[dict[str, Any]], Any]:
+def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None) -> tuple[list[dict[str, Any]], Any]:
     workspace = Workspace(settings.workspaces_dir / user_id / str(session["workspace_id"]))
     tools = [
         {
@@ -1366,6 +1398,19 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
         },
     ]
+    if db is not None:
+        tools.extend([
+            {
+                "name": "workspace.write",
+                "description": "Write a UTF-8 text file; always requires explicit approval.",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"], "additionalProperties": False},
+            },
+            {
+                "name": "workspace.delete",
+                "description": "Delete a workspace file; always requires explicit approval.",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
+            },
+        ])
 
     def handle(name: str, arguments: dict[str, Any]) -> Any:
         if name == "workspace.list":
@@ -1380,6 +1425,22 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
                 return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace path"}}
             content = workspace.read_text(path)
             return {"ok": True, "path": path, "content": content[:100_000], "truncated": len(content) > 100_000}
+        if name in {"workspace.write", "workspace.delete"}:
+            path = arguments.get("path")
+            if not isinstance(path, str) or len(path) > 1024:
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace path"}}
+            if name == "workspace.write" and not isinstance(arguments.get("content"), str):
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "content must be text"}}
+            if db is None or command_id is None:
+                return {"ok": False, "error": {"code": "approval_unavailable", "message": "dangerous tool approval is unavailable"}}
+            arguments_json = json.dumps(arguments, sort_keys=True, separators=(",", ":"))
+            approval_id = str(uuid.uuid4())
+            with db.connect() as cx:
+                cx.execute("INSERT OR IGNORE INTO approvals(id,user_id,session_id,command_id,tool_name,arguments_json,status,requested_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (approval_id, user_id, str(session["id"]), command_id, name, arguments_json, "pending", "cloud-agent", int(time.time())))
+                row = cx.execute("SELECT id FROM approvals WHERE session_id=? AND command_id=? AND tool_name=? AND arguments_json=?", (str(session["id"]), command_id, name, arguments_json)).fetchone()
+            actual_id = row["id"] if row else approval_id
+            _audit(db, user_id, "approval.request", actual_id, {"session_id": str(session["id"]), "tool_name": name})
+            return {"ok": False, "requires_approval": True, "approval_id": actual_id, "error": {"code": "approval_required", "message": "explicit approval is required before this tool can execute"}}
         return {"ok": False, "error": {"code": "unknown_tool", "message": "workspace tool unavailable"}}
 
     return tools, handle

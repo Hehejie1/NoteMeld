@@ -27,6 +27,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 本地 `backend/app/cloud_sync/client.py` 提供无状态 HTTP adapter，统一 cloud token、session、command、snapshot 和 event 请求；本地 queue/Agent 状态机不放入该 adapter。
 - `backend/app/cloud_sync/queue.py` 同时提供进程内 `SessionMailbox` 和 SQLite-backed `DurableSessionMailbox`；后者用于宿主重启后恢复 queued/admitted command，不替代 Agent SDK 的 canonical 状态机。云端 `cloud/app.py` 对 cloud-native command 使用 SQLite queued/running 状态和每 session worker；进程重启后 queued 自动继续，running 标记 `needs_attention`。
 - 云端 `/v1/models` 保存每个用户的 Provider/Model 元数据；凭证使用 Fernet 加密落盘，接口只返回是否存在凭证。当前模型注册尚未接入每个会话的动态 runner 选择。
+- 云端 Agent 的 workspace 写入/删除工具默认只创建可审计的 `pending` approval，不直接修改文件；审批 API 支持批准/拒绝，执行恢复与远程审批权限仍待后续切片。
 - Durable mailbox 的 `recover(session_id, mode)` 要求启动流程明确选择 `resume` 或 `abandon`；未知副作用不会在进程重启后静默自动重放。
 
 ## 前端入口

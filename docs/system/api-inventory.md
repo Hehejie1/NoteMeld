@@ -433,6 +433,12 @@ Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`
 (falling back to the bootstrap admin password) and responses expose only
 `has_api_key`; the registry is not yet wired to per-session provider selection.
 
+Cloud Agent workspace mutation tools (`workspace.write`, `workspace.delete`) do
+not mutate immediately. They create an auditable `pending` approval exposed by
+`/v1/cloud/sessions/{session_id}/approvals`; resolve with `approved` or
+`rejected`. Approval currently records the decision boundary; execution resume
+and remote-approval grant enforcement remain a follow-up slice.
+
 The current slice provides scoped share-token read/control access and cloud
 workspace backup/restore. Multi-instance queue fencing and full end-to-end key
 exchange remain future work; device relay still requires the platform clients
