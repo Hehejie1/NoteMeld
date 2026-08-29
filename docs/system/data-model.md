@@ -224,6 +224,8 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 
 ## 本地数据和远端数据边界
 
+Cloud v1 stores session metadata/events and command idempotency records in `cloud.db`; workspace content is under the configured `workspaces/<user_id>/<workspace_id>` directory. Workspace writes use a fsync + atomic replace sequence and reject traversal/symlink access. Relay payloads are validated as `notemeld.sync.v1` envelopes, routed to the addressed connected device, and are not written to SQLite or disk.
+
 - NoteMeld 的主要业务数据本地持久化在 SQLite 和文件系统。
 - 远端 Provider 只负责 LLM 推理；不应假设远端保存 NoteMeld 数据。
 - 视频平台、网页和外部下载器是内容来源，不是 NoteMeld 的持久化事实源。

@@ -37,3 +37,13 @@ class Workspace:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         temporary.replace(path)
+
+    def stats(self) -> dict[str, int]:
+        files = 0
+        bytes_used = 0
+        for path in self.root.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            files += 1
+            bytes_used += path.stat().st_size
+        return {"file_count": files, "bytes_used": bytes_used}

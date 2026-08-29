@@ -96,3 +96,29 @@ def test_workspace_rejects_escape(tmp_path):
         pass
     else:
         raise AssertionError("path traversal was accepted")
+
+
+def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        written = http.put("/v1/workspaces/demo/files/notes/today.md", headers=headers, json={"content": "hello"})
+        assert written.status_code == 200
+        assert written.json()["data"]["bytes_written"] == 5
+        read = http.get("/v1/workspaces/demo/files/notes/today.md", headers=headers)
+        assert read.status_code == 200 and read.json()["data"]["content"] == "hello"
+        stats = http.get("/v1/workspaces/demo/stats", headers=headers).json()["data"]
+        assert stats == {"workspace_id": "demo", "file_count": 1, "bytes_used": 5}
+        assert http.put("/v1/workspaces/demo/files/../escape.txt", headers=headers, json={"content": "x"}).status_code in (400, 404)
+
+
+def test_grant_listing_and_revocation(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("desktop-unique-1", "phone-unique-1"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device}).status_code == 200
+        grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "phone-unique-1", "host_device_id": "desktop-unique-1"}).json()["data"]["grant_id"]
+        assert http.get("/v1/grants", headers=headers).json()["data"][0]["id"] == grant
+        assert http.post(f"/v1/grants/{grant}/revoke", headers=headers).status_code == 200
+        assert http.post(f"/v1/grants/{grant}/revoke", headers=headers).status_code == 404

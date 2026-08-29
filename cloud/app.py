@@ -60,12 +60,16 @@ class DeviceCreate(BaseModel):
 class SessionCreate(BaseModel):
     kind: str = Field(pattern="^(cloud_native|device_remote)$")
     title: str = Field(default="New session", max_length=200)
-    workspace_id: str = Field(default="default", min_length=1, max_length=128)
+    workspace_id: str = Field(default="default", min_length=1, max_length=128, pattern="^[A-Za-z0-9_-]+$")
 
 
 class CommandCreate(BaseModel):
     request_id: str = Field(min_length=1, max_length=128)
     input: str = Field(min_length=1, max_length=100_000)
+
+
+class WorkspaceWrite(BaseModel):
+    content: str = Field(max_length=10_000_000)
 
 
 def create_app(settings: CloudSettings | None = None) -> FastAPI:
@@ -77,7 +81,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app = FastAPI(title="NoteMeld Cloud", version="0.1.0")
     app.state.db = db
     app.state.settings = settings
-    app.state.relays: dict[str, set[WebSocket]] = {}
+    app.state.relays: dict[str, dict[str, WebSocket]] = {}
 
     @app.get("/health")
     def health() -> dict:
@@ -241,6 +245,20 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("INSERT INTO grants(id,user_id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (grant_id, current["id"], payload.controller_device_id, payload.host_device_id, payload.role, json.dumps(payload.scopes), json.dumps(payload.workspace_refs), payload.expires_at, int(time.time())))
         return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "role": payload.role, "expires_at": payload.expires_at}}
 
+    @app.get("/v1/grants")
+    def list_grants(current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,revoked_at,created_at FROM grants WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"]), "workspace_refs": json.loads(row["workspace_refs_json"])} for row in rows]}
+
+    @app.post("/v1/grants/{grant_id}/revoke")
+    def revoke_grant(grant_id: str, current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            result = cx.execute("UPDATE grants SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), grant_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "active grant not found")
+        return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "revoked": True}}
+
     @app.post("/v1/sessions")
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db))):
         session_id = str(uuid.uuid4())
@@ -249,6 +267,32 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", now, now))
         return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id}}
+
+    @app.get("/v1/workspaces/{workspace_id}/stats")
+    def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, **workspace.stats()}}
+
+    @app.get("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
+    def read_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        try:
+            content = workspace.read_text(logical_path)
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "content": content}}
+
+    @app.put("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
+    def write_workspace_file(workspace_id: str, logical_path: str, payload: WorkspaceWrite, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        try:
+            workspace.write_text(logical_path, payload.content)
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
 
     @app.get("/v1/sessions")
     def list_sessions(current=Depends(_auth_dependency(db))):
@@ -317,24 +361,35 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.websocket("/v1/relay/connect/{session_id}")
     async def relay(websocket: WebSocket, session_id: str):
         current = _authenticate_token(db, websocket.headers.get("authorization"))
-        if not current or not _session_owned_by(db, session_id, current["id"]):
+        device_id = websocket.query_params.get("device_id")
+        if not current or not device_id or not _session_owned_by(db, session_id, current["id"]) or not _active_device_owned(db, device_id, current["id"]):
             await websocket.close(code=4401)
             return
         await websocket.accept()
-        peers = app.state.relays.setdefault(session_id, set())
-        peers.add(websocket)
+        peers = app.state.relays.setdefault(session_id, {})
+        peers[device_id] = websocket
         try:
             while True:
                 message = await websocket.receive_text()
                 if len(message.encode()) > 256 * 1024:
                     await websocket.send_json({"type": "rejected", "error": "frame_too_large"})
                     continue
-                for peer in tuple(peers):
-                    if peer is not websocket:
-                        await peer.send_text(message)
+                try:
+                    envelope = json.loads(message)
+                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext"):
+                        raise ValueError("invalid relay envelope")
+                    if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"]):
+                        raise ValueError("relay grant missing")
+                except (ValueError, json.JSONDecodeError, TypeError):
+                    await websocket.send_json({"type": "rejected", "error": "invalid_envelope"})
+                    continue
+                peer = peers.get(envelope["recipient_device_id"])
+                if peer is not None and peer is not websocket:
+                    await peer.send_text(message)
                 await websocket.send_json({"type": "accepted"})
         except WebSocketDisconnect:
-            peers.discard(websocket)
+            if peers.get(device_id) is websocket:
+                peers.pop(device_id, None)
             if not peers:
                 app.state.relays.pop(session_id, None)
 
@@ -391,3 +446,19 @@ def _owned_session(db: CloudDB, session_id: str, user_id: str):
 def _session_owned_by(db: CloudDB, session_id: str, user_id: str) -> bool:
     with db.connect() as cx:
         return cx.execute("SELECT 1 FROM sessions WHERE id=? AND user_id=?", (session_id, user_id)).fetchone() is not None
+
+
+def _active_device_owned(db: CloudDB, device_id: str, user_id: str) -> bool:
+    with db.connect() as cx:
+        return cx.execute("SELECT 1 FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, user_id)).fetchone() is not None
+
+
+def _validate_workspace_id(workspace_id: str) -> None:
+    if not workspace_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in workspace_id):
+        raise HTTPException(400, "invalid workspace id")
+
+
+def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str) -> bool:
+    with db.connect() as cx:
+        row = cx.execute("SELECT g.expires_at,g.revoked_at,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND ((g.controller_device_id=? AND g.host_device_id=?) OR (g.controller_device_id=? AND g.host_device_id=?)) ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, controller, host, host, controller)).fetchone()
+    return bool(row and row["kind"] == "device_remote" and not row["revoked_at"] and (row["expires_at"] is None or row["expires_at"] > int(time.time())))

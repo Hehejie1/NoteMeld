@@ -300,6 +300,20 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 
 ## 远端接口边界
 
+### Cloud sync backend (v1)
+
+Cloud service endpoints are intentionally separated from the local `/api` namespace. Authentication uses bearer tokens issued by `/v1/auth/login`; relay frames are opaque encrypted envelopes and are never persisted by the relay.
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
+| GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
+| GET | `/v1/grants` | list remote-control grants |
+| POST | `/v1/grants/{grant_id}/revoke` | revoke a grant |
+| WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant |
+
+The current slice does not yet provide share tokens, multi-instance queue fencing, end-to-end key exchange, or cloud backup/restore APIs.
+
 - LLM Provider 请求由后端发起，不由前端直接调用。当前主路径走 `backend/app/ai/`（notemeld-ai 抽象层）：通过 `NotemeldGPT` 适配器在 `create_chat_completion` 内调 `Models.complete()`，由 notemeld-ai 统一写 usage。旧 `backend/app/gpt/` 的 `GPTFactory`/`UniversalGPT` 过渡期保留供回滚（`from_config` 已加 `DeprecationWarning`）；`services/model.py` 的 `list_models` 仍走 `GPTFactory`（非 chat-completion 路径）。详见 `docs/system/current-architecture.md` 的 LLM 调用层章节。
 - 视频平台、网页和转写服务由后端下载器/转写器调用。
 - 前端唯一允许直接访问后端之外的场景应经过明确设计，例如外链打开或图片代理；新增远端调用必须说明安全边界。
