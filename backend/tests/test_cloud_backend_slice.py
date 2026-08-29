@@ -1,9 +1,13 @@
 from pathlib import Path
+import base64
 
 from fastapi.testclient import TestClient
 
 from cloud.app import create_app
 from cloud.config import CloudSettings
+
+
+PUBLIC_KEY = base64.urlsafe_b64encode(b"k" * 32).decode()
 
 
 def client(tmp_path: Path) -> TestClient:
@@ -79,10 +83,10 @@ def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
         headers = {"Authorization": f"Bearer {token}"}
-        first = http.post("/v1/devices", headers=headers, json={"device_id": "desktop-unique-1", "platform": "desktop", "display_name": "Desktop", "public_key": "desktop-key"})
+        first = http.post("/v1/devices", headers=headers, json={"device_id": "desktop-unique-1", "platform": "desktop", "display_name": "Desktop", "public_key": PUBLIC_KEY})
         second = http.post("/v1/pairings/start", headers=headers)
         code = second.json()["data"]["code"]
-        paired = http.post("/v1/pairings/confirm", headers=headers, json={"code": code, "device_id": "phone-unique-1", "platform": "ios", "display_name": "Phone", "public_key": "phone-key"})
+        paired = http.post("/v1/pairings/confirm", headers=headers, json={"code": code, "device_id": "phone-unique-1", "platform": "ios", "display_name": "Phone", "public_key": PUBLIC_KEY})
         assert first.status_code == paired.status_code == 200
         grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "phone-unique-1", "host_device_id": "desktop-unique-1", "scopes": ["message.send"]})
         assert grant.status_code == 200
@@ -182,7 +186,7 @@ def test_grant_listing_and_revocation(tmp_path):
         token = login(http, "admin", "admin-password-123")
         headers = {"Authorization": f"Bearer {token}"}
         for device in ("desktop-unique-1", "phone-unique-1"):
-            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": f"{device}-key"}).status_code == 200
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
         grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "phone-unique-1", "host_device_id": "desktop-unique-1"}).json()["data"]["grant_id"]
         assert http.get("/v1/grants", headers=headers).json()["data"][0]["id"] == grant
         assert http.post(f"/v1/grants/{grant}/revoke", headers=headers).status_code == 200
@@ -206,7 +210,7 @@ def test_admin_delete_cleans_owned_relations(tmp_path):
         user_id = http.post("/v1/admin/users", headers=admin_headers, json={"username": "owner", "password": "owner-password-123"}).json()["data"]["id"]
         user_headers = {"Authorization": f"Bearer {login(http, 'owner', 'owner-password-123')}"}
         for device in ("owner-desktop", "owner-phone"):
-            assert http.post("/v1/devices", headers=user_headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": f"{device}-key"}).status_code == 200
+            assert http.post("/v1/devices", headers=user_headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
         session = http.post("/v1/sessions", headers=user_headers, json={"kind": "cloud_native"}).json()["data"]
         assert http.post("/v1/grants", headers=user_headers, json={"controller_device_id": "owner-phone", "host_device_id": "owner-desktop"}).status_code == 200
         assert http.post("/v1/share-tokens", headers=user_headers, json={"session_id": session["id"]}).status_code == 200
@@ -218,7 +222,7 @@ def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
         token = login(http, "admin", "admin-password-123")
         headers = {"Authorization": f"Bearer {token}"}
         for device in ("relay-controller", "relay-host"):
-            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": f"{device}-key"}).status_code == 200
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "relay-controller", "host_device_id": "relay-host"}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "relay-controller", "recipient_device_id": "relay-host", "sequence": 1, "frame_id": "frame-1", "authority_epoch": 1, "ciphertext": "opaque"}
@@ -234,7 +238,7 @@ def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
         token = login(http, "admin", "admin-password-123")
         headers = {"Authorization": f"Bearer {token}"}
         for device in ("controller-online", "host-online"):
-            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": f"{device}-key"}).status_code == 200
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "controller-online", "host_device_id": "host-online"}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "controller-online", "recipient_device_id": "host-online", "sequence": 1, "frame_id": "frame-online", "authority_epoch": 1, "ciphertext": "opaque"}

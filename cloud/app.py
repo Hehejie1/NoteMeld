@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import secrets
 import time
@@ -226,6 +227,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/devices")
     def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db))):
+        if payload.public_key is not None and not _valid_public_key(payload.public_key):
+            raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         now = int(time.time())
         with db.connect() as cx:
             try:
@@ -260,6 +263,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/pairings/confirm")
     def confirm_pairing(payload: PairingConfirm, current=Depends(_auth_dependency(db))):
+        if payload.public_key is not None and not _valid_public_key(payload.public_key):
+            raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         digest = hashlib.sha256(payload.code.encode()).hexdigest()
         now = int(time.time())
         with db.connect() as cx:
@@ -656,6 +661,14 @@ def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):
     if not row or row["revoked_at"] or (row["expires_at"] is not None and row["expires_at"] <= int(time.time())):
         return None
     return row
+
+
+def _valid_public_key(value: str) -> bool:
+    try:
+        decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    except (ValueError, TypeError):
+        return False
+    return len(decoded) == 32
 
 
 def _audit(db: CloudDB, actor_user_id: str | None, action: str, resource_id: str | None, metadata: dict) -> None:
