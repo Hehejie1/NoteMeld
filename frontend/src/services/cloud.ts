@@ -3,6 +3,8 @@ import axios, { AxiosInstance } from 'axios'
 export interface CloudEnvelope<T> { code: number; msg: string; data: T }
 export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; max_request_bytes: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
 export interface CloudSession { id: string; kind: 'cloud_native' | 'device_remote'; title?: string; workspace_id: string; model_id?: string | null; status?: string }
+export interface CloudUser { id: string; username: string; role: 'admin' | 'user'; disabled: boolean; created_at: number }
+export interface CloudToken { id: string; audience: string; scopes: string[]; expires_at?: number | null; revoked_at?: number | null; created_at: number }
 
 /** Stateless adapter for cloud control-plane APIs; no local Agent state lives here. */
 export class CloudClient {
@@ -23,7 +25,17 @@ export class CloudClient {
     return response.data.data
   }
 
-  login(password: string, username?: string, accountId?: string) { return this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }) }
+  async login(password: string, username?: string, accountId?: string) { const data = await this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }); this.token = data.token; return data }
+  async rotateToken() { const data = await this.request<{ token: string; jti: string; expires_at?: number | null }>('POST', '/v1/auth/rotate'); this.token = data.token; return data }
+  async revokeCurrentToken() { const data = await this.request<Record<string, unknown>>('POST', '/v1/auth/revoke'); this.token = null; return data }
+  listTokens() { return this.request<CloudToken[]>('GET', '/v1/auth/tokens') }
+  createToken(scopes: string[] = ['*'], expiresAt?: number) { return this.request<{ token: string; jti: string; scopes: string[]; expires_at?: number | null }>('POST', '/v1/auth/tokens', { scopes, ...(expiresAt === undefined ? {} : { expires_at: expiresAt }) }) }
+  revokeToken(tokenId: string) { return this.request<Record<string, unknown>>('POST', `/v1/auth/tokens/${encodeURIComponent(tokenId)}/revoke`) }
+  listUsers() { return this.request<CloudUser[]>('GET', '/v1/admin/users') }
+  createUser(username: string, password: string) { return this.request<{ id: string; username: string }>('POST', '/v1/admin/users', { username, password }) }
+  updateUser(userId: string, changes: { username?: string; password?: string; disabled?: boolean }) { return this.request<Record<string, unknown>>('PUT', `/v1/admin/users/${encodeURIComponent(userId)}`, changes) }
+  deleteUser(userId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/admin/users/${encodeURIComponent(userId)}`) }
+  listAudits(limit = 100) { return this.request<unknown[]>('GET', '/v1/admin/audits', undefined, { params: { limit } }) }
   capabilities() { return this.request<CloudCapabilities>('GET', '/v1/capabilities') }
   listDevices() { return this.request<unknown[]>('GET', '/v1/devices') }
   registerDevice(deviceId: string, platform: string, displayName: string, publicKey?: string) { return this.request<Record<string, unknown>>('POST', '/v1/devices/register', { device_id: deviceId, platform, display_name: displayName, public_key: publicKey }) }
