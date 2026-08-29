@@ -71,8 +71,20 @@ class CloudClient:
     def verify_device_challenge(self, challenge: str, signature: str, device_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/challenge/verify", json={"challenge": challenge, "signature": signature})
 
-    def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default") -> dict[str, Any]:
-        return self._request("POST", "/v1/cloud/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id})
+    def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default", model_id: str | None = None) -> dict[str, Any]:
+        return self._request("POST", "/v1/cloud/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id, "model_id": model_id})
+
+    def list_models(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/models")
+
+    def create_model(self, name: str, provider: str, model: str, *, base_url: str | None = None, api_key: str | None = None, enabled: bool = True, is_default: bool = False) -> dict[str, Any]:
+        return self._request("POST", "/v1/models", json={"name": name, "provider": provider, "model": model, "base_url": base_url, "api_key": api_key, "enabled": enabled, "is_default": is_default})
+
+    def update_model(self, model_id: str, **changes: Any) -> dict[str, Any]:
+        return self._request("PUT", f"/v1/models/{model_id}", json=changes)
+
+    def delete_model(self, model_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/models/{model_id}")
 
     def import_session(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/v1/cloud/sessions/import", json=snapshot)
@@ -106,6 +118,12 @@ class CloudClient:
 
     def events(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after})
+
+    def list_approvals(self, session_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/v1/cloud/sessions/{session_id}/approvals")
+
+    def resolve_approval(self, session_id: str, approval_id: str, status: str, note: str | None = None) -> dict[str, Any]:
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/approvals/{approval_id}/resolve", json={"status": status, "note": note})
 
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
