@@ -66,40 +66,40 @@ class CloudClient:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat")
 
     def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default") -> dict[str, Any]:
-        return self._request("POST", "/v1/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id})
+        return self._request("POST", "/v1/cloud/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id})
 
     def import_session(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/v1/cloud/sessions/import", json=snapshot)
 
     def send_command(self, session_id: str, request_id: str, input_text: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/sessions/{session_id}/commands", json={"request_id": request_id, "input": input_text})
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/commands", json={"request_id": request_id, "input": input_text})
 
     def snapshot(self, session_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/sessions/{session_id}/snapshot")
+        return self._request("GET", f"/v1/cloud/sessions/{session_id}/snapshot")
 
     def list_sessions(self) -> list[dict[str, Any]]:
-        return self._request("GET", "/v1/sessions")
+        return self._request("GET", "/v1/cloud/sessions")
 
     def archive_session(self, session_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/sessions/{session_id}/archive")
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/archive")
 
     def restore_session(self, session_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/sessions/{session_id}/restore")
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/restore")
 
     def copy_session(self, session_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/sessions/{session_id}/copy")
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/copy")
 
     def rotate_authority(self, session_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/sessions/{session_id}/authority/rotate")
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/authority/rotate")
 
     def acquire_authority_lease(self, session_id: str, owner: str, ttl_seconds: int = 30) -> dict[str, Any]:
-        return self._request("POST", f"/v1/sessions/{session_id}/authority/lease", json={"owner": owner, "ttl_seconds": ttl_seconds})
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/authority/lease", json={"owner": owner, "ttl_seconds": ttl_seconds})
 
     def release_authority_lease(self, session_id: str, owner: str) -> dict[str, Any]:
-        return self._request("DELETE", f"/v1/sessions/{session_id}/authority/lease", params={"owner": owner})
+        return self._request("DELETE", f"/v1/cloud/sessions/{session_id}/authority/lease", params={"owner": owner})
 
     def events(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
-        return self._request("GET", f"/v1/sessions/{session_id}/events", params={"after": after})
+        return self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after})
 
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")

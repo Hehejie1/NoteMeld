@@ -8,7 +8,7 @@ def test_cloud_client_login_and_session_contract():
         if request.url.path == "/v1/auth/login":
             return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"token": "nmt_test", "user_id": "u1"}})
         assert request.headers["authorization"] == "Bearer nmt_test"
-        if request.url.path == "/v1/sessions":
+        if request.url.path == "/v1/cloud/sessions":
             assert request.headers["x-device-id"] == "device-a"
             return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"id": "s1", "kind": "cloud_native"}})
         raise AssertionError(request.url.path)
