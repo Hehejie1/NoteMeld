@@ -99,6 +99,11 @@ class DurableSessionMailbox:
         with self._connect() as cx:
             cx.execute("UPDATE sync_mailbox SET status='completed' WHERE session_id=? AND request_id=? AND status='admitted'", (session_id, request_id))
 
+    def discard_pending(self, session_id: str) -> int:
+        with self._connect() as cx:
+            result = cx.execute("UPDATE sync_mailbox SET status='abandoned' WHERE session_id=? AND status IN ('queued','admitted')", (session_id,))
+        return result.rowcount
+
     def _connect(self) -> sqlite3.Connection:
         cx = sqlite3.connect(self.database, isolation_level=None)
         cx.row_factory = sqlite3.Row

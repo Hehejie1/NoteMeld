@@ -24,8 +24,11 @@ def test_durable_mailbox_survives_reopen(tmp_path):
     database = tmp_path / "queue.db"
     first = DurableSessionMailbox(database, max_size=2)
     assert first.enqueue("s1", "r1", "hello").sequence == 1
+    assert first.enqueue("s1", "r2", "later").sequence == 2
     reopened = DurableSessionMailbox(database, max_size=2)
     command = reopened.pop("s1")
     assert command is not None and command.request_id == "r1" and command.sequence == 1
     reopened.complete("s1", "r1")
+    assert len(reopened.pending("s1")) == 1
+    assert reopened.discard_pending("s1") == 1
     assert reopened.pending("s1") == []
