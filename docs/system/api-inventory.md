@@ -343,6 +343,8 @@ Relay `command` frames additionally require the Grant's `message.send` scope;
 `receipt` and `event` frames are allowed only on an existing bidirectional Grant.
 The versioned frame schema carries `nonce`, `frame_type`, sequence and opaque
 `ciphertext`; relay never interprets plaintext or AEAD contents.
+Relay validates the nonce as URL-safe Base64 encoding of a 12-byte AEAD nonce;
+missing or malformed nonces are rejected before routing.
 
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create

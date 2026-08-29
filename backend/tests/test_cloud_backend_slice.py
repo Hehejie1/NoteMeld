@@ -8,6 +8,7 @@ from cloud.config import CloudSettings
 
 
 PUBLIC_KEY = base64.urlsafe_b64encode(b"k" * 32).decode()
+NONCE = base64.urlsafe_b64encode(b"n" * 12).decode()
 
 
 def client(tmp_path: Path) -> TestClient:
@@ -249,7 +250,7 @@ def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
             assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "relay-controller", "host_device_id": "relay-host", "scopes": ["message.send"]}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
-        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "relay-controller", "recipient_device_id": "relay-host", "sequence": 1, "frame_id": "frame-1", "authority_epoch": 1, "frame_type": "command", "ciphertext": "opaque"}
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "relay-controller", "recipient_device_id": "relay-host", "sequence": 1, "frame_id": "frame-1", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=relay-controller", headers=headers) as socket:
             socket.send_json(frame)
             assert socket.receive_json()["error"] == "host_offline"
@@ -265,7 +266,7 @@ def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
             assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "controller-online", "host_device_id": "host-online", "scopes": ["message.send"]}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
-        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "controller-online", "recipient_device_id": "host-online", "sequence": 1, "frame_id": "frame-online", "authority_epoch": 1, "frame_type": "command", "ciphertext": "opaque"}
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "controller-online", "recipient_device_id": "host-online", "sequence": 1, "frame_id": "frame-online", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
         receipt = {**frame, "sender_device_id": "host-online", "recipient_device_id": "controller-online", "sequence": 1, "frame_id": "receipt-online", "frame_type": "receipt", "ciphertext": "received"}
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=controller-online", headers=headers) as controller, http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=host-online", headers=headers) as host:
             controller.send_json(frame)
@@ -285,7 +286,7 @@ def test_relay_command_requires_message_scope(tmp_path):
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "scope-controller", "host_device_id": "scope-host"}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=scope-controller", headers=headers) as socket:
-            socket.send_json({"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "scope-controller", "recipient_device_id": "scope-host", "sequence": 1, "frame_id": "scope-frame", "frame_type": "command", "ciphertext": "opaque"})
+            socket.send_json({"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "scope-controller", "recipient_device_id": "scope-host", "sequence": 1, "frame_id": "scope-frame", "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"})
             assert socket.receive_json()["error"] == "invalid_envelope"
 
 

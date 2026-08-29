@@ -596,7 +596,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     envelope = json.loads(message)
                     sequence = envelope.get("sequence")
                     frame_type = envelope.get("frame_type", "command")
-                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
+                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not _valid_nonce(envelope.get("nonce")) or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
                     required_scope = "message.send" if frame_type == "command" else None
                     if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope):
@@ -709,6 +709,16 @@ def _valid_public_key(value: str) -> bool:
     except (ValueError, TypeError):
         return False
     return len(decoded) == 32
+
+
+def _valid_nonce(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    except (ValueError, TypeError):
+        return False
+    return len(decoded) == 12
 
 
 def _audit(db: CloudDB, actor_user_id: str | None, action: str, resource_id: str | None, metadata: dict) -> None:
