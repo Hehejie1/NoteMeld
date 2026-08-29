@@ -18,6 +18,7 @@ class CloudSettings:
     agent_model: str = "cloud-agent"
     agent_api_key: str | None = None
     agent_timeout_seconds: float = 120.0
+    require_device_proof: bool = False
 
     @property
     def database_path(self) -> Path:
@@ -41,4 +42,5 @@ def load_settings() -> CloudSettings:
         agent_model=os.getenv("NOTEMELD_CLOUD_AGENT_MODEL", "cloud-agent"),
         agent_api_key=os.getenv("NOTEMELD_CLOUD_AGENT_API_KEY") or None,
         agent_timeout_seconds=float(os.getenv("NOTEMELD_CLOUD_AGENT_TIMEOUT_SECONDS", "120")),
+        require_device_proof=os.getenv("NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF", "0").strip().lower() in {"1", "true", "yes"},
     )

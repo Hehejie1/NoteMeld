@@ -342,6 +342,8 @@ the default configuration.
 | --- | --- | --- |
 | POST | `/v1/cloud/sessions/import` | create a new independent cloud-native session from an idempotent, allowlisted local full-share snapshot; validates active source device, secrets, paths, file count/size and SHA-256 |
 | POST | `/v1/devices/register` | canonical device registration path (legacy `/v1/devices` remains supported) |
+| POST | `/v1/devices/{device_id}/challenge` | issue a one-time device proof challenge |
+| POST | `/v1/devices/{device_id}/challenge/verify` | verify an Ed25519 proof and authorize the device for a short relay window |
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
@@ -375,6 +377,10 @@ When omitted, a standard Grant receives `message.send`, `context.select`,
 explicitly requested and are never inferred from a permanent expiry.
 `POST /v1/devices/{device_id}/heartbeat` records `last_seen_at`; relay
 connections update the same field on connect.
+When `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=true`, relay connect additionally
+requires a non-expired proof from the challenge/verify endpoints. Proofs are
+process-scoped and short-lived; clients must repeat the challenge after a
+restart or expiry.
 Device registration is idempotent for the owning account (metadata/key is
 updated); the same ID owned by another account remains a conflict.
 Relay `command` frames additionally require the Grant's `message.send` scope;

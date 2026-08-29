@@ -18,6 +18,10 @@ does not persist payloads and is not a production deployment.
 Install `cloud/requirements.txt` for the optional client-side E2EE primitives
 (X25519, Ed25519, HKDF and ChaCha20-Poly1305). The relay never imports or uses
 the decrypt path.
+Set `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=1` in production to require a recent
+Ed25519 device proof before relay connections. The device must obtain a
+challenge and sign `notemeld-device-proof-v1\\0<device_id>\\0<challenge>` with
+its registered private key before calling the verify endpoint.
 Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
 default) and return HTTP 413 when the quota would be exceeded. Workspace ZIP
 backups can be created/listed/restored through the `/v1/workspaces/.../backups`

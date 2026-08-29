@@ -4,6 +4,7 @@ import hashlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -105,6 +106,25 @@ def test_device_key_rotation_replaces_public_key(tmp_path):
         assert http.post("/v1/devices/rotating-device/rotate-key", headers=headers, json={"public_key": rotated_key}).status_code == 200
         device = http.get("/v1/devices", headers=headers).json()["data"][0]
         assert device["public_key"] == rotated_key
+
+
+def test_device_proof_challenge_binds_private_key(tmp_path):
+    Ed25519PrivateKey = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519").Ed25519PrivateKey
+
+    private = Ed25519PrivateKey.generate()
+    public = private.public_key().public_bytes_raw()
+    public_b64 = base64.urlsafe_b64encode(public).decode().rstrip("=")
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        device_id = "proof-device-unique"
+        assert http.post("/v1/devices/register", headers=headers, json={"device_id": device_id, "platform": "ios", "display_name": "Phone", "public_key": public_b64}).status_code == 200
+        challenge = http.post(f"/v1/devices/{device_id}/challenge", headers=headers).json()["data"]["challenge"]
+        message = b"notemeld-device-proof-v1\0" + device_id.encode() + b"\0" + challenge.encode()
+        signature = base64.urlsafe_b64encode(private.sign(message)).decode().rstrip("=")
+        proof = http.post(f"/v1/devices/{device_id}/challenge/verify", headers=headers, json={"challenge": challenge, "signature": signature})
+        assert proof.status_code == 200
+        assert http.post(f"/v1/devices/{device_id}/challenge/verify", headers=headers, json={"challenge": challenge, "signature": signature}).status_code == 401
 
 
 def test_device_revoke_also_revokes_grants(tmp_path):

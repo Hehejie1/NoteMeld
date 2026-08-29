@@ -95,6 +95,11 @@ class DeviceKeyRotate(BaseModel):
     public_key: str
 
 
+class DeviceProof(BaseModel):
+    challenge: str = Field(min_length=16, max_length=256)
+    signature: str = Field(min_length=16, max_length=256)
+
+
 class AuthorityLease(BaseModel):
     owner: str = Field(min_length=1, max_length=128)
     ttl_seconds: int = Field(default=30, ge=5, le=300)
@@ -198,6 +203,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     app.state.relays: dict[str, dict[str, WebSocket]] = {}
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
+    app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
+    app.state.device_proofs: dict[tuple[str, str], int] = {}
     app.state.login_failures: dict[str, list[int]] = {}
 
     @app.get("/health")
@@ -438,6 +445,30 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "last_seen_at": now}}
+
+    @app.post("/v1/devices/{device_id}/challenge")
+    def device_challenge(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.read"))):
+        with db.connect() as cx:
+            row = cx.execute("SELECT public_key FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, current["id"])).fetchone()
+        if not row or not row["public_key"]:
+            raise HTTPException(409, "active device public key is required")
+        challenge = secrets.token_urlsafe(32)
+        expires_at = int(time.time()) + 300
+        app.state.device_challenges[challenge] = (current["id"], device_id, expires_at)
+        return {"code": 0, "msg": "success", "data": {"device_id": device_id, "challenge": challenge, "expires_at": expires_at}}
+
+    @app.post("/v1/devices/{device_id}/challenge/verify")
+    def verify_device_challenge(device_id: str, payload: DeviceProof, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+        challenge_data = app.state.device_challenges.pop(payload.challenge, None)
+        now = int(time.time())
+        if not challenge_data or challenge_data[0] != current["id"] or challenge_data[1] != device_id or challenge_data[2] <= now:
+            raise HTTPException(401, "invalid device challenge")
+        with db.connect() as cx:
+            row = cx.execute("SELECT public_key FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, current["id"])).fetchone()
+        if not row or not row["public_key"] or not _verify_device_proof(row["public_key"], payload.signature, payload.challenge, device_id):
+            raise HTTPException(401, "invalid device proof")
+        app.state.device_proofs[(current["id"], device_id)] = now + 300
+        return {"code": 0, "msg": "success", "data": {"device_id": device_id, "verified_until": now + 300}}
 
     @app.post("/v1/pairings/start")
     def start_pairing(current=Depends(_auth_dependency(db, required_scope="device.write"))):
@@ -884,6 +915,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if not current or not device_id or not _session_owned_by(db, session_id, current["id"]) or not _active_device_owned(db, device_id, current["id"]):
             await websocket.close(code=4401)
             return
+        if settings.require_device_proof and app.state.device_proofs.get((current["id"], device_id), 0) <= int(time.time()):
+            await websocket.close(code=4403)
+            return
         await websocket.accept()
         with db.connect() as cx:
             cx.execute("UPDATE devices SET last_seen_at=? WHERE id=?", (int(time.time()), device_id))
@@ -1216,6 +1250,19 @@ def _valid_public_key(value: str) -> bool:
     except (ValueError, TypeError):
         return False
     return len(decoded) == 32
+
+
+def _verify_device_proof(public_key: str, signature: str, challenge: str, device_id: str) -> bool:
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+        key_bytes = base64.urlsafe_b64decode(public_key + "=" * (-len(public_key) % 4))
+        signature_bytes = base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4))
+        message = b"notemeld-device-proof-v1\0" + device_id.encode() + b"\0" + challenge.encode()
+        Ed25519PublicKey.from_public_bytes(key_bytes).verify(signature_bytes, message)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 def _valid_nonce(value: str | None) -> bool:
