@@ -20,6 +20,13 @@ def test_remote_frame_envelope_excludes_plaintext():
     assert frame.envelope()["frame_type"] == "command"
 
 
+def test_remote_frame_aad_binds_routing_metadata():
+    frame = RemoteFrame("s", "a", "b", 1, "ciphertext", "f", 3, nonce="nonce")
+    assert b'"recipient_device_id":"b"' in frame.associated_data()
+    changed = RemoteFrame("s", "a", "other", 1, "ciphertext", "f", 3, nonce="nonce")
+    assert frame.associated_data() != changed.associated_data()
+
+
 def test_durable_mailbox_survives_reopen(tmp_path):
     database = tmp_path / "queue.db"
     first = DurableSessionMailbox(database, max_size=2)

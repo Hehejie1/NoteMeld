@@ -38,5 +38,9 @@ class RemoteFrame:
     def envelope(self) -> dict:
         return {"protocol_version": self.protocol_version, "session_id": self.session_id, "sender_device_id": self.sender_device_id, "recipient_device_id": self.recipient_device_id, "sequence": self.sequence, "frame_id": self.frame_id, "authority_epoch": self.authority_epoch, "nonce": self.nonce, "frame_type": self.frame_type}
 
+    def associated_data(self) -> bytes:
+        """Canonical metadata bytes to bind into the client-side AEAD tag."""
+        return json.dumps(self.envelope(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+
     def to_json(self) -> str:
         return json.dumps({**self.envelope(), "ciphertext": self.ciphertext}, separators=(",", ":"))
