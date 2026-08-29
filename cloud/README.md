@@ -21,3 +21,14 @@ Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
 default) and return HTTP 413 when the quota would be exceeded. Workspace ZIP
 backups can be created/listed/restored through the `/v1/workspaces/.../backups`
 endpoints; restore is a validated file overlay.
+
+Container build/run from the NoteMeld repository root:
+
+```bash
+docker build -f cloud/Dockerfile -t notemeld-cloud .
+docker run --rm -p 8583:8583 \
+  -e NOTEMELD_CLOUD_ADMIN_USERNAME=admin \
+  -e NOTEMELD_CLOUD_ADMIN_PASSWORD='change-me-please-123' \
+  -v notemeld-cloud-data:/var/lib/notemeld-cloud \
+  notemeld-cloud
+```
