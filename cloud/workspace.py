@@ -57,6 +57,20 @@ class Workspace:
             bytes_used += path.stat().st_size
         return {"file_count": files, "bytes_used": bytes_used}
 
+    def list_files(self, prefix: str = "") -> list[dict[str, int | str]]:
+        if prefix:
+            base = self.path(prefix)
+            if base.is_symlink() or (base.exists() and not base.is_dir()):
+                raise WorkspaceError("workspace directory is unavailable")
+        else:
+            base = self.root
+        items: list[dict[str, int | str]] = []
+        for path in base.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            items.append({"path": path.relative_to(self.root).as_posix(), "bytes": path.stat().st_size, "modified_at": int(path.stat().st_mtime)})
+        return sorted(items, key=lambda item: str(item["path"]))
+
     def create_backup(self, destination: Path) -> int:
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(destination.suffix + f".{os.getpid()}.tmp")

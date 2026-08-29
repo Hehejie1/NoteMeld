@@ -326,6 +326,7 @@ the default configuration.
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
+| GET | `/v1/workspaces/{workspace_id}/files?prefix=` | list safe logical file paths and size/mtime metadata |
 | POST/GET | `/v1/workspaces/{workspace_id}/backups` | create/list local-disk ZIP backups |
 | POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
 | GET | `/v1/grants` | list remote-control grants |

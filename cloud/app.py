@@ -470,6 +470,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "content": content}}
 
+    @app.get("/v1/workspaces/{workspace_id}/files")
+    def list_workspace_files(workspace_id: str, prefix: str = "", current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        try:
+            files = workspace.list_files(prefix)
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "files": files}}
+
     @app.put("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
     def write_workspace_file(workspace_id: str, logical_path: str, payload: WorkspaceWrite, current=Depends(_auth_dependency(db))):
         _validate_workspace_id(workspace_id)
