@@ -307,6 +307,15 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("INSERT OR REPLACE INTO session_archives(user_id,session_id,archived_at) VALUES(?,?,?)", (current["id"], session_id, int(time.time())))
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": True}}
 
+    @app.post("/v1/sessions/{session_id}/restore")
+    def restore_session(session_id: str, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            result = cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=?", (session_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "archived session not found")
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": False}}
+
     @app.delete("/v1/sessions/{session_id}")
     def delete_session(session_id: str, current=Depends(_auth_dependency(db))):
         _owned_session(db, session_id, current["id"])
@@ -322,6 +331,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.post("/v1/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db))):
         session = _owned_session(db, session_id, current["id"])
+        if session["kind"] == "device_remote":
+            raise HTTPException(409, "device_remote commands must be delivered through the host relay")
         digest = hashlib.sha256(payload.input.encode()).hexdigest()
         now = int(time.time())
         with db.connect() as cx:
