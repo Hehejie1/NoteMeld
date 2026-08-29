@@ -450,6 +450,8 @@ Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`
 Sessions may set `model_id` when created; cloud execution then resolves the
 enabled model row for that user and constructs a bounded OpenAI-compatible
 runner for the command. Unsupported providers or disabled models fail closed.
+Model base URLs must be absolute HTTP(S) URLs without embedded credentials or
+credential-like query parameters.
 
 Cloud Agent workspace mutation tools (`workspace.write`, `workspace.delete`) do
 not mutate immediately. They create an auditable `pending` approval exposed by

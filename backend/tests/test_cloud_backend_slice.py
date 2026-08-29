@@ -239,6 +239,7 @@ def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
         assert "api_key_ciphertext" not in listed[0]
         assert http.put(f"/v1/models/{model['id']}", headers=headers, json={"is_default": False}).status_code == 200
         assert http.delete(f"/v1/models/{model['id']}", headers=headers).status_code == 200
+        assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "base_url": "file:///etc/passwd"}).status_code == 422
 
 
 def test_cloud_workspace_rejects_cross_platform_path_tricks(tmp_path):

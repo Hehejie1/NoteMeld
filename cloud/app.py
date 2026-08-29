@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -446,6 +447,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/models")
     def create_model(payload: ModelCreate, current=Depends(_auth_dependency(db, required_scope="model.write"))):
+        if payload.base_url:
+            _validate_model_base_url(payload.base_url)
         model_id = str(uuid.uuid4())
         now = int(time.time())
         master_key = app.state.settings.secret_key or app.state.settings.admin_password
@@ -467,6 +470,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         changes = payload.model_dump(exclude_unset=True)
         if not changes:
             raise HTTPException(400, "no changes supplied")
+        if changes.get("base_url"):
+            _validate_model_base_url(changes["base_url"])
         master_key = app.state.settings.secret_key or app.state.settings.admin_password
         if "api_key" in changes:
             changes["api_key_ciphertext"] = encrypt_secret(changes.pop("api_key"), master_key) if changes["api_key"] else None
@@ -1502,6 +1507,14 @@ def _runner_for_session(app: FastAPI, db: CloudDB, session: Any):
     master_key = app.state.settings.secret_key or app.state.settings.admin_password
     api_key = decrypt_secret(model["api_key_ciphertext"], master_key) if model["api_key_ciphertext"] else None
     return OpenAICompatibleAgentRunner(base_url=model["base_url"], model=model["model"], api_key=api_key, timeout_seconds=app.state.settings.agent_timeout_seconds)
+
+
+def _validate_model_base_url(value: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.fragment:
+        raise HTTPException(422, "model base_url must be an absolute HTTP(S) URL without embedded credentials")
+    if any(key.lower() in {"api_key", "apikey", "token", "password", "secret"} for key in (part.split("=", 1)[0] for part in parsed.query.split("&") if part)):
+        raise HTTPException(422, "model base_url query must not contain credentials")
 
 
 def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None) -> tuple[list[dict[str, Any]], Any]:
