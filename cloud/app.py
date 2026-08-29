@@ -147,9 +147,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         raw, digest = issue_token()
         now = int(time.time())
         with db.connect() as cx:
-            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,created_at) VALUES(?,?,?,?,?)", (raw[4:].split(".", 1)[0], user["id"], digest, token_expiry(settings.token_ttl_seconds), now))
+            token_id = raw[4:].split(".", 1)[0]
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (token_id, user["id"], digest, token_expiry(settings.token_ttl_seconds), "cloud-api", '["*"]', now))
         _audit(db, user["id"], "auth.login", user["id"], {"role": user["role"]})
-        return {"code": 0, "msg": "success", "data": {"token": raw, "user_id": user["id"], "role": user["role"]}}
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "user_id": user["id"], "role": user["role"], "audience": "cloud-api", "scopes": ["*"], "expires_at": token_expiry(settings.token_ttl_seconds)}}
 
     @app.post("/v1/auth/revoke")
     def revoke_token(authorization: Annotated[str | None, Header()] = None):
@@ -177,9 +178,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
             cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND digest=?", (now, old_id, token_digest(old_id, old_secret)))
-            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,created_at) VALUES(?,?,?,?,?)", (new_id, current["id"], digest, token_expiry(settings.token_ttl_seconds), now))
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (new_id, current["id"], digest, token_expiry(settings.token_ttl_seconds), "cloud-api", '["*"]', now))
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"token": raw, "user_id": current["id"], "role": current["role"]}}
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": new_id, "user_id": current["id"], "role": current["role"], "audience": "cloud-api", "scopes": ["*"] , "expires_at": token_expiry(settings.token_ttl_seconds)}}
 
     @app.get("/v1/admin/users")
     def list_users(current=Depends(_auth_dependency(db, "admin"))):
@@ -769,7 +770,7 @@ def _authenticate_token(db: CloudDB, authorization: str | None):
         return None
     token_id, secret = parsed
     with db.connect() as cx:
-        row = cx.execute("SELECT u.*,t.expires_at,t.revoked_at FROM tokens t JOIN users u ON u.id=t.user_id WHERE t.id=? AND t.digest=?", (token_id, token_digest(token_id, secret))).fetchone()
+        row = cx.execute("SELECT u.*,t.expires_at,t.revoked_at,t.audience,t.scopes_json FROM tokens t JOIN users u ON u.id=t.user_id WHERE t.id=? AND t.digest=?", (token_id, token_digest(token_id, secret))).fetchone()
     if not row or row["revoked_at"] or row["disabled"] or (row["expires_at"] and row["expires_at"] < int(time.time())):
         return None
     return row

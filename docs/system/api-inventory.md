@@ -311,6 +311,8 @@ instance should not receive traffic.
 `/v1/auth/login` accepts either the legacy username label or explicit
 `account_id`; clients should prefer `account_id` so token identity does not
 depend on a display label.
+Issued account tokens expose a stable `jti` (the opaque token ID), audience,
+scopes and expiry; only the token digest is persisted.
 
 Failed logins are limited to five attempts per source/account key in a
 60-second process-local window and return HTTP 429 after the limit. Production

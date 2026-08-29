@@ -42,6 +42,7 @@ def test_login_supports_explicit_account_id(tmp_path):
         created = http.post("/v1/admin/users", headers=headers, json={"username": "label", "password": "label-password-123"}).json()["data"]
         response = http.post("/v1/auth/login", json={"account_id": created["id"], "password": "label-password-123"})
         assert response.status_code == 200 and response.json()["data"]["user_id"] == created["id"]
+        assert response.json()["data"]["audience"] == "cloud-api" and response.json()["data"]["scopes"] == ["*"]
 
 
 def test_duplicate_usernames_require_account_id(tmp_path):

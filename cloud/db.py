@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS tokens (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), digest TEXT NOT NULL UNIQUE,
-  expires_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL
+  expires_at INTEGER, revoked_at INTEGER, audience TEXT NOT NULL DEFAULT 'cloud-api', scopes_json TEXT NOT NULL DEFAULT '["*"]', created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS devices (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), public_key TEXT,
@@ -97,6 +97,11 @@ class CloudDB:
                 connection.execute("ALTER TABLE sessions ADD COLUMN lease_owner TEXT")
             if "lease_expires_at" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN lease_expires_at INTEGER")
+            token_columns = {row[1] for row in connection.execute("PRAGMA table_info(tokens)").fetchall()}
+            if "audience" not in token_columns:
+                connection.execute("ALTER TABLE tokens ADD COLUMN audience TEXT NOT NULL DEFAULT 'cloud-api'")
+            if "scopes_json" not in token_columns:
+                connection.execute("ALTER TABLE tokens ADD COLUMN scopes_json TEXT NOT NULL DEFAULT '[\"*\"]'")
             device_columns = {row[1] for row in connection.execute("PRAGMA table_info(devices)").fetchall()}
             if "last_seen_at" not in device_columns:
                 connection.execute("ALTER TABLE devices ADD COLUMN last_seen_at INTEGER")
