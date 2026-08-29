@@ -359,6 +359,8 @@ missing or malformed nonces are rejected before routing.
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create
 a runtime parent/child synchronization relationship.
+`POST /v1/sessions/{session_id}/authority/rotate` increments the persisted
+authority epoch; relay rejects frames from older epochs.
 `GET /v1/sessions/{session_id}/commands?after=&limit=` lists command states by
 sequence cursor for reconnect and queue reconstruction.
 

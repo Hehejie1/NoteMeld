@@ -317,6 +317,20 @@ def test_relay_command_requires_message_scope(tmp_path):
             assert socket.receive_json()["error"] == "invalid_envelope"
 
 
+def test_authority_rotation_invalidates_old_relay_epoch(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("epoch-controller", "epoch-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "epoch-controller", "host_device_id": "epoch-host", "scopes": ["message.send"]}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        assert http.post(f"/v1/sessions/{session['id']}/authority/rotate", headers=headers).json()["data"]["authority_epoch"] == 2
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=epoch-controller", headers=headers) as socket:
+            socket.send_json({"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "epoch-controller", "recipient_device_id": "epoch-host", "sequence": 1, "frame_id": "old-epoch", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"})
+            assert socket.receive_json()["error"] == "invalid_envelope"
+
+
 def test_workspace_quota_is_enforced(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_workspace_bytes=4)
     with TestClient(create_app(settings)) as http:

@@ -408,13 +408,22 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
-            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,created_at,updated_at,next_sequence,next_event_sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, now, now, source["next_sequence"], source["next_event_sequence"]))
+            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,created_at,updated_at,next_sequence,next_event_sequence,authority_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, now, now, source["next_sequence"], source["next_event_sequence"], 1))
             cx.execute("INSERT INTO commands SELECT ?,?,request_id,payload_hash,sequence,input_text,status,created_at FROM commands WHERE session_id=?", (str(uuid.uuid4()), new_id, session_id))
             rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
             for row in rows:
                 cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["sequence"], row["event_type"], row["payload_json"], row["created_at"]))
             cx.execute("COMMIT")
         return {"code": 0, "msg": "success", "data": {"id": new_id, "copied_from": session_id, "workspace_id": workspace_id, **copied_files}}
+
+    @app.post("/v1/sessions/{session_id}/authority/rotate")
+    def rotate_authority(session_id: str, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            cx.execute("UPDATE sessions SET authority_epoch=authority_epoch+1,updated_at=? WHERE id=?", (int(time.time()), session_id))
+            epoch = cx.execute("SELECT authority_epoch FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
+        _audit(db, current["id"], "session.authority.rotate", session_id, {"authority_epoch": epoch})
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "authority_epoch": epoch}}
 
     @app.get("/v1/workspaces/{workspace_id}/stats")
     def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db))):
@@ -631,6 +640,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     frame_type = envelope.get("frame_type", "command")
                     if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not _valid_nonce(envelope.get("nonce")) or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
+                    with db.connect() as cx:
+                        epoch = cx.execute("SELECT authority_epoch FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
+                    if envelope.get("authority_epoch") != epoch:
+                        raise ValueError("stale authority epoch")
                     required_scope = "message.send" if frame_type == "command" else None
                     if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope):
                         raise ValueError("relay grant missing")
