@@ -218,7 +218,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         assignments = ", ".join(f"{key}=?" for key in changes)
         try:
             with db.connect() as cx:
+                cx.execute("BEGIN IMMEDIATE")
                 result = cx.execute(f"UPDATE users SET {assignments} WHERE id=? AND role='user'", (*changes.values(), user_id))
+                if result.rowcount == 1 and payload.password is not None:
+                    cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (int(time.time()), user_id))
+                cx.execute("COMMIT")
         except Exception as exc:
             if "UNIQUE" in str(exc):
                 raise HTTPException(409, "username already exists") from exc

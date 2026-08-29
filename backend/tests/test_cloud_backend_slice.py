@@ -356,6 +356,18 @@ def test_login_bruteforce_limit(tmp_path):
         assert http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 429
 
 
+def test_password_change_revokes_existing_tokens(tmp_path):
+    with client(tmp_path) as http:
+        admin = login(http, "admin", "admin-password-123")
+        admin_headers = {"Authorization": f"Bearer {admin}"}
+        created = http.post("/v1/admin/users", headers=admin_headers, json={"username": "rotate-password", "password": "old-password-123"}).json()["data"]
+        user_token = login(http, "rotate-password", "old-password-123")
+        response = http.put(f"/v1/admin/users/{created['id']}", headers=admin_headers, json={"password": "new-password-123"})
+        assert response.status_code == 200
+        assert http.get("/v1/devices", headers={"Authorization": f"Bearer {user_token}"}).status_code == 401
+        assert http.post("/v1/auth/login", json={"account_id": created["id"], "password": "new-password-123"}).status_code == 200
+
+
 def test_session_copy_is_independent_with_provenance(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
