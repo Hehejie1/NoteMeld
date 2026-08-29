@@ -53,6 +53,15 @@ class CloudClient:
     def register_device(self, device_id: str, platform: str, display_name: str, public_key: str | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/devices", json={"device_id": device_id, "platform": platform, "display_name": display_name, "public_key": public_key})
 
+    def list_devices(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/devices")
+
+    def create_grant(self, controller_device_id: str, host_device_id: str, role: str = "standard", scopes: list[str] | None = None, workspace_refs: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
+        return self._request("POST", "/v1/grants", json={"controller_device_id": controller_device_id, "host_device_id": host_device_id, "role": role, "scopes": scopes or [], "workspace_refs": workspace_refs or [], "expires_at": expires_at})
+
+    def revoke_grant(self, grant_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/grants/{grant_id}/revoke")
+
     def heartbeat(self, device_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat")
 
@@ -94,6 +103,15 @@ class CloudClient:
 
     def create_share_token(self, session_id: str, role: str = "viewer", scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/share-tokens", json={"session_id": session_id, "role": role, "scopes": scopes or [], "expires_at": expires_at})
+
+    def shared_snapshot(self, session_id: str, share_token: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/shared/{session_id}/snapshot", headers={"X-Share-Token": share_token})
+
+    def shared_events(self, session_id: str, share_token: str, after: int = 0) -> list[dict[str, Any]]:
+        return self._request("GET", f"/v1/shared/{session_id}/events", params={"after": after}, headers={"X-Share-Token": share_token})
+
+    def shared_command(self, session_id: str, share_token: str, request_id: str, input_text: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/shared/{session_id}/commands", headers={"X-Share-Token": share_token}, json={"request_id": request_id, "input": input_text})
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}))
