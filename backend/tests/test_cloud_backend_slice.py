@@ -456,6 +456,27 @@ def test_cloud_approval_expires_and_cannot_be_approved(tmp_path):
         assert resolved.status_code == 200 and resolved.json()["data"]["status"] == "expired"
 
 
+def test_remote_approval_requires_controller_grant_scope(tmp_path):
+    import uuid
+
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("approval-controller", "approval-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "approval-controller", "host_device_id": "approval-host", "scopes": ["message.send"]}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        user_id = http.get("/v1/admin/users", headers=headers).json()["data"][0]["id"]
+        approval_id = str(uuid.uuid4())
+        with http.app.state.db.connect() as cx:
+            cx.execute("INSERT INTO approvals(id,user_id,session_id,command_id,tool_name,arguments_json,status,requested_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (approval_id, user_id, session["id"], "cmd", "workspace.write", '{"path":"remote.txt","content":"approved"}', "pending", "remote-agent", int(time.time())))
+        denied = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers={**headers, "X-Device-Id": "approval-controller"}, json={"status": "approved"})
+        assert denied.status_code == 403
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "approval-controller", "host_device_id": "approval-host", "scopes": ["dangerous.approve"]}).status_code == 200
+        allowed = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers={**headers, "X-Device-Id": "approval-controller"}, json={"status": "approved"})
+        assert allowed.status_code == 200 and allowed.json()["data"]["status"] == "approved"
+
+
 def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
     import uuid
 

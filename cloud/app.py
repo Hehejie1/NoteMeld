@@ -1004,8 +1004,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/sessions/{session_id}/approvals/{approval_id}/resolve")
     @app.post("/v1/cloud/sessions/{session_id}/approvals/{approval_id}/resolve")
-    def resolve_approval(session_id: str, approval_id: str, payload: ApprovalResolve, current=Depends(_auth_dependency(db, required_scope="session.write"))):
-        _owned_session(db, session_id, current["id"])
+    def resolve_approval(session_id: str, approval_id: str, payload: ApprovalResolve, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        session = _owned_session(db, session_id, current["id"])
+        _validate_device_header(db, device_id, current["id"])
+        if session["kind"] == "device_remote":
+            if not device_id or not _remote_approval_allowed(db, session_id, current["id"], device_id):
+                raise HTTPException(403, "remote approval requires an authorized controller device")
         now = int(time.time())
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
@@ -1027,7 +1031,6 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": "expired", "idempotent": True}}
             if payload.status == "approved":
                 try:
-                    session = _owned_session(db, session_id, current["id"])
                     _execute_approved_tool(settings=app.state.settings, session=session, user_id=current["id"], tool_name=approval["tool_name"], arguments=json.loads(approval["arguments_json"]))
                 except Exception as exc:
                     cx.execute("UPDATE approvals SET status='rejected',resolved_by=?,resolution_note=?,resolved_at=? WHERE id=? AND status='pending'", (current["id"], "execution failed", now, approval_id))
@@ -1694,3 +1697,20 @@ def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, h
     workspace_refs = json.loads(row["workspace_refs_json"]) if row else []
     workspace_allowed = not workspace_refs or (workspace_id is not None and workspace_id in workspace_refs)
     return bool(row and row["kind"] == "device_remote" and workspace_allowed and not row["revoked_at"] and (row["expires_at"] is None or row["expires_at"] > int(time.time())) and (required_scope is None or required_scope in scopes))
+
+
+def _remote_approval_allowed(db: CloudDB, session_id: str, user_id: str, controller_device_id: str) -> bool:
+    """Check that a remote controller may approve host-side mutations."""
+    with db.connect() as cx:
+        rows = cx.execute(
+            "SELECT g.expires_at,g.revoked_at,g.scopes_json FROM grants g JOIN sessions s ON s.user_id=g.user_id JOIN devices controller_device ON controller_device.id=g.controller_device_id AND controller_device.user_id=g.user_id AND controller_device.revoked_at IS NULL JOIN devices host_device ON host_device.id=g.host_device_id AND host_device.user_id=g.user_id AND host_device.revoked_at IS NULL WHERE g.user_id=? AND s.id=? AND s.kind='device_remote' AND g.controller_device_id=? ORDER BY g.created_at DESC",
+            (user_id, session_id, controller_device_id),
+        ).fetchall()
+    now = int(time.time())
+    for row in rows:
+        if row["revoked_at"] or (row["expires_at"] is not None and row["expires_at"] <= now):
+            continue
+        scopes = set(json.loads(row["scopes_json"]))
+        if "full_access" in scopes or "dangerous.approve" in scopes or "approval.remote.resolve" in scopes:
+            return True
+    return False
