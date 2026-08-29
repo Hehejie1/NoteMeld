@@ -304,6 +304,10 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 
 Cloud service endpoints are intentionally separated from the local `/api` namespace. Authentication uses bearer tokens issued by `/v1/auth/login`; relay frames are opaque encrypted envelopes and are never persisted by the relay.
 
+`/v1/auth/login` accepts either the legacy username label or explicit
+`account_id`; clients should prefer `account_id` so token identity does not
+depend on a display label.
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |

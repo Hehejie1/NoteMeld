@@ -17,7 +17,8 @@ from .workspace import Workspace
 
 
 class LoginRequest(BaseModel):
-    username: str
+    username: str | None = None
+    account_id: str | None = None
     password: str
 
 
@@ -96,7 +97,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/auth/login")
     def login(payload: LoginRequest):
-        user = _user_by_username(db, payload.username)
+        if not payload.username and not payload.account_id:
+            raise HTTPException(400, "username or account_id is required")
+        user = _user_by_account_id(db, payload.account_id) if payload.account_id else _user_by_username(db, payload.username or "")
         if not user or user["disabled"] or not verify_password(payload.password, user["password_hash"]):
             raise HTTPException(401, "invalid credentials")
         raw, digest = issue_token()
@@ -483,6 +486,13 @@ def _bootstrap_admin(db: CloudDB, settings: CloudSettings) -> None:
 def _user_by_username(db: CloudDB, username: str):
     with db.connect() as cx:
         return cx.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+
+
+def _user_by_account_id(db: CloudDB, account_id: str | None):
+    if not account_id:
+        return None
+    with db.connect() as cx:
+        return cx.execute("SELECT * FROM users WHERE id=?", (account_id,)).fetchone()
 
 
 def _auth_dependency(db: CloudDB, required_role: str | None = None):

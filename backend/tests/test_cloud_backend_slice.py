@@ -30,6 +30,15 @@ def test_bootstrap_admin_and_user_crud(tmp_path):
         assert http.delete(f"/v1/admin/users/{created.json()['data']['id']}", headers=headers).status_code == 200
 
 
+def test_login_supports_explicit_account_id(tmp_path):
+    with client(tmp_path) as http:
+        admin_token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        created = http.post("/v1/admin/users", headers=headers, json={"username": "label", "password": "label-password-123"}).json()["data"]
+        response = http.post("/v1/auth/login", json={"account_id": created["id"], "password": "label-password-123"})
+        assert response.status_code == 200 and response.json()["data"]["user_id"] == created["id"]
+
+
 def test_device_registration_and_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
