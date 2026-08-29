@@ -234,3 +234,12 @@ def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
             host.send_json(receipt)
             assert host.receive_json()["type"] == "relay_accepted"
             assert controller.receive_json()["frame_id"] == "receipt-online"
+
+
+def test_workspace_quota_is_enforced(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_workspace_bytes=4)
+    with TestClient(create_app(settings)) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.put("/v1/workspaces/quota/files/a.txt", headers=headers, json={"content": "1234"}).status_code == 200
+        assert http.put("/v1/workspaces/quota/files/b.txt", headers=headers, json={"content": "5"}).status_code == 413

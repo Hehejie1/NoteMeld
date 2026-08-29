@@ -321,6 +321,9 @@ depend on a display label.
 | POST | `/v1/shared/{session_id}/commands` | submit a cloud-native command when the share token explicitly has `message.send` |
 | WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant; returns `host_offline` when target is not connected, rejects replayed sequence numbers, and forwards a host `received` receipt on the reverse direction |
 
+Workspace writes enforce the deployment-level `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES`
+quota and return `413 workspace quota exceeded` before modifying a file.
+
 `POST /v1/sessions/{id}/commands` is only valid for `cloud_native` sessions. A
 `device_remote` session must deliver commands through the host relay; the cloud
 service never fabricates a remote Agent result.

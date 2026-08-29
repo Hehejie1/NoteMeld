@@ -329,7 +329,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
+            existing_size = workspace.path(logical_path).stat().st_size if workspace.path(logical_path).is_file() else 0
+            projected = workspace.stats()["bytes_used"] - existing_size + len(payload.content.encode("utf-8"))
+            if projected > settings.max_workspace_bytes:
+                raise HTTPException(413, "workspace quota exceeded")
             workspace.write_text(logical_path, payload.content)
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
