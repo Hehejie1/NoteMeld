@@ -405,6 +405,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("DELETE FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM session_import_requests WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM session_payloads WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+            cx.execute("DELETE FROM relay_cursors WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM session_archives WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM models WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
@@ -930,6 +931,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("DELETE FROM session_archives WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM session_import_requests WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM session_payloads WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM relay_cursors WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (session_id, current["id"]))
             workspace_references = cx.execute("SELECT COUNT(*) FROM sessions WHERE user_id=? AND workspace_id=?", (current["id"], session["workspace_id"])).fetchone()[0]
             cx.execute("COMMIT")
@@ -1127,10 +1129,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     required_scope = "message.send" if frame_type == "command" else None
                     if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope):
                         raise ValueError("relay grant missing")
-                    replay_key = (session_id, device_id)
-                    if sequence <= app.state.relay_sequences.get(replay_key, 0):
+                    if not _accept_relay_sequence(db, session_id, device_id, sequence):
                         raise ValueError("replayed relay envelope")
-                    app.state.relay_sequences[replay_key] = sequence
                 except (ValueError, json.JSONDecodeError, TypeError):
                     await websocket.send_json({"type": "rejected", "error": "invalid_envelope"})
                     continue
@@ -1592,6 +1592,19 @@ def _valid_nonce(value: str | None) -> bool:
 def _audit(db: CloudDB, actor_user_id: str | None, action: str, resource_id: str | None, metadata: dict) -> None:
     with db.connect() as cx:
         cx.execute("INSERT INTO audits(id,actor_user_id,action,resource_id,metadata_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), actor_user_id, action, resource_id, json.dumps(metadata, separators=(",", ":")), int(time.time())))
+
+
+def _accept_relay_sequence(db: CloudDB, session_id: str, sender_device_id: str, sequence: int) -> bool:
+    now = int(time.time())
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        row = cx.execute("SELECT last_sequence FROM relay_cursors WHERE session_id=? AND sender_device_id=?", (session_id, sender_device_id)).fetchone()
+        if row and sequence <= row["last_sequence"]:
+            cx.execute("ROLLBACK")
+            return False
+        cx.execute("INSERT INTO relay_cursors(session_id,sender_device_id,last_sequence,updated_at) VALUES(?,?,?,?) ON CONFLICT(session_id,sender_device_id) DO UPDATE SET last_sequence=excluded.last_sequence,updated_at=excluded.updated_at", (session_id, sender_device_id, sequence, now))
+        cx.execute("COMMIT")
+        return True
 
 
 def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str, required_scope: str | None = None) -> bool:

@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS approvals (
   requested_by TEXT NOT NULL, resolved_by TEXT, resolution_note TEXT, created_at INTEGER NOT NULL, resolved_at INTEGER,
   UNIQUE(session_id, command_id, tool_name, arguments_json)
 );
+CREATE TABLE IF NOT EXISTS relay_cursors (
+  session_id TEXT NOT NULL REFERENCES sessions(id), sender_device_id TEXT NOT NULL,
+  last_sequence INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+  PRIMARY KEY(session_id, sender_device_id)
+);
 """
 
 

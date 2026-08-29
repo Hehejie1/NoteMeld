@@ -389,6 +389,9 @@ The versioned frame schema carries `nonce`, `frame_type`, sequence and opaque
 `ciphertext`; relay never interprets plaintext or AEAD contents.
 Relay validates the nonce as URL-safe Base64 encoding of a 12-byte AEAD nonce;
 missing or malformed nonces are rejected before routing.
+Relay replay cursors are persisted per `(session_id, sender_device_id)` and
+advanced transactionally, so a cloud restart does not reset the highest
+accepted sequence even though frame payloads remain non-persistent.
 
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create

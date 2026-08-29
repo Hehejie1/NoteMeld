@@ -258,6 +258,22 @@ def test_cloud_workspace_rejects_cross_platform_path_tricks(tmp_path):
             assert response.status_code in {400, 404}
 
 
+def test_relay_sequence_cursor_survives_app_restart(tmp_path):
+    from cloud.app import _accept_relay_sequence
+    from cloud.db import CloudDB
+
+    database = CloudDB(tmp_path / "relay.sqlite")
+    database.init()
+    with database.connect() as cx:
+        cx.execute("INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)", ("u", "u", "hash", "user", 1))
+        cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", ("s", "u", "device_remote", "s", "w", "idle", 1, 1))
+    assert _accept_relay_sequence(database, "s", "d", 1) is True
+    assert _accept_relay_sequence(database, "s", "d", 1) is False
+    assert _accept_relay_sequence(database, "s", "d", 2) is True
+    restarted = CloudDB(tmp_path / "relay.sqlite")
+    assert _accept_relay_sequence(restarted, "s", "d", 2) is False
+
+
 def test_cloud_commands_are_serial_per_session(tmp_path):
     from cloud.agent import AgentResult
 
