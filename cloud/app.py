@@ -968,6 +968,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/cloud/sessions/{session_id}/approvals")
     def list_approvals(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("UPDATE approvals SET status='expired',resolved_at=?,resolution_note='approval expired' WHERE session_id=? AND user_id=? AND status='pending' AND created_at<?", (now, session_id, current["id"], now - max(1, app.state.settings.approval_ttl_seconds)))
         with db.connect() as cx:
             rows = cx.execute("SELECT id,session_id,command_id,tool_name,arguments_json,status,requested_by,resolved_by,resolution_note,created_at,resolved_at FROM approvals WHERE session_id=? AND user_id=? ORDER BY created_at DESC", (session_id, current["id"])).fetchall()
         items = []
@@ -996,6 +999,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 cx.execute("COMMIT")
                 return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": row["status"], "idempotent": True}}
             approval = cx.execute("SELECT tool_name,arguments_json FROM approvals WHERE id=?", (approval_id,)).fetchone()
+            if approval is None:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "approval not found")
+            created_at = cx.execute("SELECT created_at FROM approvals WHERE id=?", (approval_id,)).fetchone()[0]
+            if created_at < now - max(1, app.state.settings.approval_ttl_seconds):
+                cx.execute("UPDATE approvals SET status='expired',resolved_by=?,resolution_note='approval expired',resolved_at=? WHERE id=? AND status='pending'", (current["id"], now, approval_id))
+                cx.execute("COMMIT")
+                return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": "expired", "idempotent": True}}
             if payload.status == "approved":
                 try:
                     session = _owned_session(db, session_id, current["id"])

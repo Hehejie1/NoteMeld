@@ -460,6 +460,8 @@ not mutate immediately. They create an auditable `pending` approval exposed by
 is performed synchronously with the approval transition using the same safe
 workspace resolver; remote-approval grant enforcement remains a follow-up slice.
 Approval listings return only a bounded content preview.
+Pending approvals expire after `NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS` (15
+minutes by default); expired approvals are immutable and cannot be approved.
 
 The current slice provides scoped share-token read/control access and cloud
 workspace backup/restore. Multi-instance queue fencing and full end-to-end key

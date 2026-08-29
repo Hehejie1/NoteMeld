@@ -393,6 +393,24 @@ def test_cloud_agent_dangerous_workspace_tool_requires_approval(tmp_path):
         assert http.get(f"/v1/workspaces/{session['workspace_id']}/files/notes.txt", headers=headers).json()["data"]["content"] == "safe pending"
 
 
+def test_cloud_approval_expires_and_cannot_be_approved(tmp_path):
+    import uuid
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", approval_ttl_seconds=1)
+    app = create_app(settings)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        approval_id = str(uuid.uuid4())
+        with app.state.db.connect() as cx:
+            cx.execute("INSERT INTO approvals(id,user_id,session_id,command_id,tool_name,arguments_json,status,requested_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (approval_id, app.state.db.connect().execute("SELECT id FROM users WHERE username='admin'").fetchone()[0], session["id"], "cmd", "workspace.write", '{"path":"x","content":"secret"}', "pending", "cloud-agent", 1))
+        listed = http.get(f"/v1/sessions/{session['id']}/approvals", headers=headers).json()["data"]
+        assert listed[0]["status"] == "expired"
+        resolved = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers=headers, json={"status": "approved"})
+        assert resolved.status_code == 200 and resolved.json()["data"]["status"] == "expired"
+
+
 def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
     import uuid
 
