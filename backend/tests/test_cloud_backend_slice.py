@@ -654,6 +654,18 @@ def test_cloud_rejects_oversized_http_body_before_parsing(tmp_path):
         assert response.status_code == 413
 
 
+def test_cloud_capabilities_are_authenticated_and_explicit(tmp_path):
+    with client(tmp_path) as http:
+        assert http.get("/v1/capabilities").status_code == 401
+        token = login(http, "admin", "admin-password-123")
+        response = http.get("/v1/capabilities", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["protocol_version"] == "notemeld.sync.v1"
+        assert data["relay_persists_payload"] is False
+        assert data["features"]["approval_gated_mutations"] is True
+
+
 def test_cloud_readiness_reports_required_device_proof_dependency(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", require_device_proof=True)
     app = create_app(settings)

@@ -40,6 +40,9 @@ class CloudClient:
         self.token = data["token"]
         return data
 
+    def capabilities(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/capabilities")
+
     def rotate_token(self) -> dict[str, Any]:
         data = self._request("POST", "/v1/auth/rotate")
         self.token = data["token"]

@@ -275,6 +275,20 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(503, detail={"service": "notemeld-cloud", "ready": False, "checks": checks})
         return {"service": "notemeld-cloud", "ready": True, "checks": checks}
 
+    @app.get("/v1/capabilities")
+    def capabilities(current=Depends(_auth_dependency(db))):
+        return {"code": 0, "msg": "success", "data": {
+            "protocol_version": "notemeld.sync.v1",
+            "canonical_session_prefix": "/v1/cloud/sessions",
+            "device_proof_required": settings.require_device_proof,
+            "e2ee_relay_envelope": True,
+            "relay_persists_payload": False,
+            "max_request_bytes": settings.max_request_bytes,
+            "max_workspace_bytes": settings.max_workspace_bytes,
+            "max_workspace_files": settings.max_workspace_files,
+            "features": {"cloud_agent": True, "session_queue": True, "command_recovery": True, "approval_gated_mutations": True, "model_registry": True},
+        }}
+
     @app.post("/v1/auth/login")
     def login(payload: LoginRequest, request: Request):
         key = f"{request.client.host if request.client else 'unknown'}:{payload.account_id or payload.username or ''}"

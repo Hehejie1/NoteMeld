@@ -23,6 +23,9 @@
 ## Cloud backend（first slice）
 
 `cloud/` 是独立 FastAPI 服务，不改变本地 `/api` 路由。云端普通 API 使用 `{code,msg,data}`；远程 relay 使用 WebSocket，消息 payload 不持久化。
+Authenticated `GET /v1/capabilities` exposes the sync protocol version, relay
+privacy, Proof requirement, quotas and feature flags so platform clients can
+negotiate behavior instead of hard-coding deployment policy.
 
 | 方法 | 路径 | 作用 | 认证 |
 | --- | --- | --- | --- |
