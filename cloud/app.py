@@ -264,6 +264,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         except Exception:
             checks["database"] = "error"
         checks["workspace_root"] = "ok" if settings.workspaces_dir.is_dir() and os.access(settings.workspaces_dir, os.W_OK) else "error"
+        if settings.require_device_proof:
+            try:
+                import cryptography  # noqa: F401
+                checks["device_proof_crypto"] = "ok"
+            except ImportError:
+                checks["device_proof_crypto"] = "error"
         if any(value != "ok" for value in checks.values()):
             raise HTTPException(503, detail={"service": "notemeld-cloud", "ready": False, "checks": checks})
         return {"service": "notemeld-cloud", "ready": True, "checks": checks}

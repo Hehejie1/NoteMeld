@@ -635,6 +635,19 @@ def test_cloud_rejects_oversized_http_body_before_parsing(tmp_path):
         assert response.status_code == 413
 
 
+def test_cloud_readiness_reports_required_device_proof_dependency(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", require_device_proof=True)
+    app = create_app(settings)
+    with TestClient(app) as http:
+        response = http.get("/ready")
+        try:
+            import cryptography  # noqa: F401
+        except ImportError:
+            assert response.status_code == 503
+        else:
+            assert response.status_code == 200
+
+
 def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
