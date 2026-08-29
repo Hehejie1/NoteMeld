@@ -101,6 +101,18 @@ class CloudClient:
     def delete_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
         return self._request("DELETE", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
 
+    def workspace_stats(self, workspace_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/workspaces/{workspace_id}/stats")
+
+    def create_workspace_backup(self, workspace_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/workspaces/{workspace_id}/backups")
+
+    def list_workspace_backups(self, workspace_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/v1/workspaces/{workspace_id}/backups")
+
+    def restore_workspace_backup(self, workspace_id: str, backup_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/workspaces/{workspace_id}/backups/restore", json={"backup_id": backup_id})
+
     def create_share_token(self, session_id: str, role: str = "viewer", scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/share-tokens", json={"session_id": session_id, "role": role, "scopes": scopes or [], "expires_at": expires_at})
 
