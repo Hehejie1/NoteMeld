@@ -215,3 +215,22 @@ def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
             assert socket.receive_json()["error"] == "host_offline"
             socket.send_json(frame)
             assert socket.receive_json()["error"] == "invalid_envelope"
+
+
+def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("controller-online", "host-online"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "controller-online", "host_device_id": "host-online"}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "controller-online", "recipient_device_id": "host-online", "sequence": 1, "frame_id": "frame-online", "authority_epoch": 1, "ciphertext": "opaque"}
+        receipt = {**frame, "sender_device_id": "host-online", "recipient_device_id": "controller-online", "sequence": 1, "frame_id": "receipt-online", "ciphertext": "received"}
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=controller-online", headers=headers) as controller, http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=host-online", headers=headers) as host:
+            controller.send_json(frame)
+            assert controller.receive_json()["type"] == "relay_accepted"
+            assert host.receive_json()["frame_id"] == "frame-online"
+            host.send_json(receipt)
+            assert host.receive_json()["type"] == "relay_accepted"
+            assert controller.receive_json()["frame_id"] == "receipt-online"
