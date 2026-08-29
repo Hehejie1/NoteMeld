@@ -200,6 +200,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.agent_runner = create_agent_runner(settings)
     app.state.command_locks: dict[str, threading.RLock] = {}
     app.state.command_locks_guard = threading.RLock()
+    app.state.queue_workers: dict[str, threading.Thread] = {}
+    app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
 
     app.state.relays: dict[str, dict[str, WebSocket]] = {}
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
@@ -971,6 +973,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             if not peers:
                 app.state.relays.pop(session_id, None)
 
+    _start_queued_workers(app, db)
     return app
 
 
@@ -1110,7 +1113,7 @@ def _recover_running_commands(db: CloudDB) -> None:
         cx.execute("COMMIT")
 
 
-def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, queued_event_sequence: int, status: str, payload: dict[str, Any]) -> None:
+def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, status: str, payload: dict[str, Any]) -> None:
     now = int(time.time())
     event_type = "turn.completed" if status == "completed" else "turn.failed"
     with db.connect() as cx:
@@ -1119,55 +1122,120 @@ def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, queue
         if not row or row["status"] != "running":
             cx.execute("ROLLBACK")
             return
+        event_sequence = cx.execute("SELECT next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
         cx.execute("UPDATE commands SET status=? WHERE id=? AND session_id=?", (status, command_id, session_id))
-        cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, queued_event_sequence + 1, event_type, json.dumps(payload, separators=(",", ":")), now))
-        cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
+        cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, event_type, json.dumps(payload, separators=(",", ":")), now))
+        cx.execute("UPDATE sessions SET next_event_sequence=?,status='idle',updated_at=? WHERE id=?", (event_sequence + 1, now, session_id))
         cx.execute("COMMIT")
+
+
+def _ensure_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str) -> None:
+    with app.state.command_locks_guard:
+        worker = app.state.queue_workers.get(session_id)
+        if worker is not None and worker.is_alive():
+            return
+        worker = threading.Thread(target=_run_session_worker, args=(app, db, session_id, user_id), name=f"notemeld-cloud-{session_id[:8]}", daemon=True)
+        app.state.queue_workers[session_id] = worker
+        worker.start()
+
+
+def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
+    with db.connect() as cx:
+        rows = cx.execute("SELECT DISTINCT s.id,s.user_id FROM sessions s JOIN commands c ON c.session_id=s.id WHERE c.status='queued'").fetchall()
+    for row in rows:
+        _ensure_session_worker(app, db, row["id"], row["user_id"])
+
+
+def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str) -> None:
+    try:
+        while True:
+            command = _claim_next_cloud_command(db, session_id)
+            if command is None:
+                return
+            command_id = command["id"]
+            try:
+                session = _owned_session(db, session_id, user_id)
+                messages = _cloud_history(db, session_id, exclude_command_id=command_id)
+                tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id)
+                result = app.state.agent_runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
+            except Exception:
+                _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
+            else:
+                _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model})
+            _notify_command_waiter(app, session_id, command_id)
+    finally:
+        with app.state.command_locks_guard:
+            current = app.state.queue_workers.get(session_id)
+            if current is threading.current_thread():
+                app.state.queue_workers.pop(session_id, None)
+
+
+def _claim_next_cloud_command(db: CloudDB, session_id: str):
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        row = cx.execute("SELECT id,input_text,sequence FROM commands WHERE session_id=? AND status='queued' ORDER BY sequence LIMIT 1", (session_id,)).fetchone()
+        if not row:
+            cx.execute("COMMIT")
+            return None
+        cx.execute("UPDATE commands SET status='running' WHERE id=? AND session_id=? AND status='queued'", (row["id"], session_id))
+        cx.execute("UPDATE sessions SET status='running',updated_at=? WHERE id=?", (int(time.time()), session_id))
+        cx.execute("COMMIT")
+        return row
+
+
+def _notify_command_waiter(app: FastAPI, session_id: str, command_id: str) -> None:
+    condition = app.state.queue_conditions.get((session_id, command_id))
+    if condition is not None:
+        with condition:
+            condition.notify_all()
+
+
+def _drop_command_waiter(app: FastAPI, session_id: str, command_id: str) -> None:
+    app.state.queue_conditions.pop((session_id, command_id), None)
 
 
 def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: CommandCreate, user_id: str) -> dict[str, Any]:
     session = _owned_session(db, session_id, user_id)
     if session["kind"] == "device_remote":
         raise HTTPException(409, "device_remote commands must be delivered through the host relay")
-    with app.state.command_locks_guard:
-        lock = app.state.command_locks.setdefault(session_id, threading.RLock())
-    with lock:
-        digest = hashlib.sha256(payload.input.encode()).hexdigest()
-        with db.connect() as cx:
-            existing = cx.execute("SELECT * FROM commands WHERE session_id=? AND request_id=?", (session_id, payload.request_id)).fetchone()
+    digest = hashlib.sha256(payload.input.encode()).hexdigest()
+    now = int(time.time())
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        existing = cx.execute("SELECT * FROM commands WHERE session_id=? AND request_id=?", (session_id, payload.request_id)).fetchone()
         if existing:
             if existing["payload_hash"] != digest:
                 raise HTTPException(409, "payload conflict")
-            return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
-        now = int(time.time())
-        with db.connect() as cx:
-            cx.execute("BEGIN IMMEDIATE")
-            existing = cx.execute("SELECT * FROM commands WHERE session_id=? AND request_id=?", (session_id, payload.request_id)).fetchone()
-            if existing:
-                if existing["payload_hash"] != digest:
-                    raise HTTPException(409, "payload conflict")
-                cx.execute("COMMIT")
-                return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
-            sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
-            command_id = str(uuid.uuid4())
-            cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='running',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 2, now, session_id))
-            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "running", now))
-            queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
-            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
             cx.execute("COMMIT")
-        messages = _cloud_history(db, session_id)
-        tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id)
-        try:
-            agent_result = app.state.agent_runner.complete(input_text=payload.input, messages=messages + [{"role": "user", "content": payload.input}], tools=tools, tool_handler=tool_handler)
-        except Exception as exc:
-            _finalize_cloud_command(db, session_id, command_id, event_sequence, "failed", {"command_id": command_id, "command_sequence": sequence, "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
-            raise HTTPException(502, "cloud agent provider unavailable") from exc
-        completed_event = {"command_id": command_id, "command_sequence": sequence, "status": "completed", "output": agent_result.content, "model": agent_result.model}
-        _finalize_cloud_command(db, session_id, command_id, event_sequence, "completed", completed_event)
-        return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "completed"}}
+            return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
+        sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
+        command_id = str(uuid.uuid4())
+        cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='queued',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 1, now, session_id))
+        cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "queued", now))
+        queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
+        cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
+        cx.execute("COMMIT")
+    _ensure_session_worker(app, db, session_id, user_id)
+    condition = threading.Condition()
+    app.state.queue_conditions[(session_id, command_id)] = condition
+    deadline = time.monotonic() + float(getattr(app.state.settings, "command_wait_seconds", 20.0))
+    with condition:
+        while time.monotonic() < deadline:
+            with db.connect() as cx:
+                row = cx.execute("SELECT sequence,status FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+            if row and row["status"] in {"completed", "failed", "needs_attention", "abandoned"}:
+                _drop_command_waiter(app, session_id, command_id)
+                if row["status"] == "failed":
+                    raise HTTPException(502, "cloud agent provider unavailable")
+                return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": row["sequence"], "status": row["status"]}}
+            condition.wait(timeout=max(0.01, deadline - time.monotonic()))
+    with db.connect() as cx:
+        row = cx.execute("SELECT sequence,status FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+    _drop_command_waiter(app, session_id, command_id)
+    return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": row["sequence"], "status": row["status"] if row else "queued"}}
 
 
-def _cloud_history(db: CloudDB, session_id: str) -> list[dict[str, str]]:
+def _cloud_history(db: CloudDB, session_id: str, *, exclude_command_id: str | None = None) -> list[dict[str, str]]:
     """Build a bounded provider history from imported messages and cloud turns."""
     messages: list[dict[str, str]] = []
     with db.connect() as cx:
@@ -1193,6 +1261,8 @@ def _cloud_history(db: CloudDB, session_id: str) -> list[dict[str, str]]:
         except (TypeError, ValueError):
             continue
     for command in commands:
+        if exclude_command_id and command["id"] == exclude_command_id:
+            continue
         messages.append({"role": "user", "content": str(command["input_text"])})
         if command["id"] in outputs:
             messages.append({"role": "assistant", "content": outputs[command["id"]]})
