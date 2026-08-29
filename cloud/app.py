@@ -576,9 +576,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         await websocket.accept()
         peers = app.state.relays.setdefault(session_id, {})
         peers[device_id] = websocket
+        frame_times: list[int] = []
         try:
             while True:
                 message = await websocket.receive_text()
+                now = int(time.time())
+                frame_times[:] = [stamp for stamp in frame_times if stamp > now - 60]
+                if len(frame_times) >= 120:
+                    await websocket.send_json({"type": "rejected", "error": "relay_rate_limited"})
+                    continue
+                frame_times.append(now)
                 if len(message.encode()) > 256 * 1024:
                     await websocket.send_json({"type": "rejected", "error": "frame_too_large"})
                     continue
