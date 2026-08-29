@@ -335,6 +335,8 @@ The API validates registered key material as 32-byte URL-safe Base64 Ed25519
 public keys before accepting a device for a grant.
 Registered devices can rotate keys with `POST /v1/devices/{device_id}/rotate-key`;
 the old public key is replaced immediately and the rotation is audited.
+Revoking a device also revokes all active Grants that reference it in the same
+transaction.
 
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create

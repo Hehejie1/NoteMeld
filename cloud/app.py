@@ -252,9 +252,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.post("/v1/devices/{device_id}/revoke")
     def revoke_device(device_id: str, current=Depends(_auth_dependency(db))):
         with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
             result = cx.execute("UPDATE devices SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), device_id, current["id"]))
+            if result.rowcount == 1:
+                cx.execute("UPDATE grants SET revoked_at=? WHERE user_id=? AND (controller_device_id=? OR host_device_id=?) AND revoked_at IS NULL", (int(time.time()), current["id"], device_id, device_id))
+            cx.execute("COMMIT")
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
+        _audit(db, current["id"], "device.revoke", device_id, {"grants_revoked": True})
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "revoked": True}}
 
     @app.post("/v1/devices/{device_id}/rotate-key")

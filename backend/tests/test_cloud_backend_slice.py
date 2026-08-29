@@ -90,6 +90,18 @@ def test_device_key_rotation_replaces_public_key(tmp_path):
         assert device["public_key"] == rotated_key
 
 
+def test_device_revoke_also_revokes_grants(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("revoke-controller", "revoke-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "revoke-controller", "host_device_id": "revoke-host"}).json()["data"]["grant_id"]
+        assert http.post("/v1/devices/revoke-host/revoke", headers=headers).status_code == 200
+        listed = next(item for item in http.get("/v1/grants", headers=headers).json()["data"] if item["id"] == grant)
+        assert listed["revoked_at"] is not None
+
+
 def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
