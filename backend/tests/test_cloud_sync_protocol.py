@@ -27,6 +27,17 @@ def test_remote_frame_aad_binds_routing_metadata():
     assert frame.associated_data() != changed.associated_data()
 
 
+def test_remote_frame_validation_is_shared_with_clients():
+    frame = RemoteFrame("s", "a", "b", 1, "ciphertext", "f", 3, nonce="bm5ubm5ubm5ubm5u")
+    frame.validate()
+    try:
+        RemoteFrame("s", "a", "b", 0, "ciphertext", "f", 3, nonce="bm5ubm5ubm5ubm5u").validate()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid sequence must be rejected")
+
+
 def test_durable_mailbox_survives_reopen(tmp_path):
     database = tmp_path / "queue.db"
     first = DurableSessionMailbox(database, max_size=2)

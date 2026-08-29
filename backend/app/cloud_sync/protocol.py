@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import base64
 from dataclasses import dataclass
 
 
@@ -41,6 +42,20 @@ class RemoteFrame:
     def associated_data(self) -> bytes:
         """Canonical metadata bytes to bind into the client-side AEAD tag."""
         return json.dumps(self.envelope(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def validate(self) -> None:
+        if self.protocol_version != PROTOCOL_VERSION:
+            raise ValueError("unsupported sync protocol")
+        if not self.session_id or not self.sender_device_id or not self.recipient_device_id or not self.frame_id or not self.ciphertext:
+            raise ValueError("incomplete remote frame")
+        if self.sequence < 1 or self.authority_epoch < 0 or self.frame_type not in {"command", "receipt", "event"}:
+            raise ValueError("invalid remote frame metadata")
+        try:
+            nonce = base64.urlsafe_b64decode(self.nonce + "=" * (-len(self.nonce) % 4))
+        except (ValueError, TypeError):
+            raise ValueError("invalid remote frame nonce") from None
+        if len(nonce) != 12:
+            raise ValueError("invalid remote frame nonce")
 
     def to_json(self) -> str:
         return json.dumps({**self.envelope(), "ciphertext": self.ciphertext}, separators=(",", ":"))
