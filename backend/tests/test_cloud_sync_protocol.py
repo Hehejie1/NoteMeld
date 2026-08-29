@@ -1,4 +1,4 @@
-from app.cloud_sync import RemoteFrame, SessionMailbox, SessionCommand
+from app.cloud_sync import DurableSessionMailbox, RemoteFrame, SessionMailbox, SessionCommand
 
 
 def test_mailbox_is_serial_and_idempotent():
@@ -18,3 +18,14 @@ def test_remote_frame_envelope_excludes_plaintext():
     assert "input_text" not in payload
     assert frame.envelope()["authority_epoch"] == 3
     assert frame.envelope()["frame_type"] == "command"
+
+
+def test_durable_mailbox_survives_reopen(tmp_path):
+    database = tmp_path / "queue.db"
+    first = DurableSessionMailbox(database, max_size=2)
+    assert first.enqueue("s1", "r1", "hello").sequence == 1
+    reopened = DurableSessionMailbox(database, max_size=2)
+    command = reopened.pop("s1")
+    assert command is not None and command.request_id == "r1" and command.sequence == 1
+    reopened.complete("s1", "r1")
+    assert reopened.pending("s1") == []
