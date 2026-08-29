@@ -372,6 +372,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"deleted": True}}
 
     @app.post("/v1/devices")
+    @app.post("/v1/devices/register")
     def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         if payload.public_key is not None and not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
@@ -396,6 +397,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/devices/{device_id}/revoke")
+    @app.delete("/v1/devices/{device_id}")
     def revoke_device(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
@@ -476,6 +478,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"]), "workspace_refs": json.loads(row["workspace_refs_json"])} for row in rows]}
 
     @app.post("/v1/grants/{grant_id}/revoke")
+    @app.delete("/v1/grants/{grant_id}")
     def revoke_grant(grant_id: str, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
         with db.connect() as cx:
             result = cx.execute("UPDATE grants SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), grant_id, current["id"]))

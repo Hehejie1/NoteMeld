@@ -327,6 +327,17 @@ def test_cloud_session_spec_prefix_aliases(tmp_path):
         assert http.delete(f"/v1/cloud/sessions/{session['id']}", headers=headers).status_code == 200
 
 
+def test_device_and_grant_spec_aliases(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("alias-controller", "alias-host"):
+            assert http.post("/v1/devices/register", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "alias-controller", "host_device_id": "alias-host"}).json()["data"]["grant_id"]
+        assert http.delete(f"/v1/grants/{grant}", headers=headers).status_code == 200
+        assert http.delete("/v1/devices/alias-host", headers=headers).status_code == 200
+
+
 def test_local_session_full_share_import_is_sanitized_atomic_and_idempotent(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

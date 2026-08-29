@@ -341,6 +341,7 @@ the default configuration.
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/v1/cloud/sessions/import` | create a new independent cloud-native session from an idempotent, allowlisted local full-share snapshot; validates active source device, secrets, paths, file count/size and SHA-256 |
+| POST | `/v1/devices/register` | canonical device registration path (legacy `/v1/devices` remains supported) |
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
@@ -350,6 +351,7 @@ the default configuration.
 | POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
 | GET | `/v1/grants` | list remote-control grants |
 | POST | `/v1/grants/{grant_id}/revoke` | revoke a grant |
+| DELETE | `/v1/grants/{grant_id}` | canonical grant revoke path (legacy POST revoke remains supported) |
 | POST/GET | `/v1/share-tokens` | create/list scoped share tokens; raw token is returned only on creation |
 | POST | `/v1/share-tokens/{id}/revoke` | revoke a share token |
 | GET | `/v1/shared/{session_id}/snapshot` | read a session snapshot with `X-Share-Token` |
