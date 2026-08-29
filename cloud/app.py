@@ -90,6 +90,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.db = db
     app.state.settings = settings
     app.state.relays: dict[str, dict[str, WebSocket]] = {}
+    app.state.relay_sequences: dict[tuple[str, str], int] = {}
 
     @app.get("/health")
     def health() -> dict:
@@ -454,17 +455,24 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     continue
                 try:
                     envelope = json.loads(message)
-                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext"):
+                    sequence = envelope.get("sequence")
+                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
                     if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"]):
                         raise ValueError("relay grant missing")
+                    replay_key = (session_id, device_id)
+                    if sequence <= app.state.relay_sequences.get(replay_key, 0):
+                        raise ValueError("replayed relay envelope")
+                    app.state.relay_sequences[replay_key] = sequence
                 except (ValueError, json.JSONDecodeError, TypeError):
                     await websocket.send_json({"type": "rejected", "error": "invalid_envelope"})
                     continue
                 peer = peers.get(envelope["recipient_device_id"])
-                if peer is not None and peer is not websocket:
-                    await peer.send_text(message)
-                await websocket.send_json({"type": "accepted"})
+                if peer is None or peer is websocket:
+                    await websocket.send_json({"type": "failed", "error": "host_offline", "frame_id": envelope["frame_id"]})
+                    continue
+                await peer.send_text(message)
+                await websocket.send_json({"type": "relay_accepted", "frame_id": envelope["frame_id"]})
         except WebSocketDisconnect:
             if peers.get(device_id) is websocket:
                 peers.pop(device_id, None)

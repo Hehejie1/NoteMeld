@@ -319,7 +319,7 @@ depend on a display label.
 | GET | `/v1/shared/{session_id}/snapshot` | read a session snapshot with `X-Share-Token` |
 | GET | `/v1/shared/{session_id}/events` | read events after a cursor with `X-Share-Token` |
 | POST | `/v1/shared/{session_id}/commands` | submit a cloud-native command when the share token explicitly has `message.send` |
-| WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant |
+| WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant; returns `host_offline` when target is not connected and rejects replayed sequence numbers |
 
 `POST /v1/sessions/{id}/commands` is only valid for `cloud_native` sessions. A
 `device_remote` session must deliver commands through the host relay; the cloud

@@ -199,3 +199,19 @@ def test_admin_delete_cleans_owned_relations(tmp_path):
         assert http.post("/v1/grants", headers=user_headers, json={"controller_device_id": "owner-phone", "host_device_id": "owner-desktop"}).status_code == 200
         assert http.post("/v1/share-tokens", headers=user_headers, json={"session_id": session["id"]}).status_code == 200
         assert http.delete(f"/v1/admin/users/{user_id}", headers=admin_headers).status_code == 200
+
+
+def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("relay-controller", "relay-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "relay-controller", "host_device_id": "relay-host"}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "relay-controller", "recipient_device_id": "relay-host", "sequence": 1, "frame_id": "frame-1", "authority_epoch": 1, "ciphertext": "opaque"}
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=relay-controller", headers=headers) as socket:
+            socket.send_json(frame)
+            assert socket.receive_json()["error"] == "host_offline"
+            socket.send_json(frame)
+            assert socket.receive_json()["error"] == "invalid_envelope"
