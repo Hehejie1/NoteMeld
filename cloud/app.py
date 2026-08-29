@@ -430,7 +430,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": token_id, "revoked": True}}
 
     @app.post("/v1/sessions")
-    def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db))):
+    def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         session_id = str(uuid.uuid4())
         now = int(time.time())
         Workspace(settings.workspaces_dir / current["id"] / payload.workspace_id)
@@ -575,7 +575,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
 
     @app.get("/v1/sessions")
-    def list_sessions(device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
+    def list_sessions(device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
             rows = cx.execute("SELECT s.*, COALESCE((SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id=?), (SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id IS NULL)) AS archived_at FROM sessions s WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], device_id, current["id"], current["id"])).fetchall()
@@ -613,7 +613,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "deleted": True}}
 
     @app.post("/v1/sessions/{session_id}/commands")
-    def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db))):
+    def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         session = _owned_session(db, session_id, current["id"])
         if session["kind"] == "device_remote":
             raise HTTPException(409, "device_remote commands must be delivered through the host relay")
@@ -640,7 +640,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "completed"}}
 
     @app.get("/v1/sessions/{session_id}/commands/{command_id}")
-    def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db))):
+    def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             row = cx.execute("SELECT id,session_id,request_id,sequence,status,created_at FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
@@ -649,7 +649,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": dict(row)}
 
     @app.get("/v1/sessions/{session_id}/commands")
-    def list_commands(session_id: str, after: int = 0, limit: int = 100, current=Depends(_auth_dependency(db))):
+    def list_commands(session_id: str, after: int = 0, limit: int = 100, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         limit = max(1, min(limit, 500))
         with db.connect() as cx:
@@ -657,7 +657,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.get("/v1/sessions/{session_id}/snapshot")
-    def snapshot(session_id: str, current=Depends(_auth_dependency(db))):
+    def snapshot(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         session = _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             events = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
@@ -691,7 +691,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return submit_command(session_id, payload, current={"id": access["user_id"]})
 
     @app.get("/v1/sessions/{session_id}/events")
-    def events(session_id: str, after: int = 0, current=Depends(_auth_dependency(db))):
+    def events(session_id: str, after: int = 0, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence", (session_id, after)).fetchall()
@@ -782,13 +782,16 @@ def _user_by_account_id(db: CloudDB, account_id: str | None):
         return cx.execute("SELECT * FROM users WHERE id=?", (account_id,)).fetchone()
 
 
-def _auth_dependency(db: CloudDB, required_role: str | None = None):
+def _auth_dependency(db: CloudDB, required_role: str | None = None, required_scope: str | None = None):
     def dependency(authorization: Annotated[str | None, Header()] = None):
         row = _authenticate_token(db, authorization)
         if not row:
             raise HTTPException(401, "invalid token")
         if required_role and row["role"] != required_role:
             raise HTTPException(403, "permission denied")
+        scopes = json.loads(row["scopes_json"])
+        if required_scope and "*" not in scopes and required_scope not in scopes:
+            raise HTTPException(403, "token scope denied")
         return row
     return dependency
 

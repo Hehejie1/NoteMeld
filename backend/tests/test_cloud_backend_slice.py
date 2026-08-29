@@ -441,6 +441,9 @@ def test_personal_scoped_token_lifecycle(tmp_path):
         headers = {"Authorization": f"Bearer {login_token}"}
         created = http.post("/v1/auth/tokens", headers=headers, json={"scopes": ["session.read"]}).json()["data"]
         assert created["scopes"] == ["session.read"]
+        scoped_headers = {"Authorization": f"Bearer {created['token']}"}
+        assert http.get("/v1/sessions", headers=scoped_headers).status_code == 200
+        assert http.post("/v1/sessions", headers=scoped_headers, json={"kind": "cloud_native"}).status_code == 403
         listed = http.get("/v1/auth/tokens", headers=headers).json()["data"]
         assert any(item["id"] == created["jti"] for item in listed)
         assert http.post(f"/v1/auth/tokens/{created['jti']}/revoke", headers=headers).status_code == 200

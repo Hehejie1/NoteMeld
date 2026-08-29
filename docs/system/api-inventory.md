@@ -315,7 +315,10 @@ Issued account tokens expose a stable `jti` (the opaque token ID), audience,
 scopes and expiry; only the token digest is persisted.
 Users can manage independent PAT-style tokens via `POST/GET /v1/auth/tokens`
 and `POST /v1/auth/tokens/{jti}/revoke`; raw token material is returned only
-at creation time.
+at creation time. Login tokens currently carry wildcard scope. PAT access to
+the core session API is enforced as follows: `session.read` permits session,
+command-status, snapshot and event reads; `session.write` permits session and
+command creation. Missing scopes return HTTP 403.
 
 Failed logins are limited to five attempts per source/account key in a
 60-second process-local window and return HTTP 429 after the limit. Production
