@@ -12,6 +12,7 @@ class CloudSettings:
     admin_password: str
     token_ttl_seconds: int = 30 * 24 * 60 * 60
     max_workspace_bytes: int = 1_000_000_000
+    max_workspace_files: int = 10_000
     cors_origins: tuple[str, ...] = ()
 
     @property
@@ -30,5 +31,6 @@ def load_settings() -> CloudSettings:
         admin_username=os.getenv("NOTEMELD_CLOUD_ADMIN_USERNAME", "admin"),
         admin_password=os.getenv("NOTEMELD_CLOUD_ADMIN_PASSWORD", ""),
         max_workspace_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES", "1000000000")),
+        max_workspace_files=int(os.getenv("NOTEMELD_CLOUD_MAX_WORKSPACE_FILES", "10000")),
         cors_origins=tuple(origin.strip() for origin in os.getenv("NOTEMELD_CLOUD_CORS_ORIGINS", "").split(",") if origin.strip()),
     )

@@ -6,6 +6,7 @@ Local development:
 NOTEMELD_CLOUD_ADMIN_USERNAME=admin \
 NOTEMELD_CLOUD_ADMIN_PASSWORD='change-me-please-123' \
 NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES=1000000000 \
+NOTEMELD_CLOUD_MAX_WORKSPACE_FILES=10000 \
 NOTEMELD_CLOUD_CORS_ORIGINS='https://app.example.com' \
 PYTHONPATH=. uvicorn cloud.main:app --host 127.0.0.1 --port 8583
 ```
@@ -21,6 +22,13 @@ Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
 default) and return HTTP 413 when the quota would be exceeded. Workspace ZIP
 backups can be created/listed/restored through the `/v1/workspaces/.../backups`
 endpoints; restore is a validated file overlay.
+
+`POST /v1/cloud/sessions/import` creates a new cloud-native session from an
+explicitly allowlisted local snapshot. It validates the registered source
+device, request idempotency, sensitive configuration keys, file paths,
+Base64 content, declared size and SHA-256 before atomically publishing the
+workspace and metadata. Skill, plugin and Application package fields are not
+part of the accepted schema.
 
 Container build/run from the NoteMeld repository root:
 

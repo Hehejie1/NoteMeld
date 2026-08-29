@@ -32,6 +32,18 @@ def test_cloud_client_projects_errors():
     client.close()
 
 
+def test_cloud_client_imports_local_snapshot():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/cloud/sessions/import"
+        assert b'"source_session_id":"s1"' in request.content
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"id": "cloud-1", "kind": "cloud_native"}})
+
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    result = client.import_session({"request_id": "r1", "source_session_id": "s1", "source_device_id": "desktop-1"})
+    assert result["id"] == "cloud-1"
+    client.close()
+
+
 def test_cloud_client_quotes_workspace_paths():
     seen = []
     transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": {"ok": True}})))

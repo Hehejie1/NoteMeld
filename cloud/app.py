@@ -5,13 +5,14 @@ import base64
 import json
 import os
 import secrets
+import shutil
 import time
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import CloudSettings, load_settings
 from .db import CloudDB
@@ -79,6 +80,46 @@ class SessionCreate(BaseModel):
     kind: str = Field(pattern="^(cloud_native|device_remote)$")
     title: str = Field(default="New session", max_length=200)
     workspace_id: str = Field(default="default", min_length=1, max_length=128, pattern="^[A-Za-z0-9_-]+$")
+
+
+class SessionImportFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=1024)
+    content_base64: str
+    sha256: str = Field(pattern="^[a-f0-9]{64}$")
+    size: int = Field(ge=0)
+    mime_type: str = Field(min_length=1, max_length=255)
+
+
+class SessionImportEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: str = Field(min_length=1, max_length=128)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: int | None = Field(default=None, ge=0)
+
+
+class SessionImport(BaseModel):
+    """Explicit allowlist for a local-to-cloud full-share snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str = Field(min_length=1, max_length=128)
+    source_session_id: str = Field(min_length=1, max_length=256)
+    source_device_id: str = Field(min_length=8, max_length=256)
+    title: str = Field(default="Imported session", max_length=200)
+    conversation: dict[str, Any] = Field(default_factory=dict)
+    events: list[SessionImportEvent] = Field(default_factory=list, max_length=100_000)
+    compression: dict[str, Any] | list[Any] | None = None
+    memory: dict[str, Any] | list[Any] | None = None
+    model_descriptor: dict[str, Any] = Field(default_factory=dict)
+    mcp_config: dict[str, Any] | list[Any] = Field(default_factory=dict)
+    tool_records: list[dict[str, Any]] = Field(default_factory=list, max_length=100_000)
+    approval_records: list[dict[str, Any]] = Field(default_factory=list, max_length=100_000)
+    task_state: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    files: list[SessionImportFile] = Field(default_factory=list)
 
 
 class CommandCreate(BaseModel):
@@ -438,8 +479,77 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", now, now))
         return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id}}
 
+    @app.post("/v1/cloud/sessions/import")
+    def import_session(payload: SessionImport, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        if not _active_device_owned(db, payload.source_device_id, current["id"]):
+            raise HTTPException(403, "source device is not active for this account")
+        manifest = payload.model_dump(mode="json", exclude={"files"})
+        manifest["files"] = [item.model_dump(mode="json", exclude={"content_base64"}) for item in payload.files]
+        _reject_sensitive_fields(manifest)
+        manifest_json = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+        payload_hash = hashlib.sha256(manifest_json.encode()).hexdigest()
+        with db.connect() as cx:
+            existing = cx.execute("SELECT session_id,payload_hash FROM session_import_requests WHERE user_id=? AND request_id=?", (current["id"], payload.request_id)).fetchone()
+        if existing:
+            if not secrets.compare_digest(existing["payload_hash"], payload_hash):
+                raise HTTPException(409, "import request payload conflict")
+            session = _owned_session(db, existing["session_id"], current["id"])
+            return {"code": 0, "msg": "success", "data": {"id": session["id"], "kind": session["kind"], "workspace_id": session["workspace_id"], "idempotent": True}}
+
+        decoded_files = _decode_import_files(payload.files, settings.max_workspace_bytes, settings.max_workspace_files)
+        session_id = str(uuid.uuid4())
+        workspace_id = f"import-{session_id[:12]}"
+        user_workspace_root = settings.workspaces_dir / current["id"]
+        user_workspace_root.mkdir(parents=True, exist_ok=True)
+        staging_path = user_workspace_root / f".{workspace_id}.{secrets.token_urlsafe(6)}.staging"
+        target_path = user_workspace_root / workspace_id
+        staging = Workspace(staging_path)
+        target_moved = False
+        try:
+            for logical_path, content in decoded_files:
+                staging.write_bytes(logical_path, content)
+            now = int(time.time())
+            cx = db.connect()
+            try:
+                cx.execute("BEGIN IMMEDIATE")
+                existing = cx.execute("SELECT session_id,payload_hash FROM session_import_requests WHERE user_id=? AND request_id=?", (current["id"], payload.request_id)).fetchone()
+                if existing:
+                    cx.execute("COMMIT")
+                    if not secrets.compare_digest(existing["payload_hash"], payload_hash):
+                        raise HTTPException(409, "import request payload conflict")
+                    session = _owned_session(db, existing["session_id"], current["id"])
+                    return {"code": 0, "msg": "success", "data": {"id": session["id"], "kind": session["kind"], "workspace_id": session["workspace_id"], "idempotent": True}}
+                if target_path.exists():
+                    raise RuntimeError("import workspace collision")
+                os.replace(staging_path, target_path)
+                target_moved = True
+                cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,next_event_sequence,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (session_id, current["id"], "cloud_native", payload.title, workspace_id, "idle", len(payload.events) + 1, now, now))
+                for sequence, event in enumerate(payload.events, start=1):
+                    cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, sequence, event.event_type, json.dumps(event.payload, separators=(",", ":")), event.created_at or now))
+                cx.execute("INSERT INTO session_payloads(session_id,payload_json,created_at) VALUES(?,?,?)", (session_id, manifest_json, now))
+                cx.execute("INSERT INTO session_import_requests(user_id,request_id,payload_hash,session_id,created_at) VALUES(?,?,?,?,?)", (current["id"], payload.request_id, payload_hash, session_id, now))
+                cx.execute("COMMIT")
+            except Exception:
+                if cx.in_transaction:
+                    cx.execute("ROLLBACK")
+                raise
+            finally:
+                cx.close()
+        except HTTPException:
+            if target_moved:
+                shutil.rmtree(target_path, ignore_errors=True)
+            raise
+        except Exception as exc:
+            if target_moved:
+                shutil.rmtree(target_path, ignore_errors=True)
+            raise HTTPException(400, "session import failed") from exc
+        finally:
+            shutil.rmtree(staging_path, ignore_errors=True)
+        _audit(db, current["id"], "session.import", session_id, {"source_device_id": payload.source_device_id, "source_session_id": payload.source_session_id, "file_count": len(decoded_files)})
+        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": "cloud_native", "workspace_id": workspace_id, "file_count": len(decoded_files), "bytes_imported": sum(len(content) for _, content in decoded_files), "idempotent": False}}
+
     @app.post("/v1/sessions/{session_id}/copy")
-    def copy_session(session_id: str, current=Depends(_auth_dependency(db))):
+    def copy_session(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         source = _owned_session(db, session_id, current["id"])
         new_id = str(uuid.uuid4())
         workspace_id = f"copy-{new_id[:12]}"
@@ -450,14 +560,23 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             copied_files = source_workspace.copy_to(destination_workspace, settings.max_workspace_bytes)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
-        with db.connect() as cx:
-            cx.execute("BEGIN IMMEDIATE")
-            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,created_at,updated_at,next_sequence,next_event_sequence,authority_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, now, now, source["next_sequence"], source["next_event_sequence"], 1))
-            cx.execute("INSERT INTO commands SELECT ?,?,request_id,payload_hash,sequence,input_text,status,created_at FROM commands WHERE session_id=?", (str(uuid.uuid4()), new_id, session_id))
-            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
-            for row in rows:
-                cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["sequence"], row["event_type"], row["payload_json"], row["created_at"]))
-            cx.execute("COMMIT")
+        try:
+            with db.connect() as cx:
+                cx.execute("BEGIN IMMEDIATE")
+                cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,created_at,updated_at,next_sequence,next_event_sequence,authority_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, now, now, source["next_sequence"], source["next_event_sequence"], 1))
+                command_rows = cx.execute("SELECT request_id,payload_hash,sequence,input_text,status,created_at FROM commands WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
+                for row in command_rows:
+                    cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["request_id"], row["payload_hash"], row["sequence"], row["input_text"], row["status"], row["created_at"]))
+                rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
+                for row in rows:
+                    cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["sequence"], row["event_type"], row["payload_json"], row["created_at"]))
+                payload_row = cx.execute("SELECT payload_json FROM session_payloads WHERE session_id=?", (session_id,)).fetchone()
+                if payload_row:
+                    cx.execute("INSERT INTO session_payloads(session_id,payload_json,created_at) VALUES(?,?,?)", (new_id, payload_row["payload_json"], now))
+                cx.execute("COMMIT")
+        except Exception:
+            shutil.rmtree(destination_workspace.root, ignore_errors=True)
+            raise
         return {"code": 0, "msg": "success", "data": {"id": new_id, "copied_from": session_id, "workspace_id": workspace_id, **copied_files}}
 
     @app.post("/v1/sessions/{session_id}/authority/rotate")
@@ -600,17 +719,25 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": False}}
 
     @app.delete("/v1/sessions/{session_id}")
-    def delete_session(session_id: str, current=Depends(_auth_dependency(db))):
-        _owned_session(db, session_id, current["id"])
+    def delete_session(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        session = _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
             cx.execute("DELETE FROM events WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM commands WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM share_tokens WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM session_archives WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM session_import_requests WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM session_payloads WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (session_id, current["id"]))
+            workspace_references = cx.execute("SELECT COUNT(*) FROM sessions WHERE user_id=? AND workspace_id=?", (current["id"], session["workspace_id"])).fetchone()[0]
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "deleted": True}}
+        workspace_purged = workspace_references == 0
+        if workspace_purged:
+            shutil.rmtree(settings.workspaces_dir / current["id"] / session["workspace_id"], ignore_errors=True)
+            shutil.rmtree(settings.data_dir / "backups" / current["id"] / session["workspace_id"], ignore_errors=True)
+        _audit(db, current["id"], "session.delete", session_id, {"workspace_id": session["workspace_id"], "workspace_purged": workspace_purged})
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "deleted": True, "workspace_purged": workspace_purged}}
 
     @app.post("/v1/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
@@ -661,7 +788,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         session = _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             events = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
-        return {"code": 0, "msg": "success", "data": {"session": dict(session), "snapshot_seq": events[-1]["sequence"] if events else 0, "events": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in events]}}
+            imported = cx.execute("SELECT payload_json FROM session_payloads WHERE session_id=?", (session_id,)).fetchone()
+        return {"code": 0, "msg": "success", "data": {"session": dict(session), "snapshot_seq": events[-1]["sequence"] if events else 0, "events": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in events], "imported_snapshot": json.loads(imported["payload_json"]) if imported else None}}
 
     @app.get("/v1/shared/{session_id}/snapshot")
     def shared_snapshot(session_id: str, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
@@ -836,6 +964,49 @@ def _validate_device_header(db: CloudDB, device_id: str | None, user_id: str) ->
 def _validate_workspace_id(workspace_id: str) -> None:
     if not workspace_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in workspace_id):
         raise HTTPException(400, "invalid workspace id")
+
+
+def _reject_sensitive_fields(value: Any, path: str = "snapshot") -> None:
+    forbidden_names = {"secret", "secrets", "api_key", "token", "cookie", "cookies", "password", "credential", "credentials", "authorization", "private_key", "environment", "env"}
+    forbidden_suffixes = ("_secret", "_api_key", "_access_token", "_refresh_token", "_password", "_cookie", "_private_key")
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if normalized in forbidden_names or normalized.endswith(forbidden_suffixes):
+                raise HTTPException(400, f"sensitive field is not allowed: {path}.{key}")
+            _reject_sensitive_fields(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_sensitive_fields(child, f"{path}[{index}]")
+
+
+def _decode_import_files(files: list[SessionImportFile], max_bytes: int, max_files: int) -> list[tuple[str, bytes]]:
+    if len(files) > max_files:
+        raise HTTPException(413, "workspace file count limit exceeded")
+    decoded: list[tuple[str, bytes]] = []
+    seen: set[str] = set()
+    total = 0
+    for item in files:
+        logical_path = item.path
+        parts = logical_path.split("/")
+        if "\\" in logical_path or ":" in logical_path or logical_path.startswith("/") or len(parts) > 32 or any(part in ("", ".", "..") for part in parts):
+            raise HTTPException(400, "invalid imported workspace path")
+        if logical_path in seen:
+            raise HTTPException(409, "duplicate imported workspace path")
+        seen.add(logical_path)
+        if item.size > max_bytes or len(item.content_base64) > ((max_bytes + 2) // 3) * 4 + 4:
+            raise HTTPException(413, "workspace quota exceeded")
+        try:
+            content = base64.b64decode(item.content_base64 + "=" * (-len(item.content_base64) % 4), altchars=b"-_", validate=True)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, "invalid imported file content") from exc
+        if len(content) != item.size or not secrets.compare_digest(hashlib.sha256(content).hexdigest(), item.sha256):
+            raise HTTPException(400, "imported file integrity check failed")
+        total += len(content)
+        if total > max_bytes:
+            raise HTTPException(413, "workspace quota exceeded")
+        decoded.append((logical_path, content))
+    return decoded
 
 
 def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):

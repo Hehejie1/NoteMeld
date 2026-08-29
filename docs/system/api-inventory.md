@@ -331,6 +331,8 @@ the default configuration.
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| POST | `/v1/cloud/sessions/import` | create a new independent cloud-native session from an idempotent, allowlisted local full-share snapshot; validates active source device, secrets, paths, file count/size and SHA-256 |
+| DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |

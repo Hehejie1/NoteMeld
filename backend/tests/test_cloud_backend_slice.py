@@ -1,5 +1,6 @@
 from pathlib import Path
 import base64
+import hashlib
 
 from fastapi.testclient import TestClient
 
@@ -187,6 +188,61 @@ def test_session_command_idempotency_and_snapshot(tmp_path):
         snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
         assert snapshot["snapshot_seq"] == 2
         assert snapshot["events"][-1]["event_type"] == "turn.completed"
+
+
+def test_local_session_full_share_import_is_sanitized_atomic_and_idempotent(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.post("/v1/devices", headers=headers, json={"device_id": "desktop-import-source", "platform": "desktop", "display_name": "Desktop"}).status_code == 200
+        content = b"# Imported workspace\n"
+        payload = {
+            "request_id": "import-request-1",
+            "source_session_id": "local-session-1",
+            "source_device_id": "desktop-import-source",
+            "title": "Imported",
+            "conversation": {"messages": [{"role": "user", "content": "hello"}]},
+            "events": [{"event_type": "message.created", "payload": {"role": "user"}, "created_at": 123}],
+            "compression": {"summary": "short"},
+            "memory": {"items": ["remember"]},
+            "model_descriptor": {"provider": "local", "model": "example", "context_window_tokens": 8192},
+            "mcp_config": {"servers": [{"name": "safe", "enabled": True}]},
+            "tool_records": [],
+            "approval_records": [],
+            "task_state": {"status": "idle"},
+            "provenance": {"origin": "local"},
+            "files": [{"path": "notes/imported.md", "content_base64": base64.urlsafe_b64encode(content).decode(), "sha256": hashlib.sha256(content).hexdigest(), "size": len(content), "mime_type": "text/markdown"}],
+        }
+        created = http.post("/v1/cloud/sessions/import", headers=headers, json=payload)
+        assert created.status_code == 200
+        data = created.json()["data"]
+        assert data["kind"] == "cloud_native" and data["file_count"] == 1 and data["idempotent"] is False
+        snapshot = http.get(f"/v1/sessions/{data['id']}/snapshot", headers=headers).json()["data"]
+        assert snapshot["events"][0]["created_at"] == 123
+        assert snapshot["imported_snapshot"]["conversation"] == payload["conversation"]
+        assert "content_base64" not in snapshot["imported_snapshot"]["files"][0]
+        assert http.get(f"/v1/workspaces/{data['workspace_id']}/files/notes/imported.md", headers=headers).json()["data"]["content"] == content.decode()
+        retried = http.post("/v1/cloud/sessions/import", headers=headers, json=payload).json()["data"]
+        assert retried["id"] == data["id"] and retried["idempotent"] is True
+        conflicting = {**payload, "title": "Different"}
+        assert http.post("/v1/cloud/sessions/import", headers=headers, json=conflicting).status_code == 409
+        deleted = http.delete(f"/v1/sessions/{data['id']}", headers=headers)
+        assert deleted.status_code == 200 and deleted.json()["data"]["workspace_purged"] is True
+        assert http.get(f"/v1/workspaces/{data['workspace_id']}/files/notes/imported.md", headers=headers).status_code == 400
+
+
+def test_full_share_import_rejects_secrets_packages_and_bad_file_hash(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        http.post("/v1/devices", headers=headers, json={"device_id": "desktop-import-guard", "platform": "desktop", "display_name": "Desktop"})
+        base_payload = {"request_id": "guard-1", "source_session_id": "local-1", "source_device_id": "desktop-import-guard"}
+        assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "model_descriptor": {"api_key": "must-not-upload"}}).status_code == 400
+        assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "skills": [{"id": "forbidden"}]}).status_code == 422
+        bad_file = {"path": "safe.txt", "content_base64": base64.urlsafe_b64encode(b"data").decode(), "sha256": "0" * 64, "size": 4, "mime_type": "text/plain"}
+        assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "files": [bad_file]}).status_code == 400
+        empty_file = {"path": "C:/ambiguous.txt", "content_base64": "", "sha256": hashlib.sha256(b"").hexdigest(), "size": 0, "mime_type": "text/plain"}
+        assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "files": [empty_file]}).status_code == 400
 
 
 def test_session_archive_delete_and_token_rotate(tmp_path):
@@ -457,9 +513,11 @@ def test_session_copy_is_independent_with_provenance(tmp_path):
         source = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native", "title": "source"}).json()["data"]
         http.put(f"/v1/workspaces/{source['workspace_id']}/files/context.txt", headers=headers, json={"content": "copied"})
         http.post(f"/v1/sessions/{source['id']}/commands", headers=headers, json={"request_id": "copy-1", "input": "hello"})
+        http.post(f"/v1/sessions/{source['id']}/commands", headers=headers, json={"request_id": "copy-2", "input": "again"})
         copied = http.post(f"/v1/sessions/{source['id']}/copy", headers=headers)
         assert copied.status_code == 200
         target = copied.json()["data"]
         assert target["id"] != source["id"] and target["copied_from"] == source["id"]
         assert http.get(f"/v1/workspaces/{target['workspace_id']}/files/context.txt", headers=headers).json()["data"]["content"] == "copied"
-        assert http.post(f"/v1/sessions/{target['id']}/commands", headers=headers, json={"request_id": "copy-2", "input": "independent"}).status_code == 200
+        assert len(http.get(f"/v1/sessions/{target['id']}/commands", headers=headers).json()["data"]) == 2
+        assert http.post(f"/v1/sessions/{target['id']}/commands", headers=headers, json={"request_id": "copy-3", "input": "independent"}).status_code == 200

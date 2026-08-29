@@ -68,6 +68,9 @@ class CloudClient:
     def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default") -> dict[str, Any]:
         return self._request("POST", "/v1/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id})
 
+    def import_session(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/v1/cloud/sessions/import", json=snapshot)
+
     def send_command(self, session_id: str, request_id: str, input_text: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/sessions/{session_id}/commands", json={"request_id": request_id, "input": input_text})
 

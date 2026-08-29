@@ -31,12 +31,15 @@ class Workspace:
         return path.read_text(encoding="utf-8")
 
     def write_text(self, logical_path: str, content: str) -> None:
+        self.write_bytes(logical_path, content.encode("utf-8"))
+
+    def write_bytes(self, logical_path: str, content: bytes) -> None:
         path = self.path(logical_path)
         if path.exists() and path.is_symlink():
             raise WorkspaceError("symlink writes are forbidden")
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary.write_text(content, encoding="utf-8")
+        temporary.write_bytes(content)
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         temporary.replace(path)

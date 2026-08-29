@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS share_tokens (
   token_digest TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('viewer','standard','super_admin')),
   scopes_json TEXT NOT NULL, expires_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS session_payloads (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id), payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS session_import_requests (
+  user_id TEXT NOT NULL REFERENCES users(id), request_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id),
+  created_at INTEGER NOT NULL, PRIMARY KEY(user_id, request_id)
+);
 """
 
 
