@@ -83,3 +83,35 @@ def test_cloud_client_device_proof_contract():
     assert seen[0][1] == "/v1/devices/device-a/challenge"
     assert seen[1][1] == "/v1/devices/device-a/challenge/verify"
     client.close()
+
+
+def test_cloud_client_admin_and_personal_token_contracts():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raw_path = request.url.raw_path.decode().split("?", 1)[0]
+        seen.append((request.method, raw_path, request.url.query, request.content))
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": [] if request.method == "GET" else {"ok": True}})
+
+    client = CloudClient("https://cloud.test", token="nmt_admin", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client.list_personal_tokens()
+    client.create_personal_token([], expires_at=123)
+    client.revoke_personal_token("token/id")
+    client.list_users()
+    client.create_user("alice", "alice-password-123")
+    client.update_user("user/id", disabled=True)
+    client.delete_user("user/id")
+    client.list_audits(25)
+    assert [entry[:2] for entry in seen] == [
+        ("GET", "/v1/auth/tokens"),
+        ("POST", "/v1/auth/tokens"),
+        ("POST", "/v1/auth/tokens/token%2Fid/revoke"),
+        ("GET", "/v1/admin/users"),
+        ("POST", "/v1/admin/users"),
+        ("PUT", "/v1/admin/users/user%2Fid"),
+        ("DELETE", "/v1/admin/users/user%2Fid"),
+        ("GET", "/v1/admin/audits"),
+    ]
+    assert b'"scopes":[]' in seen[1][3] and b'"expires_at":123' in seen[1][3]
+    assert seen[-1][2] == b"limit=25"
+    client.close()

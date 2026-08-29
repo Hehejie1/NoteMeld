@@ -53,6 +53,33 @@ class CloudClient:
         self.token = None
         return data
 
+    def list_personal_tokens(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/auth/tokens")
+
+    def create_personal_token(self, scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"scopes": ["*"] if scopes is None else scopes}
+        if expires_at is not None:
+            payload["expires_at"] = expires_at
+        return self._request("POST", "/v1/auth/tokens", json=payload)
+
+    def revoke_personal_token(self, token_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/auth/tokens/{quote(token_id, safe='')}/revoke")
+
+    def list_users(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/admin/users")
+
+    def create_user(self, username: str, password: str) -> dict[str, Any]:
+        return self._request("POST", "/v1/admin/users", json={"username": username, "password": password})
+
+    def update_user(self, user_id: str, **changes: Any) -> dict[str, Any]:
+        return self._request("PUT", f"/v1/admin/users/{quote(user_id, safe='')}", json=changes)
+
+    def delete_user(self, user_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/admin/users/{quote(user_id, safe='')}")
+
+    def list_audits(self, limit: int = 100) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/admin/audits", params={"limit": limit})
+
     def register_device(self, device_id: str, platform: str, display_name: str, public_key: str | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/devices", json={"device_id": device_id, "platform": platform, "display_name": display_name, "public_key": public_key})
 
