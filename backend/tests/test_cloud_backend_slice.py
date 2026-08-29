@@ -181,6 +181,20 @@ def test_session_archive_delete_and_token_rotate(tmp_path):
         assert http.delete(f"/v1/sessions/{session['id']}", headers=new_headers).status_code == 200
 
 
+def test_archive_isolated_by_device_header(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("archive-device-a", "archive-device-b"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        device_a = {**headers, "X-Device-Id": "archive-device-a"}
+        device_b = {**headers, "X-Device-Id": "archive-device-b"}
+        assert http.post(f"/v1/sessions/{session['id']}/archive", headers=device_a).status_code == 200
+        assert http.get("/v1/sessions", headers=device_a).json()["data"][0]["archived_at"]
+        assert http.get("/v1/sessions", headers=device_b).json()["data"][0]["archived_at"] is None
+
+
 def test_device_remote_cannot_execute_in_cloud(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

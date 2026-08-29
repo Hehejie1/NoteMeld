@@ -536,23 +536,26 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
 
     @app.get("/v1/sessions")
-    def list_sessions(current=Depends(_auth_dependency(db))):
+    def list_sessions(device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
+        _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
-            rows = cx.execute("SELECT s.*, a.archived_at FROM sessions s LEFT JOIN session_archives a ON a.session_id=s.id AND a.user_id=? WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], current["id"])).fetchall()
+            rows = cx.execute("SELECT s.*, a.archived_at FROM sessions s LEFT JOIN session_archives a ON a.session_id=s.id AND a.user_id=? AND (a.device_id=? OR a.device_id IS NULL) WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], device_id, current["id"])).fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/sessions/{session_id}/archive")
-    def archive_session(session_id: str, current=Depends(_auth_dependency(db))):
+    def archive_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
         _owned_session(db, session_id, current["id"])
+        _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
-            cx.execute("INSERT OR REPLACE INTO session_archives(user_id,session_id,archived_at) VALUES(?,?,?)", (current["id"], session_id, int(time.time())))
+            cx.execute("INSERT OR REPLACE INTO session_archives(user_id,session_id,device_id,archived_at) VALUES(?,?,?,?)", (current["id"], session_id, device_id, int(time.time())))
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": True}}
 
     @app.post("/v1/sessions/{session_id}/restore")
-    def restore_session(session_id: str, current=Depends(_auth_dependency(db))):
+    def restore_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
         _owned_session(db, session_id, current["id"])
+        _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
-            result = cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=?", (session_id, current["id"]))
+            result = cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=? AND (device_id=? OR device_id IS NULL)", (session_id, current["id"], device_id))
         if result.rowcount != 1:
             raise HTTPException(404, "archived session not found")
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": False}}
@@ -781,6 +784,11 @@ def _session_owned_by(db: CloudDB, session_id: str, user_id: str) -> bool:
 def _active_device_owned(db: CloudDB, device_id: str, user_id: str) -> bool:
     with db.connect() as cx:
         return cx.execute("SELECT 1 FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, user_id)).fetchone() is not None
+
+
+def _validate_device_header(db: CloudDB, device_id: str | None, user_id: str) -> None:
+    if device_id is not None and not _active_device_owned(db, device_id, user_id):
+        raise HTTPException(403, "device is not active for this account")
 
 
 def _validate_workspace_id(workspace_id: str) -> None:

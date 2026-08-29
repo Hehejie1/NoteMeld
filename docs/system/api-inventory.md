@@ -366,6 +366,9 @@ authority epoch; relay rejects frames from older epochs.
 `POST /v1/sessions/{session_id}/authority/lease` acquires or renews a
 5–300-second exclusive execution lease using SQLite transactional fencing;
 another live owner receives HTTP 409.
+Session archive/restore/list accepts optional `X-Device-Id`; when present,
+archive visibility is isolated to that active device. Legacy rows without a
+device ID remain visible as compatibility archives.
 `GET /v1/sessions/{session_id}/commands?after=&limit=` lists command states by
 sequence cursor for reconnect and queue reconstruction.
 

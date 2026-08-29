@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE TABLE IF NOT EXISTS session_archives (
   user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id),
-  archived_at INTEGER NOT NULL, PRIMARY KEY(user_id, session_id)
+  device_id TEXT, archived_at INTEGER NOT NULL, PRIMARY KEY(user_id, session_id, device_id)
 );
 CREATE TABLE IF NOT EXISTS commands (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), request_id TEXT NOT NULL,
@@ -100,5 +100,15 @@ class CloudDB:
             device_columns = {row[1] for row in connection.execute("PRAGMA table_info(devices)").fetchall()}
             if "last_seen_at" not in device_columns:
                 connection.execute("ALTER TABLE devices ADD COLUMN last_seen_at INTEGER")
+            archive_columns = {row[1] for row in connection.execute("PRAGMA table_info(session_archives)").fetchall()}
+            if "device_id" not in archive_columns:
+                connection.execute("PRAGMA foreign_keys=OFF")
+                connection.execute("BEGIN")
+                connection.execute("CREATE TABLE session_archives_v2 (user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id), device_id TEXT, archived_at INTEGER NOT NULL, PRIMARY KEY(user_id, session_id, device_id))")
+                connection.execute("INSERT INTO session_archives_v2(user_id,session_id,device_id,archived_at) SELECT user_id,session_id,NULL,archived_at FROM session_archives")
+                connection.execute("DROP TABLE session_archives")
+                connection.execute("ALTER TABLE session_archives_v2 RENAME TO session_archives")
+                connection.execute("COMMIT")
+                connection.execute("PRAGMA foreign_keys=ON")
             if "next_event_sequence" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN next_event_sequence INTEGER NOT NULL DEFAULT 1")
