@@ -331,6 +331,16 @@ def test_authority_rotation_invalidates_old_relay_epoch(tmp_path):
             assert socket.receive_json()["error"] == "invalid_envelope"
 
 
+def test_authority_lease_is_exclusive_until_expiry(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        assert http.post(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, json={"owner": "worker-a"}).status_code == 200
+        assert http.post(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, json={"owner": "worker-b"}).status_code == 409
+        assert http.post(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, json={"owner": "worker-a", "ttl_seconds": 60}).status_code == 200
+
+
 def test_workspace_quota_is_enforced(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_workspace_bytes=4)
     with TestClient(create_app(settings)) as http:

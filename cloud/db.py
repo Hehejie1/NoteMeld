@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL,
   title TEXT NOT NULL, workspace_id TEXT NOT NULL, status TEXT NOT NULL, copied_from TEXT,
   next_sequence INTEGER NOT NULL DEFAULT 1, next_event_sequence INTEGER NOT NULL DEFAULT 1, authority_epoch INTEGER NOT NULL DEFAULT 1,
+  lease_owner TEXT, lease_expires_at INTEGER,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS session_archives (
@@ -92,6 +93,10 @@ class CloudDB:
                 connection.execute("ALTER TABLE sessions ADD COLUMN copied_from TEXT")
             if "authority_epoch" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN authority_epoch INTEGER NOT NULL DEFAULT 1")
+            if "lease_owner" not in columns:
+                connection.execute("ALTER TABLE sessions ADD COLUMN lease_owner TEXT")
+            if "lease_expires_at" not in columns:
+                connection.execute("ALTER TABLE sessions ADD COLUMN lease_expires_at INTEGER")
             device_columns = {row[1] for row in connection.execute("PRAGMA table_info(devices)").fetchall()}
             if "last_seen_at" not in device_columns:
                 connection.execute("ALTER TABLE devices ADD COLUMN last_seen_at INTEGER")

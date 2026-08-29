@@ -65,6 +65,11 @@ class DeviceKeyRotate(BaseModel):
     public_key: str
 
 
+class AuthorityLease(BaseModel):
+    owner: str = Field(min_length=1, max_length=128)
+    ttl_seconds: int = Field(default=30, ge=5, le=300)
+
+
 class SessionCreate(BaseModel):
     kind: str = Field(pattern="^(cloud_native|device_remote)$")
     title: str = Field(default="New session", max_length=200)
@@ -424,6 +429,21 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             epoch = cx.execute("SELECT authority_epoch FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
         _audit(db, current["id"], "session.authority.rotate", session_id, {"authority_epoch": epoch})
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "authority_epoch": epoch}}
+
+    @app.post("/v1/sessions/{session_id}/authority/lease")
+    def acquire_authority_lease(session_id: str, payload: AuthorityLease, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            row = cx.execute("SELECT lease_owner,lease_expires_at,authority_epoch FROM sessions WHERE id=?", (session_id,)).fetchone()
+            if row["lease_owner"] and row["lease_expires_at"] and row["lease_expires_at"] > now and row["lease_owner"] != payload.owner:
+                cx.execute("ROLLBACK")
+                raise HTTPException(409, "authority lease is held")
+            expires = now + payload.ttl_seconds
+            cx.execute("UPDATE sessions SET lease_owner=?,lease_expires_at=?,updated_at=? WHERE id=?", (payload.owner, expires, now, session_id))
+            cx.execute("COMMIT")
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "owner": payload.owner, "lease_expires_at": expires, "authority_epoch": row["authority_epoch"]}}
 
     @app.get("/v1/workspaces/{workspace_id}/stats")
     def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db))):
