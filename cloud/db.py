@@ -6,7 +6,7 @@ from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+  id TEXT PRIMARY KEY, username TEXT NOT NULL, password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin','user')), disabled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
@@ -76,6 +76,17 @@ class CloudDB:
     def init(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            users_sql = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()[0]
+            if "username TEXT NOT NULL UNIQUE" in users_sql:
+                connection.execute("PRAGMA foreign_keys=OFF")
+                connection.execute("BEGIN")
+                connection.execute("CREATE TABLE users_v2 (id TEXT PRIMARY KEY, username TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','user')), disabled INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)")
+                connection.execute("INSERT INTO users_v2 SELECT id,username,password_hash,role,disabled,created_at FROM users")
+                connection.execute("DROP TABLE users")
+                connection.execute("ALTER TABLE users_v2 RENAME TO users")
+                connection.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+                connection.execute("COMMIT")
+                connection.execute("PRAGMA foreign_keys=ON")
             columns = {row[1] for row in connection.execute("PRAGMA table_info(sessions)").fetchall()}
             if "next_event_sequence" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN next_event_sequence INTEGER NOT NULL DEFAULT 1")

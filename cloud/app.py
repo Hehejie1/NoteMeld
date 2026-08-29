@@ -485,7 +485,8 @@ def _bootstrap_admin(db: CloudDB, settings: CloudSettings) -> None:
 
 def _user_by_username(db: CloudDB, username: str):
     with db.connect() as cx:
-        return cx.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+        rows = cx.execute("SELECT * FROM users WHERE username=? ORDER BY created_at", (username,)).fetchall()
+    return rows[0] if len(rows) == 1 else None
 
 
 def _user_by_account_id(db: CloudDB, account_id: str | None):

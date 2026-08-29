@@ -39,6 +39,32 @@ def test_login_supports_explicit_account_id(tmp_path):
         assert response.status_code == 200 and response.json()["data"]["user_id"] == created["id"]
 
 
+def test_duplicate_usernames_require_account_id(tmp_path):
+    with client(tmp_path) as http:
+        admin_token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        first = http.post("/v1/admin/users", headers=headers, json={"username": "same-label", "password": "first-password-123"}).json()["data"]
+        second = http.post("/v1/admin/users", headers=headers, json={"username": "same-label", "password": "second-password-123"}).json()["data"]
+        assert first["id"] != second["id"]
+        assert http.post("/v1/auth/login", json={"username": "same-label", "password": "first-password-123"}).status_code == 401
+        assert http.post("/v1/auth/login", json={"account_id": second["id"], "password": "second-password-123"}).status_code == 200
+
+
+def test_legacy_username_unique_schema_migrates(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy.db"
+    with sqlite3.connect(database) as cx:
+        cx.execute("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, disabled INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)")
+        cx.execute("INSERT INTO users VALUES ('u1','same','hash','user',0,1)")
+    from cloud.db import CloudDB
+
+    CloudDB(database).init()
+    with sqlite3.connect(database) as cx:
+        cx.execute("INSERT INTO users VALUES ('u2','same','hash','user',0,2)")
+        assert cx.execute("SELECT COUNT(*) FROM users WHERE username='same'").fetchone()[0] == 2
+
+
 def test_device_registration_and_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
