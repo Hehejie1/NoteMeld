@@ -161,6 +161,17 @@ def test_pairing_grant_and_token_revoke(tmp_path):
         assert http.get("/v1/devices", headers=headers).status_code == 401
 
 
+def test_grant_default_scopes_match_standard_control_policy(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("default-controller", "default-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "default-controller", "host_device_id": "default-host"}).status_code == 200
+        grant = http.get("/v1/grants", headers=headers).json()["data"][0]
+        assert grant["scopes"] == ["message.send", "context.select", "model.select", "tool.invoke"]
+
+
 def test_pairing_cannot_take_device_id_from_another_account(tmp_path):
     with client(tmp_path) as http:
         admin = login(http, "admin", "admin-password-123")

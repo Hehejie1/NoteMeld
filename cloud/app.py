@@ -22,8 +22,8 @@ from .security import hash_password, issue_token, parse_token, token_digest, tok
 from .workspace import Workspace
 
 
-TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write"})
-GRANT_SCOPES = frozenset({"message.send", "event.receive", "workspace.read", "workspace.write", "dangerous.approve", "full_access"})
+TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
+GRANT_SCOPES = frozenset({"message.send", "context.select", "model.select", "tool.invoke", "event.receive", "workspace.read", "workspace.write", "dangerous.approve", "approval.remote.resolve", "session.permission.manage", "session.full_access", "full_access"})
 SHARE_SCOPES = frozenset({"message.send", "event.receive"})
 
 
@@ -59,7 +59,7 @@ class GrantCreate(BaseModel):
     controller_device_id: str
     host_device_id: str
     role: str = Field(default="standard", pattern="^(standard|super_admin)$")
-    scopes: list[str] = Field(default_factory=list, max_length=32)
+    scopes: list[str] = Field(default_factory=lambda: ["message.send", "context.select", "model.select", "tool.invoke"], max_length=32)
     workspace_refs: list[str] = Field(default_factory=list, max_length=32)
     expires_at: int | None = None
 

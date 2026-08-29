@@ -368,6 +368,9 @@ Registered devices can rotate keys with `POST /v1/devices/{device_id}/rotate-key
 the old public key is replaced immediately and the rotation is audited.
 Revoking a device also revokes all active Grants that reference it in the same
 transaction.
+When omitted, a standard Grant receives `message.send`, `context.select`,
+`model.select` and `tool.invoke`; elevated approval/full-access scopes must be
+explicitly requested and are never inferred from a permanent expiry.
 `POST /v1/devices/{device_id}/heartbeat` records `last_seen_at`; relay
 connections update the same field on connect.
 Device registration is idempotent for the owning account (metadata/key is
