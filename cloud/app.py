@@ -1247,7 +1247,7 @@ def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):
 def _valid_public_key(value: str) -> bool:
     try:
         decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-    except (ValueError, TypeError):
+    except (ImportError, ValueError, TypeError):
         return False
     return len(decoded) == 32
 
