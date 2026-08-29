@@ -97,6 +97,8 @@ def test_session_command_idempotency_and_snapshot(tmp_path):
         session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native", "title": "test"}).json()["data"]
         payload = {"request_id": "req-1", "input": "hello"}
         first = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json=payload).json()["data"]
+        assert first["status"] == "completed"
+        assert http.get(f"/v1/sessions/{session['id']}/commands/{first['command_id']}", headers=headers).json()["data"]["status"] == "completed"
         second = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json=payload).json()["data"]
         assert first["command_id"] == second["command_id"]
         assert second["idempotent"] is True

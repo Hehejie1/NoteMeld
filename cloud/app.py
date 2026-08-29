@@ -455,7 +455,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence + 1, "turn.completed", json.dumps(completed_event), now))
             cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "queued"}}
+        return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "completed"}}
+
+    @app.get("/v1/sessions/{session_id}/commands/{command_id}")
+    def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            row = cx.execute("SELECT id,session_id,request_id,sequence,status,created_at FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+        if not row:
+            raise HTTPException(404, "command not found")
+        return {"code": 0, "msg": "success", "data": dict(row)}
 
     @app.get("/v1/sessions/{session_id}/snapshot")
     def snapshot(session_id: str, current=Depends(_auth_dependency(db))):
