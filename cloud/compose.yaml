@@ -1,0 +1,23 @@
+services:
+  cloud:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    ports:
+      - "8583:8583"
+    environment:
+      NOTEMELD_CLOUD_ADMIN_USERNAME: ${NOTEMELD_CLOUD_ADMIN_USERNAME:?set admin username}
+      NOTEMELD_CLOUD_ADMIN_PASSWORD: ${NOTEMELD_CLOUD_ADMIN_PASSWORD:?set admin password}
+      NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES: ${NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES:-1000000000}
+      NOTEMELD_CLOUD_CORS_ORIGINS: ${NOTEMELD_CLOUD_CORS_ORIGINS:-}
+    volumes:
+      - notemeld-cloud-data:/var/lib/notemeld-cloud
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8583/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  notemeld-cloud-data:

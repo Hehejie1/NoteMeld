@@ -32,3 +32,8 @@ docker run --rm -p 8583:8583 \
   -v notemeld-cloud-data:/var/lib/notemeld-cloud \
   notemeld-cloud
 ```
+
+For repeatable local deployment, copy the admin variables into an environment
+file and run `docker compose -f cloud/compose.yaml up --build` from the
+repository root. The compose healthcheck uses `/ready` and persists data in
+the `notemeld-cloud-data` volume.
