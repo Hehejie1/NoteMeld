@@ -577,9 +577,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 try:
                     envelope = json.loads(message)
                     sequence = envelope.get("sequence")
-                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not isinstance(sequence, int) or sequence < 1:
+                    frame_type = envelope.get("frame_type", "command")
+                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
-                    if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"]):
+                    required_scope = "message.send" if frame_type == "command" else None
+                    if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope):
                         raise ValueError("relay grant missing")
                     replay_key = (session_id, device_id)
                     if sequence <= app.state.relay_sequences.get(replay_key, 0):
@@ -696,7 +698,10 @@ def _audit(db: CloudDB, actor_user_id: str | None, action: str, resource_id: str
         cx.execute("INSERT INTO audits(id,actor_user_id,action,resource_id,metadata_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), actor_user_id, action, resource_id, json.dumps(metadata, separators=(",", ":")), int(time.time())))
 
 
-def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str) -> bool:
+def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str, required_scope: str | None = None) -> bool:
     with db.connect() as cx:
-        row = cx.execute("SELECT g.expires_at,g.revoked_at,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND ((g.controller_device_id=? AND g.host_device_id=?) OR (g.controller_device_id=? AND g.host_device_id=?)) ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, controller, host, host, controller)).fetchone()
-    return bool(row and row["kind"] == "device_remote" and not row["revoked_at"] and (row["expires_at"] is None or row["expires_at"] > int(time.time())))
+        row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, controller, host)).fetchone()
+        if not row and required_scope is None:
+            row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, host, controller)).fetchone()
+    scopes = json.loads(row["scopes_json"]) if row else []
+    return bool(row and row["kind"] == "device_remote" and not row["revoked_at"] and (row["expires_at"] is None or row["expires_at"] > int(time.time())) and (required_scope is None or required_scope in scopes))
