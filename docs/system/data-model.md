@@ -263,3 +263,9 @@ their raw exception/payload. On startup, leftover `running` commands become
 replayed. The lock is a single-process safety boundary; multi-instance
 deployments need a shared queue/lease before claiming cross-process
 serialization.
+
+Platform adapters should derive `device_id` with the shared
+`backend/app/cloud_sync/device_id.py` helper: a normalized platform prefix and
+32-character SHA-256 digest of the app/vendor installation identifier. The raw
+identifier is never sent to or persisted by Cloud; the resulting ID remains an
+identifier only and must still be paired with a device public key for control.
