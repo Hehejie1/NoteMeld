@@ -17,3 +17,4 @@ def test_remote_frame_envelope_excludes_plaintext():
     assert "ciphertext" in payload
     assert "input_text" not in payload
     assert frame.envelope()["authority_epoch"] == 3
+    assert frame.envelope()["frame_type"] == "command"

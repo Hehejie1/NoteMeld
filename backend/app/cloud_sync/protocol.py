@@ -32,9 +32,11 @@ class RemoteFrame:
     frame_id: str
     authority_epoch: int
     protocol_version: str = PROTOCOL_VERSION
+    nonce: str = ""
+    frame_type: str = "command"
 
     def envelope(self) -> dict:
-        return {"protocol_version": self.protocol_version, "session_id": self.session_id, "sender_device_id": self.sender_device_id, "recipient_device_id": self.recipient_device_id, "sequence": self.sequence, "frame_id": self.frame_id, "authority_epoch": self.authority_epoch}
+        return {"protocol_version": self.protocol_version, "session_id": self.session_id, "sender_device_id": self.sender_device_id, "recipient_device_id": self.recipient_device_id, "sequence": self.sequence, "frame_id": self.frame_id, "authority_epoch": self.authority_epoch, "nonce": self.nonce, "frame_type": self.frame_type}
 
     def to_json(self) -> str:
         return json.dumps({**self.envelope(), "ciphertext": self.ciphertext}, separators=(",", ":"))
