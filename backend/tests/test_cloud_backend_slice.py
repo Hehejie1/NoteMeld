@@ -500,10 +500,36 @@ def test_personal_scoped_token_lifecycle(tmp_path):
         scoped_headers = {"Authorization": f"Bearer {created['token']}"}
         assert http.get("/v1/sessions", headers=scoped_headers).status_code == 200
         assert http.post("/v1/sessions", headers=scoped_headers, json={"kind": "cloud_native"}).status_code == 403
+        assert http.get("/v1/devices", headers=scoped_headers).status_code == 403
         listed = http.get("/v1/auth/tokens", headers=headers).json()["data"]
         assert any(item["id"] == created["jti"] for item in listed)
         assert http.post(f"/v1/auth/tokens/{created['jti']}/revoke", headers=headers).status_code == 200
         assert http.get("/v1/sessions", headers={"Authorization": f"Bearer {created['token']}"}).status_code == 401
+
+
+def test_token_rotation_preserves_pat_scope(tmp_path):
+    with client(tmp_path) as http:
+        login_token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {login_token}"}
+        created = http.post("/v1/auth/tokens", headers=headers, json={"scopes": ["session.read"]}).json()["data"]
+        rotated = http.post("/v1/auth/rotate", headers={"Authorization": f"Bearer {created['token']}"})
+        assert rotated.status_code == 200
+        assert rotated.json()["data"]["scopes"] == ["session.read"]
+        new_headers = {"Authorization": f"Bearer {rotated.json()['data']['token']}"}
+        assert http.get("/v1/sessions", headers=new_headers).status_code == 200
+        assert http.post("/v1/sessions", headers=new_headers, json={"kind": "cloud_native"}).status_code == 403
+
+
+def test_admin_delete_user_removes_import_children(tmp_path):
+    with client(tmp_path) as http:
+        admin = login(http, "admin", "admin-password-123")
+        admin_headers = {"Authorization": f"Bearer {admin}"}
+        user = http.post("/v1/admin/users", headers=admin_headers, json={"username": "deletable", "password": "deletable-password-123"}).json()["data"]
+        user_headers = {"Authorization": f"Bearer {login(http, 'deletable', 'deletable-password-123')}"}
+        http.post("/v1/devices", headers=user_headers, json={"device_id": "deletable-device", "platform": "desktop", "display_name": "Desktop"})
+        imported = http.post("/v1/cloud/sessions/import", headers=user_headers, json={"request_id": "delete-import", "source_session_id": "local", "source_device_id": "deletable-device"}).json()["data"]
+        assert http.delete(f"/v1/admin/users/{user['id']}", headers=admin_headers).status_code == 200
+        assert http.get(f"/v1/sessions/{imported['id']}/snapshot", headers=admin_headers).status_code == 404
 
 
 def test_session_copy_is_independent_with_provenance(tmp_path):

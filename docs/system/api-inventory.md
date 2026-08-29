@@ -319,6 +319,13 @@ at creation time. Login tokens currently carry wildcard scope. PAT access to
 the core session API is enforced as follows: `session.read` permits session,
 command-status, snapshot and event reads; `session.write` permits session and
 command creation. Missing scopes return HTTP 403.
+The remaining bearer APIs use the same least-privilege mapping: `auth.token`
+for PAT management, `device.read/device.write` for device and pairing
+operations, `grant.read/grant.write` for remote-control grants,
+`share.read/share.write` for share-token management, and
+`workspace.read/workspace.write` for cloud workspace reads and mutations.
+Rotation preserves the source token's audience, scopes and expiry rather than
+upgrading a PAT to a wildcard token.
 
 Failed logins are limited to five attempts per source/account key in a
 60-second process-local window and return HTTP 429 after the limit. Production

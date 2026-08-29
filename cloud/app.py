@@ -12,12 +12,17 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import CloudSettings, load_settings
 from .db import CloudDB
 from .security import hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
+
+
+TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write"})
+GRANT_SCOPES = frozenset({"message.send", "event.receive", "workspace.read", "workspace.write", "dangerous.approve", "full_access"})
+SHARE_SCOPES = frozenset({"message.send", "event.receive"})
 
 
 class LoginRequest(BaseModel):
@@ -29,6 +34,15 @@ class LoginRequest(BaseModel):
 class PersonalTokenCreate(BaseModel):
     scopes: list[str] = Field(default_factory=lambda: ["*"] , max_length=32)
     expires_at: int | None = None
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_scopes(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value) or any(scope not in TOKEN_SCOPES for scope in value):
+            raise ValueError("invalid token scope")
+        if "*" in value and len(value) != 1:
+            raise ValueError("wildcard token scope cannot be combined")
+        return value
 
 
 class PairingConfirm(BaseModel):
@@ -46,6 +60,13 @@ class GrantCreate(BaseModel):
     scopes: list[str] = Field(default_factory=list, max_length=32)
     workspace_refs: list[str] = Field(default_factory=list, max_length=32)
     expires_at: int | None = None
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_grant_scopes(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value) or any(scope not in GRANT_SCOPES for scope in value):
+            raise ValueError("invalid grant scope")
+        return value
 
 
 class UserCreate(BaseModel):
@@ -141,6 +162,13 @@ class ShareTokenCreate(BaseModel):
     scopes: list[str] = Field(default_factory=list, max_length=32)
     expires_at: int | None = None
 
+    @field_validator("scopes")
+    @classmethod
+    def validate_share_scopes(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value) or any(scope not in SHARE_SCOPES for scope in value):
+            raise ValueError("invalid share scope")
+        return value
+
 
 def create_app(settings: CloudSettings | None = None) -> FastAPI:
     settings = settings or load_settings()
@@ -224,12 +252,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
             cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND digest=?", (now, old_id, token_digest(old_id, old_secret)))
-            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (new_id, current["id"], digest, token_expiry(settings.token_ttl_seconds), "cloud-api", '["*"]', now))
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (new_id, current["id"], digest, current["expires_at"], current["audience"], current["scopes_json"], now))
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": new_id, "user_id": current["id"], "role": current["role"], "audience": "cloud-api", "scopes": ["*"] , "expires_at": token_expiry(settings.token_ttl_seconds)}}
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": new_id, "user_id": current["id"], "role": current["role"], "audience": current["audience"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
 
     @app.post("/v1/auth/tokens")
-    def create_personal_token(payload: PersonalTokenCreate, current=Depends(_auth_dependency(db))):
+    def create_personal_token(payload: PersonalTokenCreate, current=Depends(_auth_dependency(db, required_scope="auth.token"))):
         if payload.expires_at is not None and payload.expires_at <= int(time.time()):
             raise HTTPException(422, "expires_at must be in the future")
         raw, digest = issue_token()
@@ -240,13 +268,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "audience": "cloud-api", "scopes": payload.scopes, "expires_at": payload.expires_at}}
 
     @app.get("/v1/auth/tokens")
-    def list_personal_tokens(current=Depends(_auth_dependency(db))):
+    def list_personal_tokens(current=Depends(_auth_dependency(db, required_scope="auth.token"))):
         with db.connect() as cx:
             rows = cx.execute("SELECT id,audience,scopes_json,expires_at,revoked_at,created_at FROM tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
 
     @app.post("/v1/auth/tokens/{token_id}/revoke")
-    def revoke_personal_token(token_id: str, current=Depends(_auth_dependency(db))):
+    def revoke_personal_token(token_id: str, current=Depends(_auth_dependency(db, required_scope="auth.token"))):
         with db.connect() as cx:
             result = cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), token_id, current["id"]))
         if result.rowcount != 1:
@@ -255,20 +283,20 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"jti": token_id, "revoked": True}}
 
     @app.get("/v1/admin/users")
-    def list_users(current=Depends(_auth_dependency(db, "admin"))):
+    def list_users(current=Depends(_auth_dependency(db, "admin", "admin"))):
         with db.connect() as cx:
             rows = cx.execute("SELECT id,username,role,disabled,created_at FROM users ORDER BY created_at").fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.get("/v1/admin/audits")
-    def list_audits(limit: int = 100, current=Depends(_auth_dependency(db, "admin"))):
+    def list_audits(limit: int = 100, current=Depends(_auth_dependency(db, "admin", "admin"))):
         limit = max(1, min(limit, 500))
         with db.connect() as cx:
             rows = cx.execute("SELECT id,actor_user_id,action,resource_id,metadata_json,created_at FROM audits ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "metadata": json.loads(row["metadata_json"])} for row in rows]}
 
     @app.post("/v1/admin/users")
-    def create_user(payload: UserCreate, current=Depends(_auth_dependency(db, "admin"))):
+    def create_user(payload: UserCreate, current=Depends(_auth_dependency(db, "admin", "admin"))):
         if payload.role != "user":
             raise HTTPException(400, "only user accounts can be created")
         user_id = str(uuid.uuid4())
@@ -283,7 +311,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": user_id, "username": payload.username}}
 
     @app.put("/v1/admin/users/{user_id}")
-    def update_user(user_id: str, payload: UserUpdate, current=Depends(_auth_dependency(db, "admin"))):
+    def update_user(user_id: str, payload: UserUpdate, current=Depends(_auth_dependency(db, "admin", "admin"))):
         changes: dict[str, object] = {}
         if payload.username is not None:
             changes["username"] = payload.username
@@ -311,14 +339,18 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": user_id, **changes, "password_hash": None}}
 
     @app.delete("/v1/admin/users/{user_id}")
-    def delete_user(user_id: str, current=Depends(_auth_dependency(db, "admin"))):
+    def delete_user(user_id: str, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        workspace_ids: list[str] = []
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
+            workspace_ids = [str(row["workspace_id"]) for row in cx.execute("SELECT workspace_id FROM sessions WHERE user_id=?", (user_id,)).fetchall()]
             cx.execute("DELETE FROM share_tokens WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM grants WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM pairings WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM events WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+            cx.execute("DELETE FROM session_import_requests WHERE user_id=?", (user_id,))
+            cx.execute("DELETE FROM session_payloads WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM tokens WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM devices WHERE user_id=?", (user_id,))
@@ -326,11 +358,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("COMMIT")
         if result.rowcount != 1:
             raise HTTPException(404, "user not found")
+        for workspace_id in workspace_ids:
+            shutil.rmtree(settings.workspaces_dir / user_id / workspace_id, ignore_errors=True)
+            shutil.rmtree(settings.data_dir / "backups" / user_id / workspace_id, ignore_errors=True)
         _audit(db, current["id"], "admin.user.delete", user_id, {})
         return {"code": 0, "msg": "success", "data": {"deleted": True}}
 
     @app.post("/v1/devices")
-    def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db))):
+    def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         if payload.public_key is not None and not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         now = int(time.time())
@@ -348,13 +383,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id}}
 
     @app.get("/v1/devices")
-    def list_devices(current=Depends(_auth_dependency(db))):
+    def list_devices(current=Depends(_auth_dependency(db, required_scope="device.read"))):
         with db.connect() as cx:
             rows = cx.execute("SELECT id,public_key,platform,display_name,revoked_at,last_seen_at,created_at FROM devices WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/devices/{device_id}/revoke")
-    def revoke_device(device_id: str, current=Depends(_auth_dependency(db))):
+    def revoke_device(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
             result = cx.execute("UPDATE devices SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), device_id, current["id"]))
@@ -367,7 +402,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "revoked": True}}
 
     @app.post("/v1/devices/{device_id}/rotate-key")
-    def rotate_device_key(device_id: str, payload: DeviceKeyRotate, current=Depends(_auth_dependency(db))):
+    def rotate_device_key(device_id: str, payload: DeviceKeyRotate, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         if not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         with db.connect() as cx:
@@ -378,7 +413,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "rotated": True}}
 
     @app.post("/v1/devices/{device_id}/heartbeat")
-    def device_heartbeat(device_id: str, current=Depends(_auth_dependency(db))):
+    def device_heartbeat(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         now = int(time.time())
         with db.connect() as cx:
             result = cx.execute("UPDATE devices SET last_seen_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (now, device_id, current["id"]))
@@ -387,7 +422,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "last_seen_at": now}}
 
     @app.post("/v1/pairings/start")
-    def start_pairing(current=Depends(_auth_dependency(db))):
+    def start_pairing(current=Depends(_auth_dependency(db, required_scope="device.write"))):
         raw_code = f"{secrets.token_urlsafe(9)}"
         now = int(time.time())
         with db.connect() as cx:
@@ -395,7 +430,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"code": raw_code, "expires_at": now + 300}}
 
     @app.post("/v1/pairings/confirm")
-    def confirm_pairing(payload: PairingConfirm, current=Depends(_auth_dependency(db))):
+    def confirm_pairing(payload: PairingConfirm, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         if payload.public_key is not None and not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         digest = hashlib.sha256(payload.code.encode()).hexdigest()
@@ -412,7 +447,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True}}
 
     @app.post("/v1/grants")
-    def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db))):
+    def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
         with db.connect() as cx:
@@ -428,13 +463,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "role": payload.role, "expires_at": payload.expires_at}}
 
     @app.get("/v1/grants")
-    def list_grants(current=Depends(_auth_dependency(db))):
+    def list_grants(current=Depends(_auth_dependency(db, required_scope="grant.read"))):
         with db.connect() as cx:
             rows = cx.execute("SELECT id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,revoked_at,created_at FROM grants WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"]), "workspace_refs": json.loads(row["workspace_refs_json"])} for row in rows]}
 
     @app.post("/v1/grants/{grant_id}/revoke")
-    def revoke_grant(grant_id: str, current=Depends(_auth_dependency(db))):
+    def revoke_grant(grant_id: str, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
         with db.connect() as cx:
             result = cx.execute("UPDATE grants SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), grant_id, current["id"]))
         if result.rowcount != 1:
@@ -443,7 +478,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "revoked": True}}
 
     @app.post("/v1/share-tokens")
-    def create_share_token(payload: ShareTokenCreate, current=Depends(_auth_dependency(db))):
+    def create_share_token(payload: ShareTokenCreate, current=Depends(_auth_dependency(db, required_scope="share.write"))):
         _owned_session(db, payload.session_id, current["id"])
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
@@ -456,13 +491,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": token_id, "token": raw, "session_id": payload.session_id, "role": payload.role, "scopes": payload.scopes, "expires_at": payload.expires_at}}
 
     @app.get("/v1/share-tokens")
-    def list_share_tokens(current=Depends(_auth_dependency(db))):
+    def list_share_tokens(current=Depends(_auth_dependency(db, required_scope="share.read"))):
         with db.connect() as cx:
             rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
 
     @app.post("/v1/share-tokens/{token_id}/revoke")
-    def revoke_share_token(token_id: str, current=Depends(_auth_dependency(db))):
+    def revoke_share_token(token_id: str, current=Depends(_auth_dependency(db, required_scope="share.write"))):
         with db.connect() as cx:
             result = cx.execute("UPDATE share_tokens SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), token_id, current["id"]))
         if result.rowcount != 1:
@@ -580,7 +615,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": new_id, "copied_from": session_id, "workspace_id": workspace_id, **copied_files}}
 
     @app.post("/v1/sessions/{session_id}/authority/rotate")
-    def rotate_authority(session_id: str, current=Depends(_auth_dependency(db))):
+    def rotate_authority(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             cx.execute("UPDATE sessions SET authority_epoch=authority_epoch+1,updated_at=? WHERE id=?", (int(time.time()), session_id))
@@ -589,7 +624,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "authority_epoch": epoch}}
 
     @app.post("/v1/sessions/{session_id}/authority/lease")
-    def acquire_authority_lease(session_id: str, payload: AuthorityLease, current=Depends(_auth_dependency(db))):
+    def acquire_authority_lease(session_id: str, payload: AuthorityLease, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         now = int(time.time())
         with db.connect() as cx:
@@ -604,7 +639,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "owner": payload.owner, "lease_expires_at": expires, "authority_epoch": row["authority_epoch"]}}
 
     @app.delete("/v1/sessions/{session_id}/authority/lease")
-    def release_authority_lease(session_id: str, owner: str, current=Depends(_auth_dependency(db))):
+    def release_authority_lease(session_id: str, owner: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             result = cx.execute("UPDATE sessions SET lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND lease_owner=?", (int(time.time()), session_id, owner))
@@ -613,13 +648,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "released": True}}
 
     @app.get("/v1/workspaces/{workspace_id}/stats")
-    def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db))):
+    def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, **workspace.stats()}}
 
     @app.get("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
-    def read_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db))):
+    def read_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
@@ -629,7 +664,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "content": content}}
 
     @app.get("/v1/workspaces/{workspace_id}/files")
-    def list_workspace_files(workspace_id: str, prefix: str = "", current=Depends(_auth_dependency(db))):
+    def list_workspace_files(workspace_id: str, prefix: str = "", current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
@@ -639,7 +674,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "files": files}}
 
     @app.put("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
-    def write_workspace_file(workspace_id: str, logical_path: str, payload: WorkspaceWrite, current=Depends(_auth_dependency(db))):
+    def write_workspace_file(workspace_id: str, logical_path: str, payload: WorkspaceWrite, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
@@ -655,7 +690,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
 
     @app.delete("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
-    def delete_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db))):
+    def delete_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
@@ -665,7 +700,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "deleted": True}}
 
     @app.post("/v1/workspaces/{workspace_id}/backups")
-    def backup_workspace(workspace_id: str, current=Depends(_auth_dependency(db))):
+    def backup_workspace(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         backup_id = f"{int(time.time())}-{secrets.token_urlsafe(8)}"
@@ -674,7 +709,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": size, "created_at": int(time.time())}}
 
     @app.get("/v1/workspaces/{workspace_id}/backups")
-    def list_backups(workspace_id: str, current=Depends(_auth_dependency(db))):
+    def list_backups(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
         directory = settings.data_dir / "backups" / current["id"] / workspace_id
         items = []
@@ -683,7 +718,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": items}
 
     @app.post("/v1/workspaces/{workspace_id}/backups/restore")
-    def restore_workspace(workspace_id: str, payload: WorkspaceRestore, current=Depends(_auth_dependency(db))):
+    def restore_workspace(workspace_id: str, payload: WorkspaceRestore, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{payload.backup_id}.zip"
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
@@ -701,7 +736,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/sessions/{session_id}/archive")
-    def archive_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
+    def archive_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
@@ -709,7 +744,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": True}}
 
     @app.post("/v1/sessions/{session_id}/restore")
-    def restore_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
+    def restore_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
