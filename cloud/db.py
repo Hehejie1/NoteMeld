@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS session_archives (
 CREATE TABLE IF NOT EXISTS commands (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), request_id TEXT NOT NULL,
   payload_hash TEXT NOT NULL, sequence INTEGER NOT NULL, input_text TEXT NOT NULL,
-  status TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(session_id, request_id),
+  status TEXT NOT NULL, lease_owner TEXT, lease_expires_at INTEGER, attempt_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL, UNIQUE(session_id, request_id),
   UNIQUE(session_id, sequence)
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -140,3 +141,10 @@ class CloudDB:
                 connection.execute("ALTER TABLE sessions ADD COLUMN next_event_sequence INTEGER NOT NULL DEFAULT 1")
             if "model_id" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN model_id TEXT")
+            command_columns = {row[1] for row in connection.execute("PRAGMA table_info(commands)").fetchall()}
+            if "lease_owner" not in command_columns:
+                connection.execute("ALTER TABLE commands ADD COLUMN lease_owner TEXT")
+            if "lease_expires_at" not in command_columns:
+                connection.execute("ALTER TABLE commands ADD COLUMN lease_expires_at INTEGER")
+            if "attempt_count" not in command_columns:
+                connection.execute("ALTER TABLE commands ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")

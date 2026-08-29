@@ -990,7 +990,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
-            row = cx.execute("SELECT id,session_id,request_id,sequence,status,created_at FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+            row = cx.execute("SELECT id,session_id,request_id,sequence,status,lease_owner,lease_expires_at,attempt_count,created_at FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
         if not row:
             raise HTTPException(404, "command not found")
         return {"code": 0, "msg": "success", "data": dict(row)}
@@ -1001,7 +1001,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, session_id, current["id"])
         limit = max(1, min(limit, 500))
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,session_id,request_id,sequence,status,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
+            rows = cx.execute("SELECT id,session_id,request_id,sequence,status,lease_owner,lease_expires_at,attempt_count,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.get("/v1/sessions/{session_id}/snapshot")
@@ -1245,23 +1245,23 @@ def _recover_running_commands(db: CloudDB) -> None:
         for row in rows:
             event_sequence = int(row["next_event_sequence"])
             payload = {"command_id": row["id"], "command_sequence": row["sequence"], "status": "needs_attention", "error": {"code": "process_restarted", "message": "Agent execution requires operator recovery"}}
-            cx.execute("UPDATE commands SET status='needs_attention' WHERE id=? AND status='running'", (row["id"],))
+            cx.execute("UPDATE commands SET status='needs_attention',lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running'", (row["id"],))
             cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), row["session_id"], event_sequence, "turn.needs_attention", json.dumps(payload, separators=(",", ":")), now))
             cx.execute("UPDATE sessions SET next_event_sequence=?,status='idle',updated_at=? WHERE id=?", (event_sequence + 1, now, row["session_id"]))
         cx.execute("COMMIT")
 
 
-def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, status: str, payload: dict[str, Any]) -> None:
+def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, status: str, payload: dict[str, Any], lease_owner: str) -> None:
     now = int(time.time())
     event_type = "turn.completed" if status == "completed" else "turn.failed"
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
-        row = cx.execute("SELECT status FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
-        if not row or row["status"] != "running":
+        row = cx.execute("SELECT status,lease_owner FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+        if not row or row["status"] != "running" or row["lease_owner"] != lease_owner:
             cx.execute("ROLLBACK")
             return
         event_sequence = cx.execute("SELECT next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
-        cx.execute("UPDATE commands SET status=? WHERE id=? AND session_id=?", (status, command_id, session_id))
+        cx.execute("UPDATE commands SET status=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND session_id=? AND lease_owner=?", (status, command_id, session_id, lease_owner))
         cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, event_type, json.dumps(payload, separators=(",", ":")), now))
         cx.execute("UPDATE sessions SET next_event_sequence=?,status='idle',updated_at=? WHERE id=?", (event_sequence + 1, now, session_id))
         cx.execute("COMMIT")
@@ -1285,9 +1285,10 @@ def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
 
 
 def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str) -> None:
+    worker_id = f"{os.getpid()}-{uuid.uuid4()}"
     try:
         while True:
-            command = _claim_next_cloud_command(db, session_id)
+            command = _claim_next_cloud_command(db, session_id, worker_id, int(getattr(app.state.settings, "command_lease_seconds", 300)))
             if command is None:
                 return
             command_id = command["id"]
@@ -1304,9 +1305,9 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
                         if callable(close):
                             close()
             except Exception:
-                _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
+                _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}}, worker_id)
             else:
-                _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model})
+                _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model}, worker_id)
             _notify_command_waiter(app, session_id, command_id)
     finally:
         with app.state.command_locks_guard:
@@ -1315,14 +1316,14 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
                 app.state.queue_workers.pop(session_id, None)
 
 
-def _claim_next_cloud_command(db: CloudDB, session_id: str):
+def _claim_next_cloud_command(db: CloudDB, session_id: str, worker_id: str, lease_seconds: int):
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
         row = cx.execute("SELECT id,input_text,sequence FROM commands WHERE session_id=? AND status='queued' ORDER BY sequence LIMIT 1", (session_id,)).fetchone()
         if not row:
             cx.execute("COMMIT")
             return None
-        cx.execute("UPDATE commands SET status='running' WHERE id=? AND session_id=? AND status='queued'", (row["id"], session_id))
+        cx.execute("UPDATE commands SET status='running',lease_owner=?,lease_expires_at=?,attempt_count=attempt_count+1 WHERE id=? AND session_id=? AND status='queued'", (worker_id, int(time.time()) + max(30, lease_seconds), row["id"], session_id))
         cx.execute("UPDATE sessions SET status='running',updated_at=? WHERE id=?", (int(time.time()), session_id))
         cx.execute("COMMIT")
         return row

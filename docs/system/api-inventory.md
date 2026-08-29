@@ -427,6 +427,9 @@ Commands are first persisted as `queued`, then claimed as `running`; provider fa
 `turn.failed` with a redacted error and remain queryable by command id. On
 startup, any leftover `running` command is fail-closed as `needs_attention`
 with a `turn.needs_attention` event rather than being replayed automatically.
+Claimed commands expose a bounded lease owner/expiry and attempt count in the
+command status API. SQLite `BEGIN IMMEDIATE` makes claim single-winner across
+processes; expired running work remains fail-closed until explicit recovery.
 
 `/v1/models` provides per-user cloud model metadata CRUD and default selection.
 Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`

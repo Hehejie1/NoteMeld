@@ -263,6 +263,8 @@ their raw exception/payload. On startup, leftover `running` commands become
 replayed. The lock is a single-process safety boundary; multi-instance
 deployments need a shared queue/lease before claiming cross-process
 serialization.
+Each command also records a process-scoped lease owner, lease expiry and
+attempt count for observability and future multi-instance recovery.
 
 Session archive writes explicitly replace the current `(user_id, session_id,
 device_id)` row, including the `NULL` device-wide archive case, because SQLite
