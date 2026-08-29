@@ -6,6 +6,7 @@ Local development:
 NOTEMELD_CLOUD_ADMIN_USERNAME=admin \
 NOTEMELD_CLOUD_ADMIN_PASSWORD='change-me-please-123' \
 NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES=1000000000 \
+NOTEMELD_CLOUD_CORS_ORIGINS='https://app.example.com' \
 PYTHONPATH=. uvicorn cloud.main:app --host 127.0.0.1 --port 8583
 ```
 

@@ -114,6 +114,14 @@ def test_device_heartbeat_updates_last_seen(tmp_path):
         assert listed["last_seen_at"] == result.json()["data"]["last_seen_at"]
 
 
+def test_cors_requires_explicit_origin_allowlist(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", cors_origins=("https://web.example",))
+    with TestClient(create_app(settings)) as http:
+        response = http.options("/health", headers={"Origin": "https://web.example", "Access-Control-Request-Method": "GET"})
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "https://web.example"
+
+
 def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

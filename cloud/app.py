@@ -9,6 +9,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .config import CloudSettings, load_settings
@@ -96,6 +97,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     settings.workspaces_dir.mkdir(parents=True, exist_ok=True)
     _bootstrap_admin(db, settings)
     app = FastAPI(title="NoteMeld Cloud", version="0.1.0")
+    if settings.cors_origins:
+        app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token"])
     app.state.db = db
     app.state.settings = settings
     app.state.relays: dict[str, dict[str, WebSocket]] = {}

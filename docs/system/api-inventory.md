@@ -313,6 +313,10 @@ Failed logins are limited to five attempts per source/account key in a
 multi-instance deployments must replace this in-memory counter with a shared
 rate-limit store.
 
+Web access is disabled by default; `NOTEMELD_CLOUD_CORS_ORIGINS` accepts a
+comma-separated explicit origin allowlist. Wildcard origins are not enabled by
+the default configuration.
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
