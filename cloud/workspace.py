@@ -19,9 +19,19 @@ class Workspace:
     def path(self, logical_path: str) -> Path:
         if not logical_path or "\x00" in logical_path:
             raise WorkspaceError("invalid workspace path")
+        if "\\" in logical_path or ":" in logical_path or logical_path.startswith("/"):
+            raise WorkspaceError("invalid workspace path")
+        parts = logical_path.split("/")
+        if len(parts) > 32 or any(part in {"", ".", ".."} for part in parts):
+            raise WorkspaceError("invalid workspace path")
         candidate = (self.root / logical_path).resolve(strict=False)
         if os.path.commonpath((str(self.root), str(candidate))) != str(self.root):
             raise WorkspaceError("workspace path escapes root")
+        current = self.root
+        for part in parts[:-1]:
+            current = current / part
+            if current.is_symlink():
+                raise WorkspaceError("workspace symlink traversal is forbidden")
         return candidate
 
     def read_text(self, logical_path: str) -> str:

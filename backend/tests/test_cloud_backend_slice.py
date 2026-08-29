@@ -241,6 +241,23 @@ def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
         assert http.delete(f"/v1/models/{model['id']}", headers=headers).status_code == 200
 
 
+def test_cloud_workspace_rejects_cross_platform_path_tricks(tmp_path):
+    from cloud.workspace import Workspace, WorkspaceError
+
+    workspace = Workspace(tmp_path / "direct")
+    for path in ("../escape.txt", "a/../escape.txt", "a\\b.txt", "C:/escape.txt"):
+        with pytest.raises(WorkspaceError):
+            workspace.path(path)
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        workspace_id = session["workspace_id"]
+        for path in ("../escape.txt", "a\\b.txt", "C:/escape.txt"):
+            response = http.put(f"/v1/workspaces/{workspace_id}/files/{path}", headers=headers, json={"content": "x"})
+            assert response.status_code in {400, 404}
+
+
 def test_cloud_commands_are_serial_per_session(tmp_path):
     from cloud.agent import AgentResult
 
