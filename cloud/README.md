@@ -35,6 +35,10 @@ Cloud-native commands use `CloudAgentRunner`. Set the optional
 OpenAI-compatible `/chat/completions` provider. With no base URL, the service
 uses an explicit deterministic runner for protocol smoke tests; that fallback
 is not an LLM deployment and should not be used as a production configuration.
+When a provider is configured, the first cloud capability set is read-only:
+the runner may list and read UTF-8 files from the current session workspace.
+Write/delete tools are intentionally withheld until the approval policy is
+implemented.
 
 Container build/run from the NoteMeld repository root:
 

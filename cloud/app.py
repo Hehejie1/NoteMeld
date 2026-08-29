@@ -1089,8 +1089,9 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
             cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
             cx.execute("COMMIT")
         messages = _cloud_history(db, session_id)
+        tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id)
         try:
-            agent_result = app.state.agent_runner.complete(input_text=payload.input, messages=messages + [{"role": "user", "content": payload.input}])
+            agent_result = app.state.agent_runner.complete(input_text=payload.input, messages=messages + [{"role": "user", "content": payload.input}], tools=tools, tool_handler=tool_handler)
         except Exception as exc:
             _finalize_cloud_command(db, session_id, command_id, event_sequence, "failed", {"command_id": command_id, "command_sequence": sequence, "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
             raise HTTPException(502, "cloud agent provider unavailable") from exc
@@ -1131,6 +1132,39 @@ def _cloud_history(db: CloudDB, session_id: str) -> list[dict[str, str]]:
     # Provider requests must remain bounded even if a client imported a very
     # large historical transcript.
     return messages[-200:]
+
+
+def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str) -> tuple[list[dict[str, Any]], Any]:
+    workspace = Workspace(settings.workspaces_dir / user_id / str(session["workspace_id"]))
+    tools = [
+        {
+            "name": "workspace.list",
+            "description": "List files in the current cloud workspace.",
+            "parameters": {"type": "object", "properties": {"prefix": {"type": "string"}}, "additionalProperties": False},
+        },
+        {
+            "name": "workspace.read",
+            "description": "Read a UTF-8 text file from the current cloud workspace.",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
+        },
+    ]
+
+    def handle(name: str, arguments: dict[str, Any]) -> Any:
+        if name == "workspace.list":
+            prefix = arguments.get("prefix", "")
+            if not isinstance(prefix, str) or len(prefix) > 1024:
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace prefix"}}
+            files = workspace.list_files(prefix)[:200]
+            return {"ok": True, "files": files, "truncated": len(files) == 200}
+        if name == "workspace.read":
+            path = arguments.get("path")
+            if not isinstance(path, str) or len(path) > 1024:
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace path"}}
+            content = workspace.read_text(path)
+            return {"ok": True, "path": path, "content": content[:100_000], "truncated": len(content) > 100_000}
+        return {"ok": False, "error": {"code": "unknown_tool", "message": "workspace tool unavailable"}}
+
+    return tools, handle
 
 
 def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):

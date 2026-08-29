@@ -203,7 +203,8 @@ def test_cloud_commands_are_serial_per_session(tmp_path):
     state_lock = threading.Lock()
 
     class SlowRunner:
-        def complete(self, *, input_text, messages):
+        def complete(self, *, input_text, messages, **kwargs):
+            del kwargs
             nonlocal active, maximum
             with state_lock:
                 active += 1
@@ -250,6 +251,32 @@ def test_cloud_provider_failure_is_persisted_as_failed_command(tmp_path):
         snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
         assert snapshot["events"][-1]["event_type"] == "turn.failed"
         assert "provider payload" not in snapshot["events"][-1]["payload"].get("error", {}).get("message", "")
+
+
+def test_cloud_agent_receives_only_readonly_workspace_tools(tmp_path):
+    from cloud.agent import AgentResult
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    captured = {}
+
+    class ToolAwareRunner:
+        def complete(self, *, input_text, messages, tools=None, tool_handler=None):
+            captured["tools"] = tools
+            assert tool_handler is not None
+            listing = tool_handler("workspace.list", {"prefix": ""})
+            assert listing["ok"] is True
+            return AgentResult(content=f"files={listing['file_count'] if 'file_count' in listing else len(listing['files'])}", model="test")
+
+    app.state.agent_runner = ToolAwareRunner()
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        http.put(f"/v1/workspaces/{session['workspace_id']}/files/readme.md", headers=headers, json={"content": "hello"})
+        result = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": "tool-read", "input": "inspect workspace"})
+        assert result.status_code == 200
+        assert {tool["name"] for tool in captured["tools"]} == {"workspace.list", "workspace.read"}
 
 
 def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):

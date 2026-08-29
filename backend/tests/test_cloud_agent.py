@@ -41,3 +41,26 @@ def test_openai_compatible_runner_redacts_provider_failures():
         assert str(exc) == "cloud agent provider request failed"
     else:
         raise AssertionError("expected CloudAgentError")
+
+
+def test_openai_compatible_runner_executes_bounded_workspace_tool_round():
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        body = json.loads(request.content)
+        requests.append(body)
+        if len(requests) == 1:
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "workspace.list", "arguments": "{\"prefix\": \"docs\"}"}}]}}]})
+        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "Here are the files."}}]})
+
+    runner = OpenAICompatibleAgentRunner(base_url="https://provider.example", model="model-a", api_key=None, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    result = runner.complete(
+        input_text="list docs",
+        messages=[{"role": "user", "content": "list docs"}],
+        tools=[{"name": "workspace.list", "description": "list", "parameters": {"type": "object"}}],
+        tool_handler=lambda name, args: {"ok": True, "name": name, "files": [{"path": args["prefix"] + "/a.md"}]},
+    )
+    assert result.content == "Here are the files."
+    assert requests[1]["messages"][-1]["role"] == "tool"

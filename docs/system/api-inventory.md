@@ -406,6 +406,9 @@ Cloud-native commands are serialized per session within one API process. The
 configured `CloudAgentRunner` calls an OpenAI-compatible provider when
 `NOTEMELD_CLOUD_AGENT_BASE_URL` is set; otherwise its deterministic response is
 intended only for protocol smoke tests, not production inference.
+Configured providers currently receive only session-bound read-only workspace
+tools (`workspace.list`, `workspace.read`); mutation tools require a future
+approval policy.
 Commands are first persisted as `running`; provider failures are projected as
 `turn.failed` with a redacted error and remain queryable by command id. On
 startup, any leftover `running` command is fail-closed as `needs_attention`
