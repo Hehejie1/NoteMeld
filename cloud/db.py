@@ -18,6 +18,16 @@ CREATE TABLE IF NOT EXISTS devices (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), public_key TEXT,
   platform TEXT NOT NULL, display_name TEXT NOT NULL, revoked_at INTEGER, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS pairings (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), code_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL, status TEXT NOT NULL, device_id TEXT, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS grants (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), controller_device_id TEXT NOT NULL,
+  host_device_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('standard','super_admin')),
+  scopes_json TEXT NOT NULL, workspace_refs_json TEXT NOT NULL, expires_at INTEGER,
+  revoked_at INTEGER, created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL,
   title TEXT NOT NULL, workspace_id TEXT NOT NULL, status TEXT NOT NULL,

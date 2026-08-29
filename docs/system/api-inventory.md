@@ -28,6 +28,7 @@
 | --- | --- | --- | --- |
 | GET | `/health` | 云端健康检查 | 无 |
 | POST | `/v1/auth/login` | 云端用户/管理员登录并签发 bearer token | 无（限流待补） |
+| POST | `/v1/auth/revoke` | 撤销当前 bearer token | bearer token |
 | GET | `/v1/admin/users` | 管理员查询普通用户 | admin token |
 | POST | `/v1/admin/users` | 管理员创建普通用户 | admin token |
 | PUT | `/v1/admin/users/{user_id}` | 管理员修改普通用户用户名、密码或禁用状态 | admin token |
@@ -35,6 +36,9 @@
 | POST | `/v1/devices` | 注册用户设备 | bearer token |
 | GET | `/v1/devices` | 查询当前用户设备 | bearer token |
 | POST | `/v1/devices/{device_id}/revoke` | 撤销当前用户设备 | bearer token |
+| POST | `/v1/pairings/start` | 创建 5 分钟有效的一次性配对码 | bearer token |
+| POST | `/v1/pairings/confirm` | 使用配对码注册设备 | bearer token |
+| POST | `/v1/grants` | 创建设备间远程控制授权 | bearer token |
 | POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
 | POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息 | bearer token |
 | GET | `/v1/sessions/{session_id}/snapshot` | 读取 session snapshot 和事件 | bearer token |

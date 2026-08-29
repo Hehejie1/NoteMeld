@@ -40,6 +40,21 @@ def test_device_registration_and_revoke(tmp_path):
         assert http.post("/v1/devices/desktop-unique-1/revoke", headers=headers).status_code == 200
 
 
+def test_pairing_grant_and_token_revoke(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        first = http.post("/v1/devices", headers=headers, json={"device_id": "desktop-unique-1", "platform": "desktop", "display_name": "Desktop"})
+        second = http.post("/v1/pairings/start", headers=headers)
+        code = second.json()["data"]["code"]
+        paired = http.post("/v1/pairings/confirm", headers=headers, json={"code": code, "device_id": "phone-unique-1", "platform": "ios", "display_name": "Phone"})
+        assert first.status_code == paired.status_code == 200
+        grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "phone-unique-1", "host_device_id": "desktop-unique-1", "scopes": ["message.send"]})
+        assert grant.status_code == 200
+        assert http.post("/v1/auth/revoke", headers=headers).status_code == 200
+        assert http.get("/v1/devices", headers=headers).status_code == 401
+
+
 def test_session_command_idempotency_and_snapshot(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

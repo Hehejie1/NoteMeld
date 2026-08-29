@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import time
 import uuid
 from typing import Annotated
@@ -18,6 +19,23 @@ from .workspace import Workspace
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class PairingConfirm(BaseModel):
+    code: str = Field(min_length=8, max_length=64)
+    device_id: str = Field(min_length=8, max_length=256)
+    platform: str = Field(min_length=1, max_length=32)
+    display_name: str = Field(min_length=1, max_length=128)
+    public_key: str | None = None
+
+
+class GrantCreate(BaseModel):
+    controller_device_id: str
+    host_device_id: str
+    role: str = Field(default="standard", pattern="^(standard|super_admin)$")
+    scopes: list[str] = Field(default_factory=list, max_length=32)
+    workspace_refs: list[str] = Field(default_factory=list, max_length=32)
+    expires_at: int | None = None
 
 
 class UserCreate(BaseModel):
@@ -75,6 +93,18 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,created_at) VALUES(?,?,?,?,?)", (raw[4:].split(".", 1)[0], user["id"], digest, token_expiry(settings.token_ttl_seconds), now))
         return {"code": 0, "msg": "success", "data": {"token": raw, "user_id": user["id"], "role": user["role"]}}
+
+    @app.post("/v1/auth/revoke")
+    def revoke_token(authorization: Annotated[str | None, Header()] = None):
+        parsed = parse_token((authorization or "").removeprefix("Bearer ").removeprefix("bearer ").strip())
+        if not parsed:
+            raise HTTPException(401, "invalid token")
+        token_id, secret = parsed
+        with db.connect() as cx:
+            result = cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND digest=? AND revoked_at IS NULL", (int(time.time()), token_id, token_digest(token_id, secret)))
+        if result.rowcount != 1:
+            raise HTTPException(401, "invalid token")
+        return {"code": 0, "msg": "success", "data": {"revoked": True}}
 
     @app.get("/v1/admin/users")
     def list_users(current=Depends(_auth_dependency(db, "admin"))):
@@ -159,6 +189,39 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "revoked": True}}
+
+    @app.post("/v1/pairings/start")
+    def start_pairing(current=Depends(_auth_dependency(db))):
+        raw_code = f"{secrets.token_urlsafe(9)}"
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("INSERT INTO pairings(id,user_id,code_hash,expires_at,status,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), current["id"], hashlib.sha256(raw_code.encode()).hexdigest(), now + 300, "pending", now))
+        return {"code": 0, "msg": "success", "data": {"code": raw_code, "expires_at": now + 300}}
+
+    @app.post("/v1/pairings/confirm")
+    def confirm_pairing(payload: PairingConfirm, current=Depends(_auth_dependency(db))):
+        digest = hashlib.sha256(payload.code.encode()).hexdigest()
+        now = int(time.time())
+        with db.connect() as cx:
+            pairing = cx.execute("SELECT * FROM pairings WHERE code_hash=? AND status='pending' AND expires_at>? AND user_id=?", (digest, now, current["id"])).fetchone()
+            if not pairing:
+                raise HTTPException(400, "pairing code expired or invalid")
+            cx.execute("INSERT OR REPLACE INTO devices(id,user_id,public_key,platform,display_name,created_at) VALUES(?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now))
+            cx.execute("UPDATE pairings SET status='confirmed',device_id=? WHERE id=?", (payload.device_id, pairing["id"]))
+        return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True}}
+
+    @app.post("/v1/grants")
+    def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db))):
+        if payload.role == "super_admin" and current["role"] != "admin":
+            raise HTTPException(403, "permission denied")
+        with db.connect() as cx:
+            devices = cx.execute("SELECT id FROM devices WHERE user_id=? AND id IN (?,?) AND revoked_at IS NULL", (current["id"], payload.controller_device_id, payload.host_device_id)).fetchall()
+        if len(devices) != 2:
+            raise HTTPException(404, "active devices not found")
+        grant_id = str(uuid.uuid4())
+        with db.connect() as cx:
+            cx.execute("INSERT INTO grants(id,user_id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (grant_id, current["id"], payload.controller_device_id, payload.host_device_id, payload.role, json.dumps(payload.scopes), json.dumps(payload.workspace_refs), payload.expires_at, int(time.time())))
+        return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "role": payload.role, "expires_at": payload.expires_at}}
 
     @app.post("/v1/sessions")
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db))):
