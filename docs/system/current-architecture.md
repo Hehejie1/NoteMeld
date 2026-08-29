@@ -24,6 +24,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - Application Host：`backend/app/applications/` 是独立于 Agent/Plugin 的应用域。`applications/*/manifest.json` 是内建应用包的目录边界，Host 启动时只扫描、校验并生成 catalog，不执行应用 UI/backend；应用 API 统一挂载在 `/api/applications`，通过 `ResponseWrapper` 和 session token 保护。桌面协议由 Host 监督私有 stdin/stdout process-JSONL，应用不得监听公开端口，Host 负责启动、超时、退出、取消和回收；Web 协议固定为 Host gateway 管理的 `managed-worker` invocation seam，外部云 worker 部署和用户应用包安装仍不属于第一版。
 - Wiki application：Wiki 由独立 `notemeld-applications/apps/wiki/` 应用包提供，Host 只读取 manifest 元数据，用户进入 `/applications/:appId` 后才通过隔离 iframe 加载其静态 UI。应用通过 Application Bridge 使用 `wiki.read` capability 读取既有 Wiki store 的 graph/article。旧 `/wiki` 前端 route 和导航已移除；Wiki pipeline、`note_results/wiki`、Note authority 和旧 Wiki API 仍是数据事实源。默认 application workspace 可在 `/settings/applications` 配置。
 - Cloud backend slice：`cloud/` 是与本地 `backend/` 物理分开的 FastAPI 控制平面。当前实现提供 bootstrap admin、普通用户登录/CRUD、设备注册、cloud-native session、幂等 command/event snapshot 和不落盘的内存 WebSocket relay。云 workspace 默认位于 `NOTEMELD_CLOUD_DATA_DIR/workspaces/`；device-remote relay 不保存消息，也不在云端伪造执行结果。云端 Agent provider 与本地 Agent provider 的复用边界通过 SDK/protocol contract 约束，当前 cloud turn 使用最小 backend slice，完整模型接入仍待后续。
+- 本地 `backend/app/cloud_sync/client.py` 提供无状态 HTTP adapter，统一 cloud token、session、command、snapshot 和 event 请求；本地 queue/Agent 状态机不放入该 adapter。
 
 ## 前端入口
 
