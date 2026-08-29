@@ -528,6 +528,7 @@ def test_admin_delete_user_removes_import_children(tmp_path):
         user_headers = {"Authorization": f"Bearer {login(http, 'deletable', 'deletable-password-123')}"}
         http.post("/v1/devices", headers=user_headers, json={"device_id": "deletable-device", "platform": "desktop", "display_name": "Desktop"})
         imported = http.post("/v1/cloud/sessions/import", headers=user_headers, json={"request_id": "delete-import", "source_session_id": "local", "source_device_id": "deletable-device"}).json()["data"]
+        http.post(f"/v1/sessions/{imported['id']}/archive", headers=user_headers)
         assert http.delete(f"/v1/admin/users/{user['id']}", headers=admin_headers).status_code == 200
         assert http.get(f"/v1/sessions/{imported['id']}/snapshot", headers=admin_headers).status_code == 404
 

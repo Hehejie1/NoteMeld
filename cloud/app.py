@@ -351,6 +351,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("DELETE FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM session_import_requests WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM session_payloads WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+            cx.execute("DELETE FROM session_archives WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM tokens WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM devices WHERE user_id=?", (user_id,))
