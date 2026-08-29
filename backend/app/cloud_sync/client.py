@@ -18,9 +18,10 @@ class CloudClient:
     local queue and event replay semantics.
     """
 
-    def __init__(self, base_url: str, token: str | None = None, client: httpx.Client | None = None):
+    def __init__(self, base_url: str, token: str | None = None, device_id: str | None = None, client: httpx.Client | None = None):
         self.base_url = base_url.rstrip("/")
         self.token = token
+        self.device_id = device_id
         self._client = client or httpx.Client(timeout=20.0)
 
     def close(self) -> None:
@@ -81,6 +82,8 @@ class CloudClient:
         headers = dict(kwargs.pop("headers", {}))
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        if self.device_id:
+            headers["X-Device-Id"] = self.device_id
         response = self._client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
         try:
             body = response.json()
