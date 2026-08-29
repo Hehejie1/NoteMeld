@@ -628,6 +628,13 @@ def test_admin_delete_cleans_owned_relations(tmp_path):
         assert http.delete(f"/v1/admin/users/{user_id}", headers=admin_headers).status_code == 200
 
 
+def test_cloud_rejects_oversized_http_body_before_parsing(tmp_path):
+    app = create_app(CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_request_bytes=100))
+    with TestClient(app) as http:
+        response = http.post("/v1/auth/login", content=b"x" * 101, headers={"Content-Type": "application/json"})
+        assert response.status_code == 413
+
+
 def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

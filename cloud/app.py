@@ -13,6 +13,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -223,6 +224,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             close()
 
     app = FastAPI(title="NoteMeld Cloud", version="0.1.0", lifespan=lifespan)
+    @app.middleware("http")
+    async def request_size_guard(request: Request, call_next):
+        raw_length = request.headers.get("content-length")
+        try:
+            content_length = int(raw_length) if raw_length is not None else 0
+        except ValueError:
+            return JSONResponse(status_code=400, content={"code": 400, "msg": "invalid content length"})
+        if content_length < 0 or content_length > settings.max_request_bytes:
+            return JSONResponse(status_code=413, content={"code": 413, "msg": "request body too large"})
+        return await call_next(request)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token"])
     app.state.db = db

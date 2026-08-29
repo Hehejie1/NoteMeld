@@ -303,6 +303,8 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 ### Cloud sync backend (v1)
 
 Cloud service endpoints are intentionally separated from the local `/api` namespace. Authentication uses bearer tokens issued by `/v1/auth/login`; relay frames are opaque encrypted envelopes and are never persisted by the relay.
+All HTTP requests are rejected with 413 before parsing when their declared
+Content-Length exceeds `NOTEMELD_CLOUD_MAX_REQUEST_BYTES` (16 MiB by default).
 The canonical cloud-native session prefix is `/v1/cloud/sessions`; the earlier
 `/v1/sessions` paths remain backward-compatible aliases during client rollout.
 

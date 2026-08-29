@@ -22,6 +22,7 @@ class CloudSettings:
     command_wait_seconds: float = 20.0
     secret_key: str | None = None
     command_lease_seconds: int = 300
+    max_request_bytes: int = 16 * 1024 * 1024
 
     @property
     def database_path(self) -> Path:
@@ -49,4 +50,5 @@ def load_settings() -> CloudSettings:
         command_wait_seconds=float(os.getenv("NOTEMELD_CLOUD_COMMAND_WAIT_SECONDS", "20")),
         secret_key=os.getenv("NOTEMELD_CLOUD_SECRET_KEY") or None,
         command_lease_seconds=int(os.getenv("NOTEMELD_CLOUD_COMMAND_LEASE_SECONDS", "300")),
+        max_request_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_REQUEST_BYTES", str(16 * 1024 * 1024))),
     )
