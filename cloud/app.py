@@ -7,7 +7,7 @@ import time
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from .config import CloudSettings, load_settings
@@ -95,18 +95,27 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.relays: dict[str, dict[str, WebSocket]] = {}
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
+    app.state.login_failures: dict[str, list[int]] = {}
 
     @app.get("/health")
     def health() -> dict:
         return {"ok": True, "service": "notemeld-cloud"}
 
     @app.post("/v1/auth/login")
-    def login(payload: LoginRequest):
+    def login(payload: LoginRequest, request: Request):
+        key = f"{request.client.host if request.client else 'unknown'}:{payload.account_id or payload.username or ''}"
+        now = int(time.time())
+        recent = [stamp for stamp in app.state.login_failures.get(key, []) if stamp > now - 60]
+        if len(recent) >= 5:
+            raise HTTPException(429, "too many login attempts")
         if not payload.username and not payload.account_id:
             raise HTTPException(400, "username or account_id is required")
         user = _user_by_account_id(db, payload.account_id) if payload.account_id else _user_by_username(db, payload.username or "")
         if not user or user["disabled"] or not verify_password(payload.password, user["password_hash"]):
+            recent.append(now)
+            app.state.login_failures[key] = recent
             raise HTTPException(401, "invalid credentials")
+        app.state.login_failures.pop(key, None)
         raw, digest = issue_token()
         now = int(time.time())
         with db.connect() as cx:

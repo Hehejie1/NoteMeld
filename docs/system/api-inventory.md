@@ -308,6 +308,11 @@ Cloud service endpoints are intentionally separated from the local `/api` namesp
 `account_id`; clients should prefer `account_id` so token identity does not
 depend on a display label.
 
+Failed logins are limited to five attempts per source/account key in a
+60-second process-local window and return HTTP 429 after the limit. Production
+multi-instance deployments must replace this in-memory counter with a shared
+rate-limit store.
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |

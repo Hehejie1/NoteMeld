@@ -270,6 +270,13 @@ def test_admin_audits_are_sanitized(tmp_path):
         assert all("password" not in item["metadata"] and "token" not in item["metadata"] for item in audits)
 
 
+def test_login_bruteforce_limit(tmp_path):
+    with client(tmp_path) as http:
+        for _ in range(5):
+            assert http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 401
+        assert http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 429
+
+
 def test_session_copy_is_independent_with_provenance(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
