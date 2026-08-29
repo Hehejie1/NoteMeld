@@ -41,6 +41,7 @@ def test_openai_compatible_runner_redacts_provider_failures():
         assert str(exc) == "cloud agent provider request failed"
     else:
         raise AssertionError("expected CloudAgentError")
+    client.close()
 
 
 def test_openai_compatible_runner_executes_bounded_workspace_tool_round():

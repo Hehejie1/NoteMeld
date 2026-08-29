@@ -31,6 +31,9 @@ class DeterministicAgentRunner:
         del tools, tool_handler
         return AgentResult(content=f"Cloud Agent received: {input_text}", model=self.model)
 
+    def close(self) -> None:
+        return None
+
 
 class OpenAICompatibleAgentRunner:
     def __init__(self, *, base_url: str, model: str, api_key: str | None, timeout_seconds: float = 120.0, client: httpx.Client | None = None):
@@ -39,6 +42,9 @@ class OpenAICompatibleAgentRunner:
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self._client = client or httpx.Client(timeout=timeout_seconds)
+
+    def close(self) -> None:
+        self._client.close()
 
     def complete(self, *, input_text: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, tool_handler: Callable[[str, dict[str, Any]], Any] | None = None) -> AgentResult:
         del input_text

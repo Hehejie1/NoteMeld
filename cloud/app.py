@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import base64
+from contextlib import asynccontextmanager
 import json
 import os
 import secrets
@@ -179,7 +180,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     _recover_running_commands(db)
     settings.workspaces_dir.mkdir(parents=True, exist_ok=True)
     _bootstrap_admin(db, settings)
-    app = FastAPI(title="NoteMeld Cloud", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        yield
+        close = getattr(application.state.agent_runner, "close", None)
+        if callable(close):
+            close()
+
+    app = FastAPI(title="NoteMeld Cloud", version="0.1.0", lifespan=lifespan)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token"])
     app.state.db = db
@@ -187,6 +195,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.agent_runner = create_agent_runner(settings)
     app.state.command_locks: dict[str, threading.RLock] = {}
     app.state.command_locks_guard = threading.RLock()
+
     app.state.relays: dict[str, dict[str, WebSocket]] = {}
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.login_failures: dict[str, list[int]] = {}
