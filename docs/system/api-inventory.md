@@ -329,6 +329,9 @@ rate-limit store.
 | WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant; returns `host_offline` when target is not connected, rejects replayed sequence numbers, and forwards a host `received` receipt on the reverse direction |
 | GET | `/v1/admin/audits?limit=` | admin-only redacted security and lifecycle audit records |
 
+Remote grants require both active devices to have registered public keys;
+device IDs alone are not sufficient to authorize E2EE control.
+
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create
 a runtime parent/child synchronization relationship.

@@ -275,9 +275,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
         with db.connect() as cx:
-            devices = cx.execute("SELECT id FROM devices WHERE user_id=? AND id IN (?,?) AND revoked_at IS NULL", (current["id"], payload.controller_device_id, payload.host_device_id)).fetchall()
+            devices = cx.execute("SELECT id,public_key FROM devices WHERE user_id=? AND id IN (?,?) AND revoked_at IS NULL", (current["id"], payload.controller_device_id, payload.host_device_id)).fetchall()
         if len(devices) != 2:
             raise HTTPException(404, "active devices not found")
+        if any(not device["public_key"] for device in devices):
+            raise HTTPException(409, "device public key is required before granting remote control")
         grant_id = str(uuid.uuid4())
         with db.connect() as cx:
             cx.execute("INSERT INTO grants(id,user_id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (grant_id, current["id"], payload.controller_device_id, payload.host_device_id, payload.role, json.dumps(payload.scopes), json.dumps(payload.workspace_refs), payload.expires_at, int(time.time())))
