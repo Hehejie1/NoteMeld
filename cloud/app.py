@@ -111,6 +111,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         with db.connect() as cx:
             cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,created_at) VALUES(?,?,?,?,?)", (raw[4:].split(".", 1)[0], user["id"], digest, token_expiry(settings.token_ttl_seconds), now))
+        _audit(db, user["id"], "auth.login", user["id"], {"role": user["role"]})
         return {"code": 0, "msg": "success", "data": {"token": raw, "user_id": user["id"], "role": user["role"]}}
 
     @app.post("/v1/auth/revoke")
@@ -149,6 +150,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             rows = cx.execute("SELECT id,username,role,disabled,created_at FROM users ORDER BY created_at").fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
+    @app.get("/v1/admin/audits")
+    def list_audits(limit: int = 100, current=Depends(_auth_dependency(db, "admin"))):
+        limit = max(1, min(limit, 500))
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,actor_user_id,action,resource_id,metadata_json,created_at FROM audits ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "metadata": json.loads(row["metadata_json"])} for row in rows]}
+
     @app.post("/v1/admin/users")
     def create_user(payload: UserCreate, current=Depends(_auth_dependency(db, "admin"))):
         if payload.role != "user":
@@ -161,6 +169,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             if "UNIQUE" in str(exc):
                 raise HTTPException(409, "username already exists") from exc
             raise
+        _audit(db, current["id"], "admin.user.create", user_id, {"role": "user"})
         return {"code": 0, "msg": "success", "data": {"id": user_id, "username": payload.username}}
 
     @app.put("/v1/admin/users/{user_id}")
@@ -184,6 +193,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise
         if result.rowcount != 1:
             raise HTTPException(404, "user not found")
+        _audit(db, current["id"], "admin.user.update", user_id, {"fields": sorted(changes.keys())})
         return {"code": 0, "msg": "success", "data": {"id": user_id, **changes, "password_hash": None}}
 
     @app.delete("/v1/admin/users/{user_id}")
@@ -202,6 +212,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("COMMIT")
         if result.rowcount != 1:
             raise HTTPException(404, "user not found")
+        _audit(db, current["id"], "admin.user.delete", user_id, {})
         return {"code": 0, "msg": "success", "data": {"deleted": True}}
 
     @app.post("/v1/devices")
@@ -261,6 +272,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         grant_id = str(uuid.uuid4())
         with db.connect() as cx:
             cx.execute("INSERT INTO grants(id,user_id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (grant_id, current["id"], payload.controller_device_id, payload.host_device_id, payload.role, json.dumps(payload.scopes), json.dumps(payload.workspace_refs), payload.expires_at, int(time.time())))
+        _audit(db, current["id"], "grant.create", grant_id, {"role": payload.role, "scopes": payload.scopes})
         return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "role": payload.role, "expires_at": payload.expires_at}}
 
     @app.get("/v1/grants")
@@ -275,6 +287,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             result = cx.execute("UPDATE grants SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), grant_id, current["id"]))
         if result.rowcount != 1:
             raise HTTPException(404, "active grant not found")
+        _audit(db, current["id"], "grant.revoke", grant_id, {})
         return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "revoked": True}}
 
     @app.post("/v1/share-tokens")
@@ -287,6 +300,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         with db.connect() as cx:
             cx.execute("INSERT INTO share_tokens(id,user_id,session_id,token_digest,role,scopes_json,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)", (token_id, current["id"], payload.session_id, hashlib.sha256(raw.encode()).hexdigest(), payload.role, json.dumps(payload.scopes), payload.expires_at, now))
+        _audit(db, current["id"], "share_token.create", token_id, {"session_id": payload.session_id, "role": payload.role, "scopes": payload.scopes, "permanent": payload.expires_at is None})
         return {"code": 0, "msg": "success", "data": {"id": token_id, "token": raw, "session_id": payload.session_id, "role": payload.role, "scopes": payload.scopes, "expires_at": payload.expires_at}}
 
     @app.get("/v1/share-tokens")
@@ -301,6 +315,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             result = cx.execute("UPDATE share_tokens SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), token_id, current["id"]))
         if result.rowcount != 1:
             raise HTTPException(404, "active share token not found")
+        _audit(db, current["id"], "share_token.revoke", token_id, {})
         return {"code": 0, "msg": "success", "data": {"id": token_id, "revoked": True}}
 
     @app.post("/v1/sessions")
@@ -630,6 +645,11 @@ def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):
     if not row or row["revoked_at"] or (row["expires_at"] is not None and row["expires_at"] <= int(time.time())):
         return None
     return row
+
+
+def _audit(db: CloudDB, actor_user_id: str | None, action: str, resource_id: str | None, metadata: dict) -> None:
+    with db.connect() as cx:
+        cx.execute("INSERT INTO audits(id,actor_user_id,action,resource_id,metadata_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), actor_user_id, action, resource_id, json.dumps(metadata, separators=(",", ":")), int(time.time())))
 
 
 def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str) -> bool:

@@ -260,6 +260,16 @@ def test_workspace_backup_list_and_restore(tmp_path):
         assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).json()["data"]["content"] == "before"
 
 
+def test_admin_audits_are_sanitized(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        http.post("/v1/admin/users", headers=headers, json={"username": "audited", "password": "audited-password-123"})
+        audits = http.get("/v1/admin/audits", headers=headers).json()["data"]
+        assert any(item["action"] == "admin.user.create" for item in audits)
+        assert all("password" not in item["metadata"] and "token" not in item["metadata"] for item in audits)
+
+
 def test_session_copy_is_independent_with_provenance(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

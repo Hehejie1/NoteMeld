@@ -322,6 +322,7 @@ depend on a display label.
 | GET | `/v1/shared/{session_id}/events` | read events after a cursor with `X-Share-Token` |
 | POST | `/v1/shared/{session_id}/commands` | submit a cloud-native command when the share token explicitly has `message.send` |
 | WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant; returns `host_offline` when target is not connected, rejects replayed sequence numbers, and forwards a host `received` receipt on the reverse direction |
+| GET | `/v1/admin/audits?limit=` | admin-only redacted security and lifecycle audit records |
 
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create
