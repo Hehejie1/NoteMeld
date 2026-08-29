@@ -266,8 +266,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,created_at) VALUES(?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now))
             except Exception as exc:
                 if "UNIQUE" in str(exc):
-                    raise HTTPException(409, "device already registered") from exc
-                raise
+                    existing = cx.execute("SELECT user_id,revoked_at FROM devices WHERE id=?", (payload.device_id,)).fetchone()
+                    if not existing or existing["user_id"] != current["id"]:
+                        raise HTTPException(409, "device already registered") from exc
+                    cx.execute("UPDATE devices SET public_key=?,platform=?,display_name=?,revoked_at=NULL,last_seen_at=? WHERE id=? AND user_id=?", (payload.public_key, payload.platform, payload.display_name, now, payload.device_id, current["id"]))
+                else:
+                    raise
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id}}
 
     @app.get("/v1/devices")

@@ -80,6 +80,17 @@ def test_device_registration_and_revoke(tmp_path):
         assert http.post("/v1/devices/desktop-unique-1/revoke", headers=headers).status_code == 200
 
 
+def test_same_account_device_registration_is_idempotent(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {"device_id": "idempotent-device", "platform": "desktop", "display_name": "Old"}
+        assert http.post("/v1/devices", headers=headers, json=payload).status_code == 200
+        payload["display_name"] = "New"
+        assert http.post("/v1/devices", headers=headers, json=payload).status_code == 200
+        assert http.get("/v1/devices", headers=headers).json()["data"][0]["display_name"] == "New"
+
+
 def test_device_key_rotation_replaces_public_key(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
