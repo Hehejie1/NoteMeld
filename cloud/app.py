@@ -517,6 +517,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(404, "command not found")
         return {"code": 0, "msg": "success", "data": dict(row)}
 
+    @app.get("/v1/sessions/{session_id}/commands")
+    def list_commands(session_id: str, after: int = 0, limit: int = 100, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        limit = max(1, min(limit, 500))
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,session_id,request_id,sequence,status,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
+        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+
     @app.get("/v1/sessions/{session_id}/snapshot")
     def snapshot(session_id: str, current=Depends(_auth_dependency(db))):
         session = _owned_session(db, session_id, current["id"])

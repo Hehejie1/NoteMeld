@@ -343,6 +343,8 @@ Relay `command` frames additionally require the Grant's `message.send` scope;
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create
 a runtime parent/child synchronization relationship.
+`GET /v1/sessions/{session_id}/commands?after=&limit=` lists command states by
+sequence cursor for reconnect and queue reconstruction.
 
 Client adapters may use `cloud/crypto.py` for the E2EE handshake and AEAD frame
 payload. The cloud relay treats the resulting ciphertext as opaque; the
