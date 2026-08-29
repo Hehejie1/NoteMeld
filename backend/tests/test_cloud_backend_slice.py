@@ -276,6 +276,23 @@ def test_relay_sequence_cursor_survives_app_restart(tmp_path):
     assert _accept_relay_sequence(restarted, "s", "d", 2) is False
 
 
+def test_grant_workspace_refs_are_enforced(tmp_path):
+    import uuid
+    from cloud.app import _grant_allows
+    from cloud.db import CloudDB
+
+    database = CloudDB(tmp_path / "grant.sqlite")
+    database.init()
+    with database.connect() as cx:
+        cx.execute("INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)", ("u", "u", "hash", "user", 1))
+        cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", ("s", "u", "device_remote", "s", "project-a", "idle", 1, 1))
+        for device in ("controller", "host"):
+            cx.execute("INSERT INTO devices(id,user_id,platform,display_name,created_at) VALUES(?,?,?,?,?)", (device, "u", "test", device, 1))
+        cx.execute("INSERT INTO grants(id,user_id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,created_at) VALUES(?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), "u", "controller", "host", "standard", '["message.send"]', '["project-b"]', 1))
+    assert _grant_allows(database, "s", "u", "controller", "host", "message.send", "project-a") is False
+    assert _grant_allows(database, "s", "u", "controller", "host", "message.send", "project-b") is True
+
+
 def test_cloud_commands_are_serial_per_session(tmp_path):
     from cloud.agent import AgentResult
 
