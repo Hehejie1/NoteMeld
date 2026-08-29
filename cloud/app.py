@@ -539,7 +539,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def list_sessions(device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db))):
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
-            rows = cx.execute("SELECT s.*, a.archived_at FROM sessions s LEFT JOIN session_archives a ON a.session_id=s.id AND a.user_id=? AND (a.device_id=? OR a.device_id IS NULL) WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], device_id, current["id"])).fetchall()
+            rows = cx.execute("SELECT s.*, COALESCE((SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id=?), (SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id IS NULL)) AS archived_at FROM sessions s WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], device_id, current["id"], current["id"])).fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/sessions/{session_id}/archive")
