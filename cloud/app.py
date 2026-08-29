@@ -575,6 +575,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             return
         await websocket.accept()
         peers = app.state.relays.setdefault(session_id, {})
+        previous = peers.get(device_id)
+        if previous is not None and previous is not websocket:
+            await previous.close(code=4009, reason="replaced by a newer connection")
         peers[device_id] = websocket
         frame_times: list[int] = []
         try:
