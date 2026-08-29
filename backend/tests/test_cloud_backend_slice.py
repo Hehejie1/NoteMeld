@@ -377,6 +377,17 @@ def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
         assert snapshot["events"][-1]["event_type"] == "turn.needs_attention"
         assert snapshot["session"]["status"] == "idle"
         assert http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers={"Authorization": f"Bearer {token}"}).json()["data"]["status"] == "needs_attention"
+        headers = {"Authorization": f"Bearer {token}"}
+        resumed = http.post(f"/v1/sessions/{session['id']}/commands/{command_id}/recover", headers=headers, json={"mode": "resume"})
+        assert resumed.status_code == 200
+        assert resumed.json()["data"]["status"] == "queued"
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            status = http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers=headers).json()["data"]["status"]
+            if status == "completed":
+                break
+            time.sleep(0.01)
+        assert status == "completed"
 
 
 def test_cloud_session_spec_prefix_aliases(tmp_path):

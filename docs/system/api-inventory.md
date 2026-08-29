@@ -422,7 +422,7 @@ configured `CloudAgentRunner` calls an OpenAI-compatible provider when
 intended only for protocol smoke tests, not production inference.
 Configured providers currently receive only session-bound read-only workspace
 tools (`workspace.list`, `workspace.read`); mutation tools require a future
-approval policy.
+approval and are never executed implicitly.
 Commands are first persisted as `queued`, then claimed as `running`; provider failures are projected as
 `turn.failed` with a redacted error and remain queryable by command id. On
 startup, any leftover `running` command is fail-closed as `needs_attention`
@@ -430,6 +430,9 @@ with a `turn.needs_attention` event rather than being replayed automatically.
 Claimed commands expose a bounded lease owner/expiry and attempt count in the
 command status API. SQLite `BEGIN IMMEDIATE` makes claim single-winner across
 processes; expired running work remains fail-closed until explicit recovery.
+Operators can explicitly recover `needs_attention` commands with
+`POST /v1/cloud/sessions/{session_id}/commands/{command_id}/recover` using
+`resume` (requeue) or `abandon`; both transitions are idempotent and audited.
 
 `/v1/models` provides per-user cloud model metadata CRUD and default selection.
 Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`

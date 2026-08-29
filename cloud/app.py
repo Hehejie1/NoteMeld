@@ -182,6 +182,10 @@ class CommandCreate(BaseModel):
     input: str = Field(min_length=1, max_length=100_000)
 
 
+class CommandRecover(BaseModel):
+    mode: str = Field(pattern="^(resume|abandon)$")
+
+
 class WorkspaceWrite(BaseModel):
     content: str = Field(max_length=10_000_000)
 
@@ -1003,6 +1007,32 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             rows = cx.execute("SELECT id,session_id,request_id,sequence,status,lease_owner,lease_expires_at,attempt_count,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+
+    @app.post("/v1/sessions/{session_id}/commands/{command_id}/recover")
+    @app.post("/v1/cloud/sessions/{session_id}/commands/{command_id}/recover")
+    def recover_command(session_id: str, command_id: str, payload: CommandRecover, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        _owned_session(db, session_id, current["id"])
+        now = int(time.time())
+        new_status = "queued" if payload.mode == "resume" else "abandoned"
+        event_type = "command.requeued" if payload.mode == "resume" else "command.abandoned"
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            row = cx.execute("SELECT sequence,status FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+            if not row:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "command not found")
+            if row["status"] != "needs_attention":
+                cx.execute("COMMIT")
+                return {"code": 0, "msg": "success", "data": {"command_id": command_id, "status": row["status"], "idempotent": True}}
+            event_sequence = cx.execute("SELECT next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
+            cx.execute("UPDATE commands SET status=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='needs_attention'", (new_status, command_id))
+            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, event_type, json.dumps({"command_id": command_id, "command_sequence": row["sequence"], "status": new_status, "recovered_by": current["id"]}, separators=(",", ":")), now))
+            cx.execute("UPDATE sessions SET next_event_sequence=?,status=? WHERE id=?", (event_sequence + 1, "queued" if payload.mode == "resume" else "idle", session_id))
+            cx.execute("COMMIT")
+        if payload.mode == "resume":
+            _ensure_session_worker(app, db, session_id, current["id"])
+        _audit(db, current["id"], f"command.{payload.mode}", command_id, {"session_id": session_id})
+        return {"code": 0, "msg": "success", "data": {"command_id": command_id, "status": new_status, "mode": payload.mode}}
 
     @app.get("/v1/sessions/{session_id}/snapshot")
     @app.get("/v1/cloud/sessions/{session_id}/snapshot")

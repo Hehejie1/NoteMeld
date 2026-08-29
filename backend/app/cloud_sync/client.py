@@ -125,6 +125,9 @@ class CloudClient:
     def resolve_approval(self, session_id: str, approval_id: str, status: str, note: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/cloud/sessions/{session_id}/approvals/{approval_id}/resolve", json={"status": status, "note": note})
 
+    def recover_command(self, session_id: str, command_id: str, mode: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/cloud/sessions/{session_id}/commands/{command_id}/recover", json={"mode": mode})
+
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
 
