@@ -38,6 +38,18 @@ def test_remote_frame_validation_is_shared_with_clients():
         raise AssertionError("invalid sequence must be rejected")
 
 
+def test_remote_frame_from_json_validates_shape_and_fields():
+    frame = RemoteFrame("s", "a", "b", 1, "ciphertext", "f", 3, nonce="bm5ubm5ubm5ubm5u")
+    assert RemoteFrame.from_json(frame.to_json()) == frame
+    malformed = frame.to_json().replace('"sequence":1', '"sequence":0')
+    try:
+        RemoteFrame.from_json(malformed)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("malformed frame must be rejected")
+
+
 def test_durable_mailbox_survives_reopen(tmp_path):
     database = tmp_path / "queue.db"
     first = DurableSessionMailbox(database, max_size=2)

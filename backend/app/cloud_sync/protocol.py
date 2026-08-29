@@ -59,3 +59,21 @@ class RemoteFrame:
 
     def to_json(self) -> str:
         return json.dumps({**self.envelope(), "ciphertext": self.ciphertext}, separators=(",", ":"))
+
+    @classmethod
+    def from_json(cls, payload: str) -> "RemoteFrame":
+        try:
+            value = json.loads(payload)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid remote frame JSON") from exc
+        if not isinstance(value, dict) or set(value) != set(cls("", "", "", 1, "", "", 0).envelope()) | {"ciphertext"}:
+            raise ValueError("invalid remote frame shape")
+        frame = cls(
+            session_id=value["session_id"], sender_device_id=value["sender_device_id"],
+            recipient_device_id=value["recipient_device_id"], sequence=value["sequence"],
+            ciphertext=value["ciphertext"], frame_id=value["frame_id"],
+            authority_epoch=value["authority_epoch"], protocol_version=value["protocol_version"],
+            nonce=value["nonce"], frame_type=value["frame_type"],
+        )
+        frame.validate()
+        return frame
