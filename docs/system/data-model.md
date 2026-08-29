@@ -272,6 +272,9 @@ The cloud `models` table stores per-user provider metadata and an encrypted
 provider credential. API responses never expose `api_key_ciphertext`; the
 encryption key is derived from `NOTEMELD_CLOUD_SECRET_KEY` or the bootstrap
 admin password.
+`sessions.model_id` optionally binds a cloud-native session to one enabled
+model row; copies preserve this binding while imported sessions do not carry
+provider credentials.
 
 Platform adapters should derive `device_id` with the shared
 `backend/app/cloud_sync/device_id.py` helper: a normalized platform prefix and

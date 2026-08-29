@@ -431,7 +431,10 @@ with a `turn.needs_attention` event rather than being replayed automatically.
 `/v1/models` provides per-user cloud model metadata CRUD and default selection.
 Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`
 (falling back to the bootstrap admin password) and responses expose only
-`has_api_key`; the registry is not yet wired to per-session provider selection.
+`has_api_key`.
+Sessions may set `model_id` when created; cloud execution then resolves the
+enabled model row for that user and constructs a bounded OpenAI-compatible
+runner for the command. Unsupported providers or disabled models fail closed.
 
 Cloud Agent workspace mutation tools (`workspace.write`, `workspace.delete`) do
 not mutate immediately. They create an auditable `pending` approval exposed by

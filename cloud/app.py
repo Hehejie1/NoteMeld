@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import CloudSettings, load_settings
 from .db import CloudDB
-from .agent import create_agent_runner
+from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
 
@@ -109,6 +109,7 @@ class SessionCreate(BaseModel):
     kind: str = Field(pattern="^(cloud_native|device_remote)$")
     title: str = Field(default="New session", max_length=200)
     workspace_id: str = Field(default="default", min_length=1, max_length=128, pattern="^[A-Za-z0-9_-]+$")
+    model_id: str | None = Field(default=None, max_length=128)
 
 
 class ModelCreate(BaseModel):
@@ -650,8 +651,15 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         Workspace(settings.workspaces_dir / current["id"] / payload.workspace_id)
         with db.connect() as cx:
-            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", now, now))
-        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id}}
+            cx.execute("BEGIN IMMEDIATE")
+            if payload.model_id:
+                model = cx.execute("SELECT id FROM models WHERE id=? AND user_id=? AND enabled=1", (payload.model_id, current["id"])).fetchone()
+                if not model:
+                    cx.execute("ROLLBACK")
+                    raise HTTPException(404, "enabled model not found")
+            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,model_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", payload.model_id, now, now))
+            cx.execute("COMMIT")
+        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id, "model_id": payload.model_id}}
 
     @app.post("/v1/cloud/sessions/import")
     def import_session(payload: SessionImport, current=Depends(_auth_dependency(db, required_scope="session.write"))):
@@ -738,7 +746,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         try:
             with db.connect() as cx:
                 cx.execute("BEGIN IMMEDIATE")
-                cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,created_at,updated_at,next_sequence,next_event_sequence,authority_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, now, now, source["next_sequence"], source["next_event_sequence"], 1))
+                cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,model_id,created_at,updated_at,next_sequence,next_event_sequence,authority_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, source["model_id"], now, now, source["next_sequence"], source["next_event_sequence"], 1))
                 command_rows = cx.execute("SELECT request_id,payload_hash,sequence,input_text,status,created_at FROM commands WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
                 for row in command_rows:
                     cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["request_id"], row["payload_hash"], row["sequence"], row["input_text"], row["status"], row["created_at"]))
@@ -1287,7 +1295,14 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
                 session = _owned_session(db, session_id, user_id)
                 messages = _cloud_history(db, session_id, exclude_command_id=command_id)
                 tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id)
-                result = app.state.agent_runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
+                runner = _runner_for_session(app, db, session)
+                try:
+                    result = runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
+                finally:
+                    if runner is not app.state.agent_runner:
+                        close = getattr(runner, "close", None)
+                        if callable(close):
+                            close()
             except Exception:
                 _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
             else:
@@ -1420,6 +1435,19 @@ def _execute_approved_tool(*, settings: CloudSettings, session: Any, user_id: st
         workspace.delete_file(path)
         return {"ok": True, "path": path, "deleted": True}
     raise ValueError("unsupported approval tool")
+
+
+def _runner_for_session(app: FastAPI, db: CloudDB, session: Any):
+    model_id = session["model_id"] if "model_id" in session.keys() else None
+    if not model_id:
+        return app.state.agent_runner
+    with db.connect() as cx:
+        model = cx.execute("SELECT provider,model,base_url,api_key_ciphertext,enabled FROM models WHERE id=? AND user_id=?", (model_id, session["user_id"])).fetchone()
+    if not model or not model["enabled"] or model["provider"] not in {"openai", "openai-compatible"} or not model["base_url"]:
+        raise RuntimeError("configured session model is unavailable")
+    master_key = app.state.settings.secret_key or app.state.settings.admin_password
+    api_key = decrypt_secret(model["api_key_ciphertext"], master_key) if model["api_key_ciphertext"] else None
+    return OpenAICompatibleAgentRunner(base_url=model["base_url"], model=model["model"], api_key=api_key, timeout_seconds=app.state.settings.agent_timeout_seconds)
 
 
 def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None) -> tuple[list[dict[str, Any]], Any]:
