@@ -57,7 +57,10 @@ class CloudClient:
         return self._request("GET", "/v1/devices")
 
     def create_grant(self, controller_device_id: str, host_device_id: str, role: str = "standard", scopes: list[str] | None = None, workspace_refs: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
-        return self._request("POST", "/v1/grants", json={"controller_device_id": controller_device_id, "host_device_id": host_device_id, "role": role, "scopes": scopes or [], "workspace_refs": workspace_refs or [], "expires_at": expires_at})
+        payload = {"controller_device_id": controller_device_id, "host_device_id": host_device_id, "role": role, "workspace_refs": workspace_refs or [], "expires_at": expires_at}
+        if scopes is not None:
+            payload["scopes"] = scopes
+        return self._request("POST", "/v1/grants", json=payload)
 
     def revoke_grant(self, grant_id: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/grants/{grant_id}/revoke")
