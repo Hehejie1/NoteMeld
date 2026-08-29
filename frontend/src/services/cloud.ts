@@ -28,6 +28,12 @@ export class CloudClient {
   listDevices() { return this.request<unknown[]>('GET', '/v1/devices') }
   registerDevice(deviceId: string, platform: string, displayName: string, publicKey?: string) { return this.request<Record<string, unknown>>('POST', '/v1/devices/register', { device_id: deviceId, platform, display_name: displayName, public_key: publicKey }) }
   revokeDevice(deviceId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/devices/${encodeURIComponent(deviceId)}`) }
+  rotateDeviceKey(deviceId: string, publicKey: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/rotate-key`, { public_key: publicKey }) }
+  heartbeat(deviceId: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/heartbeat`) }
+  requestDeviceChallenge(deviceId: string) { return this.request<{ challenge: string; expires_at: number }>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/challenge`) }
+  verifyDeviceChallenge(deviceId: string, challenge: string, signature: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/challenge/verify`, { challenge, signature }) }
+  startPairing() { return this.request<{ code: string; expires_at: number }>('POST', '/v1/pairings/start') }
+  confirmPairing(code: string, deviceId: string, platform: string, displayName: string, publicKey?: string) { return this.request<Record<string, unknown>>('POST', '/v1/pairings/confirm', { code, device_id: deviceId, platform, display_name: displayName, public_key: publicKey }) }
   listGrants() { return this.request<unknown[]>('GET', '/v1/grants') }
   createGrant(controllerDeviceId: string, hostDeviceId: string, scopes?: string[], workspaceRefs?: string[]) { return this.request<Record<string, unknown>>('POST', '/v1/grants', { controller_device_id: controllerDeviceId, host_device_id: hostDeviceId, ...(scopes ? { scopes } : {}), ...(workspaceRefs ? { workspace_refs: workspaceRefs } : {}) }) }
   revokeGrant(grantId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/grants/${encodeURIComponent(grantId)}`) }
