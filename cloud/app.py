@@ -412,6 +412,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence", (session_id, after)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in rows]}
 
+    @app.post("/v1/shared/{session_id}/commands")
+    def shared_command(session_id: str, payload: CommandCreate, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+        access = _authenticate_share_token(db, share_token, session_id)
+        if not access:
+            raise HTTPException(401, "invalid share token")
+        scopes = json.loads(access["scopes_json"])
+        if access["role"] == "viewer" or "message.send" not in scopes:
+            raise HTTPException(403, "share token cannot send messages")
+        return submit_command(session_id, payload, current={"id": access["user_id"]})
+
     @app.get("/v1/sessions/{session_id}/events")
     def events(session_id: str, after: int = 0, current=Depends(_auth_dependency(db))):
         _owned_session(db, session_id, current["id"])
