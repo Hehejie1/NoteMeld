@@ -402,9 +402,15 @@ quota and return `413 workspace quota exceeded` before modifying a file.
 `device_remote` session must deliver commands through the host relay; the cloud
 service never fabricates a remote Agent result.
 
-The current slice provides scoped read-only share-token access. Share-token
-command submission, multi-instance queue fencing, end-to-end key exchange, and
-cloud backup/restore APIs remain future work.
+Cloud-native commands are serialized per session within one API process. The
+configured `CloudAgentRunner` calls an OpenAI-compatible provider when
+`NOTEMELD_CLOUD_AGENT_BASE_URL` is set; otherwise its deterministic response is
+intended only for protocol smoke tests, not production inference.
+
+The current slice provides scoped share-token read/control access and cloud
+workspace backup/restore. Multi-instance queue fencing and full end-to-end key
+exchange remain future work; device relay still requires the platform clients
+to perform the E2EE handshake before sending opaque frames.
 
 - LLM Provider 请求由后端发起，不由前端直接调用。当前主路径走 `backend/app/ai/`（notemeld-ai 抽象层）：通过 `NotemeldGPT` 适配器在 `create_chat_completion` 内调 `Models.complete()`，由 notemeld-ai 统一写 usage。旧 `backend/app/gpt/` 的 `GPTFactory`/`UniversalGPT` 过渡期保留供回滚（`from_config` 已加 `DeprecationWarning`）；`services/model.py` 的 `list_models` 仍走 `GPTFactory`（非 chat-completion 路径）。详见 `docs/system/current-architecture.md` 的 LLM 调用层章节。
 - 视频平台、网页和转写服务由后端下载器/转写器调用。

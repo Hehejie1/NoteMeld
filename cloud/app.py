@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import shutil
+import threading
 import time
 import uuid
 from typing import Annotated, Any
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import CloudSettings, load_settings
 from .db import CloudDB
+from .agent import CloudAgentError, create_agent_runner
 from .security import hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
 
@@ -181,6 +183,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token"])
     app.state.db = db
     app.state.settings = settings
+    app.state.agent_runner = create_agent_runner(settings)
+    app.state.command_locks: dict[str, threading.RLock] = {}
+    app.state.command_locks_guard = threading.RLock()
     app.state.relays: dict[str, dict[str, WebSocket]] = {}
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.login_failures: dict[str, list[int]] = {}
@@ -777,30 +782,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
-        session = _owned_session(db, session_id, current["id"])
-        if session["kind"] == "device_remote":
-            raise HTTPException(409, "device_remote commands must be delivered through the host relay")
-        digest = hashlib.sha256(payload.input.encode()).hexdigest()
-        now = int(time.time())
-        with db.connect() as cx:
-            cx.execute("BEGIN IMMEDIATE")
-            existing = cx.execute("SELECT * FROM commands WHERE session_id=? AND request_id=?", (session_id, payload.request_id)).fetchone()
-            if existing:
-                if existing["payload_hash"] != digest:
-                    raise HTTPException(409, "payload conflict")
-                cx.execute("COMMIT")
-                return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
-            sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
-            command_id = str(uuid.uuid4())
-            cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='running',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 2, now, session_id))
-            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "completed", now))
-            queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
-            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
-            completed_event = {"command_id": command_id, "command_sequence": sequence, "status": "completed", "output": f"Cloud Agent received: {payload.input}"}
-            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence + 1, "turn.completed", json.dumps(completed_event), now))
-            cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
-            cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "completed"}}
+        return _submit_cloud_command(app, db, session_id, payload, current["id"])
 
     @app.get("/v1/sessions/{session_id}/commands/{command_id}")
     def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
@@ -1043,6 +1025,81 @@ def _decode_import_files(files: list[SessionImportFile], max_bytes: int, max_fil
             raise HTTPException(413, "workspace quota exceeded")
         decoded.append((logical_path, content))
     return decoded
+
+
+def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: CommandCreate, user_id: str) -> dict[str, Any]:
+    session = _owned_session(db, session_id, user_id)
+    if session["kind"] == "device_remote":
+        raise HTTPException(409, "device_remote commands must be delivered through the host relay")
+    with app.state.command_locks_guard:
+        lock = app.state.command_locks.setdefault(session_id, threading.RLock())
+    with lock:
+        digest = hashlib.sha256(payload.input.encode()).hexdigest()
+        with db.connect() as cx:
+            existing = cx.execute("SELECT * FROM commands WHERE session_id=? AND request_id=?", (session_id, payload.request_id)).fetchone()
+        if existing:
+            if existing["payload_hash"] != digest:
+                raise HTTPException(409, "payload conflict")
+            return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
+        messages = _cloud_history(db, session_id)
+        try:
+            agent_result = app.state.agent_runner.complete(input_text=payload.input, messages=messages + [{"role": "user", "content": payload.input}])
+        except CloudAgentError as exc:
+            raise HTTPException(502, "cloud agent provider unavailable") from exc
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            existing = cx.execute("SELECT * FROM commands WHERE session_id=? AND request_id=?", (session_id, payload.request_id)).fetchone()
+            if existing:
+                if existing["payload_hash"] != digest:
+                    raise HTTPException(409, "payload conflict")
+                cx.execute("COMMIT")
+                return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
+            sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
+            command_id = str(uuid.uuid4())
+            cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='running',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 2, now, session_id))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "completed", now))
+            queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
+            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
+            completed_event = {"command_id": command_id, "command_sequence": sequence, "status": "completed", "output": agent_result.content, "model": agent_result.model}
+            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence + 1, "turn.completed", json.dumps(completed_event), now))
+            cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
+            cx.execute("COMMIT")
+        return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "completed"}}
+
+
+def _cloud_history(db: CloudDB, session_id: str) -> list[dict[str, str]]:
+    """Build a bounded provider history from imported messages and cloud turns."""
+    messages: list[dict[str, str]] = []
+    with db.connect() as cx:
+        payload_row = cx.execute("SELECT payload_json FROM session_payloads WHERE session_id=?", (session_id,)).fetchone()
+        commands = cx.execute("SELECT id,input_text FROM commands WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
+        events = cx.execute("SELECT payload_json FROM events WHERE session_id=? AND event_type='turn.completed' ORDER BY sequence", (session_id,)).fetchall()
+    if payload_row:
+        try:
+            imported = json.loads(payload_row["payload_json"])
+            candidate = imported.get("conversation", {}).get("messages", [])
+            if isinstance(candidate, list):
+                for item in candidate:
+                    if isinstance(item, dict) and item.get("role") in {"system", "user", "assistant"} and isinstance(item.get("content"), str):
+                        messages.append({"role": str(item["role"]), "content": item["content"]})
+        except (TypeError, ValueError, AttributeError):
+            messages = []
+    outputs: dict[str, str] = {}
+    for event in events:
+        try:
+            payload = json.loads(event["payload_json"])
+            if isinstance(payload, dict) and isinstance(payload.get("command_id"), str) and isinstance(payload.get("output"), str):
+                outputs[payload["command_id"]] = payload["output"]
+        except (TypeError, ValueError):
+            continue
+    for command in commands:
+        messages.append({"role": "user", "content": str(command["input_text"])})
+        if command["id"] in outputs:
+            messages.append({"role": "assistant", "content": outputs[command["id"]]})
+    # Provider requests must remain bounded even if a client imported a very
+    # large historical transcript.
+    return messages[-200:]
 
 
 def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):

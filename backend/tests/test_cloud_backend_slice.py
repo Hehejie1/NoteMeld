@@ -1,6 +1,9 @@
 from pathlib import Path
 import base64
 import hashlib
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
@@ -188,6 +191,41 @@ def test_session_command_idempotency_and_snapshot(tmp_path):
         snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
         assert snapshot["snapshot_seq"] == 2
         assert snapshot["events"][-1]["event_type"] == "turn.completed"
+
+
+def test_cloud_commands_are_serial_per_session(tmp_path):
+    from cloud.agent import AgentResult
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    active = 0
+    maximum = 0
+    state_lock = threading.Lock()
+
+    class SlowRunner:
+        def complete(self, *, input_text, messages):
+            nonlocal active, maximum
+            with state_lock:
+                active += 1
+                maximum = max(maximum, active)
+            time.sleep(0.05)
+            with state_lock:
+                active -= 1
+            return AgentResult(content=f"answer:{input_text}", model="test")
+
+    app.state.agent_runner = SlowRunner()
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+
+        def send(index):
+            return http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": f"parallel-{index}", "input": f"message-{index}"})
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(send, range(2)))
+        assert all(response.status_code == 200 for response in responses)
+        assert maximum == 1
 
 
 def test_local_session_full_share_import_is_sanitized_atomic_and_idempotent(tmp_path):

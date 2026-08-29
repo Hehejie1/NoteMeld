@@ -254,3 +254,9 @@ K0-K3 是建立在既有 `note_documents.task_id` 之上的增量索引模型，
 | `knowledge_index_states` | `layer`, `generation`, `status` | 索引 generation 和可重建状态预留。 |
 
 SQLite FTS5 表 `knowledge_chunk_fts`、`knowledge_profile_fts`、`knowledge_term_fts` 为共享在线词法索引；向量 collection 使用版本化固定名称，禁止为每篇文章创建 collection。删除文章时移除 occurrence、chunk/profile 和 FTS 行，再把文章置为 `deleted`；共享 term 只有不再被任何文章引用时才允许后续清理。
+
+Cloud-native command calls are serialized by a process-scoped session lock before
+the provider call and re-check `(session_id, request_id, payload_hash)` inside a
+SQLite transaction. This is a single-process safety boundary; multi-instance
+deployments need a shared queue/lease before claiming cross-process
+serialization.

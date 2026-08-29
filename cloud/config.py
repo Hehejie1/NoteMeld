@@ -14,6 +14,10 @@ class CloudSettings:
     max_workspace_bytes: int = 1_000_000_000
     max_workspace_files: int = 10_000
     cors_origins: tuple[str, ...] = ()
+    agent_base_url: str | None = None
+    agent_model: str = "cloud-agent"
+    agent_api_key: str | None = None
+    agent_timeout_seconds: float = 120.0
 
     @property
     def database_path(self) -> Path:
@@ -33,4 +37,8 @@ def load_settings() -> CloudSettings:
         max_workspace_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES", "1000000000")),
         max_workspace_files=int(os.getenv("NOTEMELD_CLOUD_MAX_WORKSPACE_FILES", "10000")),
         cors_origins=tuple(origin.strip() for origin in os.getenv("NOTEMELD_CLOUD_CORS_ORIGINS", "").split(",") if origin.strip()),
+        agent_base_url=os.getenv("NOTEMELD_CLOUD_AGENT_BASE_URL") or None,
+        agent_model=os.getenv("NOTEMELD_CLOUD_AGENT_MODEL", "cloud-agent"),
+        agent_api_key=os.getenv("NOTEMELD_CLOUD_AGENT_API_KEY") or None,
+        agent_timeout_seconds=float(os.getenv("NOTEMELD_CLOUD_AGENT_TIMEOUT_SECONDS", "120")),
     )

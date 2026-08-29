@@ -30,6 +30,12 @@ Base64 content, declared size and SHA-256 before atomically publishing the
 workspace and metadata. Skill, plugin and Application package fields are not
 part of the accepted schema.
 
+Cloud-native commands use `CloudAgentRunner`. Set the optional
+`NOTEMELD_CLOUD_AGENT_BASE_URL`, model and API key variables to call an
+OpenAI-compatible `/chat/completions` provider. With no base URL, the service
+uses an explicit deterministic runner for protocol smoke tests; that fallback
+is not an LLM deployment and should not be used as a production configuration.
+
 Container build/run from the NoteMeld repository root:
 
 ```bash
