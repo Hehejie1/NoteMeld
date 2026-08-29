@@ -97,6 +97,20 @@ def test_device_remote_cannot_execute_in_cloud(tmp_path):
         assert response.status_code == 409
 
 
+def test_share_token_is_scoped_and_revocable(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": "share-1", "input": "hello"})
+        created = http.post("/v1/share-tokens", headers=headers, json={"session_id": session["id"], "expires_at": None}).json()["data"]
+        shared_headers = {"X-Share-Token": created["token"]}
+        assert http.get(f"/v1/shared/{session['id']}/snapshot", headers=shared_headers).status_code == 200
+        assert http.get("/v1/share-tokens", headers=headers).json()["data"][0]["id"] == created["id"]
+        assert http.post(f"/v1/share-tokens/{created['id']}/revoke", headers=headers).status_code == 200
+        assert http.get(f"/v1/shared/{session['id']}/snapshot", headers=shared_headers).status_code == 401
+
+
 def test_workspace_rejects_escape(tmp_path):
     from cloud.workspace import Workspace, WorkspaceError
 

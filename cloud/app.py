@@ -72,6 +72,13 @@ class WorkspaceWrite(BaseModel):
     content: str = Field(max_length=10_000_000)
 
 
+class ShareTokenCreate(BaseModel):
+    session_id: str
+    role: str = Field(default="viewer", pattern="^(viewer|standard|super_admin)$")
+    scopes: list[str] = Field(default_factory=list, max_length=32)
+    expires_at: int | None = None
+
+
 def create_app(settings: CloudSettings | None = None) -> FastAPI:
     settings = settings or load_settings()
     db = CloudDB(settings.database_path)
@@ -259,6 +266,32 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(404, "active grant not found")
         return {"code": 0, "msg": "success", "data": {"grant_id": grant_id, "revoked": True}}
 
+    @app.post("/v1/share-tokens")
+    def create_share_token(payload: ShareTokenCreate, current=Depends(_auth_dependency(db))):
+        _owned_session(db, payload.session_id, current["id"])
+        if payload.role == "super_admin" and current["role"] != "admin":
+            raise HTTPException(403, "permission denied")
+        raw = "nms_" + secrets.token_urlsafe(32)
+        token_id = str(uuid.uuid4())
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("INSERT INTO share_tokens(id,user_id,session_id,token_digest,role,scopes_json,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)", (token_id, current["id"], payload.session_id, hashlib.sha256(raw.encode()).hexdigest(), payload.role, json.dumps(payload.scopes), payload.expires_at, now))
+        return {"code": 0, "msg": "success", "data": {"id": token_id, "token": raw, "session_id": payload.session_id, "role": payload.role, "scopes": payload.scopes, "expires_at": payload.expires_at}}
+
+    @app.get("/v1/share-tokens")
+    def list_share_tokens(current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
+
+    @app.post("/v1/share-tokens/{token_id}/revoke")
+    def revoke_share_token(token_id: str, current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            result = cx.execute("UPDATE share_tokens SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), token_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "active share token not found")
+        return {"code": 0, "msg": "success", "data": {"id": token_id, "revoked": True}}
+
     @app.post("/v1/sessions")
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db))):
         session_id = str(uuid.uuid4())
@@ -361,6 +394,23 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             events = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
         return {"code": 0, "msg": "success", "data": {"session": dict(session), "snapshot_seq": events[-1]["sequence"] if events else 0, "events": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in events]}}
+
+    @app.get("/v1/shared/{session_id}/snapshot")
+    def shared_snapshot(session_id: str, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+        access = _authenticate_share_token(db, share_token, session_id)
+        if not access:
+            raise HTTPException(401, "invalid share token")
+        return snapshot(session_id, current={"id": access["user_id"]})
+
+    @app.get("/v1/shared/{session_id}/events")
+    def shared_events(session_id: str, after: int = 0, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+        access = _authenticate_share_token(db, share_token, session_id)
+        if not access:
+            raise HTTPException(401, "invalid share token")
+        _owned_session(db, session_id, access["user_id"])
+        with db.connect() as cx:
+            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence", (session_id, after)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in rows]}
 
     @app.get("/v1/sessions/{session_id}/events")
     def events(session_id: str, after: int = 0, current=Depends(_auth_dependency(db))):
@@ -467,6 +517,16 @@ def _active_device_owned(db: CloudDB, device_id: str, user_id: str) -> bool:
 def _validate_workspace_id(workspace_id: str) -> None:
     if not workspace_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in workspace_id):
         raise HTTPException(400, "invalid workspace id")
+
+
+def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):
+    if not raw or not raw.startswith("nms_"):
+        return None
+    with db.connect() as cx:
+        row = cx.execute("SELECT user_id,session_id,role,scopes_json,expires_at,revoked_at FROM share_tokens WHERE token_digest=? AND session_id=?", (hashlib.sha256(raw.encode()).hexdigest(), session_id)).fetchone()
+    if not row or row["revoked_at"] or (row["expires_at"] is not None and row["expires_at"] <= int(time.time())):
+        return None
+    return row
 
 
 def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str) -> bool:

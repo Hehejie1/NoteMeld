@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS audits (
   id TEXT PRIMARY KEY, actor_user_id TEXT, action TEXT NOT NULL, resource_id TEXT,
   metadata_json TEXT NOT NULL, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS share_tokens (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id),
+  token_digest TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('viewer','standard','super_admin')),
+  scopes_json TEXT NOT NULL, expires_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL
+);
 """
 
 
