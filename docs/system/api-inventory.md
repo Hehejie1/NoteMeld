@@ -313,6 +313,9 @@ instance should not receive traffic.
 depend on a display label.
 Issued account tokens expose a stable `jti` (the opaque token ID), audience,
 scopes and expiry; only the token digest is persisted.
+Users can manage independent PAT-style tokens via `POST/GET /v1/auth/tokens`
+and `POST /v1/auth/tokens/{jti}/revoke`; raw token material is returned only
+at creation time.
 
 Failed logins are limited to five attempts per source/account key in a
 60-second process-local window and return HTTP 429 after the limit. Production

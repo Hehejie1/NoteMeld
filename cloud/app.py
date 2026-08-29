@@ -25,6 +25,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PersonalTokenCreate(BaseModel):
+    scopes: list[str] = Field(default_factory=lambda: ["*"] , max_length=32)
+    expires_at: int | None = None
+
+
 class PairingConfirm(BaseModel):
     code: str = Field(min_length=8, max_length=64)
     device_id: str = Field(min_length=8, max_length=256)
@@ -181,6 +186,32 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (new_id, current["id"], digest, token_expiry(settings.token_ttl_seconds), "cloud-api", '["*"]', now))
             cx.execute("COMMIT")
         return {"code": 0, "msg": "success", "data": {"token": raw, "jti": new_id, "user_id": current["id"], "role": current["role"], "audience": "cloud-api", "scopes": ["*"] , "expires_at": token_expiry(settings.token_ttl_seconds)}}
+
+    @app.post("/v1/auth/tokens")
+    def create_personal_token(payload: PersonalTokenCreate, current=Depends(_auth_dependency(db))):
+        if payload.expires_at is not None and payload.expires_at <= int(time.time()):
+            raise HTTPException(422, "expires_at must be in the future")
+        raw, digest = issue_token()
+        token_id = raw[4:].split(".", 1)[0]
+        with db.connect() as cx:
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (token_id, current["id"], digest, payload.expires_at, "cloud-api", json.dumps(payload.scopes), int(time.time())))
+        _audit(db, current["id"], "auth.token.create", token_id, {"scopes": payload.scopes, "permanent": payload.expires_at is None})
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "audience": "cloud-api", "scopes": payload.scopes, "expires_at": payload.expires_at}}
+
+    @app.get("/v1/auth/tokens")
+    def list_personal_tokens(current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,audience,scopes_json,expires_at,revoked_at,created_at FROM tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
+
+    @app.post("/v1/auth/tokens/{token_id}/revoke")
+    def revoke_personal_token(token_id: str, current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            result = cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), token_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "active token not found")
+        _audit(db, current["id"], "auth.token.revoke", token_id, {})
+        return {"code": 0, "msg": "success", "data": {"jti": token_id, "revoked": True}}
 
     @app.get("/v1/admin/users")
     def list_users(current=Depends(_auth_dependency(db, "admin"))):

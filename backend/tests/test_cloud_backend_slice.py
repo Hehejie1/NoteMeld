@@ -435,6 +435,18 @@ def test_password_change_revokes_existing_tokens(tmp_path):
         assert http.post("/v1/auth/login", json={"account_id": created["id"], "password": "new-password-123"}).status_code == 200
 
 
+def test_personal_scoped_token_lifecycle(tmp_path):
+    with client(tmp_path) as http:
+        login_token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {login_token}"}
+        created = http.post("/v1/auth/tokens", headers=headers, json={"scopes": ["session.read"]}).json()["data"]
+        assert created["scopes"] == ["session.read"]
+        listed = http.get("/v1/auth/tokens", headers=headers).json()["data"]
+        assert any(item["id"] == created["jti"] for item in listed)
+        assert http.post(f"/v1/auth/tokens/{created['jti']}/revoke", headers=headers).status_code == 200
+        assert http.get("/v1/sessions", headers={"Authorization": f"Bearer {created['token']}"}).status_code == 401
+
+
 def test_session_copy_is_independent_with_provenance(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
