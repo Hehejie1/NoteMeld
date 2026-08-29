@@ -654,14 +654,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         session_id = str(uuid.uuid4())
         now = int(time.time())
+        if payload.model_id:
+            with db.connect() as cx:
+                model = cx.execute("SELECT id FROM models WHERE id=? AND user_id=? AND enabled=1", (payload.model_id, current["id"])).fetchone()
+            if not model:
+                raise HTTPException(404, "enabled model not found")
         Workspace(settings.workspaces_dir / current["id"] / payload.workspace_id)
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
-            if payload.model_id:
-                model = cx.execute("SELECT id FROM models WHERE id=? AND user_id=? AND enabled=1", (payload.model_id, current["id"])).fetchone()
-                if not model:
-                    cx.execute("ROLLBACK")
-                    raise HTTPException(404, "enabled model not found")
             cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,model_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", payload.model_id, now, now))
             cx.execute("COMMIT")
         return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id, "model_id": payload.model_id}}
