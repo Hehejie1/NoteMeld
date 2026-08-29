@@ -437,7 +437,9 @@ Cloud Agent workspace mutation tools (`workspace.write`, `workspace.delete`) do
 not mutate immediately. They create an auditable `pending` approval exposed by
 `/v1/cloud/sessions/{session_id}/approvals`; resolve with `approved` or
 `rejected`. Approval currently records the decision boundary; execution resume
-and remote-approval grant enforcement remain a follow-up slice.
+is performed synchronously with the approval transition using the same safe
+workspace resolver; remote-approval grant enforcement remains a follow-up slice.
+Approval listings return only a bounded content preview.
 
 The current slice provides scoped share-token read/control access and cloud
 workspace backup/restore. Multi-instance queue fencing and full end-to-end key

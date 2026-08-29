@@ -934,7 +934,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
             rows = cx.execute("SELECT id,session_id,command_id,tool_name,arguments_json,status,requested_by,resolved_by,resolution_note,created_at,resolved_at FROM approvals WHERE session_id=? AND user_id=? ORDER BY created_at DESC", (session_id, current["id"])).fetchall()
-        return {"code": 0, "msg": "success", "data": [{**dict(row), "arguments": json.loads(row["arguments_json"])} for row in rows]}
+        items = []
+        for row in rows:
+            arguments = json.loads(row["arguments_json"])
+            if "content" in arguments and isinstance(arguments["content"], str):
+                arguments["content_preview"] = arguments.pop("content")[:1000]
+                arguments["content_truncated"] = True
+            items.append({**dict(row), "arguments": arguments})
+        return {"code": 0, "msg": "success", "data": items}
 
     @app.post("/v1/sessions/{session_id}/approvals/{approval_id}/resolve")
     @app.post("/v1/cloud/sessions/{session_id}/approvals/{approval_id}/resolve")
@@ -950,6 +957,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             if row["status"] != "pending":
                 cx.execute("COMMIT")
                 return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": row["status"], "idempotent": True}}
+            approval = cx.execute("SELECT tool_name,arguments_json FROM approvals WHERE id=?", (approval_id,)).fetchone()
+            if payload.status == "approved":
+                try:
+                    session = _owned_session(db, session_id, current["id"])
+                    _execute_approved_tool(settings=app.state.settings, session=session, user_id=current["id"], tool_name=approval["tool_name"], arguments=json.loads(approval["arguments_json"]))
+                except Exception as exc:
+                    cx.execute("UPDATE approvals SET status='rejected',resolved_by=?,resolution_note=?,resolved_at=? WHERE id=? AND status='pending'", (current["id"], "execution failed", now, approval_id))
+                    cx.execute("COMMIT")
+                    _audit(db, current["id"], "approval.execution_failed", approval_id, {"session_id": session_id, "error_type": type(exc).__name__})
+                    raise HTTPException(409, "approved operation could not be executed") from exc
             cx.execute("UPDATE approvals SET status=?,resolved_by=?,resolution_note=?,resolved_at=? WHERE id=? AND status='pending'", (payload.status, current["id"], payload.note, now, approval_id))
             cx.execute("COMMIT")
         _audit(db, current["id"], f"approval.{payload.status}", approval_id, {"session_id": session_id})
@@ -1382,6 +1399,27 @@ def _cloud_history(db: CloudDB, session_id: str, *, exclude_command_id: str | No
     # Provider requests must remain bounded even if a client imported a very
     # large historical transcript.
     return messages[-200:]
+
+
+def _execute_approved_tool(*, settings: CloudSettings, session: Any, user_id: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    workspace = Workspace(settings.workspaces_dir / user_id / str(session["workspace_id"]))
+    path = arguments.get("path")
+    if not isinstance(path, str) or len(path) > 1024:
+        raise ValueError("invalid workspace path")
+    if tool_name == "workspace.write":
+        content = arguments.get("content")
+        if not isinstance(content, str):
+            raise ValueError("content must be text")
+        existing = workspace.path(path).stat().st_size if workspace.path(path).is_file() else 0
+        projected = workspace.stats()["bytes_used"] - existing + len(content.encode("utf-8"))
+        if projected > settings.max_workspace_bytes:
+            raise ValueError("workspace quota exceeded")
+        workspace.write_text(path, content)
+        return {"ok": True, "path": path, "bytes_written": len(content.encode("utf-8"))}
+    if tool_name == "workspace.delete":
+        workspace.delete_file(path)
+        return {"ok": True, "path": path, "deleted": True}
+    raise ValueError("unsupported approval tool")
 
 
 def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None) -> tuple[list[dict[str, Any]], Any]:

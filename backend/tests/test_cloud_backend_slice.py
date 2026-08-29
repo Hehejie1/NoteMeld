@@ -354,6 +354,7 @@ def test_cloud_agent_dangerous_workspace_tool_requires_approval(tmp_path):
         resolved = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers=headers, json={"status": "approved"})
         assert resolved.status_code == 200
         assert resolved.json()["data"]["status"] == "approved"
+        assert http.get(f"/v1/workspaces/{session['workspace_id']}/files/notes.txt", headers=headers).json()["data"]["content"] == "safe pending"
 
 
 def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
