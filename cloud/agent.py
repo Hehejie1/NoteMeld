@@ -64,6 +64,8 @@ class OpenAICompatibleAgentRunner:
                     timeout=self.timeout_seconds,
                 )
                 response.raise_for_status()
+                if len(response.content) > 4 * 1024 * 1024:
+                    raise ValueError("provider response exceeds limit")
                 body = response.json()
                 message = body["choices"][0]["message"]
                 if not isinstance(message, dict):
@@ -73,9 +75,13 @@ class OpenAICompatibleAgentRunner:
                     if not tool_handler or not isinstance(tool_calls, list) or len(tool_calls) > 16:
                         raise ValueError("provider requested unavailable tools")
                     conversation.append({"role": "assistant", "content": message.get("content"), "tool_calls": tool_calls})
+                    call_ids: set[str] = set()
                     for call in tool_calls:
-                        if not isinstance(call, dict) or call.get("type") != "function":
+                        if not isinstance(call, dict) or call.get("type") != "function" or not isinstance(call.get("id"), str) or not call["id"]:
                             raise ValueError("invalid provider tool call")
+                        if call["id"] in call_ids:
+                            raise ValueError("duplicate provider tool call")
+                        call_ids.add(call["id"])
                         function = call.get("function")
                         if not isinstance(function, dict) or not isinstance(function.get("name"), str):
                             raise ValueError("invalid provider tool call")
