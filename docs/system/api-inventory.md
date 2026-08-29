@@ -333,6 +333,10 @@ rate-limit store.
 workspace copy, retaining `copied_from` only as provenance; it does not create
 a runtime parent/child synchronization relationship.
 
+Client adapters may use `cloud/crypto.py` for the E2EE handshake and AEAD frame
+payload. The cloud relay treats the resulting ciphertext as opaque; the
+crypto test is skipped in environments where `cryptography` is not installed.
+
 Workspace writes enforce the deployment-level `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES`
 quota and return `413 workspace quota exceeded` before modifying a file.
 

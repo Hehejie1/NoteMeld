@@ -13,6 +13,9 @@ The first slice provides an isolated FastAPI control plane, SQLite metadata,
 local-disk cloud workspaces, admin/user authentication, cloud-native session
 commands, and an in-memory WebSocket relay fixture. The relay intentionally
 does not persist payloads and is not a production deployment.
+Install `cloud/requirements.txt` for the optional client-side E2EE primitives
+(X25519, Ed25519, HKDF and ChaCha20-Poly1305). The relay never imports or uses
+the decrypt path.
 Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
 default) and return HTTP 413 when the quota would be exceeded. Workspace ZIP
 backups can be created/listed/restored through the `/v1/workspaces/.../backups`
