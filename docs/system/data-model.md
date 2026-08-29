@@ -260,11 +260,13 @@ by one process-scoped worker per session, and finalized as
 `completed` or `failed` in a second transaction. Provider errors never persist
 their raw exception/payload. On startup, leftover `running` commands become
 `needs_attention` with a `turn.needs_attention` event; they are not silently
-replayed. The lock is a single-process safety boundary; multi-instance
-deployments need a shared queue/lease before claiming cross-process
-serialization.
+replayed. SQLite `BEGIN IMMEDIATE` and the persisted command lease make claim
+single-winner across API processes. Startup recovery only reclaims rows with a
+missing or expired lease, so an active command in another process is not
+interrupted. The in-memory worker registry is process-local, but any process
+can observe and claim queued work from the shared database.
 Each command also records a process-scoped lease owner, lease expiry and
-attempt count for observability and future multi-instance recovery.
+attempt count for observability and recovery.
 
 Session archive writes explicitly replace the current `(user_id, session_id,
 device_id)` row, including the `NULL` device-wide archive case, because SQLite

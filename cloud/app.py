@@ -1324,11 +1324,16 @@ def _decode_import_files(files: list[SessionImportFile], max_bytes: int, max_fil
 
 
 def _recover_running_commands(db: CloudDB) -> None:
-    """Fail closed after a process restart instead of replaying side effects."""
+    """Fail closed only for commands whose execution lease is stale.
+
+    A second API process may start while another process is still executing a
+    command.  Recovering every ``running`` row at startup would incorrectly
+    interrupt that live execution, so active leases remain untouched.
+    """
     now = int(time.time())
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
-        rows = cx.execute("SELECT c.id,c.session_id,c.sequence,s.next_event_sequence FROM commands c JOIN sessions s ON s.id=c.session_id WHERE c.status='running'").fetchall()
+        rows = cx.execute("SELECT c.id,c.session_id,c.sequence,s.next_event_sequence FROM commands c JOIN sessions s ON s.id=c.session_id WHERE c.status='running' AND (c.lease_expires_at IS NULL OR c.lease_expires_at<=?)", (now,)).fetchall()
         for row in rows:
             event_sequence = int(row["next_event_sequence"])
             payload = {"command_id": row["id"], "command_sequence": row["sequence"], "status": "needs_attention", "error": {"code": "process_restarted", "message": "Agent execution requires operator recovery"}}

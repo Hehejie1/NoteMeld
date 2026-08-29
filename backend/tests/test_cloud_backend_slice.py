@@ -489,6 +489,26 @@ def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
         assert status == "completed"
 
 
+def test_cloud_startup_preserves_running_command_with_active_lease(tmp_path):
+    import uuid
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        command_id = str(uuid.uuid4())
+        with app.state.db.connect() as cx:
+            cx.execute("UPDATE sessions SET status='running',next_sequence=2,next_event_sequence=1 WHERE id=?", (session["id"],))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,lease_owner,lease_expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (command_id, session["id"], "active", "0" * 64, 1, "hello", "running", "other-process", int(time.time()) + 300, int(time.time())))
+    recovered = create_app(settings)
+    with TestClient(recovered) as http:
+        token = login(http, "admin", "admin-password-123")
+        status = http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers={"Authorization": f"Bearer {token}"}).json()["data"]["status"]
+        assert status == "running"
+
+
 def test_cloud_session_spec_prefix_aliases(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

@@ -441,7 +441,9 @@ The command submission endpoint returns `200` for a completed command and
 `202` when the bounded wait expires while the command remains queued/running.
 Claimed commands expose a bounded lease owner/expiry and attempt count in the
 command status API. SQLite `BEGIN IMMEDIATE` makes claim single-winner across
-processes; expired running work remains fail-closed until explicit recovery.
+processes. Startup recovery only marks rows with a missing or expired lease as
+`needs_attention`; a second API process does not interrupt an actively leased
+command. Stale running work remains fail-closed until explicit recovery.
 Operators can explicitly recover `needs_attention` commands with
 `POST /v1/cloud/sessions/{session_id}/commands/{command_id}/recover` using
 `resume` (requeue) or `abandon`; both transitions are idempotent and audited.
