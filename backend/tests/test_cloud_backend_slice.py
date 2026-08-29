@@ -363,6 +363,8 @@ def test_workspace_backup_list_and_restore(tmp_path):
         restored = http.post("/v1/workspaces/backup/backups/restore", headers=headers, json={"backup_id": backup["backup_id"]})
         assert restored.status_code == 200
         assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).json()["data"]["content"] == "before"
+        assert http.delete("/v1/workspaces/backup/files/a.txt", headers=headers).status_code == 200
+        assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).status_code == 400
 
 
 def test_admin_audits_are_sanitized(tmp_path):

@@ -486,6 +486,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
 
+    @app.delete("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
+    def delete_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        try:
+            workspace.delete_file(logical_path)
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "deleted": True}}
+
     @app.post("/v1/workspaces/{workspace_id}/backups")
     def backup_workspace(workspace_id: str, current=Depends(_auth_dependency(db))):
         _validate_workspace_id(workspace_id)

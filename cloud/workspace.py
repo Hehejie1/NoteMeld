@@ -41,6 +41,12 @@ class Workspace:
             os.fsync(handle.fileno())
         temporary.replace(path)
 
+    def delete_file(self, logical_path: str) -> None:
+        path = self.path(logical_path)
+        if path.is_symlink() or not path.is_file():
+            raise WorkspaceError("workspace file is unavailable")
+        path.unlink()
+
     def stats(self) -> dict[str, int]:
         files = 0
         bytes_used = 0
