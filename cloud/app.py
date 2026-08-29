@@ -766,6 +766,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
+            if device_id is None:
+                cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=? AND device_id IS NULL", (session_id, current["id"]))
+            else:
+                cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=? AND device_id=?", (session_id, current["id"], device_id))
             cx.execute("INSERT OR REPLACE INTO session_archives(user_id,session_id,device_id,archived_at) VALUES(?,?,?,?)", (current["id"], session_id, device_id, int(time.time())))
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": True}}
 
@@ -775,7 +779,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
-            result = cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=? AND (device_id=? OR device_id IS NULL)", (session_id, current["id"], device_id))
+            if device_id is None:
+                result = cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=? AND device_id IS NULL", (session_id, current["id"]))
+            else:
+                result = cx.execute("DELETE FROM session_archives WHERE session_id=? AND user_id=? AND device_id=?", (session_id, current["id"], device_id))
         if result.rowcount != 1:
             raise HTTPException(404, "archived session not found")
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": False}}

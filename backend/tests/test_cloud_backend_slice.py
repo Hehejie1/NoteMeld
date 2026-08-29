@@ -399,7 +399,10 @@ def test_session_archive_delete_and_token_rotate(tmp_path):
         headers = {"Authorization": f"Bearer {token}"}
         session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
         assert http.post(f"/v1/sessions/{session['id']}/archive", headers=headers).status_code == 200
+        assert http.post(f"/v1/sessions/{session['id']}/archive", headers=headers).status_code == 200
         assert http.get("/v1/sessions", headers=headers).json()["data"][0]["archived_at"]
+        with http.app.state.db.connect() as cx:
+            assert cx.execute("SELECT COUNT(*) FROM session_archives WHERE session_id=?", (session["id"],)).fetchone()[0] == 1
         assert http.post(f"/v1/sessions/{session['id']}/restore", headers=headers).status_code == 200
         assert http.get("/v1/sessions", headers=headers).json()["data"][0]["archived_at"] is None
         rotated = http.post("/v1/auth/rotate", headers=headers)

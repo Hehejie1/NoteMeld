@@ -264,6 +264,10 @@ replayed. The lock is a single-process safety boundary; multi-instance
 deployments need a shared queue/lease before claiming cross-process
 serialization.
 
+Session archive writes explicitly replace the current `(user_id, session_id,
+device_id)` row, including the `NULL` device-wide archive case, because SQLite
+allows multiple `NULL` values in a composite primary key.
+
 Platform adapters should derive `device_id` with the shared
 `backend/app/cloud_sync/device_id.py` helper: a normalized platform prefix and
 32-character SHA-256 digest of the app/vendor installation identifier. The raw
