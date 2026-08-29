@@ -243,3 +243,16 @@ def test_workspace_quota_is_enforced(tmp_path):
         headers = {"Authorization": f"Bearer {token}"}
         assert http.put("/v1/workspaces/quota/files/a.txt", headers=headers, json={"content": "1234"}).status_code == 200
         assert http.put("/v1/workspaces/quota/files/b.txt", headers=headers, json={"content": "5"}).status_code == 413
+
+
+def test_workspace_backup_list_and_restore(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.put("/v1/workspaces/backup/files/a.txt", headers=headers, json={"content": "before"}).status_code == 200
+        backup = http.post("/v1/workspaces/backup/backups", headers=headers).json()["data"]
+        assert http.put("/v1/workspaces/backup/files/a.txt", headers=headers, json={"content": "after"}).status_code == 200
+        assert http.get("/v1/workspaces/backup/backups", headers=headers).json()["data"][0]["backup_id"] == backup["backup_id"]
+        restored = http.post("/v1/workspaces/backup/backups/restore", headers=headers, json={"backup_id": backup["backup_id"]})
+        assert restored.status_code == 200
+        assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).json()["data"]["content"] == "before"

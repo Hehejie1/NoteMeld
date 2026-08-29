@@ -73,6 +73,10 @@ class WorkspaceWrite(BaseModel):
     content: str = Field(max_length=10_000_000)
 
 
+class WorkspaceRestore(BaseModel):
+    backup_id: str = Field(min_length=1, max_length=128, pattern="^[A-Za-z0-9_-]+$")
+
+
 class ShareTokenCreate(BaseModel):
     session_id: str
     role: str = Field(default="viewer", pattern="^(viewer|standard|super_admin)$")
@@ -339,6 +343,35 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
+
+    @app.post("/v1/workspaces/{workspace_id}/backups")
+    def backup_workspace(workspace_id: str, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        backup_id = f"{int(time.time())}-{secrets.token_urlsafe(8)}"
+        destination = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
+        size = workspace.create_backup(destination)
+        return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": size, "created_at": int(time.time())}}
+
+    @app.get("/v1/workspaces/{workspace_id}/backups")
+    def list_backups(workspace_id: str, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        directory = settings.data_dir / "backups" / current["id"] / workspace_id
+        items = []
+        for path in sorted(directory.glob("*.zip")) if directory.is_dir() else []:
+            items.append({"backup_id": path.stem, "bytes": path.stat().st_size, "created_at": int(path.stat().st_mtime)})
+        return {"code": 0, "msg": "success", "data": items}
+
+    @app.post("/v1/workspaces/{workspace_id}/backups/restore")
+    def restore_workspace(workspace_id: str, payload: WorkspaceRestore, current=Depends(_auth_dependency(db))):
+        _validate_workspace_id(workspace_id)
+        archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{payload.backup_id}.zip"
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        try:
+            restored = workspace.restore_backup(archive, settings.max_workspace_bytes)
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
 
     @app.get("/v1/sessions")
     def list_sessions(current=Depends(_auth_dependency(db))):

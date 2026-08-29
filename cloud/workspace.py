@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
 
@@ -47,3 +50,51 @@ class Workspace:
             files += 1
             bytes_used += path.stat().st_size
         return {"file_count": files, "bytes_used": bytes_used}
+
+    def create_backup(self, destination: Path) -> int:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_suffix(destination.suffix + f".{os.getpid()}.tmp")
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for path in self.root.rglob("*"):
+                if path.is_symlink() or not path.is_file():
+                    continue
+                archive.write(path, path.relative_to(self.root).as_posix())
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        temporary.replace(destination)
+        return destination.stat().st_size
+
+    def restore_backup(self, archive_path: Path, max_bytes: int) -> dict[str, int]:
+        if not archive_path.is_file():
+            raise WorkspaceError("backup is unavailable")
+        total = 0
+        members: list[zipfile.ZipInfo] = []
+        with zipfile.ZipFile(archive_path) as archive:
+            for member in archive.infolist():
+                if member.is_dir() or member.filename.startswith("/") or ".." in Path(member.filename).parts:
+                    raise WorkspaceError("backup contains an unsafe path")
+                if member.external_attr >> 16 & 0o170000 == 0o120000:
+                    raise WorkspaceError("backup contains a symlink")
+                total += member.file_size
+                if total > max_bytes:
+                    raise WorkspaceError("backup exceeds workspace quota")
+                members.append(member)
+            staging = Path(tempfile.mkdtemp(prefix="notemeld-restore-", dir=self.root.parent))
+            try:
+                for member in members:
+                    target = (staging / member.filename).resolve(strict=False)
+                    if os.path.commonpath((str(staging.resolve()), str(target))) != str(staging.resolve()):
+                        raise WorkspaceError("backup path escapes staging")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(member) as source, target.open("wb") as output:
+                        shutil.copyfileobj(source, output)
+                        output.flush()
+                        os.fsync(output.fileno())
+                for source in staging.rglob("*"):
+                    if source.is_file():
+                        target = self.path(source.relative_to(staging).as_posix())
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        os.replace(source, target)
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+        return {"file_count": len(members), "bytes_restored": total}

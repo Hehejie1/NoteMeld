@@ -14,4 +14,6 @@ local-disk cloud workspaces, admin/user authentication, cloud-native session
 commands, and an in-memory WebSocket relay fixture. The relay intentionally
 does not persist payloads and is not a production deployment.
 Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
-default) and return HTTP 413 when the quota would be exceeded.
+default) and return HTTP 413 when the quota would be exceeded. Workspace ZIP
+backups can be created/listed/restored through the `/v1/workspaces/.../backups`
+endpoints; restore is a validated file overlay.
