@@ -406,6 +406,10 @@ Cloud-native commands are serialized per session within one API process. The
 configured `CloudAgentRunner` calls an OpenAI-compatible provider when
 `NOTEMELD_CLOUD_AGENT_BASE_URL` is set; otherwise its deterministic response is
 intended only for protocol smoke tests, not production inference.
+Commands are first persisted as `running`; provider failures are projected as
+`turn.failed` with a redacted error and remain queryable by command id. On
+startup, any leftover `running` command is fail-closed as `needs_attention`
+with a `turn.needs_attention` event rather than being replayed automatically.
 
 The current slice provides scoped share-token read/control access and cloud
 workspace backup/restore. Multi-instance queue fencing and full end-to-end key

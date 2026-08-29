@@ -228,6 +228,52 @@ def test_cloud_commands_are_serial_per_session(tmp_path):
         assert maximum == 1
 
 
+def test_cloud_provider_failure_is_persisted_as_failed_command(tmp_path):
+    from cloud.agent import CloudAgentError
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+
+    class BrokenRunner:
+        def complete(self, *, input_text, messages):
+            raise CloudAgentError("provider payload must stay private")
+
+    app.state.agent_runner = BrokenRunner()
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        failed = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": "provider-failure", "input": "hello"})
+        assert failed.status_code == 502
+        commands = http.get(f"/v1/sessions/{session['id']}/commands", headers=headers).json()["data"]
+        assert commands[0]["status"] == "failed"
+        snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
+        assert snapshot["events"][-1]["event_type"] == "turn.failed"
+        assert "provider payload" not in snapshot["events"][-1]["payload"].get("error", {}).get("message", "")
+
+
+def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
+    import uuid
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        command_id = str(uuid.uuid4())
+        with app.state.db.connect() as cx:
+            cx.execute("UPDATE sessions SET status='running',next_sequence=2,next_event_sequence=2 WHERE id=?", (session["id"],))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session["id"], "crashed", "0" * 64, 1, "hello", "running", 1))
+    recovered = create_app(settings)
+    with TestClient(recovered) as http:
+        token = login(http, "admin", "admin-password-123")
+        snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers={"Authorization": f"Bearer {token}"}).json()["data"]
+        assert snapshot["events"][-1]["event_type"] == "turn.needs_attention"
+        assert snapshot["session"]["status"] == "idle"
+        assert http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers={"Authorization": f"Bearer {token}"}).json()["data"]["status"] == "needs_attention"
+
+
 def test_local_session_full_share_import_is_sanitized_atomic_and_idempotent(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import CloudSettings, load_settings
 from .db import CloudDB
-from .agent import CloudAgentError, create_agent_runner
+from .agent import create_agent_runner
 from .security import hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
 
@@ -176,6 +176,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     settings = settings or load_settings()
     db = CloudDB(settings.database_path)
     db.init()
+    _recover_running_commands(db)
     settings.workspaces_dir.mkdir(parents=True, exist_ok=True)
     _bootstrap_admin(db, settings)
     app = FastAPI(title="NoteMeld Cloud", version="0.1.0")
@@ -1027,6 +1028,36 @@ def _decode_import_files(files: list[SessionImportFile], max_bytes: int, max_fil
     return decoded
 
 
+def _recover_running_commands(db: CloudDB) -> None:
+    """Fail closed after a process restart instead of replaying side effects."""
+    now = int(time.time())
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        rows = cx.execute("SELECT c.id,c.session_id,c.sequence,s.next_event_sequence FROM commands c JOIN sessions s ON s.id=c.session_id WHERE c.status='running'").fetchall()
+        for row in rows:
+            event_sequence = int(row["next_event_sequence"])
+            payload = {"command_id": row["id"], "command_sequence": row["sequence"], "status": "needs_attention", "error": {"code": "process_restarted", "message": "Agent execution requires operator recovery"}}
+            cx.execute("UPDATE commands SET status='needs_attention' WHERE id=? AND status='running'", (row["id"],))
+            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), row["session_id"], event_sequence, "turn.needs_attention", json.dumps(payload, separators=(",", ":")), now))
+            cx.execute("UPDATE sessions SET next_event_sequence=?,status='idle',updated_at=? WHERE id=?", (event_sequence + 1, now, row["session_id"]))
+        cx.execute("COMMIT")
+
+
+def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, queued_event_sequence: int, status: str, payload: dict[str, Any]) -> None:
+    now = int(time.time())
+    event_type = "turn.completed" if status == "completed" else "turn.failed"
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        row = cx.execute("SELECT status FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
+        if not row or row["status"] != "running":
+            cx.execute("ROLLBACK")
+            return
+        cx.execute("UPDATE commands SET status=? WHERE id=? AND session_id=?", (status, command_id, session_id))
+        cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, queued_event_sequence + 1, event_type, json.dumps(payload, separators=(",", ":")), now))
+        cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
+        cx.execute("COMMIT")
+
+
 def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: CommandCreate, user_id: str) -> dict[str, Any]:
     session = _owned_session(db, session_id, user_id)
     if session["kind"] == "device_remote":
@@ -1041,11 +1072,6 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
             if existing["payload_hash"] != digest:
                 raise HTTPException(409, "payload conflict")
             return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
-        messages = _cloud_history(db, session_id)
-        try:
-            agent_result = app.state.agent_runner.complete(input_text=payload.input, messages=messages + [{"role": "user", "content": payload.input}])
-        except CloudAgentError as exc:
-            raise HTTPException(502, "cloud agent provider unavailable") from exc
         now = int(time.time())
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
@@ -1058,13 +1084,18 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
             sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
             command_id = str(uuid.uuid4())
             cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='running',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 2, now, session_id))
-            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "completed", now))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "running", now))
             queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
             cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
-            completed_event = {"command_id": command_id, "command_sequence": sequence, "status": "completed", "output": agent_result.content, "model": agent_result.model}
-            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence + 1, "turn.completed", json.dumps(completed_event), now))
-            cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
             cx.execute("COMMIT")
+        messages = _cloud_history(db, session_id)
+        try:
+            agent_result = app.state.agent_runner.complete(input_text=payload.input, messages=messages + [{"role": "user", "content": payload.input}])
+        except Exception as exc:
+            _finalize_cloud_command(db, session_id, command_id, event_sequence, "failed", {"command_id": command_id, "command_sequence": sequence, "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}})
+            raise HTTPException(502, "cloud agent provider unavailable") from exc
+        completed_event = {"command_id": command_id, "command_sequence": sequence, "status": "completed", "output": agent_result.content, "model": agent_result.model}
+        _finalize_cloud_command(db, session_id, command_id, event_sequence, "completed", completed_event)
         return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "completed"}}
 
 
