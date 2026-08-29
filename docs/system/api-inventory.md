@@ -333,6 +333,8 @@ Remote grants require both active devices to have registered public keys;
 device IDs alone are not sufficient to authorize E2EE control.
 The API validates registered key material as 32-byte URL-safe Base64 Ed25519
 public keys before accepting a device for a grant.
+Registered devices can rotate keys with `POST /v1/devices/{device_id}/rotate-key`;
+the old public key is replaced immediately and the rotation is audited.
 
 `POST /v1/sessions/{session_id}/copy` creates a new independent session and
 workspace copy, retaining `copied_from` only as provenance; it does not create

@@ -59,6 +59,10 @@ class DeviceCreate(BaseModel):
     public_key: str | None = None
 
 
+class DeviceKeyRotate(BaseModel):
+    public_key: str
+
+
 class SessionCreate(BaseModel):
     kind: str = Field(pattern="^(cloud_native|device_remote)$")
     title: str = Field(default="New session", max_length=200)
@@ -252,6 +256,17 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "revoked": True}}
+
+    @app.post("/v1/devices/{device_id}/rotate-key")
+    def rotate_device_key(device_id: str, payload: DeviceKeyRotate, current=Depends(_auth_dependency(db))):
+        if not _valid_public_key(payload.public_key):
+            raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
+        with db.connect() as cx:
+            result = cx.execute("UPDATE devices SET public_key=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (payload.public_key, device_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "active device not found")
+        _audit(db, current["id"], "device.key.rotate", device_id, {})
+        return {"code": 0, "msg": "success", "data": {"device_id": device_id, "rotated": True}}
 
     @app.post("/v1/pairings/start")
     def start_pairing(current=Depends(_auth_dependency(db))):

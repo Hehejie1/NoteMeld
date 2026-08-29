@@ -79,6 +79,17 @@ def test_device_registration_and_revoke(tmp_path):
         assert http.post("/v1/devices/desktop-unique-1/revoke", headers=headers).status_code == 200
 
 
+def test_device_key_rotation_replaces_public_key(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.post("/v1/devices", headers=headers, json={"device_id": "rotating-device", "platform": "desktop", "display_name": "Desktop", "public_key": PUBLIC_KEY}).status_code == 200
+        rotated_key = base64.urlsafe_b64encode(b"r" * 32).decode()
+        assert http.post("/v1/devices/rotating-device/rotate-key", headers=headers, json={"public_key": rotated_key}).status_code == 200
+        device = http.get("/v1/devices", headers=headers).json()["data"][0]
+        assert device["public_key"] == rotated_key
+
+
 def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
