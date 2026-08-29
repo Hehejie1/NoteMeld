@@ -312,6 +312,28 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", now, now))
         return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id}}
 
+    @app.post("/v1/sessions/{session_id}/copy")
+    def copy_session(session_id: str, current=Depends(_auth_dependency(db))):
+        source = _owned_session(db, session_id, current["id"])
+        new_id = str(uuid.uuid4())
+        workspace_id = f"copy-{new_id[:12]}"
+        now = int(time.time())
+        source_workspace = Workspace(settings.workspaces_dir / current["id"] / source["workspace_id"])
+        destination_workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        try:
+            copied_files = source_workspace.copy_to(destination_workspace, settings.max_workspace_bytes)
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,created_at,updated_at,next_sequence,next_event_sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, now, now, source["next_sequence"], source["next_event_sequence"]))
+            cx.execute("INSERT INTO commands SELECT ?,?,request_id,payload_hash,sequence,input_text,status,created_at FROM commands WHERE session_id=?", (str(uuid.uuid4()), new_id, session_id))
+            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
+            for row in rows:
+                cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["sequence"], row["event_type"], row["payload_json"], row["created_at"]))
+            cx.execute("COMMIT")
+        return {"code": 0, "msg": "success", "data": {"id": new_id, "copied_from": session_id, "workspace_id": workspace_id, **copied_files}}
+
     @app.get("/v1/workspaces/{workspace_id}/stats")
     def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db))):
         _validate_workspace_id(workspace_id)

@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS grants (
 );
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL,
-  title TEXT NOT NULL, workspace_id TEXT NOT NULL, status TEXT NOT NULL,
+  title TEXT NOT NULL, workspace_id TEXT NOT NULL, status TEXT NOT NULL, copied_from TEXT,
   next_sequence INTEGER NOT NULL DEFAULT 1, next_event_sequence INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
@@ -88,5 +88,7 @@ class CloudDB:
                 connection.execute("COMMIT")
                 connection.execute("PRAGMA foreign_keys=ON")
             columns = {row[1] for row in connection.execute("PRAGMA table_info(sessions)").fetchall()}
+            if "copied_from" not in columns:
+                connection.execute("ALTER TABLE sessions ADD COLUMN copied_from TEXT")
             if "next_event_sequence" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN next_event_sequence INTEGER NOT NULL DEFAULT 1")

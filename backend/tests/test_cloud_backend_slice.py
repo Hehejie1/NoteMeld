@@ -256,3 +256,18 @@ def test_workspace_backup_list_and_restore(tmp_path):
         restored = http.post("/v1/workspaces/backup/backups/restore", headers=headers, json={"backup_id": backup["backup_id"]})
         assert restored.status_code == 200
         assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).json()["data"]["content"] == "before"
+
+
+def test_session_copy_is_independent_with_provenance(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        source = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native", "title": "source"}).json()["data"]
+        http.put(f"/v1/workspaces/{source['workspace_id']}/files/context.txt", headers=headers, json={"content": "copied"})
+        http.post(f"/v1/sessions/{source['id']}/commands", headers=headers, json={"request_id": "copy-1", "input": "hello"})
+        copied = http.post(f"/v1/sessions/{source['id']}/copy", headers=headers)
+        assert copied.status_code == 200
+        target = copied.json()["data"]
+        assert target["id"] != source["id"] and target["copied_from"] == source["id"]
+        assert http.get(f"/v1/workspaces/{target['workspace_id']}/files/context.txt", headers=headers).json()["data"]["content"] == "copied"
+        assert http.post(f"/v1/sessions/{target['id']}/commands", headers=headers, json={"request_id": "copy-2", "input": "independent"}).status_code == 200

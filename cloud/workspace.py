@@ -98,3 +98,22 @@ class Workspace:
             finally:
                 shutil.rmtree(staging, ignore_errors=True)
         return {"file_count": len(members), "bytes_restored": total}
+
+    def copy_to(self, destination: "Workspace", max_bytes: int) -> dict[str, int]:
+        stats = self.stats()
+        if stats["bytes_used"] > max_bytes:
+            raise WorkspaceError("workspace exceeds destination quota")
+        copied = 0
+        for source in self.root.rglob("*"):
+            if source.is_symlink() or not source.is_file():
+                continue
+            relative = source.relative_to(self.root).as_posix()
+            target = destination.path(relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(f".{target.name}.{os.getpid()}.copy.tmp")
+            shutil.copyfile(source, temporary)
+            with temporary.open("rb") as handle:
+                os.fsync(handle.fileno())
+            temporary.replace(target)
+            copied += 1
+        return {"file_count": copied, "bytes_copied": stats["bytes_used"]}
