@@ -20,6 +20,27 @@
 - migration 接口在 `NOTEMELD_DESKTOP_SESSION_TOKEN` 存在时校验 session token。
 - MCP 本地请求默认免 token；远程或强制配置时校验 `Authorization: Bearer <NOTEMELD_MCP_TOKEN>`。
 
+## Cloud backend（first slice）
+
+`cloud/` 是独立 FastAPI 服务，不改变本地 `/api` 路由。云端普通 API 使用 `{code,msg,data}`；远程 relay 使用 WebSocket，消息 payload 不持久化。
+
+| 方法 | 路径 | 作用 | 认证 |
+| --- | --- | --- | --- |
+| GET | `/health` | 云端健康检查 | 无 |
+| POST | `/v1/auth/login` | 云端用户/管理员登录并签发 bearer token | 无（限流待补） |
+| GET | `/v1/admin/users` | 管理员查询普通用户 | admin token |
+| POST | `/v1/admin/users` | 管理员创建普通用户 | admin token |
+| PUT | `/v1/admin/users/{user_id}` | 管理员修改普通用户用户名、密码或禁用状态 | admin token |
+| DELETE | `/v1/admin/users/{user_id}` | 管理员删除普通用户 | admin token |
+| POST | `/v1/devices` | 注册用户设备 | bearer token |
+| GET | `/v1/devices` | 查询当前用户设备 | bearer token |
+| POST | `/v1/devices/{device_id}/revoke` | 撤销当前用户设备 | bearer token |
+| POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
+| POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息 | bearer token |
+| GET | `/v1/sessions/{session_id}/snapshot` | 读取 session snapshot 和事件 | bearer token |
+| GET | `/v1/sessions/{session_id}/events?after=` | 按 event sequence 拉取事件 | bearer token |
+| WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token（后续补充） |
+
 ## Note / Task 接口
 
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |

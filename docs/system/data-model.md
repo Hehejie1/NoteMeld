@@ -8,6 +8,12 @@
 
 ## 数据库位置或存储方式
 
+### Cloud backend first slice
+
+独立 `cloud/` 服务使用 `NOTEMELD_CLOUD_DATA_DIR` 作为数据根，默认 `cloud_data/`；其 SQLite 为 `cloud.db`，workspace 为 `workspaces/<user_id>/<workspace_id>/`。云端元数据包含 users、tokens、devices、sessions、commands、events 和 audits；与本地 Note/Conversation/Agent 表隔离。
+
+device-remote relay 只在进程内保存 WebSocket peer 集合，不保存正文、密文 payload 或未送达 command。宿主已收到的 command 由本地 Host queue 持久化；relay accepted 不等于宿主 received。
+
 数据根目录由 `backend/app/utils/storage_paths.py` 统一决定：
 
 - `NOTEMELD_DATA_DIR` 已配置：使用该运行模式的数据根；其所有子目录仍由系统固定派生。
