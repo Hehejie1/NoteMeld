@@ -30,3 +30,12 @@ def test_cloud_client_projects_errors():
     else:
         raise AssertionError("expected CloudClientError")
     client.close()
+
+
+def test_cloud_client_quotes_workspace_paths():
+    seen = []
+    transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": {"ok": True}})))
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=transport))
+    client.read_workspace_file("default", "folder/a file?#.md")
+    assert seen == ["https://cloud.test/v1/workspaces/default/files/folder/a%20file%3F%23.md"]
+    client.close()

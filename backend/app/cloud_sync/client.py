@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -64,16 +65,16 @@ class CloudClient:
         return self._request("GET", f"/v1/sessions/{session_id}/events", params={"after": after})
 
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{path}")
+        return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
 
     def list_workspace_files(self, workspace_id: str, prefix: str = "") -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{workspace_id}/files", params={"prefix": prefix})
 
     def write_workspace_file(self, workspace_id: str, path: str, content: str) -> dict[str, Any]:
-        return self._request("PUT", f"/v1/workspaces/{workspace_id}/files/{path}", json={"content": content})
+        return self._request("PUT", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}", json={"content": content})
 
     def delete_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
-        return self._request("DELETE", f"/v1/workspaces/{workspace_id}/files/{path}")
+        return self._request("DELETE", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
 
     def create_share_token(self, session_id: str, role: str = "viewer", scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/share-tokens", json={"session_id": session_id, "role": role, "scopes": scopes or [], "expires_at": expires_at})
