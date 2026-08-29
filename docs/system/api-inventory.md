@@ -415,8 +415,14 @@ device ID remain visible as compatibility archives.
 sequence cursor for reconnect and queue reconstruction.
 
 Client adapters may use `cloud/crypto.py` for the E2EE handshake and AEAD frame
-payload. The cloud relay treats the resulting ciphertext as opaque; the
-crypto test is skipped in environments where `cryptography` is not installed.
+payload. `SessionCipher` is the session-level wrapper: it requires strictly
+increasing outbound sequences, rejects inbound replay before exposing
+plaintext, and advances its receive cursor only after successful
+authentication. `derive_rekeyed_session_key` derives a fresh directional key
+for an explicit positive epoch; adapters must exchange/confirm the epoch as
+part of their authenticated frame metadata. The cloud relay treats the
+resulting ciphertext as opaque; the crypto test is skipped in environments
+where `cryptography` is not installed.
 
 Workspace writes enforce the deployment-level `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES`
 quota and return `413 workspace quota exceeded` before modifying a file.
