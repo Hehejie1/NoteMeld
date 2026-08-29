@@ -952,7 +952,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             if "content" in arguments and isinstance(arguments["content"], str):
                 arguments["content_preview"] = arguments.pop("content")[:1000]
                 arguments["content_truncated"] = True
-            items.append({**dict(row), "arguments": arguments})
+            item = dict(row)
+            item.pop("arguments_json", None)
+            items.append({**item, "arguments": arguments})
         return {"code": 0, "msg": "success", "data": items}
 
     @app.post("/v1/sessions/{session_id}/approvals/{approval_id}/resolve")

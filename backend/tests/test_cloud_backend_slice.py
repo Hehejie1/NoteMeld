@@ -367,6 +367,8 @@ def test_cloud_agent_dangerous_workspace_tool_requires_approval(tmp_path):
         assert response.status_code == 200
         approvals = http.get(f"/v1/sessions/{session['id']}/approvals", headers=headers).json()["data"]
         assert len(approvals) == 1 and approvals[0]["status"] == "pending"
+        assert "arguments_json" not in approvals[0]
+        assert approvals[0]["arguments"]["content_preview"] == "safe pending"
         approval_id = approvals[0]["id"]
         resolved = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers=headers, json={"status": "approved"})
         assert resolved.status_code == 200

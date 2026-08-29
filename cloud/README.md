@@ -41,8 +41,9 @@ uses an explicit deterministic runner for protocol smoke tests; that fallback
 is not an LLM deployment and should not be used as a production configuration.
 When a provider is configured, the first cloud capability set is read-only:
 the runner may list and read UTF-8 files from the current session workspace.
-Write/delete tools are intentionally withheld until the approval policy is
-implemented.
+Write/delete tools are exposed only as approval-producing capabilities. They
+never mutate the workspace until an authorized caller resolves the approval as
+`approved`; the approval endpoint then executes through the same safe resolver.
 
 Container build/run from the NoteMeld repository root:
 
