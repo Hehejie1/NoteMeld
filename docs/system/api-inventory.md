@@ -427,6 +427,8 @@ Commands are first persisted as `queued`, then claimed as `running`; provider fa
 `turn.failed` with a redacted error and remain queryable by command id. On
 startup, any leftover `running` command is fail-closed as `needs_attention`
 with a `turn.needs_attention` event rather than being replayed automatically.
+The command submission endpoint returns `200` for a completed command and
+`202` when the bounded wait expires while the command remains queued/running.
 Claimed commands expose a bounded lease owner/expiry and attempt count in the
 command status API. SQLite `BEGIN IMMEDIATE` makes claim single-winner across
 processes; expired running work remains fail-closed until explicit recovery.

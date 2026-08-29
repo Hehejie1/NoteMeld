@@ -12,7 +12,7 @@ import time
 import uuid
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -986,8 +986,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/sessions/{session_id}/commands")
     @app.post("/v1/cloud/sessions/{session_id}/commands")
-    def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
-        return _submit_cloud_command(app, db, session_id, payload, current["id"])
+    def submit_command(session_id: str, payload: CommandCreate, response: Response, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        result = _submit_cloud_command(app, db, session_id, payload, current["id"])
+        if result.get("data", {}).get("status") in {"queued", "running"}:
+            response.status_code = 202
+        return result
 
     @app.get("/v1/sessions/{session_id}/commands/{command_id}")
     @app.get("/v1/cloud/sessions/{session_id}/commands/{command_id}")
@@ -1068,7 +1071,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         scopes = json.loads(access["scopes_json"])
         if access["role"] == "viewer" or "message.send" not in scopes:
             raise HTTPException(403, "share token cannot send messages")
-        return submit_command(session_id, payload, current={"id": access["user_id"]})
+        return submit_command(session_id, payload, Response(), current={"id": access["user_id"]})
 
     @app.get("/v1/sessions/{session_id}/events")
     @app.get("/v1/cloud/sessions/{session_id}/events")
