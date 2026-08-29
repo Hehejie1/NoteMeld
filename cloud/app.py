@@ -1379,22 +1379,27 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
             if command is None:
                 return
             command_id = command["id"]
+            heartbeat_stop = threading.Event()
+            heartbeat = threading.Thread(target=_lease_heartbeat, args=(db, session_id, command_id, worker_id, int(getattr(app.state.settings, "command_lease_seconds", 300)), heartbeat_stop), daemon=True)
+            heartbeat.start()
+            runner = app.state.agent_runner
             try:
                 session = _owned_session(db, session_id, user_id)
                 messages = _cloud_history(db, session_id, exclude_command_id=command_id)
                 tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id)
                 runner = _runner_for_session(app, db, session)
-                try:
-                    result = runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
-                finally:
-                    if runner is not app.state.agent_runner:
-                        close = getattr(runner, "close", None)
-                        if callable(close):
-                            close()
+                result = runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
             except Exception:
                 _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}}, worker_id)
             else:
                 _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model}, worker_id)
+            finally:
+                heartbeat_stop.set()
+                heartbeat.join(timeout=1)
+                if runner is not app.state.agent_runner:
+                    close = getattr(runner, "close", None)
+                    if callable(close):
+                        close()
             _notify_command_waiter(app, session_id, command_id)
     finally:
         with app.state.command_locks_guard:
@@ -1414,6 +1419,13 @@ def _claim_next_cloud_command(db: CloudDB, session_id: str, worker_id: str, leas
         cx.execute("UPDATE sessions SET status='running',updated_at=? WHERE id=?", (int(time.time()), session_id))
         cx.execute("COMMIT")
         return row
+
+
+def _lease_heartbeat(db: CloudDB, session_id: str, command_id: str, worker_id: str, lease_seconds: int, stop: threading.Event) -> None:
+    interval = max(1.0, min(30.0, lease_seconds / 3))
+    while not stop.wait(interval):
+        with db.connect() as cx:
+            cx.execute("UPDATE commands SET lease_expires_at=? WHERE id=? AND session_id=? AND status='running' AND lease_owner=?", (int(time.time()) + max(30, lease_seconds), command_id, session_id, worker_id))
 
 
 def _notify_command_waiter(app: FastAPI, session_id: str, command_id: str) -> None:
