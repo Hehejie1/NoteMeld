@@ -104,6 +104,14 @@ class DurableSessionMailbox:
             result = cx.execute("UPDATE sync_mailbox SET status='abandoned' WHERE session_id=? AND status IN ('queued','admitted')", (session_id,))
         return result.rowcount
 
+    def recover(self, session_id: str, mode: str) -> int:
+        if mode not in {"resume", "abandon"}:
+            raise ValueError("recovery mode must be resume or abandon")
+        target = "queued" if mode == "resume" else "abandoned"
+        with self._connect() as cx:
+            result = cx.execute("UPDATE sync_mailbox SET status=? WHERE session_id=? AND status='admitted'", (target, session_id))
+        return result.rowcount
+
     def _connect(self) -> sqlite3.Connection:
         cx = sqlite3.connect(self.database, isolation_level=None)
         cx.row_factory = sqlite3.Row

@@ -32,3 +32,14 @@ def test_durable_mailbox_survives_reopen(tmp_path):
     assert len(reopened.pending("s1")) == 1
     assert reopened.discard_pending("s1") == 1
     assert reopened.pending("s1") == []
+
+
+def test_durable_mailbox_recovery_requires_explicit_choice(tmp_path):
+    mailbox = DurableSessionMailbox(tmp_path / "queue.db")
+    mailbox.enqueue("s1", "r1", "hello")
+    assert mailbox.pop("s1") is not None
+    assert mailbox.recover("s1", "resume") == 1
+    assert mailbox.pending("s1")[0].request_id == "r1"
+    assert mailbox.pop("s1") is not None
+    assert mailbox.recover("s1", "abandon") == 1
+    assert mailbox.pending("s1") == []
