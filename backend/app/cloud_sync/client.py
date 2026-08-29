@@ -47,8 +47,29 @@ class CloudClient:
     def snapshot(self, session_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/sessions/{session_id}/snapshot")
 
+    def list_sessions(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/sessions")
+
+    def archive_session(self, session_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/sessions/{session_id}/archive")
+
+    def restore_session(self, session_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/sessions/{session_id}/restore")
+
+    def copy_session(self, session_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/sessions/{session_id}/copy")
+
     def events(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
         return self._request("GET", f"/v1/sessions/{session_id}/events", params={"after": after})
+
+    def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{path}")
+
+    def write_workspace_file(self, workspace_id: str, path: str, content: str) -> dict[str, Any]:
+        return self._request("PUT", f"/v1/workspaces/{workspace_id}/files/{path}", json={"content": content})
+
+    def create_share_token(self, session_id: str, role: str = "viewer", scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
+        return self._request("POST", "/v1/share-tokens", json={"session_id": session_id, "role": role, "scopes": scopes or [], "expires_at": expires_at})
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}))
