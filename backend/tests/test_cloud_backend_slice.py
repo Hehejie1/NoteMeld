@@ -122,6 +122,14 @@ def test_cors_requires_explicit_origin_allowlist(tmp_path):
         assert response.headers["access-control-allow-origin"] == "https://web.example"
 
 
+def test_readiness_checks_database_and_workspace(tmp_path):
+    with client(tmp_path) as http:
+        response = http.get("/ready")
+        assert response.status_code == 200
+        assert response.json()["ready"] is True
+        assert response.json()["checks"] == {"database": "ok", "workspace_root": "ok"}
+
+
 def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

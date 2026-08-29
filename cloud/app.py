@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import base64
 import json
+import os
 import secrets
 import time
 import uuid
@@ -108,6 +109,20 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         return {"ok": True, "service": "notemeld-cloud"}
+
+    @app.get("/ready")
+    def readiness() -> dict:
+        checks: dict[str, str] = {}
+        try:
+            with db.connect() as cx:
+                cx.execute("SELECT 1").fetchone()
+            checks["database"] = "ok"
+        except Exception:
+            checks["database"] = "error"
+        checks["workspace_root"] = "ok" if settings.workspaces_dir.is_dir() and os.access(settings.workspaces_dir, os.W_OK) else "error"
+        if any(value != "ok" for value in checks.values()):
+            raise HTTPException(503, detail={"service": "notemeld-cloud", "ready": False, "checks": checks})
+        return {"service": "notemeld-cloud", "ready": True, "checks": checks}
 
     @app.post("/v1/auth/login")
     def login(payload: LoginRequest, request: Request):
