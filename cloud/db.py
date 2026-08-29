@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   title TEXT NOT NULL, workspace_id TEXT NOT NULL, status TEXT NOT NULL,
   next_sequence INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS session_archives (
+  user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL REFERENCES sessions(id),
+  archived_at INTEGER NOT NULL, PRIMARY KEY(user_id, session_id)
+);
 CREATE TABLE IF NOT EXISTS commands (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), request_id TEXT NOT NULL,
   payload_hash TEXT NOT NULL, sequence INTEGER NOT NULL, input_text TEXT NOT NULL,

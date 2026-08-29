@@ -29,6 +29,7 @@
 | GET | `/health` | 云端健康检查 | 无 |
 | POST | `/v1/auth/login` | 云端用户/管理员登录并签发 bearer token | 无（限流待补） |
 | POST | `/v1/auth/revoke` | 撤销当前 bearer token | bearer token |
+| POST | `/v1/auth/rotate` | 原子撤销当前 token 并签发新 token | bearer token |
 | GET | `/v1/admin/users` | 管理员查询普通用户 | admin token |
 | POST | `/v1/admin/users` | 管理员创建普通用户 | admin token |
 | PUT | `/v1/admin/users/{user_id}` | 管理员修改普通用户用户名、密码或禁用状态 | admin token |
@@ -40,9 +41,12 @@
 | POST | `/v1/pairings/confirm` | 使用配对码注册设备 | bearer token |
 | POST | `/v1/grants` | 创建设备间远程控制授权 | bearer token |
 | POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
+| GET | `/v1/sessions` | 查询当前用户云端会话及收纳状态 | bearer token |
 | POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息 | bearer token |
 | GET | `/v1/sessions/{session_id}/snapshot` | 读取 session snapshot 和事件 | bearer token |
 | GET | `/v1/sessions/{session_id}/events?after=` | 按 event sequence 拉取事件 | bearer token |
+| POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
+| DELETE | `/v1/sessions/{session_id}` | 硬删除当前用户云端会话 | bearer token |
 | WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token（后续补充） |
 
 ## Note / Task 接口

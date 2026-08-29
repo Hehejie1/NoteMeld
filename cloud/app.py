@@ -106,6 +106,24 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(401, "invalid token")
         return {"code": 0, "msg": "success", "data": {"revoked": True}}
 
+    @app.post("/v1/auth/rotate")
+    def rotate_token(authorization: Annotated[str | None, Header()] = None):
+        current = _authenticate_token(db, authorization)
+        if not current:
+            raise HTTPException(401, "invalid token")
+        parsed = parse_token(authorization[7:].strip())
+        assert parsed is not None
+        old_id, old_secret = parsed
+        raw, digest = issue_token()
+        now = int(time.time())
+        new_id = raw[4:].split(".", 1)[0]
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND digest=?", (now, old_id, token_digest(old_id, old_secret)))
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,created_at) VALUES(?,?,?,?,?)", (new_id, current["id"], digest, token_expiry(settings.token_ttl_seconds), now))
+            cx.execute("COMMIT")
+        return {"code": 0, "msg": "success", "data": {"token": raw, "user_id": current["id"], "role": current["role"]}}
+
     @app.get("/v1/admin/users")
     def list_users(current=Depends(_auth_dependency(db, "admin"))):
         with db.connect() as cx:
@@ -231,6 +249,31 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", now, now))
         return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id}}
+
+    @app.get("/v1/sessions")
+    def list_sessions(current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            rows = cx.execute("SELECT s.*, a.archived_at FROM sessions s LEFT JOIN session_archives a ON a.session_id=s.id AND a.user_id=? WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], current["id"])).fetchall()
+        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+
+    @app.post("/v1/sessions/{session_id}/archive")
+    def archive_session(session_id: str, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            cx.execute("INSERT OR REPLACE INTO session_archives(user_id,session_id,archived_at) VALUES(?,?,?)", (current["id"], session_id, int(time.time())))
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": True}}
+
+    @app.delete("/v1/sessions/{session_id}")
+    def delete_session(session_id: str, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            cx.execute("DELETE FROM events WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM commands WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM session_archives WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (session_id, current["id"]))
+            cx.execute("COMMIT")
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "deleted": True}}
 
     @app.post("/v1/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db))):

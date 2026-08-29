@@ -71,6 +71,20 @@ def test_session_command_idempotency_and_snapshot(tmp_path):
         assert snapshot["snapshot_seq"] == 1
 
 
+def test_session_archive_delete_and_token_rotate(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        assert http.post(f"/v1/sessions/{session['id']}/archive", headers=headers).status_code == 200
+        assert http.get("/v1/sessions", headers=headers).json()["data"][0]["archived_at"]
+        rotated = http.post("/v1/auth/rotate", headers=headers)
+        assert rotated.status_code == 200
+        assert http.get("/v1/sessions", headers=headers).status_code == 401
+        new_headers = {"Authorization": f"Bearer {rotated.json()['data']['token']}"}
+        assert http.delete(f"/v1/sessions/{session['id']}", headers=new_headers).status_code == 200
+
+
 def test_workspace_rejects_escape(tmp_path):
     from cloud.workspace import Workspace, WorkspaceError
 
