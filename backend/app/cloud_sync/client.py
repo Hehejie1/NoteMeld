@@ -65,6 +65,12 @@ class CloudClient:
     def heartbeat(self, device_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat")
 
+    def request_device_challenge(self, device_id: str | None = None) -> dict[str, Any]:
+        return self._request("POST", f"/v1/devices/{device_id or self.device_id}/challenge")
+
+    def verify_device_challenge(self, challenge: str, signature: str, device_id: str | None = None) -> dict[str, Any]:
+        return self._request("POST", f"/v1/devices/{device_id or self.device_id}/challenge/verify", json={"challenge": challenge, "signature": signature})
+
     def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default") -> dict[str, Any]:
         return self._request("POST", "/v1/cloud/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id})
 

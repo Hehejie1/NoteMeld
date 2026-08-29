@@ -66,3 +66,20 @@ def test_cloud_client_rotates_and_clears_token():
     assert client.revoke_token()["revoked"] is True
     assert client.token is None
     client.close()
+
+
+def test_cloud_client_device_proof_contract():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.content))
+        if request.url.path.endswith("/challenge"):
+            return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"challenge": "challenge-value"}})
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"verified_until": 123}})
+
+    client = CloudClient("https://cloud.test", token="nmt_test", device_id="device-a", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert client.request_device_challenge()["challenge"] == "challenge-value"
+    assert client.verify_device_challenge("challenge-value", "signature-value")["verified_until"] == 123
+    assert seen[0][1] == "/v1/devices/device-a/challenge"
+    assert seen[1][1] == "/v1/devices/device-a/challenge/verify"
+    client.close()
