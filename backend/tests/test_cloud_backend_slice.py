@@ -339,6 +339,8 @@ def test_authority_lease_is_exclusive_until_expiry(tmp_path):
         assert http.post(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, json={"owner": "worker-a"}).status_code == 200
         assert http.post(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, json={"owner": "worker-b"}).status_code == 409
         assert http.post(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, json={"owner": "worker-a", "ttl_seconds": 60}).status_code == 200
+        assert http.delete(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, params={"owner": "worker-b"}).status_code == 409
+        assert http.delete(f"/v1/sessions/{session['id']}/authority/lease", headers=headers, params={"owner": "worker-a"}).status_code == 200
 
 
 def test_workspace_quota_is_enforced(tmp_path):

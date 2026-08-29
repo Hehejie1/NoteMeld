@@ -445,6 +445,15 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("COMMIT")
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "owner": payload.owner, "lease_expires_at": expires, "authority_epoch": row["authority_epoch"]}}
 
+    @app.delete("/v1/sessions/{session_id}/authority/lease")
+    def release_authority_lease(session_id: str, owner: str, current=Depends(_auth_dependency(db))):
+        _owned_session(db, session_id, current["id"])
+        with db.connect() as cx:
+            result = cx.execute("UPDATE sessions SET lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND lease_owner=?", (int(time.time()), session_id, owner))
+        if result.rowcount != 1:
+            raise HTTPException(409, "lease owner mismatch or lease is not held")
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "released": True}}
+
     @app.get("/v1/workspaces/{workspace_id}/stats")
     def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db))):
         _validate_workspace_id(workspace_id)
