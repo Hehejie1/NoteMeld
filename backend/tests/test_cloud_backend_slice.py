@@ -772,6 +772,21 @@ def test_relay_command_requires_message_scope(tmp_path):
             assert socket.receive_json()["error"] == "invalid_envelope"
 
 
+def test_relay_rechecks_device_revocation_on_each_frame(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("revocation-controller", "revocation-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "revocation-controller", "host_device_id": "revocation-host", "scopes": ["message.send"]}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "revocation-controller", "recipient_device_id": "revocation-host", "sequence": 1, "frame_id": "revocation-frame", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=revocation-controller", headers=headers) as controller, http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=revocation-host", headers=headers) as host:
+            assert http.delete("/v1/devices/revocation-controller", headers=headers).status_code == 200
+            controller.send_json(frame)
+            assert controller.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
+
+
 def test_authority_rotation_invalidates_old_relay_epoch(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

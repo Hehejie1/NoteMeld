@@ -1681,9 +1681,10 @@ def _accept_relay_sequence(db: CloudDB, session_id: str, sender_device_id: str, 
 
 def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str, required_scope: str | None = None, workspace_id: str | None = None) -> bool:
     with db.connect() as cx:
-        row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,g.workspace_refs_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, controller, host)).fetchone()
+        query = "SELECT g.expires_at,g.revoked_at,g.scopes_json,g.workspace_refs_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id JOIN devices controller_device ON controller_device.id=g.controller_device_id AND controller_device.user_id=g.user_id AND controller_device.revoked_at IS NULL JOIN devices host_device ON host_device.id=g.host_device_id AND host_device.user_id=g.user_id AND host_device.revoked_at IS NULL WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1"
+        row = cx.execute(query, (user_id, session_id, controller, host)).fetchone()
         if not row and required_scope is None:
-            row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,g.workspace_refs_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, host, controller)).fetchone()
+            row = cx.execute(query, (user_id, session_id, host, controller)).fetchone()
     scopes = json.loads(row["scopes_json"]) if row else []
     workspace_refs = json.loads(row["workspace_refs_json"]) if row else []
     workspace_allowed = not workspace_refs or (workspace_id is not None and workspace_id in workspace_refs)
