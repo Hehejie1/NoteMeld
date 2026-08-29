@@ -301,6 +301,21 @@ def test_cloud_startup_marks_running_commands_needs_attention(tmp_path):
         assert http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers={"Authorization": f"Bearer {token}"}).json()["data"]["status"] == "needs_attention"
 
 
+def test_cloud_session_spec_prefix_aliases(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/cloud/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        assert http.get("/v1/cloud/sessions", headers=headers).status_code == 200
+        command = http.post(f"/v1/cloud/sessions/{session['id']}/commands", headers=headers, json={"request_id": "prefix-1", "input": "hello"})
+        assert command.status_code == 200
+        assert http.get(f"/v1/cloud/sessions/{session['id']}/snapshot", headers=headers).status_code == 200
+        assert http.get(f"/v1/cloud/sessions/{session['id']}/events", headers=headers).status_code == 200
+        assert http.post(f"/v1/cloud/sessions/{session['id']}/archive", headers=headers).status_code == 200
+        assert http.post(f"/v1/cloud/sessions/{session['id']}/restore", headers=headers).status_code == 200
+        assert http.delete(f"/v1/cloud/sessions/{session['id']}", headers=headers).status_code == 200
+
+
 def test_local_session_full_share_import_is_sanitized_atomic_and_idempotent(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

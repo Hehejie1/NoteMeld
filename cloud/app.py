@@ -513,6 +513,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": token_id, "revoked": True}}
 
     @app.post("/v1/sessions")
+    @app.post("/v1/cloud/sessions")
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         session_id = str(uuid.uuid4())
         now = int(time.time())
@@ -591,6 +592,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": "cloud_native", "workspace_id": workspace_id, "file_count": len(decoded_files), "bytes_imported": sum(len(content) for _, content in decoded_files), "idempotent": False}}
 
     @app.post("/v1/sessions/{session_id}/copy")
+    @app.post("/v1/cloud/sessions/{session_id}/copy")
     def copy_session(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         source = _owned_session(db, session_id, current["id"])
         new_id = str(uuid.uuid4())
@@ -622,6 +624,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": new_id, "copied_from": session_id, "workspace_id": workspace_id, **copied_files}}
 
     @app.post("/v1/sessions/{session_id}/authority/rotate")
+    @app.post("/v1/cloud/sessions/{session_id}/authority/rotate")
     def rotate_authority(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
@@ -631,6 +634,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "authority_epoch": epoch}}
 
     @app.post("/v1/sessions/{session_id}/authority/lease")
+    @app.post("/v1/cloud/sessions/{session_id}/authority/lease")
     def acquire_authority_lease(session_id: str, payload: AuthorityLease, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         now = int(time.time())
@@ -646,6 +650,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "owner": payload.owner, "lease_expires_at": expires, "authority_epoch": row["authority_epoch"]}}
 
     @app.delete("/v1/sessions/{session_id}/authority/lease")
+    @app.delete("/v1/cloud/sessions/{session_id}/authority/lease")
     def release_authority_lease(session_id: str, owner: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
@@ -736,6 +741,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
 
     @app.get("/v1/sessions")
+    @app.get("/v1/cloud/sessions")
     def list_sessions(device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
@@ -743,6 +749,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/sessions/{session_id}/archive")
+    @app.post("/v1/cloud/sessions/{session_id}/archive")
     def archive_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
@@ -751,6 +758,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": True}}
 
     @app.post("/v1/sessions/{session_id}/restore")
+    @app.post("/v1/cloud/sessions/{session_id}/restore")
     def restore_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
@@ -761,6 +769,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": False}}
 
     @app.delete("/v1/sessions/{session_id}")
+    @app.delete("/v1/cloud/sessions/{session_id}")
     def delete_session(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         session = _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
@@ -782,10 +791,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "deleted": True, "workspace_purged": workspace_purged}}
 
     @app.post("/v1/sessions/{session_id}/commands")
+    @app.post("/v1/cloud/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         return _submit_cloud_command(app, db, session_id, payload, current["id"])
 
     @app.get("/v1/sessions/{session_id}/commands/{command_id}")
+    @app.get("/v1/cloud/sessions/{session_id}/commands/{command_id}")
     def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
@@ -795,6 +806,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": dict(row)}
 
     @app.get("/v1/sessions/{session_id}/commands")
+    @app.get("/v1/cloud/sessions/{session_id}/commands")
     def list_commands(session_id: str, after: int = 0, limit: int = 100, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         limit = max(1, min(limit, 500))
@@ -803,6 +815,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.get("/v1/sessions/{session_id}/snapshot")
+    @app.get("/v1/cloud/sessions/{session_id}/snapshot")
     def snapshot(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         session = _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
@@ -838,6 +851,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return submit_command(session_id, payload, current={"id": access["user_id"]})
 
     @app.get("/v1/sessions/{session_id}/events")
+    @app.get("/v1/cloud/sessions/{session_id}/events")
     def events(session_id: str, after: int = 0, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
         with db.connect() as cx:
