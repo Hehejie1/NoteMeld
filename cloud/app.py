@@ -1123,11 +1123,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not _valid_nonce(envelope.get("nonce")) or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
                     with db.connect() as cx:
-                        epoch = cx.execute("SELECT authority_epoch FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
+                        session_row = cx.execute("SELECT authority_epoch,workspace_id FROM sessions WHERE id=?", (session_id,)).fetchone()
+                        epoch = session_row["authority_epoch"]
                     if envelope.get("authority_epoch") != epoch:
                         raise ValueError("stale authority epoch")
                     required_scope = "message.send" if frame_type == "command" else None
-                    if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope):
+                    if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope, session_row["workspace_id"]):
                         raise ValueError("relay grant missing")
                     if not _accept_relay_sequence(db, session_id, device_id, sequence):
                         raise ValueError("replayed relay envelope")
@@ -1607,10 +1608,12 @@ def _accept_relay_sequence(db: CloudDB, session_id: str, sender_device_id: str, 
         return True
 
 
-def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str, required_scope: str | None = None) -> bool:
+def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str, required_scope: str | None = None, workspace_id: str | None = None) -> bool:
     with db.connect() as cx:
-        row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, controller, host)).fetchone()
+        row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,g.workspace_refs_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, controller, host)).fetchone()
         if not row and required_scope is None:
-            row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, host, controller)).fetchone()
+            row = cx.execute("SELECT g.expires_at,g.revoked_at,g.scopes_json,g.workspace_refs_json,s.kind FROM grants g JOIN sessions s ON s.user_id=g.user_id WHERE g.user_id=? AND s.id=? AND g.controller_device_id=? AND g.host_device_id=? ORDER BY g.created_at DESC LIMIT 1", (user_id, session_id, host, controller)).fetchone()
     scopes = json.loads(row["scopes_json"]) if row else []
-    return bool(row and row["kind"] == "device_remote" and not row["revoked_at"] and (row["expires_at"] is None or row["expires_at"] > int(time.time())) and (required_scope is None or required_scope in scopes))
+    workspace_refs = json.loads(row["workspace_refs_json"]) if row else []
+    workspace_allowed = not workspace_refs or (workspace_id is not None and workspace_id in workspace_refs)
+    return bool(row and row["kind"] == "device_remote" and workspace_allowed and not row["revoked_at"] and (row["expires_at"] is None or row["expires_at"] > int(time.time())) and (required_scope is None or required_scope in scopes))

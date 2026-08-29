@@ -385,6 +385,8 @@ Device registration is idempotent for the owning account (metadata/key is
 updated); the same ID owned by another account remains a conflict.
 Relay `command` frames additionally require the Grant's `message.send` scope;
 `receipt` and `event` frames are allowed only on an existing bidirectional Grant.
+When a Grant contains `workspace_refs`, the current session workspace must be
+listed; an empty list retains the account-level default behavior.
 The versioned frame schema carries `nonce`, `frame_type`, sequence and opaque
 `ciphertext`; relay never interprets plaintext or AEAD contents.
 Relay validates the nonce as URL-safe Base64 encoding of a 12-byte AEAD nonce;

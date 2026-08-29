@@ -29,6 +29,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 云端命令领取带有 process-scoped lease owner、过期时间和 attempt 计数；SQLite `BEGIN IMMEDIATE` 保证多进程单 claim，过期的 running 任务仍需人工恢复，不会自动重放。
 - `needs_attention` 命令可通过 recover API 明确选择 `resume` 重新排队或 `abandon` 终止，操作幂等且写入事件/审计。
 - Relay 只转发不落盘 payload，但会在 SQLite 中持久化每设备/会话的最大接收序列，重启后仍能拒绝旧帧。
+- Relay Grant 的 `workspace_refs` 现在参与授权判断；非空时只允许访问明确列出的 session workspace。
 - 命令提交在等待窗口内完成返回 200，超时但仍 queued/running 时返回 202，客户端继续通过状态或事件接口跟踪。
 - 云端 `/v1/models` 保存每个用户的 Provider/Model 元数据；凭证使用 Fernet 加密落盘，接口只返回是否存在凭证。会话可指定 `model_id`，执行时按用户读取启用模型并创建 bounded OpenAI-compatible runner，不支持的 Provider 或失效模型 fail-closed。
 - 云端 Agent 的 workspace 写入/删除工具默认只创建可审计的 `pending` approval，不直接修改文件；批准时复用安全 workspace resolver 执行并记录审计，审批列表仅返回有界内容预览，远程审批权限仍待后续切片。
