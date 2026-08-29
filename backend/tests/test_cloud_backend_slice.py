@@ -243,6 +243,33 @@ def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
         assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "api_key": "secret", "unexpected": "must-reject"}).status_code == 422
 
 
+def test_cloud_session_model_id_selects_registered_runner(tmp_path, monkeypatch):
+    from cloud.agent import AgentResult
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    selected = {}
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            selected.update(kwargs)
+        def complete(self, *, input_text, messages, **kwargs):
+            del messages, kwargs
+            return AgentResult(content=f"selected:{input_text}", model=selected["model"])
+        def close(self):
+            pass
+
+    monkeypatch.setattr("cloud.app.OpenAICompatibleAgentRunner", FakeRunner)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        model = http.post("/v1/models", headers=headers, json={"name": "Selected", "provider": "openai-compatible", "model": "registered-model", "base_url": "https://provider.invalid/v1"}).json()["data"]
+        session = http.post("/v1/cloud/sessions", headers=headers, json={"kind": "cloud_native", "model_id": model["id"]}).json()["data"]
+        result = http.post(f"/v1/cloud/sessions/{session['id']}/commands", headers=headers, json={"request_id": "selected-runner", "input": "hello"})
+        assert result.status_code == 200
+        assert selected["model"] == "registered-model"
+
+
 def test_cloud_workspace_rejects_cross_platform_path_tricks(tmp_path):
     from cloud.workspace import Workspace, WorkspaceError
 
