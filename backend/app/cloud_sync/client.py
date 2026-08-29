@@ -86,6 +86,15 @@ class CloudClient:
     def copy_session(self, session_id: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/sessions/{session_id}/copy")
 
+    def rotate_authority(self, session_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/sessions/{session_id}/authority/rotate")
+
+    def acquire_authority_lease(self, session_id: str, owner: str, ttl_seconds: int = 30) -> dict[str, Any]:
+        return self._request("POST", f"/v1/sessions/{session_id}/authority/lease", json={"owner": owner, "ttl_seconds": ttl_seconds})
+
+    def release_authority_lease(self, session_id: str, owner: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/sessions/{session_id}/authority/lease", params={"owner": owner})
+
     def events(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
         return self._request("GET", f"/v1/sessions/{session_id}/events", params={"after": after})
 
