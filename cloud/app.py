@@ -164,10 +164,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db))):
         session_id = str(uuid.uuid4())
         now = int(time.time())
-        workspace = Workspace(settings.workspaces_dir / current["id"] / payload.workspace_id)
+        Workspace(settings.workspaces_dir / current["id"] / payload.workspace_id)
         with db.connect() as cx:
             cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", now, now))
-        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace": str(workspace.root)}}
+        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id}}
 
     @app.post("/v1/sessions/{session_id}/commands")
     def submit_command(session_id: str, payload: CommandCreate, current=Depends(_auth_dependency(db))):
