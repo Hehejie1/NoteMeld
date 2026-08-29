@@ -182,6 +182,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def delete_user(user_id: str, current=Depends(_auth_dependency(db, "admin"))):
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
+            cx.execute("DELETE FROM share_tokens WHERE user_id=?", (user_id,))
+            cx.execute("DELETE FROM grants WHERE user_id=?", (user_id,))
+            cx.execute("DELETE FROM pairings WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM events WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
@@ -356,6 +359,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("BEGIN IMMEDIATE")
             cx.execute("DELETE FROM events WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM commands WHERE session_id=?", (session_id,))
+            cx.execute("DELETE FROM share_tokens WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM session_archives WHERE session_id=?", (session_id,))
             cx.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (session_id, current["id"]))
             cx.execute("COMMIT")

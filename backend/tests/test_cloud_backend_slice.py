@@ -150,3 +150,17 @@ def test_grant_listing_and_revocation(tmp_path):
         assert http.get("/v1/grants", headers=headers).json()["data"][0]["id"] == grant
         assert http.post(f"/v1/grants/{grant}/revoke", headers=headers).status_code == 200
         assert http.post(f"/v1/grants/{grant}/revoke", headers=headers).status_code == 404
+
+
+def test_admin_delete_cleans_owned_relations(tmp_path):
+    with client(tmp_path) as http:
+        admin = login(http, "admin", "admin-password-123")
+        admin_headers = {"Authorization": f"Bearer {admin}"}
+        user_id = http.post("/v1/admin/users", headers=admin_headers, json={"username": "owner", "password": "owner-password-123"}).json()["data"]["id"]
+        user_headers = {"Authorization": f"Bearer {login(http, 'owner', 'owner-password-123')}"}
+        for device in ("owner-desktop", "owner-phone"):
+            assert http.post("/v1/devices", headers=user_headers, json={"device_id": device, "platform": "test", "display_name": device}).status_code == 200
+        session = http.post("/v1/sessions", headers=user_headers, json={"kind": "cloud_native"}).json()["data"]
+        assert http.post("/v1/grants", headers=user_headers, json={"controller_device_id": "owner-phone", "host_device_id": "owner-desktop"}).status_code == 200
+        assert http.post("/v1/share-tokens", headers=user_headers, json={"session_id": session["id"]}).status_code == 200
+        assert http.delete(f"/v1/admin/users/{user_id}", headers=admin_headers).status_code == 200
