@@ -288,12 +288,15 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     raise HTTPException(409, "payload conflict")
                 cx.execute("COMMIT")
                 return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
-            sequence = cx.execute("SELECT next_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
+            sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
             command_id = str(uuid.uuid4())
-            cx.execute("UPDATE sessions SET next_sequence=?,status='running',updated_at=? WHERE id=?", (sequence + 1, now, session_id))
-            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "queued", now))
-            event = {"command_id": command_id, "sequence": sequence, "input": payload.input, "status": "queued"}
-            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, sequence, "command.queued", json.dumps(event), now))
+            cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='running',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 2, now, session_id))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "completed", now))
+            queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
+            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
+            completed_event = {"command_id": command_id, "command_sequence": sequence, "status": "completed", "output": f"Cloud Agent received: {payload.input}"}
+            cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence + 1, "turn.completed", json.dumps(completed_event), now))
+            cx.execute("UPDATE sessions SET status='idle',updated_at=? WHERE id=?", (now, session_id))
             cx.execute("COMMIT")
         return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": sequence, "status": "queued"}}
 

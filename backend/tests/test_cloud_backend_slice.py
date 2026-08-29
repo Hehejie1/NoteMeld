@@ -68,7 +68,8 @@ def test_session_command_idempotency_and_snapshot(tmp_path):
         conflict = http.post(f"/v1/sessions/{session['id']}/commands", headers=headers, json={"request_id": "req-1", "input": "different"})
         assert conflict.status_code == 409
         snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
-        assert snapshot["snapshot_seq"] == 1
+        assert snapshot["snapshot_seq"] == 2
+        assert snapshot["events"][-1]["event_type"] == "turn.completed"
 
 
 def test_session_archive_delete_and_token_rotate(tmp_path):
