@@ -68,6 +68,12 @@ CREATE TABLE IF NOT EXISTS session_import_requests (
   payload_hash TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id),
   created_at INTEGER NOT NULL, PRIMARY KEY(user_id, request_id)
 );
+CREATE TABLE IF NOT EXISTS models (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL,
+  provider TEXT NOT NULL, model TEXT NOT NULL, base_url TEXT,
+  api_key_ciphertext TEXT, enabled INTEGER NOT NULL DEFAULT 1, is_default INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
 """
 
 

@@ -428,6 +428,11 @@ Commands are first persisted as `queued`, then claimed as `running`; provider fa
 startup, any leftover `running` command is fail-closed as `needs_attention`
 with a `turn.needs_attention` event rather than being replayed automatically.
 
+`/v1/models` provides per-user cloud model metadata CRUD and default selection.
+Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`
+(falling back to the bootstrap admin password) and responses expose only
+`has_api_key`; the registry is not yet wired to per-session provider selection.
+
 The current slice provides scoped share-token read/control access and cloud
 workspace backup/restore. Multi-instance queue fencing and full end-to-end key
 exchange remain future work; device relay still requires the platform clients

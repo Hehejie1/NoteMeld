@@ -224,6 +224,23 @@ def test_session_command_idempotency_and_snapshot(tmp_path):
         assert snapshot["events"][-1]["event_type"] == "turn.completed"
 
 
+def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
+    pytest.importorskip("cryptography")
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        created = http.post("/v1/models", headers=headers, json={"name": "OpenAI", "provider": "openai", "model": "gpt-test", "base_url": "https://example.invalid/v1", "api_key": "sk-private", "is_default": True})
+        assert created.status_code == 200
+        model = created.json()["data"]
+        assert model["has_api_key"] is True
+        assert "api_key" not in model and "ciphertext" not in str(model).lower()
+        listed = http.get("/v1/models", headers=headers).json()["data"]
+        assert listed[0]["has_api_key"] is True
+        assert "api_key_ciphertext" not in listed[0]
+        assert http.put(f"/v1/models/{model['id']}", headers=headers, json={"is_default": False}).status_code == 200
+        assert http.delete(f"/v1/models/{model['id']}", headers=headers).status_code == 200
+
+
 def test_cloud_commands_are_serial_per_session(tmp_path):
     from cloud.agent import AgentResult
 

@@ -7,6 +7,22 @@ import secrets
 import time
 
 
+def encrypt_secret(value: str, master_key: str) -> str:
+    """Encrypt a provider credential for local cloud-database storage."""
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError as exc:  # pragma: no cover - deployment dependency
+        raise RuntimeError("cryptography is required for secret storage") from exc
+    key = base64.urlsafe_b64encode(hashlib.sha256(master_key.encode()).digest())
+    return Fernet(key).encrypt(value.encode()).decode()
+
+
+def decrypt_secret(value: str, master_key: str) -> str:
+    from cryptography.fernet import Fernet
+    key = base64.urlsafe_b64encode(hashlib.sha256(master_key.encode()).digest())
+    return Fernet(key).decrypt(value.encode()).decode()
+
+
 def hash_password(password: str) -> str:
     if len(password) < 12:
         raise ValueError("password must contain at least 12 characters")

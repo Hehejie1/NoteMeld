@@ -268,6 +268,11 @@ Session archive writes explicitly replace the current `(user_id, session_id,
 device_id)` row, including the `NULL` device-wide archive case, because SQLite
 allows multiple `NULL` values in a composite primary key.
 
+The cloud `models` table stores per-user provider metadata and an encrypted
+provider credential. API responses never expose `api_key_ciphertext`; the
+encryption key is derived from `NOTEMELD_CLOUD_SECRET_KEY` or the bootstrap
+admin password.
+
 Platform adapters should derive `device_id` with the shared
 `backend/app/cloud_sync/device_id.py` helper: a normalized platform prefix and
 32-character SHA-256 digest of the app/vendor installation identifier. The raw

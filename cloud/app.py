@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .config import CloudSettings, load_settings
 from .db import CloudDB
 from .agent import create_agent_runner
-from .security import hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
+from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
 
 
@@ -109,6 +109,26 @@ class SessionCreate(BaseModel):
     kind: str = Field(pattern="^(cloud_native|device_remote)$")
     title: str = Field(default="New session", max_length=200)
     workspace_id: str = Field(default="default", min_length=1, max_length=128, pattern="^[A-Za-z0-9_-]+$")
+
+
+class ModelCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=256)
+    base_url: str | None = Field(default=None, max_length=2048)
+    api_key: str | None = Field(default=None, max_length=4096)
+    enabled: bool = True
+    is_default: bool = False
+
+
+class ModelUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    provider: str | None = Field(default=None, min_length=1, max_length=64)
+    model: str | None = Field(default=None, min_length=1, max_length=256)
+    base_url: str | None = Field(default=None, max_length=2048)
+    api_key: str | None = Field(default=None, max_length=4096)
+    enabled: bool | None = None
+    is_default: bool | None = None
 
 
 class SessionImportFile(BaseModel):
@@ -376,6 +396,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             cx.execute("DELETE FROM session_import_requests WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM session_payloads WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
             cx.execute("DELETE FROM session_archives WHERE user_id=?", (user_id,))
+            cx.execute("DELETE FROM models WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM tokens WHERE user_id=?", (user_id,))
             cx.execute("DELETE FROM devices WHERE user_id=?", (user_id,))
@@ -388,6 +409,66 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             shutil.rmtree(settings.data_dir / "backups" / user_id / workspace_id, ignore_errors=True)
         _audit(db, current["id"], "admin.user.delete", user_id, {})
         return {"code": 0, "msg": "success", "data": {"deleted": True}}
+
+    @app.get("/v1/models")
+    def list_models(current=Depends(_auth_dependency(db, required_scope="model.read"))):
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,name,provider,model,base_url,enabled,is_default,created_at,updated_at,api_key_ciphertext FROM models WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**{key: row[key] for key in ("id", "name", "provider", "model", "base_url", "enabled", "is_default", "created_at", "updated_at")}, "has_api_key": bool(row["api_key_ciphertext"])} for row in rows]}
+
+    @app.post("/v1/models")
+    def create_model(payload: ModelCreate, current=Depends(_auth_dependency(db, required_scope="model.write"))):
+        model_id = str(uuid.uuid4())
+        now = int(time.time())
+        master_key = app.state.settings.secret_key or app.state.settings.admin_password
+        try:
+            encrypted_key = encrypt_secret(payload.api_key, master_key) if payload.api_key else None
+        except RuntimeError as exc:
+            raise HTTPException(503, "secret encryption is unavailable") from exc
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            if payload.is_default:
+                cx.execute("UPDATE models SET is_default=0 WHERE user_id=?", (current["id"],))
+            cx.execute("INSERT INTO models(id,user_id,name,provider,model,base_url,api_key_ciphertext,enabled,is_default,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (model_id, current["id"], payload.name, payload.provider, payload.model, payload.base_url, encrypted_key, int(payload.enabled), int(payload.is_default), now, now))
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "model.create", model_id, {"provider": payload.provider, "model": payload.model, "has_api_key": bool(payload.api_key)})
+        return {"code": 0, "msg": "success", "data": {"id": model_id, "name": payload.name, "provider": payload.provider, "model": payload.model, "enabled": payload.enabled, "is_default": payload.is_default, "has_api_key": bool(payload.api_key)}}
+
+    @app.put("/v1/models/{model_id}")
+    def update_model(model_id: str, payload: ModelUpdate, current=Depends(_auth_dependency(db, required_scope="model.write"))):
+        changes = payload.model_dump(exclude_unset=True)
+        if not changes:
+            raise HTTPException(400, "no changes supplied")
+        master_key = app.state.settings.secret_key or app.state.settings.admin_password
+        if "api_key" in changes:
+            changes["api_key_ciphertext"] = encrypt_secret(changes.pop("api_key"), master_key) if changes["api_key"] else None
+        if "enabled" in changes:
+            changes["enabled"] = int(changes["enabled"])
+        if "is_default" in changes:
+            changes["is_default"] = int(changes["is_default"])
+        changes["updated_at"] = int(time.time())
+        assignments = ",".join(f"{key}=?" for key in changes)
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            exists = cx.execute("SELECT id FROM models WHERE id=? AND user_id=?", (model_id, current["id"])).fetchone()
+            if not exists:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "model not found")
+            if changes.get("is_default") == 1:
+                cx.execute("UPDATE models SET is_default=0 WHERE user_id=?", (current["id"],))
+            cx.execute(f"UPDATE models SET {assignments} WHERE id=? AND user_id=?", (*changes.values(), model_id, current["id"]))
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "model.update", model_id, {"fields": sorted(changes)})
+        return {"code": 0, "msg": "success", "data": {"id": model_id, "updated": True}}
+
+    @app.delete("/v1/models/{model_id}")
+    def delete_model(model_id: str, current=Depends(_auth_dependency(db, required_scope="model.write"))):
+        with db.connect() as cx:
+            result = cx.execute("DELETE FROM models WHERE id=? AND user_id=?", (model_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "model not found")
+        _audit(db, current["id"], "model.delete", model_id, {})
+        return {"code": 0, "msg": "success", "data": {"id": model_id, "deleted": True}}
 
     @app.post("/v1/devices")
     @app.post("/v1/devices/register")
