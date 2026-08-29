@@ -339,6 +339,8 @@ Registered devices can rotate keys with `POST /v1/devices/{device_id}/rotate-key
 the old public key is replaced immediately and the rotation is audited.
 Revoking a device also revokes all active Grants that reference it in the same
 transaction.
+`POST /v1/devices/{device_id}/heartbeat` records `last_seen_at`; relay
+connections update the same field on connect.
 Relay `command` frames additionally require the Grant's `message.send` scope;
 `receipt` and `event` frames are allowed only on an existing bidirectional Grant.
 The versioned frame schema carries `nonce`, `frame_type`, sequence and opaque

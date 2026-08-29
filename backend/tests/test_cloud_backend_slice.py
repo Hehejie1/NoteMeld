@@ -103,6 +103,17 @@ def test_device_revoke_also_revokes_grants(tmp_path):
         assert listed["revoked_at"] is not None
 
 
+def test_device_heartbeat_updates_last_seen(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.post("/v1/devices", headers=headers, json={"device_id": "heartbeat-device", "platform": "test", "display_name": "Heartbeat"}).status_code == 200
+        result = http.post("/v1/devices/heartbeat-device/heartbeat", headers=headers)
+        assert result.status_code == 200 and result.json()["data"]["last_seen_at"]
+        listed = http.get("/v1/devices", headers=headers).json()["data"][0]
+        assert listed["last_seen_at"] == result.json()["data"]["last_seen_at"]
+
+
 def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

@@ -246,7 +246,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/devices")
     def list_devices(current=Depends(_auth_dependency(db))):
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,public_key,platform,display_name,revoked_at,created_at FROM devices WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
+            rows = cx.execute("SELECT id,public_key,platform,display_name,revoked_at,last_seen_at,created_at FROM devices WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.post("/v1/devices/{device_id}/revoke")
@@ -272,6 +272,15 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(404, "active device not found")
         _audit(db, current["id"], "device.key.rotate", device_id, {})
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "rotated": True}}
+
+    @app.post("/v1/devices/{device_id}/heartbeat")
+    def device_heartbeat(device_id: str, current=Depends(_auth_dependency(db))):
+        now = int(time.time())
+        with db.connect() as cx:
+            result = cx.execute("UPDATE devices SET last_seen_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (now, device_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "active device not found")
+        return {"code": 0, "msg": "success", "data": {"device_id": device_id, "last_seen_at": now}}
 
     @app.post("/v1/pairings/start")
     def start_pairing(current=Depends(_auth_dependency(db))):
@@ -574,6 +583,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             await websocket.close(code=4401)
             return
         await websocket.accept()
+        with db.connect() as cx:
+            cx.execute("UPDATE devices SET last_seen_at=? WHERE id=?", (int(time.time()), device_id))
         peers = app.state.relays.setdefault(session_id, {})
         previous = peers.get(device_id)
         if previous is not None and previous is not websocket:
