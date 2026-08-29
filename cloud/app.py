@@ -115,6 +115,7 @@ class SessionCreate(BaseModel):
 
 
 class ModelCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=64)
     model: str = Field(min_length=1, max_length=256)
@@ -125,6 +126,7 @@ class ModelCreate(BaseModel):
 
 
 class ModelUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=128)
     provider: str | None = Field(default=None, min_length=1, max_length=64)
     model: str | None = Field(default=None, min_length=1, max_length=256)
@@ -135,6 +137,7 @@ class ModelUpdate(BaseModel):
 
 
 class ApprovalResolve(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     status: str = Field(pattern="^(approved|rejected)$")
     note: str | None = Field(default=None, max_length=2000)
 
@@ -185,6 +188,7 @@ class CommandCreate(BaseModel):
 
 
 class CommandRecover(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     mode: str = Field(pattern="^(resume|abandon)$")
 
 
