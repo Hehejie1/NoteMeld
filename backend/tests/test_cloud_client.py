@@ -39,3 +39,18 @@ def test_cloud_client_quotes_workspace_paths():
     client.read_workspace_file("default", "folder/a file?#.md")
     assert seen == ["https://cloud.test/v1/workspaces/default/files/folder/a%20file%3F%23.md"]
     client.close()
+
+
+def test_cloud_client_rotates_and_clears_token():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/auth/rotate":
+            assert request.headers["authorization"] == "Bearer nmt_old"
+            return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"token": "nmt_new"}})
+        assert request.headers["authorization"] == "Bearer nmt_new"
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"revoked": True}})
+
+    client = CloudClient("https://cloud.test", token="nmt_old", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert client.rotate_token()["token"] == "nmt_new"
+    assert client.revoke_token()["revoked"] is True
+    assert client.token is None
+    client.close()

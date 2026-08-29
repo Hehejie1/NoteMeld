@@ -40,6 +40,22 @@ class CloudClient:
         self.token = data["token"]
         return data
 
+    def rotate_token(self) -> dict[str, Any]:
+        data = self._request("POST", "/v1/auth/rotate")
+        self.token = data["token"]
+        return data
+
+    def revoke_token(self) -> dict[str, Any]:
+        data = self._request("POST", "/v1/auth/revoke")
+        self.token = None
+        return data
+
+    def register_device(self, device_id: str, platform: str, display_name: str, public_key: str | None = None) -> dict[str, Any]:
+        return self._request("POST", "/v1/devices", json={"device_id": device_id, "platform": platform, "display_name": display_name, "public_key": public_key})
+
+    def heartbeat(self, device_id: str | None = None) -> dict[str, Any]:
+        return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat")
+
     def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default") -> dict[str, Any]:
         return self._request("POST", "/v1/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id})
 
