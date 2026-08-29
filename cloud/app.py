@@ -253,7 +253,6 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
     app.state.device_proofs: dict[tuple[str, str], int] = {}
-    app.state.login_failures: dict[str, list[int]] = {}
 
     @app.get("/health")
     def health() -> dict:
@@ -297,17 +296,15 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def login(payload: LoginRequest, request: Request):
         key = f"{request.client.host if request.client else 'unknown'}:{payload.account_id or payload.username or ''}"
         now = int(time.time())
-        recent = [stamp for stamp in app.state.login_failures.get(key, []) if stamp > now - 60]
-        if len(recent) >= 5:
+        if _login_rate_limited(db, key, now):
             raise HTTPException(429, "too many login attempts")
         if not payload.username and not payload.account_id:
             raise HTTPException(400, "username or account_id is required")
         user = _user_by_account_id(db, payload.account_id) if payload.account_id else _user_by_username(db, payload.username or "")
         if not user or user["disabled"] or not verify_password(payload.password, user["password_hash"]):
-            recent.append(now)
-            app.state.login_failures[key] = recent
+            _record_login_failure(db, key, now)
             raise HTTPException(401, "invalid credentials")
-        app.state.login_failures.pop(key, None)
+        _clear_login_failures(db, key)
         raw, digest = issue_token()
         now = int(time.time())
         with db.connect() as cx:
@@ -1253,6 +1250,29 @@ def _authenticate_token(db: CloudDB, authorization: str | None):
     if not row or row["revoked_at"] or row["disabled"] or (row["expires_at"] and row["expires_at"] < int(time.time())):
         return None
     return row
+
+
+def _login_rate_limited(db: CloudDB, key: str, now: int, window_seconds: int = 60, max_failures: int = 5) -> bool:
+    with db.connect() as cx:
+        row = cx.execute("SELECT window_started,failed_count FROM login_attempts WHERE key=?", (key,)).fetchone()
+    return bool(row and row["window_started"] > now - window_seconds and row["failed_count"] >= max_failures)
+
+
+def _record_login_failure(db: CloudDB, key: str, now: int, window_seconds: int = 60) -> None:
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        row = cx.execute("SELECT window_started,failed_count FROM login_attempts WHERE key=?", (key,)).fetchone()
+        if not row or row["window_started"] <= now - window_seconds:
+            cx.execute("INSERT INTO login_attempts(key,window_started,failed_count) VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET window_started=excluded.window_started,failed_count=excluded.failed_count", (key, now))
+        else:
+            cx.execute("UPDATE login_attempts SET failed_count=failed_count+1 WHERE key=?", (key,))
+        cx.execute("DELETE FROM login_attempts WHERE window_started<=?", (now - window_seconds,))
+        cx.execute("COMMIT")
+
+
+def _clear_login_failures(db: CloudDB, key: str) -> None:
+    with db.connect() as cx:
+        cx.execute("DELETE FROM login_attempts WHERE key=?", (key,))
 
 
 def _owned_session(db: CloudDB, session_id: str, user_id: str):

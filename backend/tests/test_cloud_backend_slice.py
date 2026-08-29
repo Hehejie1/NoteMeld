@@ -895,6 +895,15 @@ def test_login_bruteforce_limit(tmp_path):
         assert http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 429
 
 
+def test_login_bruteforce_limit_survives_process_restart(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    with TestClient(create_app(settings)) as first:
+        for _ in range(5):
+            assert first.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 401
+    with TestClient(create_app(settings)) as restarted:
+        assert restarted.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 429
+
+
 def test_password_change_revokes_existing_tokens(tmp_path):
     with client(tmp_path) as http:
         admin = login(http, "admin", "admin-password-123")

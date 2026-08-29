@@ -335,9 +335,10 @@ Rotation preserves the source token's audience, scopes and expiry rather than
 upgrading a PAT to a wildcard token.
 
 Failed logins are limited to five attempts per source/account key in a
-60-second process-local window and return HTTP 429 after the limit. Production
-multi-instance deployments must replace this in-memory counter with a shared
-rate-limit store.
+60-second SQLite-backed window and return HTTP 429 after the limit. The
+counter is transactional and survives an API process restart; deployments
+that move metadata to another database must preserve the same atomic window
+semantics.
 
 Web access is disabled by default; `NOTEMELD_CLOUD_CORS_ORIGINS` accepts a
 comma-separated explicit origin allowlist. Wildcard origins are not enabled by

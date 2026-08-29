@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS relay_cursors (
   last_sequence INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
   PRIMARY KEY(session_id, sender_device_id)
 );
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key TEXT PRIMARY KEY, window_started INTEGER NOT NULL, failed_count INTEGER NOT NULL
+);
 """
 
 
