@@ -145,6 +145,18 @@ def test_pairing_grant_and_token_revoke(tmp_path):
         assert http.get("/v1/devices", headers=headers).status_code == 401
 
 
+def test_pairing_cannot_take_device_id_from_another_account(tmp_path):
+    with client(tmp_path) as http:
+        admin = login(http, "admin", "admin-password-123")
+        admin_headers = {"Authorization": f"Bearer {admin}"}
+        user = http.post("/v1/admin/users", headers=admin_headers, json={"username": "pair-owner", "password": "pair-owner-password-123"}).json()["data"]
+        owner_headers = {"Authorization": f"Bearer {login(http, 'pair-owner', 'pair-owner-password-123')}"}
+        assert http.post("/v1/devices", headers=owner_headers, json={"device_id": "owned-device", "platform": "test", "display_name": "Owned"}).status_code == 200
+        pairing = http.post("/v1/pairings/start", headers=admin_headers).json()["data"]["code"]
+        response = http.post("/v1/pairings/confirm", headers=admin_headers, json={"code": pairing, "device_id": "owned-device", "platform": "test", "display_name": "Hijack"})
+        assert response.status_code == 409
+
+
 def test_session_command_idempotency_and_snapshot(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

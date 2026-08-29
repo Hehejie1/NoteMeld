@@ -327,6 +327,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             pairing = cx.execute("SELECT * FROM pairings WHERE code_hash=? AND status='pending' AND expires_at>? AND user_id=?", (digest, now, current["id"])).fetchone()
             if not pairing:
                 raise HTTPException(400, "pairing code expired or invalid")
+            existing_device = cx.execute("SELECT user_id FROM devices WHERE id=?", (payload.device_id,)).fetchone()
+            if existing_device and existing_device["user_id"] != current["id"]:
+                raise HTTPException(409, "device id is already registered to another account")
             cx.execute("INSERT OR REPLACE INTO devices(id,user_id,public_key,platform,display_name,created_at) VALUES(?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now))
             cx.execute("UPDATE pairings SET status='confirmed',device_id=? WHERE id=?", (payload.device_id, pairing["id"]))
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True}}
