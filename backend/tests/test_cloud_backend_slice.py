@@ -872,6 +872,18 @@ def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
             assert socket.receive_json()["error"] == "invalid_envelope"
 
 
+def test_relay_accepts_browser_subprotocol_bearer_auth(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("browser-controller", "browser-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "web", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "browser-controller", "host_device_id": "browser-host", "scopes": ["message.send"]}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=browser-controller", subprotocols=["notemeld.v1", f"bearer.{token}"]) as socket:
+            socket.close()
+
+
 def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

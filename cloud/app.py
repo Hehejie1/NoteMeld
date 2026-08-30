@@ -740,9 +740,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def list_share_tokens(session_id: str | None = None, current=Depends(_auth_dependency(db, required_scope="share.read"))):
         with db.connect() as cx:
             if session_id is None:
-                rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+                rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? ORDER BY created_at DESC, rowid ASC", (current["id"],)).fetchall()
             else:
-                rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? AND session_id=? ORDER BY created_at DESC", (current["id"], session_id)).fetchall()
+                rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? AND session_id=? ORDER BY created_at DESC, rowid ASC", (current["id"], session_id)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
 
     @app.post("/v1/share-tokens/{token_id}/revoke")
@@ -1209,7 +1209,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.websocket("/v1/relay/connect/{session_id}")
     async def relay(websocket: WebSocket, session_id: str):
-        current = _authenticate_token(db, websocket.headers.get("authorization"))
+        auth_header, selected_subprotocol = _websocket_auth(websocket)
+        current = _authenticate_token(db, auth_header)
         device_id = websocket.query_params.get("device_id")
         if not current or not device_id or not _session_owned_by(db, session_id, current["id"]) or not _active_device_owned(db, device_id, current["id"]):
             await websocket.close(code=4401)
@@ -1217,7 +1218,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if settings.require_device_proof and app.state.device_proofs.get((current["id"], device_id), 0) <= int(time.time()):
             await websocket.close(code=4403)
             return
-        await websocket.accept()
+        await websocket.accept(subprotocol=selected_subprotocol)
         with db.connect() as cx:
             cx.execute("UPDATE devices SET last_seen_at=? WHERE id=?", (int(time.time()), device_id))
         previous = app.state.relay_broker.register(session_id, device_id, websocket)
@@ -1316,6 +1317,19 @@ def _authenticate_token(db: CloudDB, authorization: str | None):
     if not row or row["revoked_at"] or row["disabled"] or (row["expires_at"] and row["expires_at"] < int(time.time())):
         return None
     return row
+
+
+def _websocket_auth(websocket: WebSocket) -> tuple[str | None, str | None]:
+    """Read normal Authorization or browser-compatible bearer subprotocol."""
+    authorization = websocket.headers.get("authorization")
+    if authorization:
+        return authorization, None
+    protocols = [item.strip() for item in websocket.headers.get("sec-websocket-protocol", "").split(",") if item.strip()]
+    for protocol in protocols:
+        if protocol.startswith("bearer.") and len(protocol) > len("bearer."):
+            selected = "notemeld.v1" if "notemeld.v1" in protocols else None
+            return f"Bearer {protocol[len('bearer.'):]}" , selected
+    return None, "notemeld.v1" if "notemeld.v1" in protocols else None
 
 
 def _login_rate_limited(db: CloudDB, key: str, now: int, window_seconds: int = 60, max_failures: int = 5) -> bool:
