@@ -1532,6 +1532,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     continue
                 await websocket.send_json({"type": "relay_accepted", "frame_id": envelope["frame_id"]})
         except WebSocketDisconnect:
+            pass
+        finally:
+            # Clean up on disconnects as well as broker/socket failures. The
+            # broker unregister operation is identity-checked, so a replaced
+            # connection cannot remove the newer presence marker.
             await _maybe_await(app.state.relay_broker.unregister(session_id, device_id, websocket))
 
     _start_queued_workers(app, db)
