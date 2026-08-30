@@ -171,6 +171,18 @@ def test_cors_requires_explicit_origin_allowlist(tmp_path):
         assert response.headers["access-control-allow-origin"] == "https://web.example"
 
 
+def test_cors_allows_device_header_and_security_headers(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", cors_origins=("https://web.example",))
+    with TestClient(create_app(settings)) as http:
+        response = http.options("/v1/devices", headers={"Origin": "https://web.example", "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "x-device-id,authorization"})
+        assert response.status_code == 200
+        assert "x-device-id" in response.headers["access-control-allow-headers"].lower()
+        health = http.get("/health")
+        assert health.headers["x-content-type-options"] == "nosniff"
+        assert health.headers["x-frame-options"] == "DENY"
+        assert health.headers["cache-control"] == "no-store"
+
+
 def test_readiness_checks_database_and_workspace(tmp_path):
     with client(tmp_path) as http:
         response = http.get("/ready")

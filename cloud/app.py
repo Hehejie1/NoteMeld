@@ -277,7 +277,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             request._receive = replay_body
         return await call_next(request)
     if settings.cors_origins:
-        app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token"])
+        app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token", "X-Device-Id", "X-Request-Id"])
     app.state.db = db
     app.state.settings = settings
     app.state.agent_runner = create_agent_runner(settings)
@@ -292,6 +292,17 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
     app.state.device_proofs: dict[tuple[str, str], int] = {}
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cache-Control", "no-store")
+        if request.url.scheme == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
     @app.get("/health")
     def health() -> dict:
