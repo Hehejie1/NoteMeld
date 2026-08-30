@@ -109,6 +109,11 @@ loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标�
 | POST/GET | `/api/applications/{app_id}/instances/{instance_id}/runs`、`/api/applications/runs/{run_id}` | run payload / run_id | `run_id`、runtime kind、Run status | Application Host | 本地 | 幂等 payload 冲突、运行策略拒绝、找不到 run |
 | POST | `/api/applications/runs/{run_id}/invoke` | method、input | 应用 runtime result | Application UI/SDK | 本地 | Run 非活动、transport/协议错误 |
 | POST | `/api/applications/runs/{run_id}/capability` | capability、method、input | capability result | Application UI/SDK | 本地 | Run 非活动；未声明 capability 403；不支持 method 501 |
+| GET/PUT | `/api/applications/{app_id}/permissions` | grants: permission → boolean | effective permission state | Application Settings | 本地 | 未申请 permission 403；非法值 400 |
+| PUT | `/api/applications/settings/external-read-roots` | `roots: string[]` | 授权外部读取根目录 | Application Settings | 本地 | 非绝对路径/路径穿越 400 |
+| GET | `/api/applications/jobs/{job_id}`、`/events` | `after_sequence?` | Job 状态/有序事件 | Application UI/SDK | 本地 | job 不存在 404 |
+| GET | `/api/applications/runs/{run_id}/logs` | 无 | 受限 stderr ring buffer | Application Settings/诊断 | 本地 | run 不存在 404 |
+| GET | `/api/applications/artifacts/{artifact_id}/download` | artifact_id | JSON attachment | Application UI/SDK | 本地 | artifact 不存在 404 |
 | POST | `/api/applications/runs/{run_id}/cancel` | path: run_id | 取消后的 Run | Application Host | 本地 | 已终态运行保持终态 |
 | GET/PUT | `/api/applications/settings/workspace` | PUT: 绝对 root | 默认 workspace ref、root、configured | Settings | 本地 | 非绝对路径或越权路径 400 |
 

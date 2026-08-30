@@ -64,10 +64,14 @@ device-remote relay 只在进程内保存 WebSocket peer 集合，不保存正�
 | `application_instances` | `id`, `app_id`, `workspace_ref`, `status` | 应用实例与逻辑 workspace 绑定 |
 | `application_runs` | `run_id`, `app_id`, `instance_id`, `request_id`, `payload_hash`, `runtime_kind`, `status`, `cancel_requested` | 一次应用启动/invocation 的幂等、状态和取消投影 |
 | `application_artifacts` | `artifact_id`, `app_id`, `instance_id`, `run_id`, `kind`, `data_json` | 应用产物引用；当前 API 仅建立模型边界 |
-| `application_settings` | `app_id`, `key`, `value_json` | 应用级或全局应用设置；默认 workspace 使用 `app_id=NULL` |
+| `application_settings` | `app_id`, `key`, `value_json` | 应用级或全局应用设置；默认 workspace 与外部读取根目录使用 `app_id=NULL` |
+| `application_data` | `app_id`, `instance_id`, `key`, `value_json` | 应用实例隔离键值数据；单值 1 MiB、实例总量 10 MiB |
+| `application_permissions` | `app_id`, `permission`, `granted` | 用户对 manifest permission 的覆盖；Host 调用前计算 effective grant |
+| `application_jobs` | `job_id`, `run_id`, `method`, `status`, `result_json` | 应用异步调用 Job 状态与结果 |
+| `application_job_events` | `job_id`, `sequence`, `event_type`, `data_json` | Job 有序事件；按 `after_sequence` 增量读取 |
 | `application_app_migrations` | `migration_id`, `applied_at` | 应用域独立迁移记录 |
 
-应用 manifest 协议名为 `notemeld.application.v1`。内建应用包位于 `applications/<id>/`，其 manifest 是发现和配置的唯一声明入口；发现阶段不执行 UI/backend，用户点击后才进入 runtime/UI 加载。Host 支持按平台选择 `process-jsonl` 与 `managed-worker`：桌面由 Host 监督真实的 stdin/stdout 独立进程，Web 保持受控 invocation seam，外部 worker 部署和用户包安装属于后续 adapter；manifest 禁止公开 listener、绝对路径和路径穿越。应用 workspace 通过 `Path.resolve()` 校验必须位于配置根目录下，Wiki graph/article 继续读取既有 `note_results/wiki` store。
+应用 manifest 协议名为 `notemeld.application.v1`。内建应用包位于 `applications/<id>/`，其 manifest 是发现和配置的唯一声明入口；发现阶段不执行 UI/backend，用户点击后才进入 runtime/UI 加载。Host 支持按平台选择 `process-jsonl` 与 `managed-worker`：桌面由 Host 监督真实的 stdin/stdout 独立进程，Web 保持受控 invocation seam，外部 worker 部署和用户包安装属于后续 adapter；manifest 禁止公开 listener、绝对路径和路径穿越。应用 workspace 通过 `Path.resolve()` 校验必须位于配置根目录下，Wiki graph/article 继续读取既有 `note_results/wiki` store。Runtime v2 的 app data、权限覆盖和 Job/Event 表属于同一独立应用域；外部文件读取只能命中 Host 配置的授权根目录。
 
 N01 冻结 `note_documents.task_id` 为一期 SDK `NoteId` 的 opaque 映射；历史
 task id 不改写，`note_documents` 的标题、Markdown 正文、来源和产品状态是

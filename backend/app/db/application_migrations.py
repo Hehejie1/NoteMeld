@@ -1,7 +1,7 @@
 from app.applications.models import ApplicationMigration
 from app.db.engine import Base
 
-APPLICATION_MIGRATIONS = ("application-host-v1",)
+APPLICATION_MIGRATIONS = ("application-host-v1", "application-runtime-v2")
 
 
 def ensure_application_migration_registry(engine):

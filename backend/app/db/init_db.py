@@ -21,7 +21,7 @@ from app.db.knowledge_schema import ensure_knowledge_schema
 from app.db.plugin_migrations import ensure_plugin_migration_registry
 from app.db.candidate_migrations import ensure_candidate_migration_registry
 from app.db.application_migrations import ensure_application_migration_registry
-from app.applications.models import Application, ApplicationArtifact, ApplicationInstance, ApplicationMigration, ApplicationRun, ApplicationSetting  # noqa: F401
+from app.applications.models import Application, ApplicationArtifact, ApplicationData, ApplicationInstance, ApplicationJob, ApplicationJobEvent, ApplicationMigration, ApplicationPermission, ApplicationRun, ApplicationSetting  # noqa: F401
 from app.applications.service import ApplicationService
 from app.services.conversation_store import bootstrap_conversations_from_storage
 from app.utils.logger import get_logger

@@ -55,6 +55,13 @@
 - 防线：Settings 只配置 Host 根目录；应用收到逻辑 `workspace://applications/{app_id}/instances/{instance_id}`，Host 在 resolve 后确认目标仍位于根目录，并为每个实例创建独立子目录。路径设置必须是绝对路径且禁止 `..`。
 - 检查方式：运行 `backend/tests/test_applications.py` 的 workspace 隔离、非法路径和迁移 registry 测试；检查 `/api/applications/settings/workspace` 始终使用 response wrapper。
 
+## Application v2 权限或异步 Job 越权
+
+- 风险：把 manifest permission 当成已授权，或 async Job 绕过 run/app/instance 校验；外部文件 capability 也可能退化成任意绝对路径读取。
+- 防线：调用前重新校验 run、应用启用状态、capability 声明和 `ApplicationPermission` effective grant；外部文件必须位于 Host 授权根目录，Job 只能通过持久化 `job_id` 和单调 sequence 查询。
+- 不允许：默认授予 network/agent/plugin；应用自行提供外部路径；Job worker 复用失效的 SQLAlchemy session；因 transport 超时自动重放未知副作用。
+- 检查方式：运行 `backend/tests/test_applications.py` 的权限、实例隔离、路径穿越和 async Job 测试；审查 `/applications/jobs/*` 是否只返回安全结果。
+
 本文记录历史踩坑和回归防线。修 Bug、新需求或重构前必须确认不会重新引入这些问题。
 
 ## 官方链接插件回退能力丢失

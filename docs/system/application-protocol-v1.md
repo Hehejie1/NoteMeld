@@ -127,3 +127,18 @@ Wiki v1 adapter 实现 `wiki.read` 的 `graph` 和 `article` 方法。其他 cap
 已实现：外部应用包发现、按需加载、Application Host、workspace/instance/run、桌面 JSONL handshake、Web 本地 managed-worker seam、Wiki capability 和独立 Wiki 静态 UI 的 iframe/Bridge 加载。
 
 后续实现：用户应用包安装/升级、真实云端 worker、完整 Agent/Plugin/File/Artifact adapter、移动端独立 UI 和 Agent 自动生成应用。
+
+## 9. Runtime v2 additive extensions
+
+本节是 v1 协议上的兼容扩展，不改变 `notemeld.application.v1` 标识。应用 capability 仍可使用旧字符串声明；Host 将 `app.data.get|put|list` 规范化为 `app.data`，将 `workspace.file.*` 规范化为 `workspace.file`。
+
+- `app.data`：实例隔离键值存储，支持 `get/put/list/delete`，单值 1 MiB、实例总量 10 MiB。
+- `workspace.file`：实例 workspace 的 `list/read/write/delete`；路径必须为安全相对路径。
+- `workspace.file.read_external`：只读 Host 已授权的外部根目录，不接受任意路径访问。
+- `artifact`：应用实例内创建、读取和下载结构化 Artifact 句柄；本扩展暂不把 Artifact 投影到 Note/导出事实链路。
+- `agent.run`：将应用请求提交给 NoteMeld Agent Host，返回现有 Agent `turn_id/session_id`；应用不得注入独立模型 loop 或绕过 NoteMeld 模型配置。
+- `/invoke` 与 `/capability` 接受 `mode=sync|async`；异步调用返回 `job_id`，Job 通过状态和有序事件查询观察。
+- Desktop `process-jsonl` 可声明 `runtime.command` 的 `program/args/env`；环境变量仅接受 `NOTEMELD_APP_*`，stderr 以最多 200 行 ring buffer 通过 `/runs/{run_id}/logs` 只读查询。
+- `workspace.read/write` 默认对内置应用启用，用户可通过 Application Settings 关闭；manifest 申请的 network/agent/plugin 权限默认关闭。
+
+Host 错误码固定区分：未声明为 `capability_denied`，未授予所需权限为 `permission_denied`，已授权但当前 adapter 未实现为 `capability_unavailable`。v2 仍不开放第三方安装控制面、真实云 worker、移动端和完整 Agent/Plugin/Artifact adapter。

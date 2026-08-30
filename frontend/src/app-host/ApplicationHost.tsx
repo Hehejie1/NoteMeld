@@ -11,6 +11,7 @@ import {
   listApplicationInstances,
   startApplicationRun,
   invokeApplicationCapability,
+  invokeApplicationRun,
   type ApplicationDetail,
   type ApplicationRun,
 } from '@/services/applications'
@@ -95,6 +96,16 @@ export const ApplicationHost = ({ applicationId }: ApplicationHostProps) => {
       if (!message || message.app_id !== applicationId || message.run_id !== run.run_id) return
       if (message.type === 'notemeld.application.ready' && message.app_id === applicationId && message.run_id === run.run_id) {
         frame.contentWindow?.postMessage({ type: 'notemeld.application.host-ready', app_id: applicationId, run_id: run.run_id }, '*')
+        return
+      }
+      if (message.type === 'notemeld.application.invokeRun') {
+        const respond = (payload: Record<string, unknown>) => frame.contentWindow?.postMessage({ type: 'notemeld.application.result', request_id: message.request_id, ...payload }, '*')
+        try {
+          const result = await invokeApplicationRun(run.run_id, message.method, message.input || {}, message.mode || 'sync')
+          respond({ ok: true, result })
+        } catch (cause) {
+          respond({ ok: false, error: { code: 'runtime_failed', message: cause && typeof cause === 'object' && 'msg' in cause ? String(cause.msg) : '应用运行时调用失败' } })
+        }
         return
       }
       if (message.type !== 'notemeld.application.invoke') return

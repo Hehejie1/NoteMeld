@@ -60,6 +60,7 @@ export interface ApplicationWorkspaceSetting {
   workspace_ref: string
   configured: boolean
   root: string
+  external_read_roots?: string[]
 }
 
 export interface ApplicationInstance {
@@ -179,6 +180,9 @@ export const getApplicationWorkspaceSetting = async (): Promise<ApplicationWorks
 export const setApplicationWorkspaceSetting = async (root: string): Promise<ApplicationWorkspaceSetting> =>
   request.put<ApplicationWorkspaceSetting>('/applications/settings/workspace', { root }) as unknown as Promise<ApplicationWorkspaceSetting>
 
+export const setExternalApplicationReadRoots = async (roots: string[]): Promise<{ external_read_roots: string[] }> =>
+  request.put<{ external_read_roots: string[] }>('/applications/settings/external-read-roots', { roots }) as unknown as Promise<{ external_read_roots: string[] }>
+
 export const listApplications = async (): Promise<ApplicationSummary[]> =>
   request.get<ApplicationSummary[]>('/applications') as unknown as Promise<ApplicationSummary[]>
 
@@ -213,16 +217,24 @@ export const invokeApplicationRun = async (
   runId: string,
   method: string,
   input: Record<string, unknown> = {},
+  mode: 'sync' | 'async' = 'sync',
 ): Promise<Record<string, unknown>> =>
-  request.post<Record<string, unknown>>(`/applications/runs/${encodeURIComponent(runId)}/invoke`, { method, input }) as unknown as Promise<Record<string, unknown>>
+  request.post<Record<string, unknown>>(`/applications/runs/${encodeURIComponent(runId)}/invoke`, { method, input, mode }) as unknown as Promise<Record<string, unknown>>
 
 export const invokeApplicationCapability = async <T>(
   runId: string,
   capability: string,
   method: string,
   input: Record<string, unknown> = {},
+  mode: 'sync' | 'async' = 'sync',
 ): Promise<T> =>
-  request.post<T>(`/applications/runs/${encodeURIComponent(runId)}/capability`, { capability, method, input }) as unknown as Promise<T>
+  request.post<T>(`/applications/runs/${encodeURIComponent(runId)}/capability`, { capability, method, input, mode }) as unknown as Promise<T>
+
+export const getApplicationPermissions = async (appId: string): Promise<Record<string, { requested: boolean; granted: boolean }>> =>
+  request.get<Record<string, { requested: boolean; granted: boolean }>>(`${applicationPath(appId)}/permissions`) as unknown as Promise<Record<string, { requested: boolean; granted: boolean }>>
+
+export const setApplicationPermissions = async (appId: string, grants: Record<string, boolean>): Promise<Record<string, { requested: boolean; granted: boolean }>> =>
+  request.put<Record<string, { requested: boolean; granted: boolean }>>(`${applicationPath(appId)}/permissions`, { grants }) as unknown as Promise<Record<string, { requested: boolean; granted: boolean }>>
 
 export const cancelApplicationRun = async (runId: string): Promise<ApplicationRun> =>
   request.post<ApplicationRun>(`/applications/runs/${encodeURIComponent(runId)}/cancel`) as unknown as Promise<ApplicationRun>

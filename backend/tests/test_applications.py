@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.applications.models import Application, ApplicationArtifact, ApplicationInstance, ApplicationMigration, ApplicationRun, ApplicationSetting
+from app.applications.models import Application, ApplicationArtifact, ApplicationData, ApplicationInstance, ApplicationJob, ApplicationJobEvent, ApplicationMigration, ApplicationPermission, ApplicationRun, ApplicationSetting
 from app.applications.runtime import ApplicationRuntime, ApplicationRuntimeError, RuntimeContext
 from app.applications.service import ApplicationRegistry, ApplicationService, WikiCapabilityAdapter
 from app.db.application_migrations import ensure_application_migration_registry
@@ -46,10 +46,10 @@ class FakeWiki:
 @pytest.fixture
 def service(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'applications.db'}")
-    tables = [Application.__table__, ApplicationInstance.__table__, ApplicationRun.__table__, ApplicationArtifact.__table__, ApplicationSetting.__table__, ApplicationMigration.__table__]
+    tables = [Application.__table__, ApplicationInstance.__table__, ApplicationRun.__table__, ApplicationArtifact.__table__, ApplicationSetting.__table__, ApplicationData.__table__, ApplicationPermission.__table__, ApplicationJob.__table__, ApplicationJobEvent.__table__, ApplicationMigration.__table__]
     Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(bind=engine)
-    package_root = ROOT.parent / "notemeld-applications" / "apps"
+    package_root = ROOT.parent.parent / "notemeld-applications" / "apps"
     svc = ApplicationService(
         session_factory=factory,
         registry=ApplicationRegistry(package_root=package_root),
@@ -173,6 +173,63 @@ def test_application_service_recovers_orphaned_runs(service):
     assert recovered == ("interrupted", "host_restarted")
 
 
+def test_application_data_and_workspace_capabilities_are_isolated(service, tmp_path):
+    svc, _ = service
+    instance = svc.create_instance("wiki", instance_id="data-instance")
+    run = svc.start_run("wiki", instance["id"], {})
+    db = svc.session_factory()
+    try:
+        row = db.get(Application, "wiki")
+        row.manifest_json = json.dumps({**VALID_MANIFEST, "capabilities": ["app.data", "workspace.file", "artifact.create", "artifact.read"]})
+        db.commit()
+    finally:
+        db.close()
+    assert svc.invoke_capability(run["run_id"], "app.data", "put", {"key": "draft", "value": {"ok": True}})["exists"] is True
+    assert svc.invoke_capability(run["run_id"], "app.data", "get", {"key": "draft"})["value"] == {"ok": True}
+    assert svc.invoke_capability(run["run_id"], "workspace.file", "write", {"path": "notes/a.txt", "content": "hello"})["bytes"] == 5
+    assert svc.invoke_capability(run["run_id"], "workspace.file", "read", {"path": "notes/a.txt"})["content"] == "hello"
+    artifact = svc.invoke_capability(run["run_id"], "artifact.create", "create", {"kind": "report", "data": {"ok": True}})
+    assert svc.invoke_capability(run["run_id"], "artifact.read", "read", {"artifact_id": artifact["artifact_id"]})["data"] == {"ok": True}
+    with pytest.raises(Exception, match="safe"):
+        svc.invoke_capability(run["run_id"], "workspace.file", "read", {"path": "../secret"})
+    external = tmp_path / "external-application-test.txt"
+    external.write_text("external", encoding="utf-8")
+    try:
+        svc.set_external_read_roots([str(external.parent)])
+        assert svc.invoke_capability(run["run_id"], "workspace.file", "read_external", {"path": str(external)})["content"] == "external"
+    finally:
+        external.unlink(missing_ok=True)
+
+
+def test_permission_grant_and_async_job_contract(service):
+    svc, _ = service
+    instance = svc.create_instance("wiki", instance_id="permission-instance")
+    run = svc.start_run("wiki", instance["id"], {})
+    db = svc.session_factory()
+    try:
+        row = db.get(Application, "wiki")
+        row.manifest_json = json.dumps({**VALID_MANIFEST, "capabilities": ["workspace.file"], "permissions": ["workspace.write"]})
+        db.commit()
+    finally:
+        db.close()
+    assert svc.get_permissions("wiki")["workspace.write"]["granted"] is True
+    svc.set_permissions("wiki", {"workspace.write": False})
+    with pytest.raises(Exception, match="permission required"):
+        svc.invoke_capability(run["run_id"], "workspace.file", "write", {"path": "a.txt", "content": "x"})
+    svc.set_permissions("wiki", {"workspace.write": True})
+    job = svc.invoke_capability(run["run_id"], "workspace.file", "write", {"path": "a.txt", "content": "x"}, mode="async")
+    assert job["mode"] == "async"
+    import time
+    status = svc.get_job(job["job_id"])
+    for _ in range(20):
+        if status["status"] not in {"queued", "running"}:
+            break
+        time.sleep(0.05)
+        status = svc.get_job(job["job_id"])
+    assert status["status"] == "completed"
+    assert [event["type"] for event in svc.job_events(job["job_id"])] == ["accepted", "started", "completed"]
+
+
 def test_run_request_id_is_idempotent_and_conflicting_payload_is_denied(service):
     svc, _ = service
     instance = svc.create_instance("wiki", instance_id="one")
@@ -189,7 +246,7 @@ def test_application_migration_registry_does_not_touch_other_registry_or_user_ve
         connection.execute(text("PRAGMA user_version = 37"))
         connection.execute(text("CREATE TABLE plugin_app_migrations (version INTEGER PRIMARY KEY, marker TEXT)"))
         connection.execute(text("INSERT INTO plugin_app_migrations(version, marker) VALUES (9, 'keep')"))
-    assert ensure_application_migration_registry(engine) == ("application-host-v1",)
+    assert ensure_application_migration_registry(engine) == ("application-host-v1", "application-runtime-v2")
     with engine.connect() as connection:
         assert connection.execute(text("PRAGMA user_version")).scalar() == 37
         assert connection.execute(text("SELECT marker FROM plugin_app_migrations")).scalar() == "keep"

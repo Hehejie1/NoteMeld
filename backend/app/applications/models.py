@@ -70,10 +70,59 @@ class ApplicationSetting(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class ApplicationData(Base):
+    __tablename__ = "application_data"
+    __table_args__ = (UniqueConstraint("app_id", "instance_id", "key", name="uq_application_data_key"),)
+    id = Column(String, primary_key=True)
+    app_id = Column(String, ForeignKey("applications.id"), nullable=False, index=True)
+    instance_id = Column(String, ForeignKey("application_instances.id"), nullable=False, index=True)
+    key = Column(String, nullable=False)
+    value_json = Column(Text, nullable=False, default="null")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ApplicationPermission(Base):
+    __tablename__ = "application_permissions"
+    __table_args__ = (UniqueConstraint("app_id", "permission", name="uq_application_permission"),)
+    id = Column(String, primary_key=True)
+    app_id = Column(String, ForeignKey("applications.id"), nullable=False, index=True)
+    permission = Column(String, nullable=False)
+    granted = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ApplicationJob(Base):
+    __tablename__ = "application_jobs"
+    __table_args__ = (Index("ix_application_jobs_run", "run_id", "created_at"),)
+    job_id = Column(String, primary_key=True)
+    app_id = Column(String, ForeignKey("applications.id"), nullable=False, index=True)
+    instance_id = Column(String, ForeignKey("application_instances.id"), nullable=False, index=True)
+    run_id = Column(String, ForeignKey("application_runs.run_id"), nullable=False, index=True)
+    method = Column(String, nullable=False)
+    input_json = Column(Text, nullable=False, default="{}")
+    status = Column(String, nullable=False, default="queued")
+    result_json = Column(Text, nullable=True)
+    error_code = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ApplicationJobEvent(Base):
+    __tablename__ = "application_job_events"
+    __table_args__ = (UniqueConstraint("job_id", "sequence", name="uq_application_job_event_sequence"),)
+    id = Column(String, primary_key=True)
+    job_id = Column(String, ForeignKey("application_jobs.job_id"), nullable=False, index=True)
+    sequence = Column(Integer, nullable=False)
+    event_type = Column(String, nullable=False)
+    data_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class ApplicationMigration(Base):
     __tablename__ = "application_app_migrations"
     migration_id = Column(String, primary_key=True)
     applied_at = Column(DateTime, server_default=func.now())
 
 
-__all__ = ["Application", "ApplicationArtifact", "ApplicationInstance", "ApplicationMigration", "ApplicationRun", "ApplicationSetting"]
+__all__ = ["Application", "ApplicationArtifact", "ApplicationData", "ApplicationInstance", "ApplicationJob", "ApplicationJobEvent", "ApplicationMigration", "ApplicationPermission", "ApplicationRun", "ApplicationSetting"]

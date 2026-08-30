@@ -6,6 +6,7 @@ import queue
 import subprocess
 import threading
 import uuid
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ class ApplicationRuntime:
     def __init__(self, package_root: Path | None = None):
         self.package_root = (package_root or default_application_package_root()).resolve()
         self._processes: dict[str, subprocess.Popen[str]] = {}
+        self._stderr: dict[str, deque[str]] = {}
 
     def start(self, manifest: dict[str, Any], context: RuntimeContext) -> dict[str, Any]:
         self.check_policy(manifest, context)
@@ -111,7 +113,8 @@ class ApplicationRuntime:
 
     def _start_process(self, manifest: dict[str, Any], context: RuntimeContext) -> None:
         runtime = manifest.get("runtime") or {}
-        entry = runtime.get("entry")
+        command = runtime.get("command") or {}
+        entry = command.get("program") or runtime.get("entry")
         if not entry:
             raise ApplicationRuntimeError("missing_runtime_entry", "process runtime entry is required")
         package_dir = (self.package_root / manifest["id"]).resolve()
@@ -123,18 +126,25 @@ class ApplicationRuntime:
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise ApplicationRuntimeError("missing_runtime_entry", "runtime entry is not executable")
         try:
+            args = [str(executable), *command.get("args", [])]
+            env = {"PATH": os.environ.get("PATH", "")}
+            for key, value in command.get("env", {}).items():
+                if key.startswith("NOTEMELD_APP_"):
+                    env[key] = value
             process = subprocess.Popen(
-                [str(executable)],
+                args,
                 cwd=str(package_dir),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 text=True,
-                env={"PATH": os.environ.get("PATH", "")},
+                env=env,
             )
         except OSError as exc:
             raise ApplicationRuntimeError("runtime_start_failed", "application process could not be started") from exc
         self._processes[context.run_id] = process
+        self._stderr[context.run_id] = deque(maxlen=200)
+        threading.Thread(target=self._capture_stderr, args=(context.run_id, process), daemon=True).start()
         if process.poll() is not None:
             self._processes.pop(context.run_id, None)
             raise ApplicationRuntimeError("runtime_start_failed", "application process exited during startup")
@@ -207,6 +217,15 @@ class ApplicationRuntime:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
+
+    def logs(self, run_id: str) -> list[str]:
+        return list(self._stderr.get(run_id, ()))
+
+    def _capture_stderr(self, run_id: str, process: subprocess.Popen[str]) -> None:
+        if process.stderr is None:
+            return
+        for line in process.stderr:
+            self._stderr.setdefault(run_id, deque(maxlen=200)).append(line.rstrip())
 
     @staticmethod
     def check_policy(manifest: dict[str, Any], context: RuntimeContext) -> None:

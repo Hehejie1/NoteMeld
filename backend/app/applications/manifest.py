@@ -13,7 +13,7 @@ from typing import Any
 PROTOCOL = "notemeld.application.v1"
 SUPPORTED_RUNTIME_KINDS = {"process-jsonl", "managed-worker"}
 SUPPORTED_PLATFORMS = {"desktop", "web", "mobile"}
-CAPABILITIES = {"wiki.read", "workspace.file.read", "workspace.file.write", "app.data.get", "app.data.put", "app.data.list", "artifact.create", "artifact.read", "agent.run", "plugin.invoke"}
+CAPABILITIES = {"wiki.read", "workspace.file", "workspace.file.read", "workspace.file.write", "workspace.file.list", "workspace.file.delete", "workspace.file.read_external", "app.data", "app.data.get", "app.data.put", "app.data.list", "app.data.delete", "artifact.create", "artifact.read", "agent.run", "plugin.invoke"}
 PERMISSIONS = {"workspace.read", "workspace.write", "network.egress", "agent.run", "plugin.invoke"}
 MAX_PACKAGE_BYTES = 64 * 1024 * 1024
 _ID_RE = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
@@ -90,6 +90,17 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
                 raise ApplicationManifestError("unsupported_runtime", f"{platform} application runtime is unsupported")
         if runtime.get("entry") is not None:
             _path(runtime.get("entry"), "runtime.entry")
+        command = runtime.get("command")
+        if command is not None:
+            if not isinstance(command, dict) or not isinstance(command.get("program"), str) or not command["program"].strip():
+                raise ApplicationManifestError("invalid_manifest", "runtime.command.program is required")
+            _path(command["program"], "runtime.command.program")
+            if not isinstance(command.get("args", []), list) or not all(isinstance(item, str) for item in command.get("args", [])):
+                raise ApplicationManifestError("invalid_manifest", "runtime.command.args must be strings")
+            if not isinstance(command.get("env", {}), dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in command.get("env", {}).items()):
+                raise ApplicationManifestError("invalid_manifest", "runtime.command.env must be string values")
+            if any(not key.startswith("NOTEMELD_APP_") for key in command.get("env", {})):
+                raise ApplicationManifestError("unsafe_runtime_env", "runtime.command.env keys must use the NOTEMELD_APP_ namespace")
         if runtime.get("public_listener") is True or runtime.get("listen"):
             raise ApplicationManifestError("public_listener_denied", "applications cannot expose a listener")
     platforms = manifest.get("platforms")
@@ -137,6 +148,8 @@ def validate_package(content: bytes, *, max_bytes: int = MAX_PACKAGE_BYTES) -> t
             runtime = validated.get("runtime") or {}
             if runtime.get("entry"):
                 _require_zip_entry(names, runtime["entry"], "runtime.entry")
+            if runtime.get("command", {}).get("program"):
+                _require_zip_entry(names, runtime["command"]["program"], "runtime.command.program")
     except ApplicationManifestError:
         raise
     except (OSError, ValueError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as exc:
