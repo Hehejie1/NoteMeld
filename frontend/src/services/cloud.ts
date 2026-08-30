@@ -38,10 +38,10 @@ export class CloudClient {
   listAudits(limit = 100) { return this.request<unknown[]>('GET', '/v1/admin/audits', undefined, { params: { limit } }) }
   capabilities() { return this.request<CloudCapabilities>('GET', '/v1/capabilities') }
   listDevices() { return this.request<unknown[]>('GET', '/v1/devices') }
-  registerDevice(deviceId: string, platform: string, displayName: string, publicKey?: string) { return this.request<Record<string, unknown>>('POST', '/v1/devices/register', { device_id: deviceId, platform, display_name: displayName, public_key: publicKey }) }
+  registerDevice(deviceId: string, platform: string, displayName: string, publicKey?: string, lanEndpoints: string[] = []) { return this.request<Record<string, unknown>>('POST', '/v1/devices/register', { device_id: deviceId, platform, display_name: displayName, public_key: publicKey, lan_endpoints: lanEndpoints }) }
   revokeDevice(deviceId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/devices/${encodeURIComponent(deviceId)}`) }
   rotateDeviceKey(deviceId: string, publicKey: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/rotate-key`, { public_key: publicKey }) }
-  heartbeat(deviceId: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/heartbeat`) }
+  heartbeat(deviceId: string, lanEndpoints?: string[]) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/heartbeat`, lanEndpoints === undefined ? undefined : { lan_endpoints: lanEndpoints }) }
   requestDeviceChallenge(deviceId: string) { return this.request<{ challenge: string; expires_at: number }>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/challenge`) }
   verifyDeviceChallenge(deviceId: string, challenge: string, signature: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/challenge/verify`, { challenge, signature }) }
   startPairing() { return this.request<{ code: string; expires_at: number }>('POST', '/v1/pairings/start') }

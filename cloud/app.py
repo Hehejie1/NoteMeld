@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 import fnmatch
+import ipaddress
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
@@ -93,6 +94,21 @@ class DeviceCreate(BaseModel):
     platform: str = Field(min_length=1, max_length=32)
     display_name: str = Field(min_length=1, max_length=128)
     public_key: str | None = None
+    lan_endpoints: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("lan_endpoints")
+    @classmethod
+    def validate_lan_endpoints(cls, value: list[str]) -> list[str]:
+        return _validate_lan_endpoints(value)
+
+
+class DeviceHeartbeat(BaseModel):
+    lan_endpoints: list[str] | None = Field(default=None, max_length=8)
+
+    @field_validator("lan_endpoints")
+    @classmethod
+    def validate_lan_endpoints(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else _validate_lan_endpoints(value)
 
 
 class DeviceKeyRotate(BaseModel):
@@ -556,13 +572,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         with db.connect() as cx:
             try:
-                cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,created_at) VALUES(?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now))
+                cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,connectivity_json,created_at) VALUES(?,?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), now))
             except Exception as exc:
                 if "UNIQUE" in str(exc):
                     existing = cx.execute("SELECT user_id,revoked_at FROM devices WHERE id=?", (payload.device_id,)).fetchone()
                     if not existing or existing["user_id"] != current["id"]:
                         raise HTTPException(409, "device already registered") from exc
-                    cx.execute("UPDATE devices SET public_key=?,platform=?,display_name=?,revoked_at=NULL,last_seen_at=? WHERE id=? AND user_id=?", (payload.public_key, payload.platform, payload.display_name, now, payload.device_id, current["id"]))
+                    cx.execute("UPDATE devices SET public_key=?,platform=?,display_name=?,connectivity_json=?,revoked_at=NULL,last_seen_at=? WHERE id=? AND user_id=?", (payload.public_key, payload.platform, payload.display_name, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), now, payload.device_id, current["id"]))
                 else:
                     raise
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id}}
@@ -570,8 +586,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/devices")
     def list_devices(current=Depends(_auth_dependency(db, required_scope="device.read"))):
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,public_key,platform,display_name,revoked_at,last_seen_at,created_at FROM devices WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
-        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+            rows = cx.execute("SELECT id,public_key,platform,display_name,connectivity_json,revoked_at,last_seen_at,created_at FROM devices WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["connectivity"] = json.loads(item.pop("connectivity_json") or "{}")
+            result.append(item)
+        return {"code": 0, "msg": "success", "data": result}
 
     @app.post("/v1/devices/{device_id}/revoke")
     @app.delete("/v1/devices/{device_id}")
@@ -599,10 +620,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "rotated": True}}
 
     @app.post("/v1/devices/{device_id}/heartbeat")
-    def device_heartbeat(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+    def device_heartbeat(device_id: str, payload: DeviceHeartbeat | None = None, current=Depends(_auth_dependency(db, required_scope="device.write"))):
         now = int(time.time())
         with db.connect() as cx:
-            result = cx.execute("UPDATE devices SET last_seen_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (now, device_id, current["id"]))
+            if payload and payload.lan_endpoints is not None:
+                result = cx.execute("UPDATE devices SET last_seen_at=?,connectivity_json=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (now, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), device_id, current["id"]))
+            else:
+                result = cx.execute("UPDATE devices SET last_seen_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (now, device_id, current["id"]))
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "last_seen_at": now}}
@@ -1637,6 +1661,25 @@ def _validate_model_base_url(value: str) -> None:
         raise HTTPException(422, "model base_url must be an absolute HTTP(S) URL without embedded credentials")
     if any(key.lower() in {"api_key", "apikey", "token", "password", "secret"} for key in (part.split("=", 1)[0] for part in parsed.query.split("&") if part)):
         raise HTTPException(422, "model base_url query must not contain credentials")
+
+
+def _validate_lan_endpoints(value: list[str]) -> list[str]:
+    if len(set(value)) != len(value):
+        raise ValueError("duplicate LAN endpoint")
+    result: list[str] = []
+    for endpoint in value:
+        if len(endpoint) > 128 or ":" not in endpoint:
+            raise ValueError("LAN endpoint must be host:port")
+        host, port_text = endpoint.rsplit(":", 1)
+        try:
+            address = ipaddress.ip_address(host.strip("[]"))
+            port = int(port_text)
+        except ValueError as exc:
+            raise ValueError("LAN endpoint must contain a valid IP and port") from exc
+        if not (address.is_private or address.is_loopback or address.is_link_local) or not 1 <= port <= 65535:
+            raise ValueError("LAN endpoint must be a private or local address")
+        result.append(endpoint)
+    return result
 
 
 def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None) -> tuple[list[dict[str, Any]], Any]:

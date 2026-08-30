@@ -80,8 +80,8 @@ class CloudClient:
     def list_audits(self, limit: int = 100) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/admin/audits", params={"limit": limit})
 
-    def register_device(self, device_id: str, platform: str, display_name: str, public_key: str | None = None) -> dict[str, Any]:
-        return self._request("POST", "/v1/devices", json={"device_id": device_id, "platform": platform, "display_name": display_name, "public_key": public_key})
+    def register_device(self, device_id: str, platform: str, display_name: str, public_key: str | None = None, lan_endpoints: list[str] | None = None) -> dict[str, Any]:
+        return self._request("POST", "/v1/devices", json={"device_id": device_id, "platform": platform, "display_name": display_name, "public_key": public_key, "lan_endpoints": lan_endpoints or []})
 
     def list_devices(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/devices")
@@ -104,8 +104,9 @@ class CloudClient:
     def list_grants(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/grants")
 
-    def heartbeat(self, device_id: str | None = None) -> dict[str, Any]:
-        return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat")
+    def heartbeat(self, device_id: str | None = None, lan_endpoints: list[str] | None = None) -> dict[str, Any]:
+        payload = None if lan_endpoints is None else {"lan_endpoints": lan_endpoints}
+        return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat", json=payload)
 
     def request_device_challenge(self, device_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/challenge")

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 CREATE TABLE IF NOT EXISTS devices (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), public_key TEXT,
-  platform TEXT NOT NULL, display_name TEXT NOT NULL, revoked_at INTEGER, last_seen_at INTEGER, created_at INTEGER NOT NULL
+  platform TEXT NOT NULL, display_name TEXT NOT NULL, connectivity_json TEXT NOT NULL DEFAULT '{}', revoked_at INTEGER, last_seen_at INTEGER, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS pairings (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), code_hash TEXT NOT NULL UNIQUE,
@@ -135,6 +135,8 @@ class CloudDB:
             device_columns = {row[1] for row in connection.execute("PRAGMA table_info(devices)").fetchall()}
             if "last_seen_at" not in device_columns:
                 connection.execute("ALTER TABLE devices ADD COLUMN last_seen_at INTEGER")
+            if "connectivity_json" not in device_columns:
+                connection.execute("ALTER TABLE devices ADD COLUMN connectivity_json TEXT NOT NULL DEFAULT '{}'")
             archive_columns = {row[1] for row in connection.execute("PRAGMA table_info(session_archives)").fetchall()}
             if "device_id" not in archive_columns:
                 connection.execute("PRAGMA foreign_keys=OFF")
