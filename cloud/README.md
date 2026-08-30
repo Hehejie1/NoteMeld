@@ -14,7 +14,11 @@ PYTHONPATH=. uvicorn cloud.main:app --host 127.0.0.1 --port 8583
 The first slice provides an isolated FastAPI control plane, SQLite metadata,
 local-disk cloud workspaces, admin/user authentication, cloud-native session
 commands, and an in-memory WebSocket relay fixture. The relay intentionally
-does not persist payloads and is not a production deployment.
+does not persist payloads and is not a production deployment. WebSocket routing
+uses the `RelayBroker` interface (`cloud/relay.py`); the default
+`InMemoryRelayBroker` is intentionally single-process. A multi-instance
+deployment must provide a transient Pub/Sub implementation behind that
+interface before placing multiple workers behind a load balancer.
 Install `cloud/requirements.txt` for the optional client-side E2EE primitives
 (X25519, Ed25519, HKDF and ChaCha20-Poly1305). The relay never imports or uses
 the decrypt path.
