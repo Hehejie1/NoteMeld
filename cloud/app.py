@@ -287,6 +287,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     _bootstrap_admin(db, settings)
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        application.state.worker_shutdown.clear()
+        _start_queued_workers(application, db)
         yield
         _stop_queued_workers(application)
         close_relay = getattr(application.state, "relay_broker", None)
