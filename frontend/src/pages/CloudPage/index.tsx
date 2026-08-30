@@ -22,6 +22,7 @@ export default function CloudPage() {
   const [deviceId] = useState(() => makeDeviceId('web'))
   const [client, setClient] = useState(() => new CloudClient(baseUrl, undefined, deviceId))
   const [secureStorageReady, setSecureStorageReady] = useState(false)
+  const [secureStorageError, setSecureStorageError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string>()
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
   const [showArchived, setShowArchived] = useState(false)
@@ -30,7 +31,7 @@ export default function CloudPage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [archiveAction, setArchiveAction] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
-  useEffect(() => { let active = true; void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, deviceId, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl, deviceId])
+  useEffect(() => { let active = true; void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, deviceId, store)); setSecureStorageReady(true); setSecureStorageError(null) } }).catch(() => { if (active) setSecureStorageError('Secure browser storage is unavailable. Cloud sign-in is disabled on this browser.') }); return () => { active = false } }, [baseUrl, deviceId])
   const auth = useCloudAuth(client)
   useEffect(() => {
     if (!auth.authenticated) return
@@ -40,6 +41,7 @@ export default function CloudPage() {
     const timer = window.setInterval(announce, 30_000)
     return () => { active = false; window.clearInterval(timer) }
   }, [auth.authenticated, client, deviceId])
+  if (secureStorageError) return <main role="alert" className="p-6 text-sm text-red-700">{secureStorageError}</main>
   if (!secureStorageReady) return <main aria-busy="true" className="p-6 text-sm text-slate-500">Preparing secure cloud storage…</main>
   async function createSession() {
     setCreating(true); setCreateError(null)
