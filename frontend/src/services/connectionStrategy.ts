@@ -1,6 +1,22 @@
 export interface DeviceConnectivity { lan_endpoints?: string[] }
 export interface ConnectionCandidate { transport: 'lan' | 'relay'; url: string }
 
+function isPrivateLanEndpoint(endpoint: string): boolean {
+  const separator = endpoint.lastIndexOf(':')
+  if (separator <= 0) return false
+  const host = endpoint.slice(0, separator).replace(/^\[|\]$/g, '').toLowerCase()
+  const port = Number(endpoint.slice(separator + 1))
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return false
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipv4) {
+    const octets = ipv4.slice(1).map(Number)
+    if (octets.some(value => value > 255)) return false
+    return octets[0] === 10 || octets[0] === 127 || (octets[0] === 169 && octets[1] === 254) ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) || (octets[0] === 192 && octets[1] === 168)
+  }
+  return host === '::1' || host.startsWith('fc') || host.startsWith('fd') || /^fe[89ab]/.test(host)
+}
+
 export async function connectWithFallback<T>(candidates: ConnectionCandidate[], connect: (candidate: ConnectionCandidate, signal: AbortSignal) => Promise<T>, timeoutMs = 3_000): Promise<{ connection: T; candidate: ConnectionCandidate }> {
   let lastError: unknown = new Error('no connection candidates')
   for (const candidate of candidates) {
@@ -28,6 +44,7 @@ export function connectionCandidates(cloudBaseUrl: string, sessionId: string, de
   for (const endpoint of device.lan_endpoints ?? []) {
     const normalized = endpoint.trim()
     if (!normalized) continue
+    if (!isPrivateLanEndpoint(normalized)) throw new Error('invalid private LAN endpoint')
     const host = normalized.includes(':') && normalized.includes('::') && !normalized.startsWith('[')
       ? `[${normalized.slice(0, normalized.lastIndexOf(':'))}]:${normalized.slice(normalized.lastIndexOf(':') + 1)}`
       : normalized
