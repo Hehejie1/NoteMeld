@@ -254,6 +254,18 @@ def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
         assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "api_key": "secret", "unexpected": "must-reject"}).status_code == 422
 
 
+def test_cloud_model_update_reports_encryption_dependency_failure(tmp_path, monkeypatch):
+    import cloud.app as cloud_app
+
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        model = http.post("/v1/models", headers=headers, json={"name": "NoKey", "provider": "x", "model": "x"}).json()["data"]
+        monkeypatch.setattr(cloud_app, "encrypt_secret", lambda value, key: (_ for _ in ()).throw(RuntimeError("missing crypto")))
+        response = http.put(f"/v1/models/{model['id']}", headers=headers, json={"api_key": "secret"})
+        assert response.status_code == 503
+
+
 def test_cloud_session_model_id_selects_registered_runner(tmp_path, monkeypatch):
     from cloud.agent import AgentResult
 

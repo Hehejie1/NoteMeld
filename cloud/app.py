@@ -508,7 +508,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             _validate_model_base_url(changes["base_url"])
         master_key = app.state.settings.secret_key or app.state.settings.admin_password
         if "api_key" in changes:
-            changes["api_key_ciphertext"] = encrypt_secret(changes.pop("api_key"), master_key) if changes["api_key"] else None
+            try:
+                changes["api_key_ciphertext"] = encrypt_secret(changes.pop("api_key"), master_key) if changes["api_key"] else None
+            except RuntimeError as exc:
+                raise HTTPException(503, "secret encryption is unavailable") from exc
         if "enabled" in changes:
             changes["enabled"] = int(changes["enabled"])
         if "is_default" in changes:
