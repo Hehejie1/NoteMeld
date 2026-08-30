@@ -15,6 +15,7 @@ import uuid
 import fnmatch
 import ipaddress
 import re
+import weakref
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
@@ -337,9 +338,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.agent_runner = create_agent_runner(settings)
     app.state.command_locks: dict[str, threading.RLock] = {}
     app.state.command_locks_guard = threading.RLock()
-    app.state.workspace_locks: dict[str, threading.RLock] = {}
+    app.state.workspace_locks = weakref.WeakValueDictionary()
     app.state.workspace_locks_guard = threading.RLock()
-    app.state.user_locks: dict[str, threading.RLock] = {}
+    app.state.user_locks = weakref.WeakValueDictionary()
     app.state.user_locks_guard = threading.RLock()
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
