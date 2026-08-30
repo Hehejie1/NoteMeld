@@ -36,13 +36,14 @@ from .lan_transport import (
 from .protocol import RemoteFrame, SessionCommand
 from .queue import DurableSessionMailbox, SessionMailbox
 from .remote_host import RemoteHostAuthority, RemoteHostError, RemoteHostReceipt
-from .runtime import CloudSyncHostRuntime
+from .runtime import CloudSyncHostRuntime, attach_cloud_sync_runtime
 from .token_store import EncryptedTokenStore
 
 __all__ = [
     "CloudClient",
     "CloudClientError",
     "CloudSyncHostRuntime",
+    "attach_cloud_sync_runtime",
     "ConnectionCandidate",
     "DurableSessionMailbox",
     "EncryptedTokenStore",

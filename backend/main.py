@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI):
     _cfg = TranscriberConfigManager().get_config()
     logger.info(f"当前转写器配置: type={_cfg['transcriber_type']}, model_size={_cfg['whisper_model_size']}")
     runtime_settings = resolve_runtime_settings()
+    cloud_sync_runtime = getattr(app.state, "cloud_sync_runtime", None)
+    if cloud_sync_runtime is not None:
+        cloud_sync_runtime.install(app)
+        logger.info("Cloud sync Host runtime installed")
     host = get_agent_sdk_host()
     descriptor_root = data_root()
     descriptor = None
@@ -76,6 +80,8 @@ async def lifespan(app: FastAPI):
         logger.info("Agent SDK Host started: descriptor=%s", descriptor)
         yield
     finally:
+        if cloud_sync_runtime is not None:
+            cloud_sync_runtime.close()
         close_agent_sdk_host()
         if descriptor is not None:
             remove_descriptor(descriptor_root)

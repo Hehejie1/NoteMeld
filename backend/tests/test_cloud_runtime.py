@@ -7,7 +7,7 @@ import time
 from fastapi import FastAPI
 import pytest
 
-from app.cloud_sync import CloudSyncHostRuntime, RemoteFrame, SessionCipher
+from app.cloud_sync import CloudSyncHostRuntime, RemoteFrame, SessionCipher, attach_cloud_sync_runtime
 from app.cloud_sync.lan_auth import LanPeerAuthorization
 
 
@@ -93,6 +93,25 @@ def test_host_runtime_install_is_explicit(tmp_path):
     app = FastAPI()
     runtime.install(app)
     assert app.state.lan_direct_service is runtime.service
+
+
+def test_host_runtime_can_be_attached_once_for_backend_lifecycle(tmp_path):
+    runtime = CloudSyncHostRuntime(
+        cloud_client=_CloudStub(),  # type: ignore[arg-type]
+        host_device_id="host-device",
+        mailbox_path=tmp_path / "mailbox.sqlite",
+        cipher_resolver=lambda _: SessionCipher(b"k" * 32),
+    )
+    app = FastAPI()
+    attach_cloud_sync_runtime(app, runtime)
+    assert app.state.cloud_sync_runtime is runtime
+    with pytest.raises(RuntimeError, match="already attached"):
+        attach_cloud_sync_runtime(app, CloudSyncHostRuntime(
+            cloud_client=_CloudStub(),  # type: ignore[arg-type]
+            host_device_id="host-device",
+            mailbox_path=tmp_path / "other.sqlite",
+            cipher_resolver=lambda _: SessionCipher(b"k" * 32),
+        ))
 
 
 def test_host_runtime_exposes_explicit_presence_heartbeat(tmp_path):

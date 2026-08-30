@@ -198,3 +198,18 @@ class CloudSyncHostRuntime:
             authority,
             self._cipher_resolver,
         )(frame, authorization)
+
+
+def attach_cloud_sync_runtime(app: FastAPI, runtime: CloudSyncHostRuntime) -> None:
+    """Register a platform-constructed runtime for the backend lifespan.
+
+    The caller must construct ``runtime`` with platform secure-storage
+    credentials. This helper only stores the dependency; it never reads
+    tokens or private keys from process environment variables.
+    """
+    if not isinstance(runtime, CloudSyncHostRuntime):
+        raise TypeError("runtime must be a CloudSyncHostRuntime")
+    existing = getattr(app.state, "cloud_sync_runtime", None)
+    if existing is not None and existing is not runtime:
+        raise RuntimeError("cloud sync runtime is already attached")
+    app.state.cloud_sync_runtime = runtime
