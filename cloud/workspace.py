@@ -28,7 +28,7 @@ class Workspace:
 
     def _cleanup_interrupted_writes(self) -> None:
         """Remove only temporary files produced by this workspace writer."""
-        generated = re.compile(r"^\..+\.(?:\d+(?:\.copy)?|[A-Za-z0-9_-]+)\.tmp$")
+        generated = re.compile(r"^\..+\.[A-Za-z0-9_-]+(?:\.copy)?\.tmp$")
         for path in self.root.rglob("*"):
             if path.is_file() and generated.match(path.name):
                 try:
@@ -117,16 +117,25 @@ class Workspace:
 
     def create_backup(self, destination: Path) -> int:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_suffix(destination.suffix + f".{os.getpid()}.tmp")
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for path in self.root.rglob("*"):
-                if path.is_symlink() or not path.is_file():
-                    continue
-                archive.write(path, path.relative_to(self.root).as_posix())
-        with temporary.open("rb") as handle:
-            os.fsync(handle.fileno())
-        temporary.replace(destination)
-        _fsync_directory(destination.parent)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            os.chmod(temporary, 0o600)
+            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for path in self.root.rglob("*"):
+                    if path.is_symlink() or not path.is_file():
+                        continue
+                    archive.write(path, path.relative_to(self.root).as_posix())
+            with temporary.open("rb") as handle:
+                os.fsync(handle.fileno())
+            temporary.replace(destination)
+            _fsync_directory(destination.parent)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
         return destination.stat().st_size
 
     def restore_backup(self, archive_path: Path, max_bytes: int, max_files: int | None = None) -> dict[str, int]:
@@ -178,12 +187,21 @@ class Workspace:
             relative = source.relative_to(self.root).as_posix()
             target = destination.path(relative)
             target.parent.mkdir(parents=True, exist_ok=True)
-            temporary = target.with_name(f".{target.name}.{os.getpid()}.copy.tmp")
-            shutil.copyfile(source, temporary)
-            with temporary.open("rb") as handle:
-                os.fsync(handle.fileno())
-            temporary.replace(target)
-            _fsync_directory(target.parent)
+            descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".copy.tmp", dir=target.parent)
+            os.close(descriptor)
+            temporary = Path(temporary_name)
+            try:
+                os.chmod(temporary, 0o600)
+                shutil.copyfile(source, temporary)
+                with temporary.open("rb") as handle:
+                    os.fsync(handle.fileno())
+                temporary.replace(target)
+                _fsync_directory(target.parent)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
             copied += 1
         return {"file_count": copied, "bytes_copied": stats["bytes_used"]}
 

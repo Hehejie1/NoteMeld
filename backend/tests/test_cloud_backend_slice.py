@@ -946,6 +946,20 @@ def test_workspace_concurrent_writes_use_distinct_atomic_temporary_files(tmp_pat
         assert (tmp_path / "concurrent" / "shared.txt").stat().st_mode & 0o777 == 0o600
 
 
+def test_workspace_backup_and_copy_concurrent_operations_leave_no_temporary_files(tmp_path):
+    from cloud.workspace import Workspace
+
+    source = Workspace(tmp_path / "source")
+    destination = Workspace(tmp_path / "destination")
+    source.write_text("notes/a.txt", "content")
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda index: source.create_backup(tmp_path / "backups" / f"backup-{index}.zip"), range(4)))
+        list(pool.map(lambda _: source.copy_to(destination, 1024), range(4)))
+    assert len(list((tmp_path / "backups").glob("backup-*.zip"))) == 4
+    assert not list((tmp_path / "source").glob(".*.tmp"))
+    assert not list((tmp_path / "destination").rglob(".*.copy.tmp"))
+
+
 def test_workspace_file_count_quota_applies_to_writes_and_restore(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production", max_workspace_files=1)
     with TestClient(create_app(settings)) as http:
