@@ -15,4 +15,4 @@ COPY cloud /app/cloud
 USER notemeld
 
 EXPOSE 8583
-CMD ["uvicorn", "cloud.main:app", "--host", "0.0.0.0", "--port", "8583"]
+CMD ["sh", "-c", "exec uvicorn cloud.main:app --host 0.0.0.0 --port 8583 --workers ${WEB_CONCURRENCY:-1}"]

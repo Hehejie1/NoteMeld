@@ -103,6 +103,19 @@ docker run --rm -p 8583:8583 \
   notemeld-cloud
 ```
 
+For the bundled two-worker relay profile, set
+`NOTEMELD_CLOUD_RELAY_BACKEND=redis`,
+`NOTEMELD_CLOUD_RELAY_URL=redis://redis:6379/0`, and
+`WEB_CONCURRENCY=2` in the compose environment, then run:
+
+```bash
+docker compose -f cloud/compose.yaml --profile relay up --build
+```
+
+The bundled Redis profile disables Redis persistence because relay payloads are
+ephemeral by design; use a separately managed TLS Redis service when durable
+infrastructure or high availability is required.
+
 For repeatable local deployment, copy the admin variables into an environment
 file (see `cloud/.env.example`) and run `docker compose -f cloud/compose.yaml up --build` from the
 repository root. The compose healthcheck uses `/ready` and persists data in

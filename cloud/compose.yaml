@@ -30,12 +30,25 @@ services:
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
     volumes:
       - notemeld-cloud-data:/var/lib/notemeld-cloud
+    command: ["sh", "-c", "exec uvicorn cloud.main:app --host 0.0.0.0 --port 8583 --workers $${WEB_CONCURRENCY:-1}"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8583/ready', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  redis:
+    profiles: ["relay"]
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   notemeld-cloud-data:
