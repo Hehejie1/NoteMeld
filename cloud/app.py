@@ -4,7 +4,7 @@ import hashlib
 import base64
 import binascii
 import heapq
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 import json
 import os
 import secrets
@@ -337,6 +337,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.agent_runner = create_agent_runner(settings)
     app.state.command_locks: dict[str, threading.RLock] = {}
     app.state.command_locks_guard = threading.RLock()
+    app.state.workspace_locks: dict[str, threading.RLock] = {}
+    app.state.workspace_locks_guard = threading.RLock()
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
     app.state.worker_shutdown = threading.Event()
@@ -1189,18 +1191,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def write_workspace_file(workspace_id: str, logical_path: str, payload: WorkspaceWrite, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
-        try:
-            existing_size = workspace.path(logical_path).stat().st_size if workspace.path(logical_path).is_file() else 0
-            projected = workspace.stats()["bytes_used"] - existing_size + len(payload.content.encode("utf-8"))
-            if projected > settings.max_workspace_bytes:
-                raise HTTPException(413, "workspace quota exceeded")
-            if existing_size == 0 and not workspace.path(logical_path).exists() and workspace.stats()["file_count"] >= settings.max_workspace_files:
-                raise HTTPException(413, "workspace file-count quota exceeded")
-            workspace.write_text(logical_path, payload.content)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(400, str(exc)) from exc
+        with _workspace_lock(app, current["id"], workspace_id):
+            try:
+                existing_size = workspace.path(logical_path).stat().st_size if workspace.path(logical_path).is_file() else 0
+                projected = workspace.stats()["bytes_used"] - existing_size + len(payload.content.encode("utf-8"))
+                if projected > settings.max_workspace_bytes:
+                    raise HTTPException(413, "workspace quota exceeded")
+                if existing_size == 0 and not workspace.path(logical_path).exists() and workspace.stats()["file_count"] >= settings.max_workspace_files:
+                    raise HTTPException(413, "workspace file-count quota exceeded")
+                workspace.write_text(logical_path, payload.content)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(400, str(exc)) from exc
         _audit(db, current["id"], "workspace.file.write", logical_path, {"workspace_id": workspace_id, "bytes": len(payload.content.encode("utf-8"))})
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
 
@@ -1208,10 +1211,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def delete_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
-        try:
-            workspace.delete_file(logical_path)
-        except Exception as exc:
-            raise HTTPException(400, str(exc)) from exc
+        with _workspace_lock(app, current["id"], workspace_id):
+            try:
+                workspace.delete_file(logical_path)
+            except Exception as exc:
+                raise HTTPException(400, str(exc)) from exc
         _audit(db, current["id"], "workspace.file.delete", logical_path, {"workspace_id": workspace_id})
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "deleted": True}}
 
@@ -1221,7 +1225,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         backup_id = f"{int(time.time())}-{secrets.token_urlsafe(8)}"
         destination = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
-        size = workspace.create_backup(destination)
+        with _workspace_lock(app, current["id"], workspace_id):
+            size = workspace.create_backup(destination)
         _audit(db, current["id"], "workspace.backup.create", backup_id, {"workspace_id": workspace_id, "bytes": size})
         return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": size, "created_at": int(time.time())}}
 
@@ -1258,10 +1263,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", backup_id):
             raise HTTPException(422, "invalid backup id")
         archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
-        try:
-            archive.unlink()
-        except FileNotFoundError as exc:
-            raise HTTPException(404, "backup not found") from exc
+        with _workspace_lock(app, current["id"], workspace_id):
+            try:
+                archive.unlink()
+            except FileNotFoundError as exc:
+                raise HTTPException(404, "backup not found") from exc
         _audit(db, current["id"], "workspace.backup.delete", backup_id, {"workspace_id": workspace_id})
         return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "deleted": True}}
 
@@ -1270,10 +1276,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _validate_workspace_id(workspace_id)
         archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{payload.backup_id}.zip"
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
-        try:
-            restored = workspace.restore_backup(archive, settings.max_workspace_bytes, settings.max_workspace_files)
-        except Exception as exc:
-            raise HTTPException(400, str(exc)) from exc
+        with _workspace_lock(app, current["id"], workspace_id):
+            try:
+                restored = workspace.restore_backup(archive, settings.max_workspace_bytes, settings.max_workspace_files)
+            except Exception as exc:
+                raise HTTPException(400, str(exc)) from exc
         _audit(db, current["id"], "workspace.backup.restore", payload.backup_id, {"workspace_id": workspace_id, **restored})
         return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
 
@@ -1391,7 +1398,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": "expired", "idempotent": True}}
             if payload.status == "approved":
                 try:
-                    _execute_approved_tool(settings=app.state.settings, session=session, user_id=current["id"], tool_name=approval["tool_name"], arguments=json.loads(approval["arguments_json"]))
+                    _execute_approved_tool(app=app, settings=app.state.settings, session=session, user_id=current["id"], tool_name=approval["tool_name"], arguments=json.loads(approval["arguments_json"]))
                 except Exception as exc:
                     cx.execute("UPDATE approvals SET status='rejected',resolved_by=?,resolution_note=?,resolved_at=? WHERE id=? AND status='pending'", (current["id"], "execution failed", now, approval_id))
                     cx.execute("COMMIT")
@@ -1852,6 +1859,23 @@ def _ensure_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: 
         worker.start()
 
 
+@contextmanager
+def _workspace_lock(app: FastAPI, user_id: str, workspace_id: str):
+    """Serialize quota check and filesystem mutation within one worker.
+
+    Filesystem writes are atomic, but quota accounting spans multiple reads and
+    would otherwise admit concurrent requests that each observe stale usage.
+    Multi-worker deployments still rely on the API's per-process isolation and
+    should use a single writer or an external coordination layer for strict
+    cross-process quota enforcement.
+    """
+    key = f"{user_id}\0{workspace_id}"
+    with app.state.workspace_locks_guard:
+        lock = app.state.workspace_locks.setdefault(key, threading.RLock())
+    with lock:
+        yield
+
+
 def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
     with db.connect() as cx:
         rows = cx.execute("SELECT DISTINCT s.id,s.user_id FROM sessions s JOIN commands c ON c.session_id=s.id WHERE c.status='queued'").fetchall()
@@ -2043,26 +2067,27 @@ def _cloud_history(db: CloudDB, session_id: str, *, exclude_command_id: str | No
     return bounded
 
 
-def _execute_approved_tool(*, settings: CloudSettings, session: Any, user_id: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def _execute_approved_tool(*, app: FastAPI, settings: CloudSettings, session: Any, user_id: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     workspace = Workspace(settings.workspaces_dir / user_id / str(session["workspace_id"]))
     path = arguments.get("path")
     if not isinstance(path, str) or len(path) > 1024:
         raise ValueError("invalid workspace path")
-    if tool_name == "workspace.write":
-        content = arguments.get("content")
-        if not isinstance(content, str):
-            raise ValueError("content must be text")
-        existing = workspace.path(path).stat().st_size if workspace.path(path).is_file() else 0
-        projected = workspace.stats()["bytes_used"] - existing + len(content.encode("utf-8"))
-        if projected > settings.max_workspace_bytes:
-            raise ValueError("workspace quota exceeded")
-        if existing == 0 and not workspace.path(path).exists() and workspace.stats()["file_count"] >= settings.max_workspace_files:
-            raise ValueError("workspace file-count quota exceeded")
-        workspace.write_text(path, content)
-        return {"ok": True, "path": path, "bytes_written": len(content.encode("utf-8"))}
-    if tool_name == "workspace.delete":
-        workspace.delete_file(path)
-        return {"ok": True, "path": path, "deleted": True}
+    with _workspace_lock(app, user_id, str(session["workspace_id"])):
+        if tool_name == "workspace.write":
+            content = arguments.get("content")
+            if not isinstance(content, str):
+                raise ValueError("content must be text")
+            existing = workspace.path(path).stat().st_size if workspace.path(path).is_file() else 0
+            projected = workspace.stats()["bytes_used"] - existing + len(content.encode("utf-8"))
+            if projected > settings.max_workspace_bytes:
+                raise ValueError("workspace quota exceeded")
+            if existing == 0 and not workspace.path(path).exists() and workspace.stats()["file_count"] >= settings.max_workspace_files:
+                raise ValueError("workspace file-count quota exceeded")
+            workspace.write_text(path, content)
+            return {"ok": True, "path": path, "bytes_written": len(content.encode("utf-8"))}
+        if tool_name == "workspace.delete":
+            workspace.delete_file(path)
+            return {"ok": True, "path": path, "deleted": True}
     raise ValueError("unsupported approval tool")
 
 
