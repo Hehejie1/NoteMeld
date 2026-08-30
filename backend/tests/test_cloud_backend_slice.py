@@ -1038,7 +1038,8 @@ def test_login_bruteforce_limit(tmp_path):
     with client(tmp_path) as http:
         for _ in range(5):
             assert http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 401
-        assert http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 429
+        limited = http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"})
+        assert limited.status_code == 429 and limited.headers["retry-after"] == "60"
 
 
 def test_login_bruteforce_limit_survives_process_restart(tmp_path):

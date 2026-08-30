@@ -358,14 +358,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         key = f"{request.client.host if request.client else 'unknown'}:{payload.account_id or payload.username or ''}"
         now = int(time.time())
         if _login_rate_limited(db, key, now):
-            raise HTTPException(429, "too many login attempts")
+            raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
         if not payload.username and not payload.account_id:
             raise HTTPException(400, "username or account_id is required")
         user = _user_by_account_id(db, payload.account_id) if payload.account_id else _user_by_username(db, payload.username or "")
         if not user or user["disabled"] or not verify_password(payload.password, user["password_hash"]):
             failures = _record_login_failure(db, key, now)
             if failures > 5:
-                raise HTTPException(429, "too many login attempts")
+                raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
             raise HTTPException(401, "invalid credentials")
         _clear_login_failures(db, key)
         raw, digest = issue_token()
