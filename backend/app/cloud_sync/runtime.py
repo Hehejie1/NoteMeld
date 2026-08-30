@@ -32,14 +32,19 @@ class CloudSyncHostRuntime:
         mailbox_path: Path,
         cipher_resolver: Callable[[LanPeerAuthorization], SessionCipher],
         mailbox_max_size: int = 1000,
+        authorization_refresh_seconds: float = 5.0,
     ):
         if cloud_client.device_id != host_device_id:
             raise ValueError("CloudClient must be bound to the host device")
+        if authorization_refresh_seconds <= 0 or authorization_refresh_seconds > 60:
+            raise ValueError("authorization refresh interval must be between 0 and 60 seconds")
         self.cloud_client = cloud_client
         self.host_device_id = host_device_id
         self.mailbox = DurableSessionMailbox(mailbox_path, max_size=mailbox_max_size)
         self._cipher_resolver = cipher_resolver
         self._authorizations: dict[tuple[str, str], LanPeerAuthorization] = {}
+        self._authorization_checked_at: dict[tuple[str, str], float] = {}
+        self._authorization_refresh_seconds = authorization_refresh_seconds
         self._authorities: dict[str, RemoteHostAuthority] = {}
         self._lock = Lock()
         from .lan_auth import LanPeerAuthenticator
@@ -109,7 +114,9 @@ class CloudSyncHostRuntime:
             valid_until=int(time.time()) + ttl_seconds,
         )
         with self._lock:
-            self._authorizations[(session_id, controller_device_id)] = authorization
+            key = (session_id, controller_device_id)
+            self._authorizations[key] = authorization
+            self._authorization_checked_at[key] = time.time()
         return assertion
 
     def _authority_for(self, session_id: str) -> RemoteHostAuthority:
@@ -123,10 +130,21 @@ class CloudSyncHostRuntime:
                 controller_device_id: str,
                 epoch: int,
             ) -> bool:
+                key = (authorized_session_id, controller_device_id)
                 with self._lock:
-                    assertion = self._authorizations.get(
-                        (authorized_session_id, controller_device_id)
-                    )
+                    assertion = self._authorizations.get(key)
+                    checked_at = self._authorization_checked_at.get(key, 0.0)
+                if assertion and time.time() - checked_at >= self._authorization_refresh_seconds:
+                    try:
+                        self._authorize_lan_peer(
+                            authorized_session_id,
+                            controller_device_id,
+                            self.host_device_id,
+                        )
+                    except Exception:  # noqa: BLE001 - revocation/network errors fail closed
+                        return False
+                    with self._lock:
+                        assertion = self._authorizations.get(key)
                 return bool(
                     assertion
                     and assertion.session_id == authorized_session_id
