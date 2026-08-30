@@ -1,5 +1,6 @@
 export interface DeviceConnectivity { lan_endpoints?: string[] }
 export interface ConnectionCandidate { transport: 'lan' | 'relay'; url: string }
+export function relayWebSocketProtocols(token: string): string[] { if (!token) throw new Error('relay token is required'); return ['notemeld.v1', `bearer.${token}`] }
 
 export function validateCloudBaseUrl(value: string): URL {
   const parsed = new URL(value.trim().replace(/\/$/, ''))
