@@ -71,6 +71,10 @@ class CloudSyncHostRuntime:
     def pending(self, session_id: str):
         return self._authority_for(session_id).pending(session_id)
 
+    def pending_sessions(self) -> list[dict[str, int | str]]:
+        """Enumerate durable sessions needing resume/abandon decisions."""
+        return self.mailbox.pending_sessions()
+
     def recover(self, session_id: str, mode: str) -> int:
         return self._authority_for(session_id).recover(session_id, mode)
 

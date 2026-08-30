@@ -80,6 +80,7 @@ def test_host_runtime_wires_cloud_assertion_cipher_and_durable_mailbox(tmp_path)
     assert receipt["type"] == "received"
     assert runtime.pending("session-a")[0].request_id == "request-a"
     assert runtime.status("session-a")["pending_count"] == 1
+    assert runtime.pending_sessions() == [{"session_id": "session-a", "pending_count": 1, "attention_count": 0}]
 
 
 def test_host_runtime_install_is_explicit(tmp_path):

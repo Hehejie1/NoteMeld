@@ -129,6 +129,17 @@ class DurableSessionMailbox:
             rows = cx.execute("SELECT session_id,request_id,input_text,sequence,authority_epoch FROM sync_mailbox WHERE session_id=? AND status IN ('queued','admitted','needs_attention') ORDER BY sequence", (session_id,)).fetchall()
         return [SessionCommand.create(*row) for row in rows]
 
+    def pending_sessions(self) -> list[dict[str, int | str]]:
+        """List sessions with durable work requiring host attention."""
+        with self._connect() as cx:
+            rows = cx.execute(
+                "SELECT session_id,COUNT(*) AS pending_count,"
+                "SUM(CASE WHEN status='needs_attention' THEN 1 ELSE 0 END) AS attention_count "
+                "FROM sync_mailbox WHERE status IN ('queued','admitted','needs_attention') "
+                "GROUP BY session_id ORDER BY MIN(sequence)"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def complete(self, session_id: str, request_id: str) -> bool:
         with self._connect() as cx:
             result = cx.execute("UPDATE sync_mailbox SET status='completed',lease_owner=NULL WHERE session_id=? AND request_id=? AND status='admitted' AND lease_owner=?", (session_id, request_id, self.process_owner))
