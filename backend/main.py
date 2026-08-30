@@ -54,7 +54,11 @@ async def lifespan(app: FastAPI):
     _cfg = TranscriberConfigManager().get_config()
     logger.info(f"当前转写器配置: type={_cfg['transcriber_type']}, model_size={_cfg['whisper_model_size']}")
     runtime_settings = resolve_runtime_settings()
-    cloud_sync_runtime = getattr(app.state, "cloud_sync_runtime", None)
+    # Some lifecycle contract tests and embedders pass a lightweight app stub
+    # without Starlette's State object. Cloud sync is optional, so absence of
+    # that state must keep the ordinary Agent Host lifecycle functional.
+    app_state = getattr(app, "state", None)
+    cloud_sync_runtime = getattr(app_state, "cloud_sync_runtime", None)
     if cloud_sync_runtime is not None:
         cloud_sync_runtime.install(app)
         logger.info("Cloud sync Host runtime installed")
