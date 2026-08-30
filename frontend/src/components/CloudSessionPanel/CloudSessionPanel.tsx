@@ -6,9 +6,10 @@ export interface CloudSessionPanelProps {
   client: CloudClient
   sessionId?: string
   onCopy?: (sessionId: string) => void
+  onArchived?: () => void
 }
 
-export function CloudSessionPanel({ client, sessionId, onCopy }: CloudSessionPanelProps) {
+export function CloudSessionPanel({ client, sessionId, onCopy, onArchived }: CloudSessionPanelProps) {
   const { session, events, loading, error, controller } = useCloudSession(client, sessionId)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -28,6 +29,7 @@ export function CloudSessionPanel({ client, sessionId, onCopy }: CloudSessionPan
       <div className="flex gap-2">
         <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={() => void controller.refreshEvents()}>Refresh</button>
         <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={async () => { const copy = await controller.copy(); onCopy?.(copy.id) }}>Copy branch</button>
+        <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={async () => { await controller.archive(); onArchived?.() }}>Archive</button>
       </div>
     </header>
     <div role="log" aria-live="polite" className="min-h-24 flex-1 overflow-auto rounded border border-slate-200 bg-white p-3">
