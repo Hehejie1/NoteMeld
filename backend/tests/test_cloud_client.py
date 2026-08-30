@@ -76,6 +76,15 @@ def test_cloud_client_quotes_workspace_paths():
     client.close()
 
 
+def test_cloud_client_lists_workspace_backups_with_limit():
+    seen = []
+    transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": []})))
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=transport))
+    assert client.list_workspace_backups("workspace-a", limit=7) == []
+    assert seen == ["https://cloud.test/v1/workspaces/workspace-a/backups?limit=7"]
+    client.close()
+
+
 def test_cloud_client_sends_event_page_bounds():
     seen = []
     transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": []})))
