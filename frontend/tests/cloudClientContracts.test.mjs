@@ -8,6 +8,7 @@ test('cloud client exposes stateless cross-device control plane methods', () => 
   for (const method of ['login', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'listModels', 'createModel', 'updateModel', 'deleteModel', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'startPairing', 'confirmPairing', 'listGrants', 'createShareToken', 'listShareTokens', 'revokeShareToken', 'sharedSnapshot', 'sharedEvents', 'sharedCommand', 'createSession', 'sendCommand', 'events', 'snapshot', 'archiveSession', 'restoreSession', 'copySession', 'deleteSession', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile']) {
     assert.match(source, new RegExp(`\\b${method}\\s*\\(`), `missing ${method}`)
   }
+  assert.match(source, /\bme\s*\(/)
   assert.match(source, /Authorization: `Bearer \$\{this\.token\}`/)
   assert.match(source, /class CloudClient/)
 })

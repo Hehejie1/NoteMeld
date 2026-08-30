@@ -370,6 +370,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(401, "invalid token")
         return {"code": 0, "msg": "success", "data": {"revoked": True}}
 
+    @app.get("/v1/auth/me")
+    def auth_me(current=Depends(_auth_dependency(db))):
+        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "role": current["role"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
+
     @app.post("/v1/auth/rotate")
     def rotate_token(authorization: Annotated[str | None, Header()] = None):
         current = _authenticate_token(db, authorization)

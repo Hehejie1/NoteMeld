@@ -26,6 +26,7 @@ export class CloudClient {
   }
 
   setToken(token: string | null) { this.token = token }
+  async clearToken() { this.token = null; await this.persistToken() }
   async hydrateToken() { if (!this.tokenHydrated) { this.tokenHydrated = true; if (this.token === null && this.tokenStore) this.token = await this.tokenStore.load() } return this.token }
   private async persistToken() { if (!this.tokenStore) return; if (this.token) await this.tokenStore.save(this.token); else await this.tokenStore.clear() }
 
@@ -39,6 +40,7 @@ export class CloudClient {
   async login(password: string, username?: string, accountId?: string) { const data = await this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }); this.token = data.token; await this.persistToken(); return data }
   async rotateToken() { const data = await this.request<{ token: string; jti: string; expires_at?: number | null }>('POST', '/v1/auth/rotate'); this.token = data.token; await this.persistToken(); return data }
   async revokeCurrentToken() { const data = await this.request<Record<string, unknown>>('POST', '/v1/auth/revoke'); this.token = null; await this.persistToken(); return data }
+  me() { return this.request<{ user_id: string; username: string; role: string; scopes: string[]; expires_at?: number | null }>('GET', '/v1/auth/me') }
   listTokens() { return this.request<CloudToken[]>('GET', '/v1/auth/tokens') }
   createToken(scopes: string[] = ['*'], expiresAt?: number) { return this.request<{ token: string; jti: string; scopes: string[]; expires_at?: number | null }>('POST', '/v1/auth/tokens', { scopes, ...(expiresAt === undefined ? {} : { expires_at: expiresAt }) }) }
   revokeToken(tokenId: string) { return this.request<Record<string, unknown>>('POST', `/v1/auth/tokens/${encodeURIComponent(tokenId)}/revoke`) }

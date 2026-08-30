@@ -31,6 +31,8 @@ def test_bootstrap_admin_and_user_crud(tmp_path):
     with client(tmp_path) as http:
         admin_token = login(http, "admin", "admin-password-123")
         headers = {"Authorization": f"Bearer {admin_token}"}
+        identity = http.get("/v1/auth/me", headers=headers)
+        assert identity.status_code == 200 and identity.json()["data"]["role"] == "admin"
         created = http.post("/v1/admin/users", headers=headers, json={"username": "alice", "password": "alice-password-123"})
         assert created.status_code == 200
         users = http.get("/v1/admin/users", headers=headers).json()["data"]
