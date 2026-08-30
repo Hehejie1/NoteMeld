@@ -11,3 +11,10 @@ test('cloud client exposes stateless cross-device control plane methods', () => 
   assert.match(source, /Authorization: `Bearer \$\{this\.token\}`/)
   assert.match(source, /class CloudClient/)
 })
+
+test('cloud client exposes injectable token storage without localStorage coupling', () => {
+  assert.match(source, /CloudTokenStore/)
+  assert.match(source, /hydrateToken/)
+  assert.match(source, /persistToken/)
+  assert.doesNotMatch(source, /localStorage/)
+})

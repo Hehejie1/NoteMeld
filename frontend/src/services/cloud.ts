@@ -5,19 +5,25 @@ export interface CloudCapabilities { protocol_version: string; canonical_session
 export interface CloudSession { id: string; kind: 'cloud_native' | 'device_remote'; title?: string; workspace_id: string; model_id?: string | null; status?: string }
 export interface CloudUser { id: string; username: string; role: 'admin' | 'user'; disabled: boolean; created_at: number }
 export interface CloudToken { id: string; audience: string; scopes: string[]; expires_at?: number | null; revoked_at?: number | null; created_at: number }
+export interface CloudTokenStore { load(): Promise<string | null>; save(token: string): Promise<void>; clear(): Promise<void> }
 
 /** Stateless adapter for cloud control-plane APIs; no local Agent state lives here. */
 export class CloudClient {
   private readonly http: AxiosInstance
   private token: string | null
 
-  constructor(baseUrl: string, token?: string, deviceId?: string) {
+  private readonly tokenStore?: CloudTokenStore
+
+  constructor(baseUrl: string, token?: string, deviceId?: string, tokenStore?: CloudTokenStore) {
     this.token = token ?? null
+    this.tokenStore = tokenStore
     this.http = axios.create({ baseURL: baseUrl.replace(/\/$/, ''), timeout: 20_000 })
     if (deviceId) this.http.defaults.headers.common['X-Device-Id'] = deviceId
   }
 
   setToken(token: string | null) { this.token = token }
+  async hydrateToken() { if (this.token === null && this.tokenStore) this.token = await this.tokenStore.load(); return this.token }
+  private async persistToken() { if (!this.tokenStore) return; if (this.token) await this.tokenStore.save(this.token); else await this.tokenStore.clear() }
 
   private async request<T>(method: string, path: string, data?: unknown, config?: Record<string, unknown>): Promise<T> {
     const response = await this.http.request<CloudEnvelope<T>>({ method, url: path, data, headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined, ...(config as any) })
@@ -25,9 +31,9 @@ export class CloudClient {
     return response.data.data
   }
 
-  async login(password: string, username?: string, accountId?: string) { const data = await this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }); this.token = data.token; return data }
-  async rotateToken() { const data = await this.request<{ token: string; jti: string; expires_at?: number | null }>('POST', '/v1/auth/rotate'); this.token = data.token; return data }
-  async revokeCurrentToken() { const data = await this.request<Record<string, unknown>>('POST', '/v1/auth/revoke'); this.token = null; return data }
+  async login(password: string, username?: string, accountId?: string) { const data = await this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }); this.token = data.token; await this.persistToken(); return data }
+  async rotateToken() { const data = await this.request<{ token: string; jti: string; expires_at?: number | null }>('POST', '/v1/auth/rotate'); this.token = data.token; await this.persistToken(); return data }
+  async revokeCurrentToken() { const data = await this.request<Record<string, unknown>>('POST', '/v1/auth/revoke'); this.token = null; await this.persistToken(); return data }
   listTokens() { return this.request<CloudToken[]>('GET', '/v1/auth/tokens') }
   createToken(scopes: string[] = ['*'], expiresAt?: number) { return this.request<{ token: string; jti: string; scopes: string[]; expires_at?: number | null }>('POST', '/v1/auth/tokens', { scopes, ...(expiresAt === undefined ? {} : { expires_at: expiresAt }) }) }
   revokeToken(tokenId: string) { return this.request<Record<string, unknown>>('POST', `/v1/auth/tokens/${encodeURIComponent(tokenId)}/revoke`) }
