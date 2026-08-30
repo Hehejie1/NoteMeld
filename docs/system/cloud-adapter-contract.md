@@ -78,6 +78,8 @@ queue sequence，不包含 input 或工具参数。
 云端 workspace API 的文件读取和列表均为有界操作，响应会通过 `truncated`
 标记提示客户端继续请求；客户端应使用 `/capacity` 查看配额与磁盘可用空间。
 备份支持创建、分页列出、恢复和删除，删除与恢复等变更会写入审计日志。
+配额检查与文件系统变更通过按用户/Workspace 的进程锁及跨进程锁文件串行化；锁文件位于
+workspace 同级目录、仅用于协调，不属于用户 workspace 内容。
 
 桌面/Python Host 由平台安全存储构造 `CloudClient`、身份密钥和
 `SessionCipher` 后，通过 `attach_cloud_sync_runtime()` 注册到 backend；backend
