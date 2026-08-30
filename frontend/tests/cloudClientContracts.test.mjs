@@ -39,6 +39,15 @@ test('web device identity is stable, platform-prefixed, and non-secret', () => {
   assert.match(identity, /crypto\.getRandomValues/)
 })
 
+test('web relay protocol validates canonical encrypted frame metadata', () => {
+  const protocol = fs.readFileSync(new URL('../src/services/relayProtocol.ts', import.meta.url), 'utf8')
+  assert.match(protocol, /RELAY_PROTOCOL_VERSION = 'notemeld\.sync\.v1'/)
+  assert.match(protocol, /validateRemoteFrame/)
+  assert.match(protocol, /Number\.isSafeInteger\(frame\.sequence\)/)
+  assert.match(protocol, /invalid relay frame nonce/)
+  assert.match(protocol, /relayAssociatedData/)
+})
+
 test('connection strategy orders LAN candidates before cloud relay fallback', () => {
   const source = fs.readFileSync(new URL('../src/services/connectionStrategy.ts', import.meta.url), 'utf8')
   assert.match(source, /transport: 'lan'/)
