@@ -350,6 +350,7 @@ the default configuration.
 | POST | `/v1/devices/register` | canonical device registration path (legacy `/v1/devices` remains supported) |
 | POST | `/v1/devices/{device_id}/challenge` | issue a one-time device proof challenge |
 | POST | `/v1/devices/{device_id}/challenge/verify` | verify an Ed25519 proof and authorize the device for a short relay window |
+| GET | `/v1/cloud/sessions?archived=true|false` | filter sessions by archive state; omitted preserves compatibility |
 | POST | `/v1/devices/{device_id}/heartbeat` | record liveness and optionally refresh validated `lan_endpoints` candidates |
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
