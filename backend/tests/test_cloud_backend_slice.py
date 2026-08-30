@@ -947,6 +947,9 @@ def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
             host.send_json(receipt)
             assert host.receive_json()["type"] == "relay_accepted"
             assert controller.receive_json()["frame_id"] == "receipt-online"
+            forged_event = {**receipt, "sequence": 2, "frame_id": "forged-event", "frame_type": "event"}
+            host.send_json(forged_event)
+            assert host.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
 
 
 def test_relay_command_requires_message_scope(tmp_path):

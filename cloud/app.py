@@ -1280,7 +1280,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                         epoch = session_row["authority_epoch"]
                     if envelope.get("authority_epoch") != epoch:
                         raise ValueError("stale authority epoch")
-                    required_scope = "message.send" if frame_type == "command" else None
+                    required_scope = {"command": "message.send", "event": "event.receive", "receipt": None}[frame_type]
                     if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope, session_row["workspace_id"]):
                         raise ValueError("relay grant missing")
                     if not _accept_relay_sequence(db, session_id, device_id, sequence):
