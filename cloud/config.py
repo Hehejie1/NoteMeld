@@ -52,6 +52,8 @@ class CloudSettings:
             raise ValueError("token TTL must be positive")
         if self.max_workspace_bytes <= 0 or self.max_workspace_files <= 0 or self.max_request_bytes <= 0 or self.max_workspace_read_bytes <= 0 or self.max_workspace_list_items <= 0 or self.max_backup_list_items <= 0:
             raise ValueError("workspace and request limits must be positive")
+        if self.agent_api_key and (not self.secret_key or len(self.secret_key) < 16):
+            raise ValueError("cloud secret key is required for agent API key storage")
         if not 1 <= self.workspace_warning_percent <= 100:
             raise ValueError("workspace warning percent must be between 1 and 100")
         if "*" in self.cors_origins:
