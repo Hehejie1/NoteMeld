@@ -1182,28 +1182,30 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/sessions/{session_id}/snapshot")
     @app.get("/v1/cloud/sessions/{session_id}/snapshot")
-    def snapshot(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+    def snapshot(session_id: str, limit: int = 500, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         session = _owned_session(db, session_id, current["id"])
+        limit = max(1, min(limit, 5000))
         with db.connect() as cx:
-            events = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
+            events = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence LIMIT ?", (session_id, limit)).fetchall()
             imported = cx.execute("SELECT payload_json FROM session_payloads WHERE session_id=?", (session_id,)).fetchone()
         return {"code": 0, "msg": "success", "data": {"session": dict(session), "snapshot_seq": events[-1]["sequence"] if events else 0, "events": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in events], "imported_snapshot": json.loads(imported["payload_json"]) if imported else None}}
 
     @app.get("/v1/shared/{session_id}/snapshot")
-    def shared_snapshot(session_id: str, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+    def shared_snapshot(session_id: str, limit: int = 500, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
         access = _authenticate_share_token(db, share_token, session_id)
         if not access:
             raise HTTPException(401, "invalid share token")
-        return snapshot(session_id, current={"id": access["user_id"]})
+        return snapshot(session_id, limit=limit, current={"id": access["user_id"]})
 
     @app.get("/v1/shared/{session_id}/events")
-    def shared_events(session_id: str, after: int = 0, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+    def shared_events(session_id: str, after: int = 0, limit: int = 500, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
         access = _authenticate_share_token(db, share_token, session_id)
         if not access:
             raise HTTPException(401, "invalid share token")
         _owned_session(db, session_id, access["user_id"])
+        limit = max(1, min(limit, 5000))
         with db.connect() as cx:
-            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence", (session_id, after)).fetchall()
+            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in rows]}
 
     @app.post("/v1/shared/{session_id}/commands")
@@ -1218,10 +1220,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/sessions/{session_id}/events")
     @app.get("/v1/cloud/sessions/{session_id}/events")
-    def events(session_id: str, after: int = 0, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+    def events(session_id: str, after: int = 0, limit: int = 500, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _owned_session(db, session_id, current["id"])
+        limit = max(1, min(limit, 5000))
         with db.connect() as cx:
-            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence", (session_id, after)).fetchall()
+            rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "payload": json.loads(row["payload_json"])} for row in rows]}
 
     @app.websocket("/v1/relay/connect/{session_id}")

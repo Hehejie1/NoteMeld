@@ -46,8 +46,8 @@ negotiate behavior instead of hard-coding deployment policy.
 | POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
 | GET | `/v1/sessions` | 查询当前用户云端会话及收纳状态 | bearer token |
 | POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息 | bearer token |
-| GET | `/v1/sessions/{session_id}/snapshot` | 读取 session snapshot 和事件 | bearer token |
-| GET | `/v1/sessions/{session_id}/events?after=` | 按 event sequence 拉取事件 | bearer token |
+| GET | `/v1/sessions/{session_id}/snapshot?limit=` | 读取 session snapshot 和有界事件页（默认 500，上限 5000） | bearer token |
+| GET | `/v1/sessions/{session_id}/events?after=&limit=` | 按 event sequence 拉取事件；`limit` 默认 500、上限 5000 | bearer token |
 | POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
 | DELETE | `/v1/sessions/{session_id}` | 硬删除当前用户云端会话 | bearer token |
 | WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token 或浏览器 `Sec-WebSocket-Protocol` bearer |
@@ -365,8 +365,8 @@ the default configuration.
 | DELETE | `/v1/grants/{grant_id}` | canonical grant revoke path (legacy POST revoke remains supported) |
 | POST/GET | `/v1/share-tokens` | create/list scoped share tokens; raw token is returned only on creation |
 | POST | `/v1/share-tokens/{id}/revoke` | revoke a share token |
-| GET | `/v1/shared/{session_id}/snapshot` | read a session snapshot with `X-Share-Token` |
-| GET | `/v1/shared/{session_id}/events` | read events after a cursor with `X-Share-Token` |
+| GET | `/v1/shared/{session_id}/snapshot?limit=` | read a session snapshot with `X-Share-Token`; event page defaults to 500 and caps at 5000 |
+| GET | `/v1/shared/{session_id}/events?after=&limit=` | read a bounded event page after a cursor with `X-Share-Token` |
 | POST | `/v1/shared/{session_id}/commands` | submit a cloud-native command when the share token explicitly has `message.send` |
 | WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant; returns `host_offline` when target is not connected, rejects replayed sequence numbers, enforces 120 frames/minute/connection, and forwards a host `received` receipt on the reverse direction |
 Only one active relay connection is retained per device/session; a newer
