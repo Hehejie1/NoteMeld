@@ -35,6 +35,7 @@ class CloudSettings:
     workspace_warning_percent: int = 80
     max_workspace_read_bytes: int = 1_000_000
     max_workspace_list_items: int = 5_000
+    max_backup_list_items: int = 1_000
 
     @property
     def database_path(self) -> Path:
@@ -47,7 +48,7 @@ class CloudSettings:
     def validate(self) -> None:
         if not self.admin_username.strip() or len(self.admin_password) < 12:
             raise ValueError("admin credentials are not strong enough")
-        if self.max_workspace_bytes <= 0 or self.max_workspace_files <= 0 or self.max_request_bytes <= 0 or self.max_workspace_read_bytes <= 0 or self.max_workspace_list_items <= 0:
+        if self.max_workspace_bytes <= 0 or self.max_workspace_files <= 0 or self.max_request_bytes <= 0 or self.max_workspace_read_bytes <= 0 or self.max_workspace_list_items <= 0 or self.max_backup_list_items <= 0:
             raise ValueError("workspace and request limits must be positive")
         if not 1 <= self.workspace_warning_percent <= 100:
             raise ValueError("workspace warning percent must be between 1 and 100")
@@ -113,4 +114,5 @@ def load_settings() -> CloudSettings:
         workspace_warning_percent=int(os.getenv("NOTEMELD_CLOUD_WORKSPACE_WARNING_PERCENT", "80")),
         max_workspace_read_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_WORKSPACE_READ_BYTES", "1000000")),
         max_workspace_list_items=int(os.getenv("NOTEMELD_CLOUD_MAX_WORKSPACE_LIST_ITEMS", "5000")),
+        max_backup_list_items=int(os.getenv("NOTEMELD_CLOUD_MAX_BACKUP_LIST_ITEMS", "1000")),
     )

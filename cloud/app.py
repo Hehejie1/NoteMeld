@@ -1222,9 +1222,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _validate_workspace_id(workspace_id)
         directory = settings.data_dir / "backups" / current["id"] / workspace_id
         items = []
-        for path in sorted(directory.glob("*.zip")) if directory.is_dir() else []:
+        paths = sorted(directory.glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True) if directory.is_dir() else []
+        for path in paths[: settings.max_backup_list_items + 1]:
             items.append({"backup_id": path.stem, "bytes": path.stat().st_size, "created_at": int(path.stat().st_mtime)})
-        return {"code": 0, "msg": "success", "data": items}
+        return {"code": 0, "msg": "success", "data": items[: settings.max_backup_list_items]}
 
     @app.delete("/v1/workspaces/{workspace_id}/backups/{backup_id}")
     def delete_backup(workspace_id: str, backup_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):

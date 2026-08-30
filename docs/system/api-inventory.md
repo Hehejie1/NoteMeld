@@ -387,7 +387,7 @@ the default configuration.
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | bounded UTF-8 file read with traversal/symlink checks; writes are atomic and reads mark truncation |
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
 | GET | `/v1/workspaces/{workspace_id}/files?prefix=&limit=` | bounded list of safe logical file paths and size/mtime metadata |
-| POST/GET | `/v1/workspaces/{workspace_id}/backups` | create/list local-disk ZIP backups |
+| POST/GET | `/v1/workspaces/{workspace_id}/backups` | create/list local-disk ZIP backups (list is bounded by server configuration) |
 | DELETE | `/v1/workspaces/{workspace_id}/backups/{backup_id}` | delete one owned backup archive |
 | POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
 | GET | `/v1/grants` | list remote-control grants |

@@ -28,6 +28,8 @@ def test_settings_allow_local_agent_and_validate_limits(tmp_path: Path):
         base(tmp_path, workspace_warning_percent=101).validate()
     with pytest.raises(ValueError, match="limits"):
         base(tmp_path, max_workspace_read_bytes=0).validate()
+    with pytest.raises(ValueError, match="limits"):
+        base(tmp_path, max_backup_list_items=0).validate()
 
 
 def test_settings_reject_non_positive_operation_timeouts(tmp_path: Path):
