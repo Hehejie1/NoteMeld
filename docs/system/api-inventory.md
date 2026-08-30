@@ -475,7 +475,9 @@ not mutate immediately. They create an auditable `pending` approval exposed by
 `rejected`. Approval currently records the decision boundary; execution resume
 is performed synchronously with the approval transition using the same safe
 workspace resolver. Remote approval additionally requires the controller's
-Grant to include the `dangerous.approve` scope.
+Grant to include the `dangerous.approve` scope; elevated scopes are accepted
+only on an administrator-created `super_admin` Grant. A `super_admin` Grant
+also inherits the standard message/context/model/tool/event scopes.
 Approval listings return only a bounded content preview.
 Pending approvals expire after `NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS` (15
 minutes by default); expired approvals are immutable and cannot be approved.
