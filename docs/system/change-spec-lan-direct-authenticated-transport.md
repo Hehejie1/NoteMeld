@@ -14,6 +14,7 @@
 - 授权后只接受 assertion 精确绑定的 `notemeld.sync.v1` command frame，并限制握手大小、握手时间、帧大小和每分钟帧数。
 - Python/desktop 与 WebCrypto 统一 AES-256-GCM；canonical fixture 同时由 Python 和 Node WebCrypto 解密验证。
 - `EncryptedRemoteHostHandler` 完成 AEAD → `RemoteHostAuthority` → durable mailbox 链路；只有提交成功才返回无业务内容的最小 received receipt。
+- `CloudSyncHostRuntime` 提供本地 Host 的依赖注入 wiring；平台传入已安全加载的 CloudClient、mailbox 路径和 cipher resolver，再显式安装 `LanDirectService`。
 - handler 的业务结果必须使用反向 encrypted `RemoteFrame`；明文响应只允许 receipt allowlist。
 
 ## 2. 安全边界

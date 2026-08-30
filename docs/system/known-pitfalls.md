@@ -7,6 +7,7 @@
 - Web 端的连接策略同样不得把 `bearer.<token>` 子协议用于 LAN；没有实现 `LanHandshake` 时必须跳过 LAN 候选并回退 `wss` Relay。
 - 检查方式：运行 `backend/tests/test_cloud_lan_authorization.py`、`test_cloud_lan_auth.py`、`test_cloud_lan_transport.py`、`test_cloud_connection.py`，以及 `frontend/tests/relayCryptoInterop.test.mjs`。
 - 修复经验：宿主用绑定 device token 通过 HTTPS 获取 60 秒云端断言；控制端只在 LAN 上提交 Ed25519 一次性 proof 和 E2EE frame；结果/event 必须继续使用 encrypted `RemoteFrame`，明文只允许无业务内容的最小 durable receipt。
+- 本地 wiring 必须走 `CloudSyncHostRuntime`/`install_lan_direct_service()` 的显式依赖注入；没有平台安全存储得到的 CloudClient、私钥和 cipher resolver 时保持端点关闭，不能为了 smoke test 从环境变量读取长期凭证。
 
 ## 桌面源码可用，但发布包缺少端侧加密运行时
 

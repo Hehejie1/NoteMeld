@@ -33,11 +33,13 @@ from .lan_transport import (
 from .protocol import RemoteFrame, SessionCommand
 from .queue import DurableSessionMailbox, SessionMailbox
 from .remote_host import RemoteHostAuthority, RemoteHostError, RemoteHostReceipt
+from .runtime import CloudSyncHostRuntime
 from .token_store import EncryptedTokenStore
 
 __all__ = [
     "CloudClient",
     "CloudClientError",
+    "CloudSyncHostRuntime",
     "ConnectionCandidate",
     "DurableSessionMailbox",
     "EncryptedTokenStore",
