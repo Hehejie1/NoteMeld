@@ -85,6 +85,15 @@ def test_cloud_client_lists_workspace_files_with_limit():
     client.close()
 
 
+def test_cloud_client_quotes_workspace_id():
+    seen = []
+    transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": {"file_count": 0}})))
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=transport))
+    client.workspace_stats("workspace with/slash")
+    assert seen == ["https://cloud.test/v1/workspaces/workspace%20with%2Fslash/stats"]
+    client.close()
+
+
 def test_cloud_client_lists_workspace_backups_with_limit():
     seen = []
     transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": []})))

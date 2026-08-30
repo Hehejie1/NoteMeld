@@ -236,28 +236,28 @@ class CloudClient:
         return self._request("GET", f"/v1/cloud/sessions/{quote(session_id, safe='')}/commands", params={"after": after, "limit": limit})
 
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
+        return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/files/{quote(path, safe='/')}")
 
     def list_workspace_files(self, workspace_id: str, prefix: str = "", limit: int = 500) -> dict[str, Any]:
-        return self._request("GET", f"/v1/workspaces/{workspace_id}/files", params={"prefix": prefix, "limit": limit})
+        return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/files", params={"prefix": prefix, "limit": limit})
 
     def write_workspace_file(self, workspace_id: str, path: str, content: str) -> dict[str, Any]:
-        return self._request("PUT", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}", json={"content": content})
+        return self._request("PUT", f"/v1/workspaces/{quote(workspace_id, safe='')}/files/{quote(path, safe='/')}", json={"content": content})
 
     def delete_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
-        return self._request("DELETE", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
+        return self._request("DELETE", f"/v1/workspaces/{quote(workspace_id, safe='')}/files/{quote(path, safe='/')}")
 
     def workspace_stats(self, workspace_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/workspaces/{workspace_id}/stats")
+        return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/stats")
 
     def create_workspace_backup(self, workspace_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/workspaces/{workspace_id}/backups")
+        return self._request("POST", f"/v1/workspaces/{quote(workspace_id, safe='')}/backups")
 
     def list_workspace_backups(self, workspace_id: str, limit: int = 100) -> list[dict[str, Any]]:
-        return self._request("GET", f"/v1/workspaces/{workspace_id}/backups", params={"limit": limit})
+        return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/backups", params={"limit": limit})
 
     def restore_workspace_backup(self, workspace_id: str, backup_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/workspaces/{workspace_id}/backups/restore", json={"backup_id": backup_id})
+        return self._request("POST", f"/v1/workspaces/{quote(workspace_id, safe='')}/backups/restore", json={"backup_id": backup_id})
 
     def create_share_token(self, session_id: str, role: str = "viewer", scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/share-tokens", json={"session_id": session_id, "role": role, "scopes": scopes or [], "expires_at": expires_at})
