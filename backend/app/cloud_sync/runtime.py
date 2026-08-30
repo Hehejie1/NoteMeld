@@ -81,6 +81,24 @@ class CloudSyncHostRuntime:
         """Compact terminal delivery rows after Agent results are projected."""
         return self.mailbox.compact(session_id, keep_completed)
 
+    def status(self, session_id: str) -> dict[str, object]:
+        """Return a UI-safe projection of durable Host queue state."""
+        pending = self.pending(session_id)
+        return {
+            "session_id": session_id,
+            "host_device_id": self.host_device_id,
+            "pending_count": len(pending),
+            "pending": [
+                {
+                    "request_id": item.request_id,
+                    "sequence": item.sequence,
+                    "status": self.mailbox.status(session_id, item.request_id) or "unknown",
+                    "authority_epoch": item.authority_epoch,
+                }
+                for item in pending
+            ],
+        }
+
     def _authorize_lan_peer(
         self,
         session_id: str,
