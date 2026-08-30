@@ -182,6 +182,9 @@ class CloudClient:
     def snapshot(self, session_id: str, limit: int = 500) -> dict[str, Any]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/snapshot", params={"limit": limit})
 
+    def workspace_capacity(self, workspace_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/capacity")
+
     def list_sessions(self, archived: bool | None = None) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/cloud/sessions", params=None if archived is None else {"archived": str(archived).lower()})
 

@@ -383,6 +383,7 @@ the default configuration.
 | POST | `/v1/lan/authorize` | bound Host device obtains a 1–60 second LAN proof assertion for one active controller/session Grant; account tokens and other device tokens are rejected |
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
+| GET | `/v1/workspaces/{workspace_id}/capacity` | workspace quota usage plus filesystem total/used/free bytes and warning state |
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
 | GET | `/v1/workspaces/{workspace_id}/files?prefix=` | list safe logical file paths and size/mtime metadata |

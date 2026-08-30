@@ -32,6 +32,7 @@ class CloudSettings:
     agent_max_retries: int = 2
     relay_max_frame_bytes: int = 256 * 1024
     max_active_commands_per_user: int = 8
+    workspace_warning_percent: int = 80
 
     @property
     def database_path(self) -> Path:
@@ -46,6 +47,8 @@ class CloudSettings:
             raise ValueError("admin credentials are not strong enough")
         if self.max_workspace_bytes <= 0 or self.max_workspace_files <= 0 or self.max_request_bytes <= 0:
             raise ValueError("workspace and request limits must be positive")
+        if not 1 <= self.workspace_warning_percent <= 100:
+            raise ValueError("workspace warning percent must be between 1 and 100")
         if "*" in self.cors_origins:
             raise ValueError("wildcard CORS is not allowed")
         if self.agent_base_url:
@@ -105,4 +108,5 @@ def load_settings() -> CloudSettings:
         agent_max_retries=int(os.getenv("NOTEMELD_CLOUD_AGENT_MAX_RETRIES", "2")),
         relay_max_frame_bytes=int(os.getenv("NOTEMELD_CLOUD_RELAY_MAX_FRAME_BYTES", str(256 * 1024))),
         max_active_commands_per_user=int(os.getenv("NOTEMELD_CLOUD_MAX_ACTIVE_COMMANDS_PER_USER", "8")),
+        workspace_warning_percent=int(os.getenv("NOTEMELD_CLOUD_WORKSPACE_WARNING_PERCENT", "80")),
     )

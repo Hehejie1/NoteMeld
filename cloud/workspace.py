@@ -118,6 +118,15 @@ class Workspace:
             bytes_used += path.stat().st_size
         return {"file_count": files, "bytes_used": bytes_used}
 
+    def capacity(self) -> dict[str, int]:
+        """Return filesystem capacity for the volume containing this workspace."""
+        usage = shutil.disk_usage(self.root)
+        return {
+            "total_bytes": usage.total,
+            "used_bytes": usage.used,
+            "free_bytes": usage.free,
+        }
+
     def list_files(self, prefix: str = "") -> list[dict[str, int | str]]:
         if prefix:
             base = self.path(prefix)

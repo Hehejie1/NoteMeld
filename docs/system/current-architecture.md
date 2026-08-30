@@ -37,6 +37,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - `CloudSyncHostRuntime` 是本地 Host 的依赖注入组装入口：接收已由平台安全存储构造的 `CloudClient`、durable mailbox 路径和 session cipher resolver，按 session 创建 `RemoteHostAuthority` 并通过 `install_lan_direct_service()` 挂载本地 FastAPI。它不读取环境变量中的长期 token/私钥，不创建第二套 Agent loop；平台仍负责在桌面启动生命周期中显式安装并在退出时关闭。
 - `HandshakeEnvelope` 是跨端 E2EE 握手契约：每端用注册的 Ed25519 身份签名 X25519 临时公钥，双方校验互相指向同一 session 后，以按 device id 规范排序的 transcript 派生相同 AES-256-GCM 会话密钥。平台适配层仍负责私钥安全存储、重连和后续密钥轮换。
 - `backend/app/cloud_sync/queue.py` 同时提供进程内 `SessionMailbox` 和 SQLite-backed `DurableSessionMailbox`；remote Host 使用后者保存 queued/admitted command，不替代 Agent SDK 的 canonical 状态机。Durable mailbox 通过事务门禁保证每 session 最多一个 admitted Turn；重新构造时把遗留 admitted 标为 `needs_attention`，在显式 resume/abandon 前拒绝新 command。独立 authority 表提供单调 epoch fencing，轮换时 active Turn 进入人工恢复、queued command 原子重绑新 epoch。云端 `cloud/app.py` 对 cloud-native command 使用 SQLite queued/running 状态和每 session worker；进程重启后 queued 自动继续，running 标记 `needs_attention`。
+- 云端 workspace 除 `/stats` 外提供只读 `/capacity`，返回 workspace 配额占用和所在文件系统的 total/used/free 字节及可配置告警阈值，供桌面/移动端展示容量风险；写入仍由配额校验拒绝超限请求。
 - Host 在结果已投影到 Agent 会话历史后可调用 `DurableSessionMailbox.compact()` 清理旧的 completed/failed/abandoned 投递记录；queued、admitted 和 needs_attention 永远不会被压缩，避免 mailbox 无限增长又不丢失待恢复任务。
 - 云端命令领取带有 process-scoped lease owner、过期时间和 attempt 计数；SQLite `BEGIN IMMEDIATE` 保证多进程单 claim，过期的 running 任务仍需人工恢复，不会自动重放。
 - `needs_attention` 命令可通过 recover API 明确选择 `resume` 重新排队或 `abandon` 终止，操作幂等且写入事件/审计。

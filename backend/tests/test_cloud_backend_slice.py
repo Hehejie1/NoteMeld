@@ -996,6 +996,16 @@ def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
         assert read.status_code == 200 and read.json()["data"]["content"] == "hello"
         stats = http.get("/v1/workspaces/demo/stats", headers=headers).json()["data"]
         assert stats == {"workspace_id": "demo", "file_count": 1, "bytes_used": 5}
+        capacity_response = http.get("/v1/workspaces/demo/capacity", headers=headers)
+        assert capacity_response.status_code == 200
+        capacity = capacity_response.json()["data"]
+        assert capacity["workspace_id"] == "demo"
+        assert capacity["file_count"] == 1 and capacity["bytes_used"] == 5
+        assert capacity["total_bytes"] >= capacity["used_bytes"] >= 0
+        assert capacity["free_bytes"] >= 0
+        assert capacity["quota_bytes"] >= capacity["bytes_used"]
+        assert 0 <= capacity["quota_percent"] <= 100
+        assert capacity["warning"] is False
         assert http.get("/v1/workspaces/demo/files", headers=headers).json()["data"]["files"][0]["path"] == "notes/today.md"
         assert http.put("/v1/workspaces/demo/files/../escape.txt", headers=headers, json={"content": "x"}).status_code in (400, 404)
 

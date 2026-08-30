@@ -1136,6 +1136,29 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, **workspace.stats()}}
 
+    @app.get("/v1/workspaces/{workspace_id}/capacity")
+    def workspace_capacity(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
+        """Expose quota and volume capacity so clients can render warnings."""
+        _validate_workspace_id(workspace_id)
+        workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
+        stats = workspace.stats()
+        capacity = workspace.capacity()
+        quota = settings.max_workspace_bytes
+        quota_percent = min(100, (stats["bytes_used"] * 100 + quota - 1) // quota)
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "workspace_id": workspace_id,
+                **stats,
+                **capacity,
+                "quota_bytes": quota,
+                "quota_percent": quota_percent,
+                "warning": quota_percent >= settings.workspace_warning_percent,
+                "warning_percent": settings.workspace_warning_percent,
+            },
+        }
+
     @app.get("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
     def read_workspace_file(workspace_id: str, logical_path: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
