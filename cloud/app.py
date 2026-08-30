@@ -24,6 +24,7 @@ from .db import CloudDB
 from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
+from .relay import InMemoryRelayBroker
 
 
 TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
@@ -268,7 +269,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
 
-    app.state.relays: dict[str, dict[str, WebSocket]] = {}
+    app.state.relay_broker = InMemoryRelayBroker()
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
     app.state.device_proofs: dict[tuple[str, str], int] = {}
@@ -1180,11 +1181,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         await websocket.accept()
         with db.connect() as cx:
             cx.execute("UPDATE devices SET last_seen_at=? WHERE id=?", (int(time.time()), device_id))
-        peers = app.state.relays.setdefault(session_id, {})
-        previous = peers.get(device_id)
+        previous = app.state.relay_broker.register(session_id, device_id, websocket)
         if previous is not None and previous is not websocket:
             await previous.close(code=4009, reason="replaced by a newer connection")
-        peers[device_id] = websocket
         frame_times: list[int] = []
         try:
             while True:
@@ -1217,17 +1216,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 except (ValueError, json.JSONDecodeError, TypeError):
                     await websocket.send_json({"type": "rejected", "error": "invalid_envelope"})
                     continue
-                peer = peers.get(envelope["recipient_device_id"])
+                peer = app.state.relay_broker.peer(session_id, envelope["recipient_device_id"])
                 if peer is None or peer is websocket:
                     await websocket.send_json({"type": "failed", "error": "host_offline", "frame_id": envelope["frame_id"]})
                     continue
                 await peer.send_text(message)
                 await websocket.send_json({"type": "relay_accepted", "frame_id": envelope["frame_id"]})
         except WebSocketDisconnect:
-            if peers.get(device_id) is websocket:
-                peers.pop(device_id, None)
-            if not peers:
-                app.state.relays.pop(session_id, None)
+            app.state.relay_broker.unregister(session_id, device_id, websocket)
 
     _start_queued_workers(app, db)
     return app
