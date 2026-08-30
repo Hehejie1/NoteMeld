@@ -1,5 +1,12 @@
 # Known Pitfalls
 
+## 设备撤销但设备 Bearer 仍有效
+
+- 风险：只把设备标记为 revoked、只撤销 remote grant，泄漏到该设备的 bearer 仍能继续访问 session/workspace API。
+- 不允许：把账户 token 当作长期设备身份；设备交换成功后仍默认保留 bootstrap token；签发设备 token 时不验证设备私钥；rotation 丢失 `device_id` 绑定；撤销设备后等待 token 自然过期。
+- 检查方式：`backend/tests/test_cloud_backend_slice.py::test_device_bound_token_requires_proof_and_is_revoked_with_device` 和 `::test_device_token_rotation_preserves_device_binding_and_expiry`。
+- 修复经验：账户 token 只用于 bootstrap；设备完成 Ed25519 challenge 后领取短期 `device-api` token。认证时联查 active device，设备撤销事务同时撤销 grant 和所有匹配 device token。
+
 应用协议唯一规范源：[`application-protocol-v1.md`](application-protocol-v1.md)。插件协议由 `notemeld-plugins/docs/system/plugin-protocol-v1.md` 维护。
 
 更新时间：2026-08-27

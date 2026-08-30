@@ -125,6 +125,20 @@ class CloudClient:
     def verify_device_challenge(self, challenge: str, signature: str, device_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/challenge/verify", json={"challenge": challenge, "signature": signature})
 
+    def create_device_token(self, scopes: list[str] | None = None, expires_in_seconds: int = 24 * 60 * 60, device_id: str | None = None, revoke_source_token: bool = True) -> dict[str, Any]:
+        target_device_id = device_id or self.device_id
+        if not target_device_id:
+            raise ValueError("device_id is required")
+        payload: dict[str, Any] = {}
+        if scopes is not None:
+            payload["scopes"] = scopes
+        payload["expires_in_seconds"] = expires_in_seconds
+        payload["revoke_source_token"] = revoke_source_token
+        data = self._request("POST", f"/v1/devices/{quote(target_device_id, safe='')}/token", json=payload)
+        self.token = data["token"]
+        self._persist_token()
+        return data
+
     def create_session(self, kind: str, title: str = "New session", workspace_id: str = "default", model_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/cloud/sessions", json={"kind": kind, "title": title, "workspace_id": workspace_id, "model_id": model_id})
 

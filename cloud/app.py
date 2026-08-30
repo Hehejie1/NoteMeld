@@ -29,6 +29,7 @@ from .relay import InMemoryRelayBroker
 
 
 TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
+DEVICE_TOKEN_SCOPES = TOKEN_SCOPES - {"*", "auth.token", "admin"}
 GRANT_SCOPES = frozenset({"message.send", "context.select", "model.select", "tool.invoke", "event.receive", "workspace.read", "workspace.write", "dangerous.approve", "approval.remote.resolve", "session.permission.manage", "session.full_access", "full_access"})
 SHARE_SCOPES = frozenset({"message.send", "event.receive"})
 
@@ -125,6 +126,19 @@ class DeviceKeyRotate(BaseModel):
 class DeviceProof(BaseModel):
     challenge: str = Field(min_length=16, max_length=256)
     signature: str = Field(min_length=16, max_length=256)
+
+
+class DeviceTokenCreate(BaseModel):
+    scopes: list[str] = Field(default_factory=lambda: sorted(DEVICE_TOKEN_SCOPES), max_length=32)
+    expires_in_seconds: int = Field(default=24 * 60 * 60, ge=300, le=30 * 24 * 60 * 60)
+    revoke_source_token: bool = True
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_scopes(cls, value: list[str]) -> list[str]:
+        if not value or len(set(value)) != len(value) or any(scope not in DEVICE_TOKEN_SCOPES for scope in value):
+            raise ValueError("invalid device token scope")
+        return value
 
 
 class AuthorityLease(BaseModel):
@@ -350,9 +364,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "max_request_bytes": settings.max_request_bytes,
             "event_page_limit": 5000,
             "relay_max_frame_bytes": settings.relay_max_frame_bytes,
+            "device_token_max_ttl_seconds": 30 * 24 * 60 * 60,
             "max_workspace_bytes": settings.max_workspace_bytes,
             "max_workspace_files": settings.max_workspace_files,
-            "features": {"cloud_agent": True, "session_queue": True, "command_recovery": True, "approval_gated_mutations": True, "model_registry": True},
+            "features": {"cloud_agent": True, "session_queue": True, "command_recovery": True, "approval_gated_mutations": True, "model_registry": True, "device_tokens": True},
         }}
 
     @app.post("/v1/auth/login")
@@ -392,7 +407,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/auth/me")
     def auth_me(current=Depends(_auth_dependency(db))):
-        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "role": current["role"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
+        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "role": current["role"], "audience": current["audience"], "device_id": current["device_id"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
 
     @app.post("/v1/auth/rotate")
     def rotate_token(authorization: Annotated[str | None, Header()] = None):
@@ -408,12 +423,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
             cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND digest=?", (now, old_id, token_digest(old_id, old_secret)))
-            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (new_id, current["id"], digest, current["expires_at"], current["audience"], current["scopes_json"], now))
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,device_id,created_at) VALUES(?,?,?,?,?,?,?,?)", (new_id, current["id"], digest, current["expires_at"], current["audience"], current["scopes_json"], current["device_id"], now))
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": new_id, "user_id": current["id"], "role": current["role"], "audience": current["audience"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": new_id, "user_id": current["id"], "role": current["role"], "audience": current["audience"], "device_id": current["device_id"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
 
     @app.post("/v1/auth/tokens")
-    def create_personal_token(payload: PersonalTokenCreate, current=Depends(_auth_dependency(db, required_scope="auth.token"))):
+    def create_personal_token(payload: PersonalTokenCreate, current=Depends(_auth_dependency(db, required_scope="auth.token", required_audience="cloud-api"))):
         if payload.expires_at is not None and payload.expires_at <= int(time.time()):
             raise HTTPException(422, "expires_at must be in the future")
         raw, digest = issue_token()
@@ -426,7 +441,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/auth/tokens")
     def list_personal_tokens(current=Depends(_auth_dependency(db, required_scope="auth.token"))):
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,audience,scopes_json,expires_at,revoked_at,created_at FROM tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+            rows = cx.execute("SELECT id,audience,device_id,scopes_json,expires_at,revoked_at,created_at FROM tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
 
     @app.post("/v1/auth/tokens/{token_id}/revoke")
@@ -596,7 +611,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/devices")
     @app.post("/v1/devices/register")
-    def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+    def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db, required_scope="device.write", required_audience="cloud-api"))):
         if payload.public_key is not None and not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         now = int(time.time())
@@ -628,30 +643,42 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.post("/v1/devices/{device_id}/revoke")
     @app.delete("/v1/devices/{device_id}")
     def revoke_device(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+        _require_bound_device(current, device_id)
+        now = int(time.time())
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
-            result = cx.execute("UPDATE devices SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), device_id, current["id"]))
+            result = cx.execute("UPDATE devices SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (now, device_id, current["id"]))
             if result.rowcount == 1:
-                cx.execute("UPDATE grants SET revoked_at=? WHERE user_id=? AND (controller_device_id=? OR host_device_id=?) AND revoked_at IS NULL", (int(time.time()), current["id"], device_id, device_id))
+                cx.execute("UPDATE grants SET revoked_at=? WHERE user_id=? AND (controller_device_id=? OR host_device_id=?) AND revoked_at IS NULL", (now, current["id"], device_id, device_id))
+                cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND device_id=? AND revoked_at IS NULL", (now, current["id"], device_id))
             cx.execute("COMMIT")
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
-        _audit(db, current["id"], "device.revoke", device_id, {"grants_revoked": True})
+        app.state.device_proofs.pop((current["id"], device_id), None)
+        _audit(db, current["id"], "device.revoke", device_id, {"grants_revoked": True, "device_tokens_revoked": True})
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "revoked": True}}
 
     @app.post("/v1/devices/{device_id}/rotate-key")
     def rotate_device_key(device_id: str, payload: DeviceKeyRotate, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+        _require_bound_device(current, device_id)
         if not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
+        now = int(time.time())
         with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
             result = cx.execute("UPDATE devices SET public_key=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (payload.public_key, device_id, current["id"]))
+            if result.rowcount == 1:
+                cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND device_id=? AND revoked_at IS NULL", (now, current["id"], device_id))
+            cx.execute("COMMIT")
         if result.rowcount != 1:
             raise HTTPException(404, "active device not found")
-        _audit(db, current["id"], "device.key.rotate", device_id, {})
+        app.state.device_proofs.pop((current["id"], device_id), None)
+        _audit(db, current["id"], "device.key.rotate", device_id, {"device_tokens_revoked": True})
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "rotated": True}}
 
     @app.post("/v1/devices/{device_id}/heartbeat")
     def device_heartbeat(device_id: str, payload: DeviceHeartbeat | None = None, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+        _require_bound_device(current, device_id)
         now = int(time.time())
         with db.connect() as cx:
             if payload and payload.lan_endpoints is not None:
@@ -664,6 +691,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/devices/{device_id}/challenge")
     def device_challenge(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.read"))):
+        _require_bound_device(current, device_id)
         with db.connect() as cx:
             row = cx.execute("SELECT public_key FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, current["id"])).fetchone()
         if not row or not row["public_key"]:
@@ -675,6 +703,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/devices/{device_id}/challenge/verify")
     def verify_device_challenge(device_id: str, payload: DeviceProof, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+        _require_bound_device(current, device_id)
         challenge_data = app.state.device_challenges.pop(payload.challenge, None)
         now = int(time.time())
         if not challenge_data or challenge_data[0] != current["id"] or challenge_data[1] != device_id or challenge_data[2] <= now:
@@ -686,8 +715,36 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         app.state.device_proofs[(current["id"], device_id)] = now + 300
         return {"code": 0, "msg": "success", "data": {"device_id": device_id, "verified_until": now + 300}}
 
+    @app.post("/v1/devices/{device_id}/token")
+    def create_device_token(device_id: str, payload: DeviceTokenCreate, current=Depends(_auth_dependency(db, required_scope="device.write", required_audience="cloud-api"))):
+        now = int(time.time())
+        if app.state.device_proofs.get((current["id"], device_id), 0) <= now:
+            raise HTTPException(403, "recent device proof is required")
+        with db.connect() as cx:
+            device = cx.execute("SELECT id FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, current["id"])).fetchone()
+        if not device:
+            raise HTTPException(404, "active device not found")
+        expires_at = now + payload.expires_in_seconds
+        if current["expires_at"] is not None:
+            expires_at = min(expires_at, int(current["expires_at"]))
+        if expires_at <= now:
+            raise HTTPException(401, "account token expired")
+        raw, digest = issue_token()
+        token_id = raw[4:].split(".", 1)[0]
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,device_id,created_at) VALUES(?,?,?,?,?,?,?,?)", (token_id, current["id"], digest, expires_at, "device-api", json.dumps(payload.scopes), device_id, now))
+            if payload.revoke_source_token:
+                revoked = cx.execute("UPDATE tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL", (now, current["token_id"]))
+                if revoked.rowcount != 1:
+                    cx.execute("ROLLBACK")
+                    raise HTTPException(409, "source token changed during exchange")
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "device.token.create", device_id, {"jti": token_id, "scopes": payload.scopes, "expires_at": expires_at, "source_token_revoked": payload.revoke_source_token})
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "user_id": current["id"], "device_id": device_id, "audience": "device-api", "scopes": payload.scopes, "expires_at": expires_at, "source_token_revoked": payload.revoke_source_token}}
+
     @app.post("/v1/pairings/start")
-    def start_pairing(current=Depends(_auth_dependency(db, required_scope="device.write"))):
+    def start_pairing(current=Depends(_auth_dependency(db, required_scope="device.write", required_audience="cloud-api"))):
         raw_code = f"{secrets.token_urlsafe(9)}"
         now = int(time.time())
         with db.connect() as cx:
@@ -695,7 +752,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"code": raw_code, "expires_at": now + 300}}
 
     @app.post("/v1/pairings/confirm")
-    def confirm_pairing(payload: PairingConfirm, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+    def confirm_pairing(payload: PairingConfirm, current=Depends(_auth_dependency(db, required_scope="device.write", required_audience="cloud-api"))):
         if payload.public_key is not None and not _valid_public_key(payload.public_key):
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         digest = hashlib.sha256(payload.code.encode()).hexdigest()
@@ -712,7 +769,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True}}
 
     @app.post("/v1/grants")
-    def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
+    def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db, required_scope="grant.write", required_audience="cloud-api"))):
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
         elevated_scopes = {"dangerous.approve", "approval.remote.resolve", "session.permission.manage", "session.full_access", "full_access"}
@@ -740,7 +797,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/grants/{grant_id}/revoke")
     @app.delete("/v1/grants/{grant_id}")
-    def revoke_grant(grant_id: str, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
+    def revoke_grant(grant_id: str, current=Depends(_auth_dependency(db, required_scope="grant.write", required_audience="cloud-api"))):
         with db.connect() as cx:
             result = cx.execute("UPDATE grants SET revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL", (int(time.time()), grant_id, current["id"]))
         if result.rowcount != 1:
@@ -1021,6 +1078,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/sessions")
     @app.get("/v1/cloud/sessions")
     def list_sessions(archived: bool | None = None, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+        device_id = _effective_device_id(current, device_id)
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
             rows = cx.execute("SELECT s.*, COALESCE((SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id=?), (SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id IS NULL)) AS archived_at FROM sessions s WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], device_id, current["id"], current["id"])).fetchall()
@@ -1032,6 +1090,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.post("/v1/sessions/{session_id}/archive")
     @app.post("/v1/cloud/sessions/{session_id}/archive")
     def archive_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        device_id = _effective_device_id(current, device_id)
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
@@ -1045,6 +1104,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.post("/v1/sessions/{session_id}/restore")
     @app.post("/v1/cloud/sessions/{session_id}/restore")
     def restore_session(session_id: str, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        device_id = _effective_device_id(current, device_id)
         _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
@@ -1102,6 +1162,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.post("/v1/sessions/{session_id}/approvals/{approval_id}/resolve")
     @app.post("/v1/cloud/sessions/{session_id}/approvals/{approval_id}/resolve")
     def resolve_approval(session_id: str, approval_id: str, payload: ApprovalResolve, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        device_id = _effective_device_id(current, device_id)
         session = _owned_session(db, session_id, current["id"])
         _validate_device_header(db, device_id, current["id"])
         if session["kind"] == "device_remote":
@@ -1244,7 +1305,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         auth_header, selected_subprotocol = _websocket_auth(websocket)
         current = _authenticate_token(db, auth_header)
         device_id = websocket.query_params.get("device_id")
-        if not current or not device_id or not _session_owned_by(db, session_id, current["id"]) or not _active_device_owned(db, device_id, current["id"]):
+        if not current or not device_id or (current["device_id"] is not None and current["device_id"] != device_id) or not _session_owned_by(db, session_id, current["id"]) or not _active_device_owned(db, device_id, current["id"]):
             await websocket.close(code=4401)
             return
         if settings.require_device_proof and app.state.device_proofs.get((current["id"], device_id), 0) <= int(time.time()):
@@ -1328,18 +1389,35 @@ def _user_by_account_id(db: CloudDB, account_id: str | None):
         return cx.execute("SELECT * FROM users WHERE id=?", (account_id,)).fetchone()
 
 
-def _auth_dependency(db: CloudDB, required_role: str | None = None, required_scope: str | None = None):
+def _auth_dependency(db: CloudDB, required_role: str | None = None, required_scope: str | None = None, required_audience: str | None = None):
     def dependency(authorization: Annotated[str | None, Header()] = None):
         row = _authenticate_token(db, authorization)
         if not row:
             raise HTTPException(401, "invalid token")
         if required_role and row["role"] != required_role:
             raise HTTPException(403, "permission denied")
+        if required_audience and row["audience"] != required_audience:
+            raise HTTPException(403, "token audience denied")
         scopes = json.loads(row["scopes_json"])
         if required_scope and "*" not in scopes and required_scope not in scopes:
             raise HTTPException(403, "token scope denied")
         return row
     return dependency
+
+
+def _require_bound_device(current: Any, target_device_id: str) -> None:
+    bound_device_id = current["device_id"]
+    if bound_device_id is not None and bound_device_id != target_device_id:
+        raise HTTPException(403, "device token cannot act as another device")
+
+
+def _effective_device_id(current: Any, requested_device_id: str | None) -> str | None:
+    bound_device_id = current["device_id"]
+    if bound_device_id is None:
+        return requested_device_id
+    if requested_device_id is not None and requested_device_id != bound_device_id:
+        raise HTTPException(403, "device token cannot act as another device")
+    return str(bound_device_id)
 
 
 def _authenticate_token(db: CloudDB, authorization: str | None):
@@ -1350,8 +1428,10 @@ def _authenticate_token(db: CloudDB, authorization: str | None):
         return None
     token_id, secret = parsed
     with db.connect() as cx:
-        row = cx.execute("SELECT u.*,t.expires_at,t.revoked_at,t.audience,t.scopes_json FROM tokens t JOIN users u ON u.id=t.user_id WHERE t.id=? AND t.digest=?", (token_id, token_digest(token_id, secret))).fetchone()
+        row = cx.execute("SELECT u.*,t.id AS token_id,t.expires_at,t.revoked_at,t.audience,t.scopes_json,t.device_id,d.id AS bound_device_exists,d.revoked_at AS device_revoked_at FROM tokens t JOIN users u ON u.id=t.user_id LEFT JOIN devices d ON d.id=t.device_id AND d.user_id=t.user_id WHERE t.id=? AND t.digest=?", (token_id, token_digest(token_id, secret))).fetchone()
     if not row or row["revoked_at"] or row["disabled"] or (row["expires_at"] is not None and row["expires_at"] <= int(time.time())):
+        return None
+    if row["device_id"] is not None and (row["bound_device_exists"] is None or row["device_revoked_at"] is not None):
         return None
     return row
 

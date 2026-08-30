@@ -32,6 +32,15 @@ Set `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=1` in production to require a recent
 Ed25519 device proof before relay connections. The device must obtain a
 challenge and sign `notemeld-device-proof-v1\\0<device_id>\\0<challenge>` with
 its registered private key before calling the verify endpoint.
+After successful proof, `POST /v1/devices/{device_id}/token` exchanges the
+account bearer for a short-lived, least-privilege `device-api` bearer. The raw
+device token is returned once and only its digest is stored. Revoking a device
+atomically revokes all bearers bound to that device. This first slice proves
+key possession at issuance; per-request DPoP signatures remain a later
+hardening step, so TLS and platform secure token storage are still mandatory.
+The exchange revokes its source account token by default so the target device
+does not retain a reusable bootstrap credential. A separate trusted management
+client may explicitly retain its source token when provisioning another device.
 Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
 default) and `NOTEMELD_CLOUD_MAX_WORKSPACE_FILES` (10,000 by default), returning
 HTTP 413 when either quota would be exceeded. Workspace ZIP

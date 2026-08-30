@@ -2,12 +2,12 @@ import axios, { AxiosInstance } from 'axios'
 import { validateCloudBaseUrl } from './connectionStrategy'
 
 export interface CloudEnvelope<T> { code: number; msg: string; data: T }
-export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; relay_backend?: string; relay_multi_worker?: boolean; lan_first_candidates?: boolean; worker_count?: number; max_request_bytes: number; relay_max_frame_bytes?: number; event_page_limit?: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
+export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; relay_backend?: string; relay_multi_worker?: boolean; lan_first_candidates?: boolean; worker_count?: number; max_request_bytes: number; relay_max_frame_bytes?: number; device_token_max_ttl_seconds?: number; event_page_limit?: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
 export interface CloudSession { id: string; kind: 'cloud_native' | 'device_remote'; title?: string; workspace_id: string; model_id?: string | null; status?: string }
 export interface CloudUser { id: string; username: string; role: 'admin' | 'user'; disabled: boolean; created_at: number }
 export interface CloudDevice { id: string; platform: string; display_name: string; online: boolean; last_seen_at?: number | null; connectivity?: { lan_endpoints?: string[] } }
 export interface CloudModel { id: string; name: string; provider: string; model: string; base_url?: string | null; enabled: boolean; is_default: boolean; has_api_key: boolean }
-export interface CloudToken { id: string; audience: string; scopes: string[]; expires_at?: number | null; revoked_at?: number | null; created_at: number }
+export interface CloudToken { id: string; audience: string; device_id?: string | null; scopes: string[]; expires_at?: number | null; revoked_at?: number | null; created_at: number }
 export interface CloudTokenStore { load(): Promise<string | null>; save(token: string): Promise<void>; clear(): Promise<void> }
 
 /** Stateless adapter for cloud control-plane APIs; no local Agent state lives here. */
@@ -40,7 +40,7 @@ export class CloudClient {
   async login(password: string, username?: string, accountId?: string) { const data = await this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }); this.token = data.token; await this.persistToken(); return data }
   async rotateToken() { const data = await this.request<{ token: string; jti: string; expires_at?: number | null }>('POST', '/v1/auth/rotate'); this.token = data.token; await this.persistToken(); return data }
   async revokeCurrentToken() { const data = await this.request<Record<string, unknown>>('POST', '/v1/auth/revoke'); this.token = null; await this.persistToken(); return data }
-  me() { return this.request<{ user_id: string; username: string; role: string; scopes: string[]; expires_at?: number | null }>('GET', '/v1/auth/me') }
+  me() { return this.request<{ user_id: string; username: string; role: string; audience: string; device_id?: string | null; scopes: string[]; expires_at?: number | null }>('GET', '/v1/auth/me') }
   listTokens() { return this.request<CloudToken[]>('GET', '/v1/auth/tokens') }
   createToken(scopes: string[] = ['*'], expiresAt?: number) { return this.request<{ token: string; jti: string; scopes: string[]; expires_at?: number | null }>('POST', '/v1/auth/tokens', { scopes, ...(expiresAt === undefined ? {} : { expires_at: expiresAt }) }) }
   revokeToken(tokenId: string) { return this.request<Record<string, unknown>>('POST', `/v1/auth/tokens/${encodeURIComponent(tokenId)}/revoke`) }
@@ -61,6 +61,7 @@ export class CloudClient {
   heartbeat(deviceId: string, lanEndpoints?: string[]) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/heartbeat`, lanEndpoints === undefined ? undefined : { lan_endpoints: lanEndpoints }) }
   requestDeviceChallenge(deviceId: string) { return this.request<{ challenge: string; expires_at: number }>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/challenge`) }
   verifyDeviceChallenge(deviceId: string, challenge: string, signature: string) { return this.request<Record<string, unknown>>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/challenge/verify`, { challenge, signature }) }
+  async createDeviceToken(deviceId: string, scopes?: string[], expiresInSeconds = 86_400, revokeSourceToken = true) { const data = await this.request<{ token: string; jti: string; device_id: string; audience: 'device-api'; scopes: string[]; expires_at: number; source_token_revoked: boolean }>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/token`, { ...(scopes ? { scopes } : {}), expires_in_seconds: expiresInSeconds, revoke_source_token: revokeSourceToken }); this.token = data.token; await this.persistToken(); return data }
   startPairing() { return this.request<{ code: string; expires_at: number }>('POST', '/v1/pairings/start') }
   confirmPairing(code: string, deviceId: string, platform: string, displayName: string, publicKey?: string) { return this.request<Record<string, unknown>>('POST', '/v1/pairings/confirm', { code, device_id: deviceId, platform, display_name: displayName, public_key: publicKey }) }
   listGrants() { return this.request<unknown[]>('GET', '/v1/grants') }

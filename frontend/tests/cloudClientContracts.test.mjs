@@ -5,7 +5,7 @@ import test from 'node:test'
 const source = fs.readFileSync(new URL('../src/services/cloud.ts', import.meta.url), 'utf8')
 
 test('cloud client exposes stateless cross-device control plane methods', () => {
-  for (const method of ['login', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'listModels', 'createModel', 'updateModel', 'deleteModel', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'startPairing', 'confirmPairing', 'listGrants', 'createShareToken', 'listShareTokens', 'revokeShareToken', 'sharedSnapshot', 'sharedEvents', 'sharedCommand', 'createSession', 'sendCommand', 'events', 'snapshot', 'archiveSession', 'restoreSession', 'copySession', 'deleteSession', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile']) {
+  for (const method of ['login', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'listModels', 'createModel', 'updateModel', 'deleteModel', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'createDeviceToken', 'startPairing', 'confirmPairing', 'listGrants', 'createShareToken', 'listShareTokens', 'revokeShareToken', 'sharedSnapshot', 'sharedEvents', 'sharedCommand', 'createSession', 'sendCommand', 'events', 'snapshot', 'archiveSession', 'restoreSession', 'copySession', 'deleteSession', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile']) {
     assert.match(source, new RegExp(`\\b${method}\\s*\\(`), `missing ${method}`)
   }
   assert.match(source, /\bme\s*\(/)
@@ -13,6 +13,8 @@ test('cloud client exposes stateless cross-device control plane methods', () => 
   assert.match(source, /listCommands/)
   assert.match(source, /Authorization: `Bearer \$\{this\.token\}`/)
   assert.match(source, /class CloudClient/)
+  assert.match(source, /audience: 'device-api'/)
+  assert.match(source, /expires_in_seconds/)
 })
 
 test('cloud client exposes injectable token storage without localStorage coupling', () => {

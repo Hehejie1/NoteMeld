@@ -333,6 +333,18 @@ operations, `grant.read/grant.write` for remote-control grants,
 `workspace.read/workspace.write` for cloud workspace reads and mutations.
 Rotation preserves the source token's audience, scopes and expiry rather than
 upgrading a PAT to a wildcard token.
+After a registered device completes the Ed25519 challenge, an account token may
+call `POST /v1/devices/{device_id}/token` to issue a 5-minute-to-30-day
+`device-api` token with an explicit non-admin scope allowlist. Rotation also
+preserves its device binding. Device revocation atomically revokes every token
+bound to that device; device key rotation does the same and requires a fresh
+proof. Device tokens cannot create PATs or other device tokens.
+`GET /v1/capabilities` advertises `features.device_tokens=true` and the
+maximum device-token TTL so clients can negotiate this flow before replacing
+their bootstrap account token.
+The exchange defaults `revoke_source_token=true`; issuance and source-token
+revocation commit atomically. A trusted management client provisioning a
+different device may explicitly set it to false.
 
 Failed logins are limited to five attempts per source/account key in a
 60-second SQLite-backed window and return HTTP 429 after the limit. The
@@ -351,6 +363,7 @@ the default configuration.
 | POST | `/v1/devices/register` | canonical device registration path (legacy `/v1/devices` remains supported) |
 | POST | `/v1/devices/{device_id}/challenge` | issue a one-time device proof challenge |
 | POST | `/v1/devices/{device_id}/challenge/verify` | verify an Ed25519 proof and authorize the device for a short relay window |
+| POST | `/v1/devices/{device_id}/token` | after a recent Ed25519 proof, issue a scoped short-lived bearer bound to the active device; requires an account-audience token |
 | GET | `/v1/cloud/sessions?archived=true|false` | filter sessions by archive state; omitted preserves compatibility |
 | POST | `/v1/devices/{device_id}/heartbeat` | record liveness and optionally refresh validated `lan_endpoints` candidates |
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |

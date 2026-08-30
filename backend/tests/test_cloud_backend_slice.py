@@ -78,6 +78,21 @@ def test_legacy_username_unique_schema_migrates(tmp_path):
         assert cx.execute("SELECT COUNT(*) FROM users WHERE username='same'").fetchone()[0] == 2
 
 
+def test_legacy_token_schema_adds_device_binding_column(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy-token.db"
+    with sqlite3.connect(database) as cx:
+        cx.execute("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, disabled INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)")
+        cx.execute("CREATE TABLE tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, expires_at INTEGER, revoked_at INTEGER, audience TEXT NOT NULL DEFAULT 'cloud-api', scopes_json TEXT NOT NULL DEFAULT '[\"*\"]', created_at INTEGER NOT NULL)")
+    from cloud.db import CloudDB
+
+    CloudDB(database).init()
+    with sqlite3.connect(database) as cx:
+        columns = {row[1] for row in cx.execute("PRAGMA table_info(tokens)")}
+    assert "device_id" in columns
+
+
 def test_device_registration_and_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
@@ -127,6 +142,80 @@ def test_device_proof_challenge_binds_private_key(tmp_path):
         proof = http.post(f"/v1/devices/{device_id}/challenge/verify", headers=headers, json={"challenge": challenge, "signature": signature})
         assert proof.status_code == 200
         assert http.post(f"/v1/devices/{device_id}/challenge/verify", headers=headers, json={"challenge": challenge, "signature": signature}).status_code == 401
+
+
+def test_device_bound_token_requires_proof_and_is_revoked_with_device(tmp_path):
+    Ed25519PrivateKey = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519").Ed25519PrivateKey
+
+    private = Ed25519PrivateKey.generate()
+    public_b64 = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).decode().rstrip("=")
+    with client(tmp_path) as http:
+        account_token = login(http, "admin", "admin-password-123")
+        account_headers = {"Authorization": f"Bearer {account_token}"}
+        device_id = "bound-token-device"
+        assert http.post("/v1/devices/register", headers=account_headers, json={"device_id": device_id, "platform": "ios", "display_name": "Phone", "public_key": public_b64}).status_code == 200
+
+        unproved = http.post(f"/v1/devices/{device_id}/token", headers=account_headers, json={})
+        assert unproved.status_code == 403
+
+        challenge = http.post(f"/v1/devices/{device_id}/challenge", headers=account_headers).json()["data"]["challenge"]
+        message = b"notemeld-device-proof-v1\0" + device_id.encode() + b"\0" + challenge.encode()
+        signature = base64.urlsafe_b64encode(private.sign(message)).decode().rstrip("=")
+        assert http.post(f"/v1/devices/{device_id}/challenge/verify", headers=account_headers, json={"challenge": challenge, "signature": signature}).status_code == 200
+
+        assert http.post("/v1/devices/register", headers=account_headers, json={"device_id": "peer-bound-token-device", "platform": "desktop", "display_name": "Peer"}).status_code == 200
+        issued = http.post(f"/v1/devices/{device_id}/token", headers=account_headers, json={"scopes": ["device.read", "device.write", "session.read"]})
+        assert issued.status_code == 200
+        token_data = issued.json()["data"]
+        assert token_data["audience"] == "device-api"
+        assert token_data["device_id"] == device_id
+        assert token_data["source_token_revoked"] is True
+        assert http.get("/v1/auth/me", headers=account_headers).status_code == 401
+        device_headers = {"Authorization": f"Bearer {token_data['token']}"}
+        me = http.get("/v1/auth/me", headers=device_headers)
+        assert me.status_code == 200
+        assert me.json()["data"]["device_id"] == device_id
+        assert me.json()["data"]["audience"] == "device-api"
+        assert http.get("/v1/devices", headers=device_headers).status_code == 200
+        assert http.get("/v1/cloud/sessions", headers=device_headers).status_code == 200
+        assert http.post(f"/v1/devices/{device_id}/heartbeat", headers=device_headers).status_code == 200
+        assert http.post("/v1/devices/peer-bound-token-device/heartbeat", headers=device_headers).status_code == 403
+        assert http.post("/v1/pairings/start", headers=device_headers).status_code == 403
+        assert http.post("/v1/auth/tokens", headers=device_headers, json={"scopes": ["session.read"]}).status_code == 403
+
+        management_headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+        assert http.delete(f"/v1/devices/{device_id}", headers=management_headers).status_code == 200
+        assert http.get("/v1/auth/me", headers=device_headers).status_code == 401
+
+
+def test_device_token_rotation_preserves_device_binding_and_expiry(tmp_path):
+    Ed25519PrivateKey = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519").Ed25519PrivateKey
+
+    private = Ed25519PrivateKey.generate()
+    public_b64 = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).decode().rstrip("=")
+    with client(tmp_path) as http:
+        account_token = login(http, "admin", "admin-password-123")
+        account_headers = {"Authorization": f"Bearer {account_token}"}
+        device_id = "rotating-bound-token"
+        http.post("/v1/devices/register", headers=account_headers, json={"device_id": device_id, "platform": "desktop", "display_name": "Desktop", "public_key": public_b64})
+        challenge = http.post(f"/v1/devices/{device_id}/challenge", headers=account_headers).json()["data"]["challenge"]
+        message = b"notemeld-device-proof-v1\0" + device_id.encode() + b"\0" + challenge.encode()
+        signature = base64.urlsafe_b64encode(private.sign(message)).decode().rstrip("=")
+        http.post(f"/v1/devices/{device_id}/challenge/verify", headers=account_headers, json={"challenge": challenge, "signature": signature})
+        old_token = http.post(f"/v1/devices/{device_id}/token", headers=account_headers, json={}).json()["data"]["token"]
+
+        rotated = http.post("/v1/auth/rotate", headers={"Authorization": f"Bearer {old_token}"})
+        assert rotated.status_code == 200
+        rotated_data = rotated.json()["data"]
+        assert rotated_data["device_id"] == device_id
+        assert rotated_data["audience"] == "device-api"
+        assert http.get("/v1/auth/me", headers={"Authorization": f"Bearer {old_token}"}).status_code == 401
+        assert http.get("/v1/auth/me", headers={"Authorization": f"Bearer {rotated_data['token']}"}).status_code == 200
+        replacement_key = base64.urlsafe_b64encode(b"r" * 32).decode().rstrip("=")
+        management_headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+        assert http.post(f"/v1/devices/{device_id}/rotate-key", headers=management_headers, json={"public_key": replacement_key}).status_code == 200
+        assert http.get("/v1/auth/me", headers={"Authorization": f"Bearer {rotated_data['token']}"}).status_code == 401
+        assert http.post(f"/v1/devices/{device_id}/token", headers=management_headers, json={}).status_code == 403
 
 
 def test_device_revoke_also_revokes_grants(tmp_path):

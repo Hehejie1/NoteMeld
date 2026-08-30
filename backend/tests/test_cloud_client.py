@@ -126,6 +126,21 @@ def test_cloud_client_device_proof_contract():
     client.close()
 
 
+def test_cloud_client_device_token_contract():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.content))
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"token": "nmt_device", "device_id": "device-a"}})
+
+    client = CloudClient("https://cloud.test", token="nmt_account", device_id="device-a", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    data = client.create_device_token(["device.read", "session.read"], expires_in_seconds=3600)
+    assert data["device_id"] == "device-a"
+    assert client.token == "nmt_device"
+    assert seen == [("POST", "/v1/devices/device-a/token", b'{"scopes":["device.read","session.read"],"expires_in_seconds":3600,"revoke_source_token":true}')]
+    client.close()
+
+
 def test_cloud_client_extended_control_plane_contracts():
     seen = []
 
