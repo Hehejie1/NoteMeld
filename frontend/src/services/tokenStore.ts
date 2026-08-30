@@ -70,3 +70,29 @@ export class IndexedDbTokenStore implements CloudTokenStore {
     })
   }
 }
+
+/** Load or create a non-extractable browser key stored separately from the token ciphertext. */
+export async function openIndexedDbTokenStore(dbName = 'notemeld-secure'): Promise<IndexedDbTokenStore> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(dbName, 2)
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains('tokens')) request.result.createObjectStore('tokens')
+      if (!request.result.objectStoreNames.contains('keys')) request.result.createObjectStore('keys')
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error ?? new Error('secure token database unavailable'))
+  })
+  const existing = await new Promise<CryptoKey | null>((resolve, reject) => {
+    const read = db.transaction('keys', 'readonly').objectStore('keys').get('cloud-token-key')
+    read.onsuccess = () => resolve(read.result ?? null)
+    read.onerror = () => reject(read.error ?? new Error('secure token key unavailable'))
+  })
+  const key = existing ?? await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  if (!existing) await new Promise<void>((resolve, reject) => {
+    const write = db.transaction('keys', 'readwrite').objectStore('keys').put(key, 'cloud-token-key')
+    write.onsuccess = () => resolve()
+    write.onerror = () => reject(write.error ?? new Error('secure token key unavailable'))
+  })
+  db.close()
+  return new IndexedDbTokenStore(key, dbName)
+}

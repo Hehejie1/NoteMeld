@@ -1,13 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import CloudClient from '../../services/cloud'
 import { useCloudAuth } from '../../hooks/useCloudAuth'
+import { openIndexedDbTokenStore } from '../../services/tokenStore'
 import { CloudLoginPanel } from '../../components/CloudLoginPanel'
 import { CloudSessionList } from '../../components/CloudSessionList'
 import { CloudSessionPanel } from '../../components/CloudSessionPanel'
 
 export default function CloudPage() {
-  const client = useMemo(() => new CloudClient(import.meta.env.VITE_CLOUD_BASE_URL || 'http://127.0.0.1:8583'), [])
+  const baseUrl = import.meta.env.VITE_CLOUD_BASE_URL || 'http://127.0.0.1:8583'
+  const [client, setClient] = useState(() => new CloudClient(baseUrl))
+  const [secureStorageReady, setSecureStorageReady] = useState(false)
+  useEffect(() => { let active = true; void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, undefined, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl])
   const auth = useCloudAuth(client)
+  if (!secureStorageReady) return <main aria-busy="true" className="p-6 text-sm text-slate-500">Preparing secure cloud storage…</main>
   const [selectedId, setSelectedId] = useState<string>()
   if (auth.loading) return <main aria-busy="true" className="p-6 text-sm text-slate-500">Connecting to NoteMeld Cloud…</main>
   if (!auth.authenticated) return <main className="flex min-h-app items-center justify-center"><CloudLoginPanel client={client} /></main>
