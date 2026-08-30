@@ -49,7 +49,9 @@ def connection_candidates(cloud_base_url: str, session_id: str, lan_endpoints: l
             raise ValueError("LAN endpoint must use a private or local address")
         result.append(ConnectionCandidate("lan", f"ws://{normalized}/v1/lan/connect/{quote(session_id, safe='')}"))
     relay_scheme = "wss" if parsed.scheme == "https" else "ws"
-    result.append(ConnectionCandidate("relay", urlunparse((relay_scheme, parsed.netloc, f"/v1/relay/connect/{quote(session_id, safe='')}", "", "", ""))))
+    prefix = parsed.path.rstrip("/")
+    relay_path = f"{prefix}/v1/relay/connect/{quote(session_id, safe='')}"
+    result.append(ConnectionCandidate("relay", urlunparse((relay_scheme, parsed.netloc, relay_path, "", "", ""))))
     return result
 
 

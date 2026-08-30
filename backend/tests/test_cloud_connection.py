@@ -6,7 +6,7 @@ def test_connection_candidates_prioritize_lan_and_encode_session():
     candidates = connection_candidates("https://cloud.example/api", "s/id", ["192.168.1.2:8583"])
     assert candidates[0].transport == "lan" and candidates[0].url.endswith("s%2Fid")
     assert candidates[-1].transport == "relay"
-    assert candidates[-1].url == "wss://cloud.example/v1/relay/connect/s%2Fid"
+    assert candidates[-1].url == "wss://cloud.example/api/v1/relay/connect/s%2Fid"
 
 
 def test_connection_fallback_tries_next_candidate():
