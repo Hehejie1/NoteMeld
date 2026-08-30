@@ -247,15 +247,7 @@ fn build_runtime_payload(
     port: u16,
     session_token: String,
 ) -> Result<FrontendRuntimePayload, String> {
-    let cloud_base_url = match std::env::var("NOTEMELD_CLOUD_BASE_URL") {
-        Ok(value) if !value.trim().is_empty() => Some(
-            validate_cloud_base_url(value.trim())?
-                .to_string()
-                .trim_end_matches('/')
-                .to_string(),
-        ),
-        _ => None,
-    };
+    let cloud_base_url = normalize_cloud_base_url(std::env::var("NOTEMELD_CLOUD_BASE_URL").ok())?;
     Ok(FrontendRuntimePayload {
         api_base_url: format!("http://127.0.0.1:{port}/api"),
         screenshot_base_url: format!("http://127.0.0.1:{port}/static/screenshots"),
@@ -264,6 +256,18 @@ fn build_runtime_payload(
         desktop_embedded: true,
         session_token,
     })
+}
+
+fn normalize_cloud_base_url(value: Option<String>) -> Result<Option<String>, String> {
+    match value {
+        Some(value) if !value.trim().is_empty() => Ok(Some(
+            validate_cloud_base_url(value.trim())?
+                .to_string()
+                .trim_end_matches('/')
+                .to_string(),
+        )),
+        _ => Ok(None),
+    }
 }
 
 fn build_runtime_bootstrap(payload: &FrontendRuntimePayload) -> Result<String, String> {
@@ -642,6 +646,18 @@ mod tests {
         assert!(validate_cloud_base_url("https://cloud.example.test/").is_ok());
         assert!(validate_cloud_base_url("http://cloud.example.test").is_err());
         assert!(validate_cloud_base_url("https://user:pass@cloud.example.test").is_err());
+    }
+
+    #[test]
+    fn optional_cloud_url_normalization_fails_closed() {
+        assert_eq!(normalize_cloud_base_url(None).unwrap(), None);
+        assert_eq!(
+            normalize_cloud_base_url(Some(" https://cloud.example.test/ ".to_string()))
+                .unwrap()
+                .as_deref(),
+            Some("https://cloud.example.test")
+        );
+        assert!(normalize_cloud_base_url(Some("http://cloud.example.test".to_string())).is_err());
     }
 
     #[test]
