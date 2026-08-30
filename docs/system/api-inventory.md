@@ -50,7 +50,7 @@ negotiate behavior instead of hard-coding deployment policy.
 | GET | `/v1/sessions/{session_id}/events?after=` | 按 event sequence 拉取事件 | bearer token |
 | POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
 | DELETE | `/v1/sessions/{session_id}` | 硬删除当前用户云端会话 | bearer token |
-| WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token（后续补充） |
+| WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token 或浏览器 `Sec-WebSocket-Protocol` bearer |
 
 ## Note / Task 接口
 
@@ -459,8 +459,8 @@ Operators can explicitly recover `needs_attention` commands with
 `resume` (requeue) or `abandon`; both transitions are idempotent and audited.
 
 `/v1/models` provides per-user cloud model metadata CRUD and default selection.
-Provider credentials are encrypted at rest with `NOTEMELD_CLOUD_SECRET_KEY`
-(falling back to the bootstrap admin password) and responses expose only
+Provider credentials are encrypted at rest with the dedicated
+`NOTEMELD_CLOUD_SECRET_KEY` (there is no password fallback) and responses expose only
 `has_api_key`.
 Sessions may set `model_id` when created; cloud execution then resolves the
 enabled model row for that user and constructs a bounded OpenAI-compatible
@@ -473,7 +473,8 @@ not mutate immediately. They create an auditable `pending` approval exposed by
 `/v1/cloud/sessions/{session_id}/approvals`; resolve with `approved` or
 `rejected`. Approval currently records the decision boundary; execution resume
 is performed synchronously with the approval transition using the same safe
-workspace resolver; remote-approval grant enforcement remains a follow-up slice.
+workspace resolver. Remote approval additionally requires the controller's
+Grant to include the `dangerous.approve` scope.
 Approval listings return only a bounded content preview.
 Pending approvals expire after `NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS` (15
 minutes by default); expired approvals are immutable and cannot be approved.
