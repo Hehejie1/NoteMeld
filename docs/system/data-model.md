@@ -224,6 +224,12 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 
 ## 本地数据和远端数据边界
 
+Remote Host adapter 的本地 SQLite 使用独立 `sync_mailbox` 和
+`sync_mailbox_authority` 表。前者保存 command identity、input、严格递增
+sequence、authority epoch、process lease owner 和 queued/admitted/needs_attention/terminal 状态；
+后者保存每 session 当前 fencing epoch。它们不修改现有 Conversation、
+Agent Turn/Event 或 `PRAGMA user_version`，也不是第二套 Agent 状态机。
+
 Cloud v1 stores session metadata/events, command idempotency records, and hashed scoped bearer/share-token metadata in `cloud.db`; bearer token rows persist audience, scope JSON and nullable `device_id`, while raw login, PAT, device and share-token values are returned only at issuance and are never persisted. A null `device_id` denotes an account/PAT token; a non-null value denotes a short-lived `device-api` token issued only after recent device proof. Scope JSON is enforced at the API boundary; token rotation copies the source audience/scope/expiry/device binding. Device-token issuance and the default source-token revocation use one transaction. Device revoke atomically revokes matching device tokens and grants. `session_payloads` stores the allowlisted non-file portion and file manifest of an imported local snapshot; `session_import_requests(user_id,request_id)` stores its canonical payload hash and resulting session for retry-safe idempotency. Imported file bytes are validated in an isolated staging directory and atomically renamed into `workspaces/<user_id>/<workspace_id>/`; the source local session is never modified. Workspace backups are under `backups/<user_id>/<workspace_id>`. Hard delete removes session rows and purges that workspace/backup directory only when no remaining session references the same workspace. Workspace writes use a fsync + atomic replace sequence and reject traversal/symlink access. Restore validates archive paths and size before atomically overlaying files. Relay payloads are validated as `notemeld.sync.v1` envelopes, routed to the addressed connected device, and are not written to SQLite or disk.
 
 - NoteMeld 的主要业务数据本地持久化在 SQLite 和文件系统。

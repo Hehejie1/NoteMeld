@@ -29,7 +29,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - 云端 Agent 的 workspace 写入/删除能力仅产生 pending approval，批准后才执行，不会隐式修改文件。
 - Pending approval 默认 15 分钟过期；过期后只能查询，不能再批准，TTL 可通过环境变量调整。
 - 本地 `backend/app/cloud_sync/client.py` 提供无状态 HTTP adapter，统一 cloud token、session、command、snapshot 和 event 请求；本地 queue/Agent 状态机不放入该 adapter。
-- `backend/app/cloud_sync/queue.py` 同时提供进程内 `SessionMailbox` 和 SQLite-backed `DurableSessionMailbox`；后者用于宿主重启后恢复 queued/admitted command，不替代 Agent SDK 的 canonical 状态机。云端 `cloud/app.py` 对 cloud-native command 使用 SQLite queued/running 状态和每 session worker；进程重启后 queued 自动继续，running 标记 `needs_attention`。
+- `backend/app/cloud_sync/queue.py` 同时提供进程内 `SessionMailbox` 和 SQLite-backed `DurableSessionMailbox`；remote Host 使用后者保存 queued/admitted command，不替代 Agent SDK 的 canonical 状态机。Durable mailbox 通过事务门禁保证每 session 最多一个 admitted Turn；重新构造时把遗留 admitted 标为 `needs_attention`，在显式 resume/abandon 前拒绝新 command。独立 authority 表提供单调 epoch fencing，轮换时 active Turn 进入人工恢复、queued command 原子重绑新 epoch。云端 `cloud/app.py` 对 cloud-native command 使用 SQLite queued/running 状态和每 session worker；进程重启后 queued 自动继续，running 标记 `needs_attention`。
 - 云端命令领取带有 process-scoped lease owner、过期时间和 attempt 计数；SQLite `BEGIN IMMEDIATE` 保证多进程单 claim，过期的 running 任务仍需人工恢复，不会自动重放。
 - `needs_attention` 命令可通过 recover API 明确选择 `resume` 重新排队或 `abandon` 终止，操作幂等且写入事件/审计。
 - Relay 只转发不落盘 payload，但会在 SQLite 中持久化每设备/会话的最大接收序列，重启后仍能拒绝旧帧。

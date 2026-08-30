@@ -1,5 +1,12 @@
 # Known Pitfalls
 
+## Durable mailbox 连续领取多个 active Turn
+
+- 风险：只把 `pop()` 做成“取第一条 queued 并改 admitted”，却不先检查 active 状态，同一 session 可并行执行多个 Turn；重启后还可能越过未知副作用继续下一条。
+- 不允许：重启时把 admitted 自动当 queued；存在 `needs_attention` 时继续接收消息；authority epoch 变化后接受旧 epoch command。
+- 检查方式：`backend/tests/test_cloud_sync_protocol.py::test_durable_mailbox_allows_only_one_admitted_turn_across_restart` 和 `::test_durable_mailbox_authority_rotation_fences_old_active_turn`。
+- 修复经验：`BEGIN IMMEDIATE` 内先查 active 再 claim；启动把遗留 admitted 标 needs_attention；resume/abandon 必须显式；独立 session authority epoch 单调 fencing。
+
 ## 设备撤销但设备 Bearer 仍有效
 
 - 风险：只把设备标记为 revoked、只撤销 remote grant，泄漏到该设备的 bearer 仍能继续访问 session/workspace API。

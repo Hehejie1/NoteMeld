@@ -56,8 +56,10 @@ completed。
 平台适配层只调用 `DurableSessionMailbox`（或等价的原生实现）：
 
 - `enqueue` 使用客户端 request id 幂等。
-- `pop` 后状态为 admitted，崩溃重启后必须可恢复。
+- 同一 session 只允许一个 admitted；有 active/needs_attention 时 `pop` 不得领取下一条。
+- `pop` 后状态为 admitted；崩溃重启转为 needs_attention，并在恢复前拒绝新 command。
 - 用户选择继续时回到 queued，选择放弃时变为 abandoned。
+- authority epoch 只允许单调增加；轮换时 fence 旧 active Turn，并把未执行 queued command 重绑到新 epoch。
 - 队列和本地会话数据不得放入云端 Relay 的临时消息存储。
 
 ## workspace 与本地专属数据
