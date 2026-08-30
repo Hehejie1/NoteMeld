@@ -29,6 +29,7 @@
 
 - 本切片不实现 mDNS/Bonjour/NSD 自动发现，也不解决 IPv6 link-local interface scope 映射。
 - 不在启动时从环境变量读取长期 device token 或私钥；平台安全存储 adapter 后续显式安装 `LanDirectService`。
+- Web `openRelayWebSocket()` 只为 cloud Relay 候选发送 bearer 子协议；LAN 候选必须由调用方提供 `LanHandshake`，缺少时自动回退 Relay。
 - 不在 LAN transport 内复制 Agent loop；durable command 仍由 canonical Host/SDK executor 消费。
 - cloud Relay 多实例 Pub/Sub adapter 仍是独立后续工作。
 

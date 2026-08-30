@@ -4,6 +4,7 @@
 
 - 风险：把 cloud WebSocket URL 机械替换为 `ws://192.168.x.x` 并继续携带 bearer，会让局域网监听者获得长期凭证；只检查设备 ID 或 `ipaddress.is_private` 还会接受保留地址、旧 Grant、错误 workspace 或 stale authority epoch。
 - 不允许：在 LAN hello/query/header 中发送 cloud token；把候选地址当授权；宿主自行信任控制端声明的 scope；在 AEAD 验证或 durable enqueue 前返回 received；让 Python 使用 ChaCha20 而 Web 使用 AES-GCM；允许 handler 返回任意明文结果。
+- Web 端的连接策略同样不得把 `bearer.<token>` 子协议用于 LAN；没有实现 `LanHandshake` 时必须跳过 LAN 候选并回退 `wss` Relay。
 - 检查方式：运行 `backend/tests/test_cloud_lan_authorization.py`、`test_cloud_lan_auth.py`、`test_cloud_lan_transport.py`、`test_cloud_connection.py`，以及 `frontend/tests/relayCryptoInterop.test.mjs`。
 - 修复经验：宿主用绑定 device token 通过 HTTPS 获取 60 秒云端断言；控制端只在 LAN 上提交 Ed25519 一次性 proof 和 E2EE frame；结果/event 必须继续使用 encrypted `RemoteFrame`，明文只允许无业务内容的最小 durable receipt。
 

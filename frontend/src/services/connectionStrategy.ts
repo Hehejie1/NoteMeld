@@ -1,5 +1,5 @@
 export interface DeviceConnectivity { lan_endpoints?: string[] }
-export interface ConnectionCandidate { transport: 'lan' | 'relay'; url: string }
+export interface ConnectionCandidate { transport: 'lan' | 'relay'; url: string; auth: 'challenge' | 'bearer' }
 export function relayWebSocketProtocols(token: string): string[] { if (!token) throw new Error('relay token is required'); return ['notemeld.v1', `bearer.${token}`] }
 
 export function validateCloudBaseUrl(value: string): URL {
@@ -23,7 +23,8 @@ function isPrivateLanEndpoint(endpoint: string): boolean {
     return octets[0] === 10 || octets[0] === 127 || (octets[0] === 169 && octets[1] === 254) ||
       (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) || (octets[0] === 192 && octets[1] === 168)
   }
-  return host === '::1' || host.startsWith('fc') || host.startsWith('fd') || /^fe[89ab]/.test(host)
+  if (host === '::1' || host === '::' || host.startsWith('ff')) return host === '::1'
+  return /^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)
 }
 
 export async function connectWithFallback<T>(candidates: ConnectionCandidate[], connect: (candidate: ConnectionCandidate, signal: AbortSignal) => Promise<T>, timeoutMs = 3_000): Promise<{ connection: T; candidate: ConnectionCandidate }> {
@@ -58,24 +59,37 @@ export function connectionCandidates(cloudBaseUrl: string, sessionId: string, de
     const host = normalized.includes(':') && normalized.includes('::') && !normalized.startsWith('[')
       ? `[${normalized.slice(0, normalized.lastIndexOf(':'))}]:${normalized.slice(normalized.lastIndexOf(':') + 1)}`
       : normalized
-    candidates.push({ transport: 'lan', url: `ws://${host}/v1/relay/connect/${encodeURIComponent(sessionId)}` })
+    candidates.push({ transport: 'lan', auth: 'challenge', url: `ws://${host}/v1/lan/connect/${encodeURIComponent(sessionId)}` })
   }
   const relay = new URL(base)
   relay.protocol = relay.protocol === 'https:' ? 'wss:' : 'ws:'
   relay.pathname = `/v1/relay/connect/${encodeURIComponent(sessionId)}`
   relay.search = ''
-  candidates.push({ transport: 'relay', url: relay.toString() })
+  candidates.push({ transport: 'relay', auth: 'bearer', url: relay.toString() })
   return candidates
 }
 
-export function openRelayWebSocket(cloudBaseUrl: string, sessionId: string, device: DeviceConnectivity, token: string, timeoutMs = 3_000): Promise<{ connection: WebSocket; candidate: ConnectionCandidate }> {
-  const protocols = relayWebSocketProtocols(token)
+export type LanHandshake = (socket: WebSocket, signal: AbortSignal) => Promise<void>
+
+export function openRelayWebSocket(cloudBaseUrl: string, sessionId: string, device: DeviceConnectivity, token: string, timeoutMs = 3_000, lanHandshake?: LanHandshake): Promise<{ connection: WebSocket; candidate: ConnectionCandidate }> {
   return connectWithFallback(connectionCandidates(cloudBaseUrl, sessionId, device), (candidate, signal) => new Promise<WebSocket>((resolve, reject) => {
+    if (candidate.auth === 'challenge' && !lanHandshake) {
+      reject(new Error('LAN challenge handler is required'))
+      return
+    }
+    const protocols = candidate.auth === 'bearer' ? relayWebSocketProtocols(token) : ['notemeld.lan.v1']
     const socket = new WebSocket(candidate.url, protocols)
     const abort = () => { socket.close(); reject(new DOMException('relay connection timed out', 'AbortError')) }
     if (signal.aborted) { abort(); return }
     signal.addEventListener('abort', abort, { once: true })
-    socket.onopen = () => { signal.removeEventListener('abort', abort); resolve(socket) }
+    socket.onopen = () => {
+      if (candidate.auth === 'challenge') {
+        lanHandshake!(socket, signal).then(() => { signal.removeEventListener('abort', abort); resolve(socket) }).catch(error => { signal.removeEventListener('abort', abort); socket.close(); reject(error) })
+        return
+      }
+      signal.removeEventListener('abort', abort)
+      resolve(socket)
+    }
     socket.onerror = () => { signal.removeEventListener('abort', abort); socket.close(); reject(new Error('relay connection failed')) }
   }), timeoutMs)
 }
