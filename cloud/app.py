@@ -47,9 +47,9 @@ SHARE_SCOPES = frozenset({"message.send", "event.receive"})
 
 
 class LoginRequest(BaseModel):
-    username: str | None = None
-    account_id: str | None = None
-    password: str
+    username: str | None = Field(default=None, max_length=256)
+    account_id: str | None = Field(default=None, max_length=128)
+    password: str = Field(max_length=4096)
 
 
 class PersonalTokenCreate(BaseModel):
