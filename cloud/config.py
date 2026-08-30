@@ -31,6 +31,7 @@ class CloudSettings:
     device_online_ttl_seconds: int = 90
     agent_max_retries: int = 2
     relay_max_frame_bytes: int = 256 * 1024
+    max_active_commands_per_user: int = 8
 
     @property
     def database_path(self) -> Path:
@@ -70,6 +71,8 @@ class CloudSettings:
             raise ValueError("agent max retries must be between 0 and 3")
         if self.relay_max_frame_bytes <= 0:
             raise ValueError("relay frame limit must be positive")
+        if self.max_active_commands_per_user < 1:
+            raise ValueError("active command limit must be positive")
         if self.relay_backend == "memory" and self.worker_count > 1:
             raise ValueError("memory relay cannot run with multiple workers")
 
@@ -99,4 +102,5 @@ def load_settings() -> CloudSettings:
         device_online_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_DEVICE_ONLINE_TTL_SECONDS", "90")),
         agent_max_retries=int(os.getenv("NOTEMELD_CLOUD_AGENT_MAX_RETRIES", "2")),
         relay_max_frame_bytes=int(os.getenv("NOTEMELD_CLOUD_RELAY_MAX_FRAME_BYTES", str(256 * 1024))),
+        max_active_commands_per_user=int(os.getenv("NOTEMELD_CLOUD_MAX_ACTIVE_COMMANDS_PER_USER", "8")),
     )

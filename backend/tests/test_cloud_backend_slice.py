@@ -732,6 +732,31 @@ def test_cloud_session_spec_prefix_aliases(tmp_path):
         assert http.delete(f"/v1/cloud/sessions/{session['id']}", headers=headers).status_code == 200
 
 
+def test_cloud_active_command_limit_is_per_user_and_idempotent_retries_are_allowed(tmp_path):
+    import uuid
+
+    settings = CloudSettings(
+        tmp_path / "limited-data",
+        "admin",
+        "admin-password-123",
+        command_wait_seconds=0.01,
+        max_active_commands_per_user=1,
+    )
+    with TestClient(create_app(settings)) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        first = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        second = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        command_id = str(uuid.uuid4())
+        with http.app.state.db.connect() as cx:
+            cx.execute(
+                "INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                (command_id, first["id"], "active", "0" * 64, 1, "in progress", "running", int(time.time())),
+            )
+        blocked = http.post(f"/v1/sessions/{second['id']}/commands", headers=headers, json={"request_id": "limited", "input": "hello"})
+        assert blocked.status_code == 429
+
+
 def test_device_and_grant_spec_aliases(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

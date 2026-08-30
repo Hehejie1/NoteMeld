@@ -396,6 +396,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "max_request_bytes": settings.max_request_bytes,
             "event_page_limit": 5000,
             "relay_max_frame_bytes": settings.relay_max_frame_bytes,
+            "max_active_commands_per_user": settings.max_active_commands_per_user,
             "device_token_max_ttl_seconds": 30 * 24 * 60 * 60,
             "max_workspace_bytes": settings.max_workspace_bytes,
             "max_workspace_files": settings.max_workspace_files,
@@ -1850,6 +1851,14 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
                 raise HTTPException(409, "payload conflict")
             cx.execute("COMMIT")
             return {"code": 0, "msg": "success", "data": {"command_id": existing["id"], "sequence": existing["sequence"], "status": existing["status"], "idempotent": True}}
+        active = cx.execute(
+            "SELECT COUNT(*) FROM commands c JOIN sessions s ON s.id=c.session_id "
+            "WHERE s.user_id=? AND c.status IN ('queued','running')",
+            (user_id,),
+        ).fetchone()[0]
+        if active >= app.state.settings.max_active_commands_per_user:
+            cx.execute("ROLLBACK")
+            raise HTTPException(429, "active command limit reached", headers={"Retry-After": "5"})
         sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
         command_id = str(uuid.uuid4())
         cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='queued',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 1, now, session_id))
