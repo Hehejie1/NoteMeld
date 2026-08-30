@@ -240,7 +240,13 @@ class CloudClient:
             headers["Authorization"] = f"Bearer {self.token}"
         if self.device_id:
             headers["X-Device-Id"] = self.device_id
-        response = self._client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
+        try:
+            response = self._client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
+        except httpx.HTTPError as exc:
+            # Keep transport failures on the same stable error channel as API
+            # failures so callers can implement offline/fallback behavior
+            # without depending on httpx exception classes.
+            raise CloudClientError(0, f"cloud transport failed: {exc.__class__.__name__}") from exc
         try:
             body = response.json()
         except ValueError as exc:

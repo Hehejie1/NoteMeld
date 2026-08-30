@@ -32,6 +32,20 @@ def test_cloud_client_projects_errors():
     client.close()
 
 
+def test_cloud_client_normalizes_transport_failures():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    client = CloudClient("https://cloud.test", token="nmt_bad", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    try:
+        client.snapshot("s1")
+    except CloudClientError as exc:
+        assert exc.status_code == 0 and "cloud transport failed" in str(exc)
+    else:
+        raise AssertionError("expected normalized transport error")
+    client.close()
+
+
 def test_cloud_client_imports_local_snapshot():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/cloud/sessions/import"
