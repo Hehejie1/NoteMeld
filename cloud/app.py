@@ -239,6 +239,24 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             return JSONResponse(status_code=400, content={"code": 400, "msg": "invalid content length"})
         if content_length < 0 or content_length > settings.max_request_bytes:
             return JSONResponse(status_code=413, content={"code": 413, "msg": "request body too large"})
+        original_receive = request._receive
+        if raw_length is None:
+            body = bytearray()
+            while True:
+                message = await original_receive()
+                if message.get("type") != "http.request":
+                    break
+                body.extend(message.get("body", b""))
+                if len(body) > settings.max_request_bytes:
+                    return JSONResponse(status_code=413, content={"code": 413, "msg": "request body too large"})
+                if not message.get("more_body", False):
+                    break
+            request._body = bytes(body)
+
+            async def replay_body():
+                return {"type": "http.request", "body": request._body, "more_body": False}
+
+            request._receive = replay_body
         return await call_next(request)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token"])

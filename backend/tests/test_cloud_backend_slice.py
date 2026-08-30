@@ -721,6 +721,34 @@ def test_workspace_rejects_symlinked_root(tmp_path):
         Workspace(link)
 
 
+def test_request_size_guard_rejects_chunked_body(tmp_path):
+    import asyncio
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_request_bytes=5)
+    app = create_app(settings)
+    messages = [
+        {"type": "http.response.start", "status": None, "headers": []},
+        {"type": "http.response.body", "body": b""},
+    ]
+    chunks = iter((b'{"user', b'name":"admin"}'))
+
+    async def receive():
+        try:
+            return {"type": "http.request", "body": next(chunks), "more_body": True}
+        except StopIteration:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            messages[0] = message
+        else:
+            messages[1] = message
+
+    scope = {"type": "http", "method": "POST", "path": "/v1/auth/login", "raw_path": b"/v1/auth/login", "query_string": b"", "headers": [(b"content-type", b"application/json")], "scheme": "http", "server": ("test", 80), "client": ("127.0.0.1", 1), "root_path": "", "http_version": "1.1"}
+    asyncio.run(app(scope, receive, send))
+    assert messages[0]["status"] == 413
+
+
 def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
