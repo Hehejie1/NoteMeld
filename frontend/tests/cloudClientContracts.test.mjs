@@ -38,3 +38,11 @@ test('connection strategy orders LAN candidates before cloud relay fallback', ()
   assert.match(source, /isPrivateLanEndpoint/)
   assert.match(source, /invalid private LAN endpoint/)
 })
+
+test('cloud session controller owns snapshot and incremental event projection', () => {
+  const source = fs.readFileSync(new URL('../src/services/cloudSessionController.ts', import.meta.url), 'utf8')
+  assert.match(source, /class CloudSessionController/)
+  assert.match(source, /refreshEvents/)
+  assert.match(source, /lastSequence/)
+  assert.match(source, /recoverCommand/)
+})
