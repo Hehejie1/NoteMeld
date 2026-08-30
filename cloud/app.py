@@ -959,6 +959,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, payload.session_id, current["id"])
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
+        if payload.role == "viewer" and "message.send" in payload.scopes:
+            raise HTTPException(422, "viewer share token cannot send messages")
         if payload.expires_at is not None and payload.expires_at <= int(time.time()):
             raise HTTPException(422, "expires_at must be in the future")
         raw = "nms_" + secrets.token_urlsafe(32)
