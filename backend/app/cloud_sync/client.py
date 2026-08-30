@@ -185,6 +185,10 @@ class CloudClient:
     def delete_workspace_backup(self, workspace_id: str, backup_id: str) -> dict[str, Any]:
         return self._request("DELETE", f"/v1/workspaces/{quote(workspace_id, safe='')}/backups/{quote(backup_id, safe='')}")
 
+    def list_workspace_backups(self, workspace_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        data = self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/backups", params={"limit": limit})
+        return data["items"] if isinstance(data, dict) and isinstance(data.get("items"), list) else data
+
     def workspace_capacity(self, workspace_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/capacity")
 

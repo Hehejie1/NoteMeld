@@ -1219,8 +1219,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": size, "created_at": int(time.time())}}
 
     @app.get("/v1/workspaces/{workspace_id}/backups")
-    def list_backups(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
+    def list_backups(workspace_id: str, limit: int = 100, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
+        limit = max(1, min(limit, settings.max_backup_list_items))
         directory = settings.data_dir / "backups" / current["id"] / workspace_id
         items = []
         def backup_candidates():
@@ -1239,10 +1240,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     continue
                 yield (stat.st_mtime, (path, stat))
 
-        paths = heapq.nlargest(settings.max_backup_list_items + 1, backup_candidates(), key=lambda item: item[0])
+        paths = heapq.nlargest(limit, backup_candidates(), key=lambda item: item[0])
         for _, (path, stat) in paths[: settings.max_backup_list_items + 1]:
             items.append({"backup_id": path.stem, "bytes": stat.st_size, "created_at": int(stat.st_mtime)})
-        return {"code": 0, "msg": "success", "data": items[: settings.max_backup_list_items]}
+        return {"code": 0, "msg": "success", "data": items}
 
     @app.delete("/v1/workspaces/{workspace_id}/backups/{backup_id}")
     def delete_backup(workspace_id: str, backup_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
