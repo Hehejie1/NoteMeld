@@ -26,6 +26,7 @@ class CloudSettings:
     max_request_bytes: int = 16 * 1024 * 1024
     approval_ttl_seconds: int = 900
     relay_backend: str = "memory"
+    relay_url: str | None = None
     worker_count: int = 1
     device_online_ttl_seconds: int = 90
     agent_max_retries: int = 2
@@ -53,6 +54,12 @@ class CloudSettings:
                 raise ValueError("remote agent URL must use HTTPS")
         if self.relay_backend not in {"memory", "redis", "nats"}:
             raise ValueError("unsupported relay backend")
+        if self.relay_backend == "redis":
+            if not self.relay_url:
+                raise ValueError("NOTEMELD_CLOUD_RELAY_URL is required for redis relay")
+            parsed = urlparse(self.relay_url)
+            if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname:
+                raise ValueError("relay URL must use redis:// or rediss://")
         if self.worker_count < 1:
             raise ValueError("worker count must be positive")
         if self.device_online_ttl_seconds < 5:
@@ -87,6 +94,7 @@ def load_settings() -> CloudSettings:
         max_request_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_REQUEST_BYTES", str(16 * 1024 * 1024))),
         approval_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS", "900")),
         relay_backend=os.getenv("NOTEMELD_CLOUD_RELAY_BACKEND", "memory").strip().lower(),
+        relay_url=os.getenv("NOTEMELD_CLOUD_RELAY_URL") or None,
         worker_count=int(os.getenv("WEB_CONCURRENCY", "1")),
         device_online_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_DEVICE_ONLINE_TTL_SECONDS", "90")),
         agent_max_retries=int(os.getenv("NOTEMELD_CLOUD_AGENT_MAX_RETRIES", "2")),

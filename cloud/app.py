@@ -27,7 +27,7 @@ from .db import CloudDB
 from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace
-from .relay import InMemoryRelayBroker
+from .relay import InMemoryRelayBroker, RedisRelayBroker
 
 
 TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
@@ -284,6 +284,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         yield
+        close_relay = getattr(application.state, "relay_broker", None)
+        close_relay = getattr(close_relay, "close", None)
+        if callable(close_relay):
+            result = close_relay()
+            if hasattr(result, "__await__"):
+                await result
         close = getattr(application.state.agent_runner, "close", None)
         if callable(close):
             close()
@@ -327,9 +333,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
 
-    if settings.relay_backend != "memory":
+    if settings.relay_backend == "memory":
+        app.state.relay_broker = InMemoryRelayBroker()
+    elif settings.relay_backend == "redis":
+        app.state.relay_broker = RedisRelayBroker(settings.relay_url or "", online_ttl_seconds=settings.device_online_ttl_seconds)
+    else:
         raise RuntimeError(f"relay backend '{settings.relay_backend}' is not installed in this build")
-    app.state.relay_broker = InMemoryRelayBroker()
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
     app.state.device_proofs: dict[tuple[str, str], int] = {}
@@ -378,9 +387,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "e2ee_relay_envelope": True,
             "relay_persists_payload": False,
             "relay_backend": settings.relay_backend,
-            # Redis/NATS adapters are intentionally fail-fast until installed;
-            # never advertise multi-worker support for the in-memory broker.
-            "relay_multi_worker": False,
+            "relay_multi_worker": settings.relay_backend == "redis",
             "lan_first_candidates": True,
             "worker_count": settings.worker_count,
             "max_request_bytes": settings.max_request_bytes,
@@ -1426,7 +1433,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         await websocket.accept(subprotocol=selected_subprotocol)
         with db.connect() as cx:
             cx.execute("UPDATE devices SET last_seen_at=? WHERE id=?", (int(time.time()), device_id))
-        previous = app.state.relay_broker.register(session_id, device_id, websocket)
+        previous = await _maybe_await(app.state.relay_broker.register(session_id, device_id, websocket))
         if previous is not None and previous is not websocket:
             await previous.close(code=4009, reason="replaced by a newer connection")
         frame_times: list[int] = []
@@ -1465,19 +1472,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 except (ValueError, json.JSONDecodeError, TypeError, AttributeError):
                     await websocket.send_json({"type": "rejected", "error": "invalid_envelope"})
                     continue
-                peer = app.state.relay_broker.peer(session_id, envelope["recipient_device_id"])
-                if peer is None or peer is websocket:
-                    await websocket.send_json({"type": "failed", "error": "host_offline", "frame_id": envelope["frame_id"]})
-                    continue
-                try:
-                    await peer.send_text(message)
-                except Exception:  # noqa: BLE001 - a peer can disconnect between lookup and delivery
-                    app.state.relay_broker.unregister(session_id, envelope["recipient_device_id"], peer)
+                delivered = await _relay_deliver(
+                    app.state.relay_broker,
+                    session_id,
+                    envelope["recipient_device_id"],
+                    message,
+                    websocket,
+                )
+                if not delivered:
                     await websocket.send_json({"type": "failed", "error": "host_offline", "frame_id": envelope["frame_id"]})
                     continue
                 await websocket.send_json({"type": "relay_accepted", "frame_id": envelope["frame_id"]})
         except WebSocketDisconnect:
-            app.state.relay_broker.unregister(session_id, device_id, websocket)
+            await _maybe_await(app.state.relay_broker.unregister(session_id, device_id, websocket))
 
     _start_queued_workers(app, db)
     return app
@@ -1563,6 +1570,28 @@ def _websocket_auth(websocket: WebSocket) -> tuple[str | None, str | None]:
             selected = "notemeld.v1" if "notemeld.v1" in protocols else None
             return f"Bearer {protocol[len('bearer.'):]}" , selected
     return None, "notemeld.v1" if "notemeld.v1" in protocols else None
+
+
+async def _maybe_await(value):
+    """Allow the default synchronous broker and async distributed brokers."""
+    if hasattr(value, "__await__"):
+        return await value
+    return value
+
+
+async def _relay_deliver(broker: Any, session_id: str, recipient_device_id: str, message: str, sender: Any) -> bool:
+    deliver = getattr(broker, "deliver", None)
+    if callable(deliver):
+        return bool(await _maybe_await(deliver(session_id, recipient_device_id, message, sender)))
+    peer = broker.peer(session_id, recipient_device_id)
+    if peer is None or peer is sender:
+        return False
+    try:
+        await peer.send_text(message)
+    except Exception:  # noqa: BLE001 - a peer can disconnect between lookup and delivery
+        await _maybe_await(broker.unregister(session_id, recipient_device_id, peer))
+        return False
+    return True
 
 
 def _login_rate_limited(db: CloudDB, key: str, now: int, window_seconds: int = 60, max_failures: int = 5) -> bool:
