@@ -127,7 +127,9 @@ class Workspace:
             "free_bytes": usage.free,
         }
 
-    def list_files(self, prefix: str = "") -> list[dict[str, int | str]]:
+    def list_files(self, prefix: str = "", limit: int | None = None) -> list[dict[str, int | str]]:
+        if limit is not None and limit <= 0:
+            raise WorkspaceError("file list limit must be positive")
         if prefix:
             base = self.path(prefix)
             if base.is_symlink() or (base.exists() and not base.is_dir()):
@@ -139,6 +141,8 @@ class Workspace:
             if path.is_symlink() or not path.is_file():
                 continue
             items.append({"path": path.relative_to(self.root).as_posix(), "bytes": path.stat().st_size, "modified_at": int(path.stat().st_mtime)})
+            if limit is not None and len(items) >= limit:
+                break
         return sorted(items, key=lambda item: str(item["path"]))
 
     def create_backup(self, destination: Path) -> int:

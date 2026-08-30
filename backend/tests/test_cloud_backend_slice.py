@@ -1023,6 +1023,16 @@ def test_workspace_file_api_bounds_reads_and_listing(tmp_path):
         assert len(listed["files"]) == 1 and listed["truncated"] is True
 
 
+def test_workspace_list_files_honors_internal_limit(tmp_path):
+    from cloud.workspace import Workspace
+
+    workspace = Workspace(tmp_path / "limited")
+    for name in ("a.txt", "b.txt", "c.txt"):
+        workspace.write_text(name, name)
+    files = workspace.list_files(limit=2)
+    assert len(files) == 2
+
+
 def test_workspace_concurrent_writes_use_distinct_atomic_temporary_files(tmp_path):
     from cloud.workspace import Workspace
 

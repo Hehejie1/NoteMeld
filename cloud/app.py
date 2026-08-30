@@ -1175,7 +1175,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
             limit = max(1, min(limit, settings.max_workspace_list_items))
-            files = workspace.list_files(prefix)
+            files = workspace.list_files(prefix, limit=limit + 1)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "files": files[:limit], "truncated": len(files) > limit}}
@@ -2096,8 +2096,8 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
             prefix = arguments.get("prefix", "")
             if not isinstance(prefix, str) or len(prefix) > 1024:
                 return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace prefix"}}
-            files = workspace.list_files(prefix)[:200]
-            return {"ok": True, "files": files, "truncated": len(files) == 200}
+            files = workspace.list_files(prefix, limit=201)
+            return {"ok": True, "files": files[:200], "truncated": len(files) > 200}
         if name == "workspace.read":
             path = arguments.get("path")
             if not isinstance(path, str) or len(path) > 1024:
