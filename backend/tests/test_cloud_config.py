@@ -24,3 +24,10 @@ def test_settings_allow_local_agent_and_validate_limits(tmp_path: Path):
         base(tmp_path, agent_max_retries=4).validate()
     with pytest.raises(ValueError, match="relay frame"):
         base(tmp_path, relay_max_frame_bytes=0).validate()
+
+
+def test_settings_reject_non_positive_operation_timeouts(tmp_path: Path):
+    with pytest.raises(ValueError, match="timeouts"):
+        base(tmp_path, agent_timeout_seconds=0).validate()
+    with pytest.raises(ValueError, match="timeouts"):
+        base(tmp_path, command_wait_seconds=-1).validate()

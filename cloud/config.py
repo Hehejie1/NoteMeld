@@ -57,6 +57,8 @@ class CloudSettings:
             raise ValueError("worker count must be positive")
         if self.device_online_ttl_seconds < 5:
             raise ValueError("device online TTL must be at least 5 seconds")
+        if self.agent_timeout_seconds <= 0 or self.command_wait_seconds <= 0 or self.command_lease_seconds <= 0 or self.approval_ttl_seconds <= 0:
+            raise ValueError("agent, command, lease and approval timeouts must be positive")
         if not 0 <= self.agent_max_retries <= 3:
             raise ValueError("agent max retries must be between 0 and 3")
         if self.relay_max_frame_bytes <= 0:
