@@ -45,4 +45,6 @@ test('cloud session controller owns snapshot and incremental event projection', 
   assert.match(source, /refreshEvents/)
   assert.match(source, /lastSequence/)
   assert.match(source, /recoverCommand/)
+  assert.match(source, /event\.sequence > this\.state\.lastSequence/)
+  assert.match(source, /sort\(\(left, right\) => left\.sequence - right\.sequence\)/)
 })

@@ -33,8 +33,10 @@ export class CloudSessionController {
   async refreshEvents() {
     if (!this.state.session) throw new Error('session is not open')
     const incoming = await this.client.events(this.state.session.id, this.state.lastSequence) as Array<{ sequence: number }>
-    if (incoming.length) this.update({ events: [...this.state.events, ...incoming], lastSequence: incoming[incoming.length - 1].sequence })
-    return incoming
+    const fresh = incoming.filter(event => Number.isInteger(event.sequence) && event.sequence > this.state.lastSequence)
+      .sort((left, right) => left.sequence - right.sequence)
+    if (fresh.length) this.update({ events: [...this.state.events, ...fresh], lastSequence: fresh[fresh.length - 1].sequence })
+    return fresh
   }
 
   async send(input: string, requestId: string) {
