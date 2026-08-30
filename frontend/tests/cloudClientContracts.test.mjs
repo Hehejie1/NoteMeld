@@ -85,6 +85,7 @@ test('connection strategy orders LAN candidates before cloud relay fallback', ()
 test('cloud session controller owns snapshot and incremental event projection', () => {
   const source = fs.readFileSync(new URL('../src/services/cloudSessionController.ts', import.meta.url), 'utf8')
   assert.match(source, /class CloudSessionController/)
+  assert.match(source, /reset\(\)/)
   assert.match(source, /list\(archived\?/)
   assert.match(source, /refreshEvents/)
   assert.match(source, /lastSequence/)
@@ -103,6 +104,7 @@ test('react cloud session hook subscribes to the shared controller lifecycle', (
   assert.match(source, /controller\.open\(sessionId\)/)
   assert.match(source, /setInterval/)
   assert.match(source, /refreshEvents\(\)\.catch/)
+  assert.match(source, /controller\.reset\(\)/)
 })
 
 test('cloud auth hook hydrates, logs in, and revokes through CloudClient', () => {

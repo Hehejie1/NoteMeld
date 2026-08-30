@@ -14,6 +14,10 @@ export class CloudSessionController {
   private listeners = new Set<(state: CloudSessionState) => void>()
   constructor(private readonly client: CloudClient) {}
   getState() { return this.state }
+  reset() {
+    this.state = { session: null, events: [], lastSequence: 0, loading: false, error: null }
+    for (const listener of this.listeners) listener(this.state)
+  }
   subscribe(listener: (state: CloudSessionState) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   list(archived?: boolean) { return this.client.listSessions(archived) }
   private update(changes: Partial<CloudSessionState>) { this.state = { ...this.state, ...changes }; for (const listener of this.listeners) listener(this.state) }
@@ -33,7 +37,17 @@ export class CloudSessionController {
 
   async refreshEvents() {
     if (!this.state.session) throw new Error('session is not open')
-    const incoming = await this.client.events(this.state.session.id, this.state.lastSequence) as Array<{ sequence: number }>
+    let incoming: Array<{ sequence: number }>
+    try {
+      incoming = await this.client.events(this.state.session.id, this.state.lastSequence) as Array<{ sequence: number }>
+    } catch (error) {
+      // A cursor gap means another device advanced the session beyond our
+      // local projection. Reloading the bounded snapshot is the safe recovery.
+      if (error instanceof Error && error.message.includes('cursor gap')) {
+        await this.open(this.state.session.id)
+      }
+      throw error
+    }
     const fresh = incoming.filter(event => Number.isInteger(event.sequence) && event.sequence > this.state.lastSequence)
       .sort((left, right) => left.sequence - right.sequence)
     if (fresh.length) this.update({ events: [...this.state.events, ...fresh], lastSequence: fresh[fresh.length - 1].sequence })
