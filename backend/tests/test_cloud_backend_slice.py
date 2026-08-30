@@ -915,7 +915,8 @@ def test_share_token_is_scoped_and_revocable(tmp_path):
         assert http.post(f"/v1/shared/{session['id']}/commands", headers=shared_headers, json={"request_id": "viewer-1", "input": "nope"}).status_code == 403
         control = http.post("/v1/share-tokens", headers=headers, json={"session_id": session["id"], "role": "standard", "scopes": ["message.send"]}).json()["data"]
         assert http.post(f"/v1/shared/{session['id']}/commands", headers={"X-Share-Token": control["token"]}, json={"request_id": "control-1", "input": "allowed"}).status_code == 200
-        assert http.get("/v1/share-tokens", headers=headers).json()["data"][0]["id"] == created["id"]
+        listed_ids = {item["id"] for item in http.get("/v1/share-tokens", headers=headers).json()["data"]}
+        assert {created["id"], control["id"]}.issubset(listed_ids)
         assert http.post(f"/v1/share-tokens/{created['id']}/revoke", headers=headers).status_code == 200
         assert http.get(f"/v1/shared/{session['id']}/snapshot", headers=shared_headers).status_code == 401
 
