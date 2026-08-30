@@ -48,6 +48,15 @@ test('web relay protocol validates canonical encrypted frame metadata', () => {
   assert.match(protocol, /relayAssociatedData/)
 })
 
+test('web relay frame crypto binds nonce and metadata into AEAD', () => {
+  const cryptoSource = fs.readFileSync(new URL('../src/services/relayFrameCrypto.ts', import.meta.url), 'utf8')
+  assert.match(cryptoSource, /encryptRemoteFrame/)
+  assert.match(cryptoSource, /decryptRemoteFrame/)
+  assert.match(cryptoSource, /relayAssociatedData\(frame\)/)
+  assert.match(cryptoSource, /name: 'AES-GCM'/)
+  assert.match(cryptoSource, /validateRemoteFrame\(frame\)/)
+})
+
 test('connection strategy orders LAN candidates before cloud relay fallback', () => {
   const source = fs.readFileSync(new URL('../src/services/connectionStrategy.ts', import.meta.url), 'utf8')
   assert.match(source, /transport: 'lan'/)
