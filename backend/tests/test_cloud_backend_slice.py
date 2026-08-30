@@ -219,8 +219,14 @@ def test_device_bound_token_requires_proof_and_is_revoked_with_device(tmp_path):
         assert http.post("/v1/auth/tokens", headers=device_headers, json={"scopes": ["session.read"]}).status_code == 403
 
         management_headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
-        assert http.delete(f"/v1/devices/{device_id}", headers=management_headers).status_code == 200
+        replacement_key = base64.urlsafe_b64encode(b"z" * 32).decode().rstrip("=")
+        assert http.post(
+            "/v1/devices/register",
+            headers=management_headers,
+            json={"device_id": device_id, "platform": "ios", "display_name": "Phone", "public_key": replacement_key},
+        ).status_code == 200
         assert http.get("/v1/auth/me", headers=device_headers).status_code == 401
+        assert http.delete(f"/v1/devices/{device_id}", headers=management_headers).status_code == 200
 
 
 def test_device_token_rotation_preserves_device_binding_and_expiry(tmp_path):
