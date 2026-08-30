@@ -1029,6 +1029,17 @@ def test_workspace_restore_rejects_file_directory_prefix_conflicts(tmp_path):
         Workspace(tmp_path / "restore-prefix-conflict").restore_backup(archive_path, 1024)
 
 
+def test_workspace_restore_validates_directory_members_before_skipping(tmp_path):
+    from cloud.workspace import Workspace, WorkspaceError
+    import zipfile
+
+    archive_path = tmp_path / "unsafe-directory.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("../", "")
+    with pytest.raises(WorkspaceError, match="unsafe path"):
+        Workspace(tmp_path / "restore-unsafe-directory").restore_backup(archive_path, 1024)
+
+
 def test_workspace_file_count_quota_applies_to_writes_and_restore(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production", max_workspace_files=1)
     with TestClient(create_app(settings)) as http:

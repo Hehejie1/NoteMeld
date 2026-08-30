@@ -148,21 +148,22 @@ class Workspace:
             for member in archive.infolist():
                 if member.external_attr >> 16 & 0o170000 == 0o120000:
                     raise WorkspaceError("backup contains a symlink")
-                if member.is_dir():
-                    continue
-                member_path = Path(member.filename)
-                raw_parts = member.filename.split("/")
+                is_directory = member.is_dir()
+                member_name = member.filename.rstrip("/") if is_directory else member.filename
+                raw_parts = member_name.split("/")
                 if (
-                    not member.filename
-                    or member.filename in {".", ".."}
-                    or "\x00" in member.filename
-                    or len(member.filename) > 4096
-                    or member.filename.startswith(("/", "\\"))
-                    or "\\" in member.filename
-                    or ":" in member.filename
+                    not member_name
+                    or member_name in {".", ".."}
+                    or "\x00" in member_name
+                    or len(member_name) > 4096
+                    or member_name.startswith(("/", "\\"))
+                    or "\\" in member_name
+                    or ":" in member_name
                     or any(part in {"", ".", ".."} for part in raw_parts)
                 ):
                     raise WorkspaceError("backup contains an unsafe path")
+                if is_directory:
+                    continue
                 normalized_name = "/".join(raw_parts).casefold()
                 if any(
                     existing == normalized_name
