@@ -70,6 +70,16 @@ def test_duplicate_usernames_require_account_id(tmp_path):
         assert http.post("/v1/auth/login", json={"account_id": second["id"], "password": "second-password-123"}).status_code == 200
 
 
+def test_login_rate_limit_covers_source_across_account_labels(tmp_path):
+    with client(tmp_path) as http:
+        for index in range(5):
+            response = http.post("/v1/auth/login", json={"username": f"unknown-{index}", "password": "wrong-password-123"})
+            assert response.status_code == 401
+        response = http.post("/v1/auth/login", json={"username": "a-new-label", "password": "wrong-password-123"})
+        assert response.status_code == 429
+        assert response.headers["retry-after"] == "60"
+
+
 def test_legacy_username_unique_schema_migrates(tmp_path):
     import sqlite3
 

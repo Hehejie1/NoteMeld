@@ -393,19 +393,24 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/auth/login")
     def login(payload: LoginRequest, request: Request):
-        key = f"{request.client.host if request.client else 'unknown'}:{payload.account_id or payload.username or ''}"
+        source = request.client.host if request.client else "unknown"
+        identity = payload.account_id or payload.username or ""
+        account_key = f"account:{source}:{identity}"
+        source_key = f"source:{source}"
         now = int(time.time())
-        if _login_rate_limited(db, key, now):
+        if _login_rate_limited(db, account_key, now) or _login_rate_limited(db, source_key, now):
             raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
         if not payload.username and not payload.account_id:
             raise HTTPException(400, "username or account_id is required")
         user = _user_by_account_id(db, payload.account_id) if payload.account_id else _user_by_username(db, payload.username or "")
         if not user or user["disabled"] or not verify_password(payload.password, user["password_hash"]):
-            failures = _record_login_failure(db, key, now)
+            failures = _record_login_failure(db, account_key, now)
+            _record_login_failure(db, source_key, now)
             if failures > 5:
                 raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
             raise HTTPException(401, "invalid credentials")
-        _clear_login_failures(db, key)
+        _clear_login_failures(db, account_key)
+        _clear_login_failures(db, source_key)
         raw, digest = issue_token()
         now = int(time.time())
         with db.connect() as cx:
