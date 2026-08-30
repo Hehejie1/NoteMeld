@@ -47,6 +47,7 @@ class CloudSyncHostRuntime:
         self._authorization_refresh_seconds = authorization_refresh_seconds
         self._authorities: dict[str, RemoteHostAuthority] = {}
         self._lock = Lock()
+        self._closed = False
         from .lan_auth import LanPeerAuthenticator
 
         authenticator = LanPeerAuthenticator(
@@ -62,6 +63,10 @@ class CloudSyncHostRuntime:
         install_lan_direct_service(app, self.service)
 
     def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
         self.cloud_client.close()
 
     def heartbeat(self, lan_endpoints: list[str] | None = None) -> dict:

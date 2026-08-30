@@ -114,6 +114,25 @@ def test_host_runtime_can_be_attached_once_for_backend_lifecycle(tmp_path):
         ))
 
 
+def test_host_runtime_close_is_idempotent(tmp_path):
+    class Cloud(_CloudStub):
+        close_count = 0
+
+        def close(self):
+            self.close_count += 1
+
+    cloud = Cloud()
+    runtime = CloudSyncHostRuntime(
+        cloud_client=cloud,  # type: ignore[arg-type]
+        host_device_id="host-device",
+        mailbox_path=tmp_path / "mailbox.sqlite",
+        cipher_resolver=lambda _: SessionCipher(b"k" * 32),
+    )
+    runtime.close()
+    runtime.close()
+    assert cloud.close_count == 1
+
+
 def test_host_runtime_exposes_explicit_presence_heartbeat(tmp_path):
     runtime = CloudSyncHostRuntime(
         cloud_client=_CloudStub(),  # type: ignore[arg-type]
