@@ -67,4 +67,5 @@ test('cloud auth hook hydrates, logs in, and revokes through CloudClient', () =>
   assert.match(source, /client\.login\(password, username\)/)
   assert.match(source, /revokeCurrentToken/)
   assert.match(source, /authenticated: Boolean\(token\)/)
+  assert.match(source, /setRole/)
 })
