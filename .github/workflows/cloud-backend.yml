@@ -30,11 +30,4 @@ jobs:
       - name: Compile cloud and sync adapters
         run: PYTHONPATH=.:backend python -m compileall -q cloud backend/app/cloud_sync
       - name: Run cloud backend regression
-        run: >-
-          PYTHONPATH=.:backend python -m pytest
-          backend/tests/test_cloud_crypto.py
-          backend/tests/test_cloud_device_id.py
-          backend/tests/test_cloud_agent.py
-          backend/tests/test_cloud_backend_slice.py
-          backend/tests/test_cloud_sync_protocol.py
-          backend/tests/test_cloud_client.py -q
+        run: PYTHONPATH=.:backend python -m pytest backend/tests/test_cloud_*.py -q
