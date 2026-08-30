@@ -9,6 +9,7 @@ NOTEMELD_CLOUD_SECRET_KEY='replace-with-a-long-random-secret' \
 NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES=1000000000 \
 NOTEMELD_CLOUD_MAX_WORKSPACE_FILES=10000 \
 NOTEMELD_CLOUD_AGENT_MAX_RETRIES=2 \
+NOTEMELD_CLOUD_RELAY_MAX_FRAME_BYTES=262144 \
 NOTEMELD_CLOUD_CORS_ORIGINS='https://app.example.com' \
 PYTHONPATH=. uvicorn cloud.main:app --host 127.0.0.1 --port 8583
 ```
@@ -32,7 +33,8 @@ Ed25519 device proof before relay connections. The device must obtain a
 challenge and sign `notemeld-device-proof-v1\\0<device_id>\\0<challenge>` with
 its registered private key before calling the verify endpoint.
 Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
-default) and return HTTP 413 when the quota would be exceeded. Workspace ZIP
+default) and `NOTEMELD_CLOUD_MAX_WORKSPACE_FILES` (10,000 by default), returning
+HTTP 413 when either quota would be exceeded. Workspace ZIP
 backups can be created/listed/restored through the `/v1/workspaces/.../backups`
 endpoints; restore is a validated file overlay.
 
