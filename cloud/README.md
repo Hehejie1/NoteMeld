@@ -16,15 +16,14 @@ PYTHONPATH=. uvicorn cloud.main:app --host 127.0.0.1 --port 8583
 
 The first slice provides an isolated FastAPI control plane, SQLite metadata,
 local-disk cloud workspaces, admin/user authentication, cloud-native session
-commands, and an in-memory WebSocket relay fixture. The relay intentionally
-does not persist payloads and is not a production deployment. WebSocket routing
-uses the `RelayBroker` interface (`cloud/relay.py`); the default
-`InMemoryRelayBroker` is intentionally single-process. A multi-instance
-deployment must provide a transient Pub/Sub implementation behind that
-interface before placing multiple workers behind a load balancer.
-The service rejects `WEB_CONCURRENCY>1` while `NOTEMELD_CLOUD_RELAY_BACKEND=memory`;
-this prevents an unsafe split-brain deployment. Redis/NATS values are reserved
-until their transient Pub/Sub adapters are installed and configured.
+commands, and an ephemeral WebSocket relay. The default in-memory relay is a
+single-process fixture; a multi-instance deployment can set
+`NOTEMELD_CLOUD_RELAY_BACKEND=redis` and `NOTEMELD_CLOUD_RELAY_URL` to use the
+transient Redis Pub/Sub adapter. Redis only carries ephemeral frame publications
+and short-lived presence markers; it does not persist payloads. The service
+rejects `WEB_CONCURRENCY>1` while using the memory backend, preventing an
+unsafe split-brain deployment. NATS remains reserved until a compatible
+adapter is added.
 Install `cloud/requirements.txt` for the cloud runtime and device-proof cryptography.
 Desktop/Python client-side E2EE (X25519, Ed25519, HKDF and AES-256-GCM)
 lives in `backend/app/cloud_sync/e2ee.py`; the cloud service does not import the
