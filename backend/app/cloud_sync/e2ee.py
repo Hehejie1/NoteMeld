@@ -9,12 +9,14 @@ import base64
 import binascii
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+from .protocol import RemoteFrame
 
 
 def generate_identity() -> tuple[bytes, bytes]:
@@ -95,14 +97,14 @@ def encrypt(
 ) -> tuple[str, str]:
     nonce = os.urandom(12)
     return _b64(nonce), _b64(
-        ChaCha20Poly1305(key).encrypt(nonce, plaintext, associated_data)
+        AESGCM(key).encrypt(nonce, plaintext, associated_data)
     )
 
 
 def decrypt(
     key: bytes, nonce: str, ciphertext: str, associated_data: bytes = b""
 ) -> bytes:
-    return ChaCha20Poly1305(key).decrypt(
+    return AESGCM(key).decrypt(
         _unb64(nonce, expected_length=12), _unb64(ciphertext), associated_data
     )
 
@@ -148,6 +150,27 @@ class SessionCipher:
         plaintext = decrypt(self.key, nonce, ciphertext, associated_data)
         self.last_received_sequence = sequence
         return plaintext
+
+    def encrypt_frame(self, frame: RemoteFrame, plaintext: bytes) -> RemoteFrame:
+        """Create a frame after nonce generation so canonical AAD can include it."""
+        if frame.nonce or frame.ciphertext:
+            raise ValueError("outbound frame must not contain nonce or ciphertext")
+        if (
+            type(frame.sequence) is not int
+            or frame.sequence < 1
+            or frame.sequence <= self.last_sent_sequence
+        ):
+            raise ValueError("outbound sequence must increase monotonically")
+        nonce_bytes = os.urandom(12)
+        pending = replace(frame, nonce=_b64(nonce_bytes), ciphertext="pending")
+        pending.validate()
+        ciphertext = AESGCM(self.key).encrypt(
+            nonce_bytes,
+            plaintext,
+            pending.associated_data(),
+        )
+        self.last_sent_sequence = frame.sequence
+        return replace(pending, ciphertext=_b64(ciphertext))
 
 
 def derive_rekeyed_session_key(

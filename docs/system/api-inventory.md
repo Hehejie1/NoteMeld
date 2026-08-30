@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-08-27
+更新时间：2026-08-30
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -8,6 +8,7 @@
 
 - 大部分后端接口挂载在 `/api` 前缀下。
 - MCP endpoint 不走 `/api`，固定为 `/mcp`。
+- 本地 LAN direct WebSocket 不走 `/api`，固定为 `/v1/lan/connect/{session_id}`；只有平台层安装 `LanDirectService` 后才可用，未配置时以 1013 关闭。
 - 普通成功响应使用 `ResponseWrapper.success()`：
 
 ```json
@@ -43,6 +44,7 @@ negotiate behavior instead of hard-coding deployment policy.
 | POST | `/v1/pairings/start` | 创建 5 分钟有效的一次性配对码 | bearer token |
 | POST | `/v1/pairings/confirm` | 使用配对码注册设备 | bearer token |
 | POST | `/v1/grants` | 创建设备间远程控制授权 | bearer token |
+| POST | `/v1/lan/authorize` | 为 LAN direct 握手返回最长 60 秒的 controller 公钥、Grant、scope、workspace 与 authority epoch 断言 | 绑定宿主的 device token（`grant.read`） |
 | POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
 | GET | `/v1/sessions` | 查询当前用户云端会话及收纳状态 | bearer token |
 | POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息 | bearer token |
@@ -51,6 +53,16 @@ negotiate behavior instead of hard-coding deployment policy.
 | POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
 | DELETE | `/v1/sessions/{session_id}` | 硬删除当前用户云端会话 | bearer token |
 | WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token 或浏览器 `Sec-WebSocket-Protocol` bearer |
+
+本地 `/v1/lan/connect/{session_id}` 不接收 cloud bearer。控制端先发送
+`notemeld.lan.v1` hello，宿主返回一次性 challenge，控制端用已注册的
+Ed25519 设备私钥签名。宿主以自己的 device token 调用云端
+`/v1/lan/authorize`，校验有效 Grant、公钥、workspace、scope 和 authority
+epoch 后，才接受 `notemeld.sync.v1` E2EE command frame。授权最长 60 秒，
+到期必须重连；receipt 只有在端侧解密、授权和 durable enqueue 完成后返回。
+候选地址只接受显式 RFC1918、IPv4 link-local/loopback、IPv6 ULA/link-local/
+loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标为 private
+的文档保留地址。
 
 ## Note / Task 接口
 
@@ -366,6 +378,7 @@ the default configuration.
 | POST | `/v1/devices/{device_id}/token` | after a recent Ed25519 proof, issue a scoped short-lived bearer bound to the active device; requires an account-audience token |
 | GET | `/v1/cloud/sessions?archived=true|false` | filter sessions by archive state; omitted preserves compatibility |
 | POST | `/v1/devices/{device_id}/heartbeat` | record liveness and optionally refresh validated `lan_endpoints` candidates |
+| POST | `/v1/lan/authorize` | bound Host device obtains a 1–60 second LAN proof assertion for one active controller/session Grant; account tokens and other device tokens are rejected |
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
 | GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |

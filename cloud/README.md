@@ -26,10 +26,16 @@ The service rejects `WEB_CONCURRENCY>1` while `NOTEMELD_CLOUD_RELAY_BACKEND=memo
 this prevents an unsafe split-brain deployment. Redis/NATS values are reserved
 until their transient Pub/Sub adapters are installed and configured.
 Install `cloud/requirements.txt` for the cloud runtime and device-proof cryptography.
-Desktop/Python client-side E2EE (X25519, Ed25519, HKDF and ChaCha20-Poly1305)
+Desktop/Python client-side E2EE (X25519, Ed25519, HKDF and AES-256-GCM)
 lives in `backend/app/cloud_sync/e2ee.py`; `cloud/crypto.py` is retained only as
 a source-tree compatibility import. The relay never imports or uses the decrypt
 path.
+LAN-first clients do not forward that bearer to a `ws://` peer. A configured
+Host uses its bound device token over HTTPS with `POST /v1/lan/authorize` to
+obtain a maximum 60-second controller public-key/Grant assertion, then verifies
+the controller's one-time Ed25519 LAN challenge locally. Direct command frames
+remain AES-GCM encrypted; cloud relay fallback is still used when LAN
+authentication or reachability fails.
 Set `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=1` in production to require a recent
 Ed25519 device proof before relay connections. The device must obtain a
 challenge and sign `notemeld-device-proof-v1\\0<device_id>\\0<challenge>` with

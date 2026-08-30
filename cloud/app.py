@@ -31,6 +31,16 @@ from .relay import InMemoryRelayBroker
 TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
 DEVICE_TOKEN_SCOPES = TOKEN_SCOPES - {"*", "auth.token", "admin"}
 GRANT_SCOPES = frozenset({"message.send", "context.select", "model.select", "tool.invoke", "event.receive", "workspace.read", "workspace.write", "dangerous.approve", "approval.remote.resolve", "session.permission.manage", "session.full_access", "full_access"})
+LAN_ENDPOINT_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("::1/128"),
+)
 SHARE_SCOPES = frozenset({"message.send", "event.receive"})
 
 
@@ -139,6 +149,13 @@ class DeviceTokenCreate(BaseModel):
         if not value or len(set(value)) != len(value) or any(scope not in DEVICE_TOKEN_SCOPES for scope in value):
             raise ValueError("invalid device token scope")
         return value
+
+
+class LanAuthorizationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(min_length=1, max_length=256)
+    controller_device_id: str = Field(min_length=8, max_length=256)
+    host_device_id: str = Field(min_length=8, max_length=256)
 
 
 class AuthorityLease(BaseModel):
@@ -794,6 +811,83 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         with db.connect() as cx:
             rows = cx.execute("SELECT id,controller_device_id,host_device_id,role,scopes_json,workspace_refs_json,expires_at,revoked_at,created_at FROM grants WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"]), "workspace_refs": json.loads(row["workspace_refs_json"])} for row in rows]}
+
+    @app.post("/v1/lan/authorize")
+    def authorize_lan_peer(
+        payload: LanAuthorizationRequest,
+        current=Depends(
+            _auth_dependency(
+                db,
+                required_scope="grant.read",
+                required_audience="device-api",
+            )
+        ),
+    ):
+        if current["device_id"] != payload.host_device_id:
+            raise HTTPException(403, "LAN authorization requires the bound host device")
+        now = int(time.time())
+        with db.connect() as cx:
+            row = cx.execute(
+                "SELECT g.id AS grant_id,g.role,g.scopes_json,"
+                "g.workspace_refs_json,g.expires_at,s.workspace_id,"
+                "s.authority_epoch,controller.public_key AS controller_public_key "
+                "FROM grants g "
+                "JOIN sessions s ON s.user_id=g.user_id AND s.id=? "
+                "AND s.kind='device_remote' "
+                "JOIN devices controller ON controller.id=g.controller_device_id "
+                "AND controller.user_id=g.user_id AND controller.revoked_at IS NULL "
+                "JOIN devices host ON host.id=g.host_device_id "
+                "AND host.user_id=g.user_id AND host.revoked_at IS NULL "
+                "WHERE g.user_id=? AND g.controller_device_id=? "
+                "AND g.host_device_id=? AND g.revoked_at IS NULL "
+                "AND (g.expires_at IS NULL OR g.expires_at>?) "
+                "ORDER BY g.created_at DESC LIMIT 1",
+                (
+                    payload.session_id,
+                    current["id"],
+                    payload.controller_device_id,
+                    payload.host_device_id,
+                    now,
+                ),
+            ).fetchone()
+        if not row or not row["controller_public_key"]:
+            raise HTTPException(403, "active LAN control grant not found")
+        workspace_refs = json.loads(row["workspace_refs_json"])
+        if workspace_refs and row["workspace_id"] not in workspace_refs:
+            raise HTTPException(403, "workspace is outside the LAN control grant")
+        scopes = set(json.loads(row["scopes_json"]))
+        if row["role"] == "super_admin":
+            scopes.update({"message.send", "context.select", "model.select", "tool.invoke", "event.receive"})
+        valid_until = min(
+            int(row["expires_at"]) if row["expires_at"] is not None else now + 60,
+            now + 60,
+        )
+        result = {
+            "session_id": payload.session_id,
+            "controller_device_id": payload.controller_device_id,
+            "host_device_id": payload.host_device_id,
+            "controller_public_key": row["controller_public_key"],
+            "grant_id": row["grant_id"],
+            "role": row["role"],
+            "scopes": sorted(scopes),
+            "workspace_id": row["workspace_id"],
+            "authority_epoch": row["authority_epoch"],
+            "valid_until": valid_until,
+            "ttl_seconds": valid_until - now,
+        }
+        _audit(
+            db,
+            current["id"],
+            "lan.authorize",
+            row["grant_id"],
+            {
+                "session_id": payload.session_id,
+                "controller_device_id": payload.controller_device_id,
+                "host_device_id": payload.host_device_id,
+                "valid_until": valid_until,
+            },
+        )
+        return {"code": 0, "msg": "success", "data": result}
 
     @app.post("/v1/grants/{grant_id}/revoke")
     @app.delete("/v1/grants/{grant_id}")
@@ -1819,7 +1913,12 @@ def _validate_lan_endpoints(value: list[str]) -> list[str]:
             port = int(port_text)
         except ValueError as exc:
             raise ValueError("LAN endpoint must contain a valid IP and port") from exc
-        if not (address.is_private or address.is_loopback or address.is_link_local) or not 1 <= port <= 65535:
+        is_lan = any(
+            address in network
+            for network in LAN_ENDPOINT_NETWORKS
+            if address.version == network.version
+        )
+        if not is_lan or address.is_unspecified or address.is_multicast or not 1 <= port <= 65535:
             raise ValueError("LAN endpoint must be a private or local address")
         result.append(endpoint)
     return result

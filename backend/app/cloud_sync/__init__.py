@@ -17,6 +17,19 @@ from .e2ee import (
     sign_handshake,
     verify_handshake,
 )
+from .lan_auth import (
+    LanAuthError,
+    LanChallenge,
+    LanPeerAuthenticator,
+    LanPeerAuthorization,
+)
+from .lan_transport import (
+    EncryptedRemoteHostHandler,
+    LAN_PROTOCOL_VERSION,
+    LanDirectFrameError,
+    LanDirectService,
+    install_lan_direct_service,
+)
 from .protocol import RemoteFrame, SessionCommand
 from .queue import DurableSessionMailbox, SessionMailbox
 from .remote_host import RemoteHostAuthority, RemoteHostError, RemoteHostReceipt
@@ -28,6 +41,14 @@ __all__ = [
     "ConnectionCandidate",
     "DurableSessionMailbox",
     "EncryptedTokenStore",
+    "EncryptedRemoteHostHandler",
+    "LanAuthError",
+    "LanChallenge",
+    "LanDirectFrameError",
+    "LanDirectService",
+    "LanPeerAuthenticator",
+    "LanPeerAuthorization",
+    "LAN_PROTOCOL_VERSION",
     "RemoteFrame",
     "RemoteHostAuthority",
     "RemoteHostError",
@@ -41,6 +62,7 @@ __all__ = [
     "derive_session_key",
     "generate_ephemeral",
     "generate_identity",
+    "install_lan_direct_service",
     "make_device_id",
     "sign_handshake",
     "validate_cloud_base_url",

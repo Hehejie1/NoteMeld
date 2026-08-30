@@ -1,5 +1,12 @@
 # Known Pitfalls
 
+## LAN-first 直连泄露 cloud bearer 或绕过 Grant
+
+- 风险：把 cloud WebSocket URL 机械替换为 `ws://192.168.x.x` 并继续携带 bearer，会让局域网监听者获得长期凭证；只检查设备 ID 或 `ipaddress.is_private` 还会接受保留地址、旧 Grant、错误 workspace 或 stale authority epoch。
+- 不允许：在 LAN hello/query/header 中发送 cloud token；把候选地址当授权；宿主自行信任控制端声明的 scope；在 AEAD 验证或 durable enqueue 前返回 received；让 Python 使用 ChaCha20 而 Web 使用 AES-GCM；允许 handler 返回任意明文结果。
+- 检查方式：运行 `backend/tests/test_cloud_lan_authorization.py`、`test_cloud_lan_auth.py`、`test_cloud_lan_transport.py`、`test_cloud_connection.py`，以及 `frontend/tests/relayCryptoInterop.test.mjs`。
+- 修复经验：宿主用绑定 device token 通过 HTTPS 获取 60 秒云端断言；控制端只在 LAN 上提交 Ed25519 一次性 proof 和 E2EE frame；结果/event 必须继续使用 encrypted `RemoteFrame`，明文只允许无业务内容的最小 durable receipt。
+
 ## 桌面源码可用，但发布包缺少端侧加密运行时
 
 - 发生过的问题/风险：开发虚拟环境已安装 `cryptography`，云端测试和令牌加密测试都通过，但桌面 `requirements-core.txt` 未声明该依赖；同时 E2EE 原语只位于不会被 PyInstaller 收集的 `cloud/crypto.py`。发布后的 sidecar 会在导入令牌存储或建立加密会话时失败。
@@ -30,7 +37,7 @@
 
 应用协议唯一规范源：[`application-protocol-v1.md`](application-protocol-v1.md)。插件协议由 `notemeld-plugins/docs/system/plugin-protocol-v1.md` 维护。
 
-更新时间：2026-08-27
+更新时间：2026-08-30
 
 ## Application Host 越权或假运行
 

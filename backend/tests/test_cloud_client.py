@@ -141,6 +141,19 @@ def test_cloud_client_device_token_contract():
     client.close()
 
 
+def test_cloud_client_lan_authorization_uses_bound_host():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.content))
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": {"valid_until": 123}})
+
+    client = CloudClient("https://cloud.test", token="nmt_device", device_id="host-device", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert client.authorize_lan_peer("session-a", "controller-device")["valid_until"] == 123
+    assert seen == [("POST", "/v1/lan/authorize", b'{"session_id":"session-a","controller_device_id":"controller-device","host_device_id":"host-device"}')]
+    client.close()
+
+
 def test_cloud_client_extended_control_plane_contracts():
     seen = []
 

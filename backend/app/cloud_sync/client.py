@@ -115,6 +115,25 @@ class CloudClient:
     def list_grants(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/grants")
 
+    def authorize_lan_peer(
+        self,
+        session_id: str,
+        controller_device_id: str,
+        host_device_id: str | None = None,
+    ) -> dict[str, Any]:
+        target_host = host_device_id or self.device_id
+        if not target_host:
+            raise ValueError("host_device_id is required")
+        return self._request(
+            "POST",
+            "/v1/lan/authorize",
+            json={
+                "session_id": session_id,
+                "controller_device_id": controller_device_id,
+                "host_device_id": target_host,
+            },
+        )
+
     def heartbeat(self, device_id: str | None = None, lan_endpoints: list[str] | None = None) -> dict[str, Any]:
         payload = None if lan_endpoints is None else {"lan_endpoints": lan_endpoints}
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat", json=payload)

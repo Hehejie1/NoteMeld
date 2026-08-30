@@ -1,4 +1,10 @@
+import base64
+import json
+from pathlib import Path
+
 import pytest
+
+from app.cloud_sync.protocol import RemoteFrame
 
 
 pytest.importorskip("cryptography")
@@ -53,3 +59,46 @@ def test_e2ee_rejects_ambiguous_identity_and_noncanonical_base64():
 def test_legacy_cloud_crypto_path_reexports_canonical_implementation():
     legacy = pytest.importorskip("cloud.crypto")
     assert legacy.SessionCipher is crypto.SessionCipher
+
+
+def test_session_cipher_builds_frame_after_nonce_for_canonical_aad():
+    sender = crypto.SessionCipher(b"k" * 32)
+    receiver = crypto.SessionCipher(b"k" * 32)
+    metadata = RemoteFrame(
+        session_id="session",
+        sender_device_id="device-a",
+        recipient_device_id="device-b",
+        sequence=1,
+        ciphertext="",
+        frame_id="frame-a",
+        authority_epoch=1,
+        nonce="",
+    )
+
+    encrypted = sender.encrypt_frame(metadata, b"secret")
+
+    assert encrypted.nonce and encrypted.ciphertext
+    assert receiver.decrypt(
+        encrypted.sequence,
+        encrypted.nonce,
+        encrypted.ciphertext,
+        encrypted.associated_data(),
+    ) == b"secret"
+
+
+def test_python_decrypts_browser_aes_gcm_contract_fixture():
+    fixture = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "relay-aes-gcm-v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    frame = RemoteFrame(**fixture["frame"])
+    key = base64.urlsafe_b64decode(fixture["key"] + "=")
+
+    assert frame.associated_data().decode() == fixture["associated_data"]
+    assert crypto.decrypt(
+        key,
+        frame.nonce,
+        frame.ciphertext,
+        frame.associated_data(),
+    ).decode() == fixture["plaintext"]
