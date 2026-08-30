@@ -4,7 +4,7 @@ export function relayWebSocketProtocols(token: string): string[] { if (!token) t
 
 export function validateCloudBaseUrl(value: string): URL {
   const parsed = new URL(value.trim().replace(/\/$/, ''))
-  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error('cloud URL must be an http(s) URL without credentials')
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash || parsed.search) throw new Error('cloud URL must be an http(s) URL without credentials or query parameters')
   const local = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(parsed.hostname)
   if (parsed.protocol === 'http:' && !local) throw new Error('cloud URL must use HTTPS unless it targets localhost')
   return parsed
