@@ -150,11 +150,16 @@ class Workspace:
                 if member.is_dir():
                     continue
                 member_path = Path(member.filename)
+                raw_parts = member.filename.split("/")
                 if (
-                    member.filename.startswith(("/", "\\"))
+                    not member.filename
+                    or member.filename in {".", ".."}
+                    or "\x00" in member.filename
+                    or len(member.filename) > 4096
+                    or member.filename.startswith(("/", "\\"))
                     or "\\" in member.filename
                     or ":" in member.filename
-                    or ".." in member_path.parts
+                    or any(part in {"", ".", ".."} for part in raw_parts)
                 ):
                     raise WorkspaceError("backup contains an unsafe path")
                 total += member.file_size
