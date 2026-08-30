@@ -26,6 +26,13 @@ struct FrontendRuntimePayload {
     session_token: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudProbeResult {
+    status_code: u16,
+    ready: bool,
+}
+
 #[tauri::command]
 fn desktop_runtime_mode() -> &'static str {
     "desktop"
@@ -69,6 +76,44 @@ fn open_external_url(url: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|err| format!("failed to open external url: {err}"))
+}
+
+fn validate_cloud_base_url(value: &str) -> Result<reqwest::Url, String> {
+    let trimmed = value.trim().trim_end_matches('/');
+    let parsed = reqwest::Url::parse(trimmed).map_err(|_| "invalid cloud URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.username() != ""
+        || parsed.password().is_some()
+    {
+        return Err("cloud URL must be an http(s) URL without credentials".to_string());
+    }
+    if parsed.scheme() == "http" {
+        let host = parsed.host_str().unwrap_or_default();
+        if !matches!(host, "127.0.0.1" | "localhost" | "::1") {
+            return Err("cloud URL must use HTTPS unless it targets localhost".to_string());
+        }
+    }
+    Ok(parsed)
+}
+
+#[tauri::command]
+fn probe_cloud(base_url: String) -> Result<CloudProbeResult, String> {
+    let base = validate_cloud_base_url(&base_url)?;
+    let endpoint = base
+        .join("ready")
+        .map_err(|_| "invalid cloud URL".to_string())?;
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|err| format!("failed to create cloud client: {err}"))?
+        .get(endpoint)
+        .send()
+        .map_err(|err| format!("cloud probe failed: {err}"))?;
+    let status = response.status();
+    Ok(CloudProbeResult {
+        status_code: status.as_u16(),
+        ready: status.is_success(),
+    })
 }
 
 #[tauri::command]
@@ -424,6 +469,7 @@ pub fn run() {
             desktop_runtime_bootstrap,
             desktop_stop_backend,
             open_external_url,
+            probe_cloud,
             get_autostart_enabled,
             set_autostart_enabled
         ])
@@ -444,7 +490,7 @@ mod tests {
     #[cfg(unix)]
     use super::{
         desktop_backend_port, ensure_executable_permissions, ensure_fixed_backend_port_available,
-        optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable,
+        optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable, validate_cloud_base_url,
     };
     #[cfg(unix)]
     use std::{
@@ -545,6 +591,14 @@ mod tests {
     #[test]
     fn desktop_backend_port_is_fixed_for_mcp_clients() {
         assert_eq!(desktop_backend_port(), 8483);
+    }
+
+    #[test]
+    fn cloud_url_validation_allows_local_http_and_remote_https_only() {
+        assert!(validate_cloud_base_url("http://127.0.0.1:8583").is_ok());
+        assert!(validate_cloud_base_url("https://cloud.example.test/").is_ok());
+        assert!(validate_cloud_base_url("http://cloud.example.test").is_err());
+        assert!(validate_cloud_base_url("https://user:pass@cloud.example.test").is_err());
     }
 
     #[test]
