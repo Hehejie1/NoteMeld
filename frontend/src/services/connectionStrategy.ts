@@ -14,6 +14,8 @@ function isPrivateLanEndpoint(endpoint: string): boolean {
   const separator = endpoint.lastIndexOf(':')
   if (separator <= 0) return false
   const host = endpoint.slice(0, separator).replace(/^\[|\]$/g, '').toLowerCase()
+  if (host.includes(':') && !endpoint.trim().startsWith('[')) return false
+  if (host.includes('%')) return false
   const port = Number(endpoint.slice(separator + 1))
   if (!Number.isInteger(port) || port < 1 || port > 65535) return false
   const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
@@ -56,9 +58,7 @@ export function connectionCandidates(cloudBaseUrl: string, sessionId: string, de
     const normalized = endpoint.trim()
     if (!normalized) continue
     if (!isPrivateLanEndpoint(normalized)) throw new Error('invalid private LAN endpoint')
-    const host = normalized.includes(':') && normalized.includes('::') && !normalized.startsWith('[')
-      ? `[${normalized.slice(0, normalized.lastIndexOf(':'))}]:${normalized.slice(normalized.lastIndexOf(':') + 1)}`
-      : normalized
+    const host = normalized
     candidates.push({ transport: 'lan', auth: 'challenge', url: `ws://${host}/v1/lan/connect/${encodeURIComponent(sessionId)}` })
   }
   const relay = new URL(base)

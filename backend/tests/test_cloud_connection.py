@@ -29,6 +29,10 @@ def test_connection_rejects_invalid_base_url():
         connection_candidates("https://cloud.example", "s1", ["192.0.2.1:443"])
     with pytest.raises(ValueError, match="private or local"):
         connection_candidates("https://cloud.example", "s1", ["0.0.0.0:443"])
+    with pytest.raises(ValueError, match="private or local"):
+        connection_candidates("https://cloud.example", "s1", ["fe80::1:443"])
+    with pytest.raises(ValueError, match="private or local"):
+        connection_candidates("https://cloud.example", "s1", ["[fe80::1%en0]:443"])
 
 
 def test_cloud_base_url_requires_tls_for_remote_hosts():

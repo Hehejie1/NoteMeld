@@ -39,7 +39,13 @@ def connection_candidates(cloud_base_url: str, session_id: str, lan_endpoints: l
             port = int(port_text)
         except ValueError as exc:
             raise ValueError("invalid LAN endpoint") from exc
-        if not separator or not 1 <= port <= 65535 or not is_lan_address(address):
+        if (
+            not separator
+            or (address.version == 6 and not host.startswith("["))
+            or "%" in host
+            or not 1 <= port <= 65535
+            or not is_lan_address(address)
+        ):
             raise ValueError("LAN endpoint must use a private or local address")
         result.append(ConnectionCandidate("lan", f"ws://{normalized}/v1/lan/connect/{quote(session_id, safe='')}"))
     relay_scheme = "wss" if parsed.scheme == "https" else "ws"

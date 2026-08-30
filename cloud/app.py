@@ -1918,7 +1918,14 @@ def _validate_lan_endpoints(value: list[str]) -> list[str]:
             for network in LAN_ENDPOINT_NETWORKS
             if address.version == network.version
         )
-        if not is_lan or address.is_unspecified or address.is_multicast or not 1 <= port <= 65535:
+        if (
+            (address.version == 6 and not host.startswith("["))
+            or "%" in host
+            or not is_lan
+            or address.is_unspecified
+            or address.is_multicast
+            or not 1 <= port <= 65535
+        ):
             raise ValueError("LAN endpoint must be a private or local address")
         result.append(endpoint)
     return result
