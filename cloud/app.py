@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import base64
+import binascii
 from contextlib import asynccontextmanager
 import json
 import os
@@ -12,6 +13,7 @@ import time
 import uuid
 import fnmatch
 import ipaddress
+import re
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
@@ -2025,11 +2027,11 @@ def _verify_device_proof(public_key: str, signature: str, challenge: str, device
 
 
 def _valid_nonce(value: str | None) -> bool:
-    if not value:
+    if not value or len(value) > 32 or not re.fullmatch(r"[A-Za-z0-9_-]+", value):
         return False
     try:
-        decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-    except (ValueError, TypeError):
+        decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+    except (binascii.Error, ValueError, TypeError):
         return False
     return len(decoded) == 12
 

@@ -8,12 +8,19 @@ import pytest
 
 from fastapi.testclient import TestClient
 
-from cloud.app import create_app
+from cloud.app import _valid_nonce, create_app
 from cloud.config import CloudSettings
 
 
 PUBLIC_KEY = base64.urlsafe_b64encode(b"k" * 32).decode()
 NONCE = base64.urlsafe_b64encode(b"n" * 12).decode()
+
+
+def test_relay_nonce_validation_rejects_non_urlsafe_or_wrong_length_values():
+    assert _valid_nonce(NONCE)
+    assert not _valid_nonce("!" + NONCE[1:])
+    assert not _valid_nonce(base64.urlsafe_b64encode(b"short").decode().rstrip("="))
+    assert not _valid_nonce(NONCE + "=")
 
 
 def client(tmp_path: Path) -> TestClient:

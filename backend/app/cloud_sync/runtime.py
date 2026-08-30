@@ -85,6 +85,11 @@ class CloudSyncHostRuntime:
             or assertion.get("host_device_id") != host_device_id
         ):
             raise ValueError("cloud LAN assertion identity mismatch")
+        ttl_seconds = assertion.get("ttl_seconds")
+        if type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 60:
+            raise ValueError("cloud LAN assertion has invalid ttl")
+        if type(assertion.get("valid_until")) is not int:
+            raise ValueError("cloud LAN assertion has invalid expiry")
         authorization = LanPeerAuthorization(
             session_id=session_id,
             controller_device_id=controller_device_id,
@@ -94,7 +99,10 @@ class CloudSyncHostRuntime:
             scopes=frozenset(assertion["scopes"]),
             workspace_id=assertion["workspace_id"],
             authority_epoch=assertion["authority_epoch"],
-            valid_until=assertion["valid_until"],
+            # The cloud's wall clock is not authoritative for a local host.
+            # Use the validated TTL so modest clock skew cannot invalidate a
+            # freshly authorized LAN handshake (or extend it beyond the cap).
+            valid_until=int(time.time()) + ttl_seconds,
         )
         with self._lock:
             self._authorizations[(session_id, controller_device_id)] = authorization
