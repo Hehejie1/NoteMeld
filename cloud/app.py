@@ -2186,7 +2186,7 @@ def _authenticate_share_token(db: CloudDB, raw: str | None, session_id: str):
     if not raw or not raw.startswith("nms_"):
         return None
     with db.connect() as cx:
-        row = cx.execute("SELECT user_id,session_id,role,scopes_json,expires_at,revoked_at FROM share_tokens WHERE token_digest=? AND session_id=?", (hashlib.sha256(raw.encode()).hexdigest(), session_id)).fetchone()
+        row = cx.execute("SELECT st.user_id,st.session_id,st.role,st.scopes_json,st.expires_at,st.revoked_at FROM share_tokens st JOIN users u ON u.id=st.user_id WHERE st.token_digest=? AND st.session_id=? AND u.disabled=0", (hashlib.sha256(raw.encode()).hexdigest(), session_id)).fetchone()
     if not row or row["revoked_at"] or (row["expires_at"] is not None and row["expires_at"] <= int(time.time())):
         return None
     return row

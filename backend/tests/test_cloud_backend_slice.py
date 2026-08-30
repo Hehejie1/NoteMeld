@@ -921,6 +921,20 @@ def test_share_token_is_scoped_and_revocable(tmp_path):
         assert http.get(f"/v1/shared/{session['id']}/snapshot", headers=shared_headers).status_code == 401
 
 
+def test_disabling_share_token_owner_revokes_shared_access(tmp_path):
+    with client(tmp_path) as http:
+        admin = login(http, "admin", "admin-password-123")
+        admin_headers = {"Authorization": f"Bearer {admin}"}
+        user = http.post("/v1/admin/users", headers=admin_headers, json={"username": "share-owner", "password": "share-owner-password-123"}).json()["data"]
+        user_token = login(http, "share-owner", "share-owner-password-123")
+        user_headers = {"Authorization": f"Bearer {user_token}"}
+        session = http.post("/v1/sessions", headers=user_headers, json={"kind": "cloud_native"}).json()["data"]
+        share = http.post("/v1/share-tokens", headers=user_headers, json={"session_id": session["id"]}).json()["data"]
+        assert http.get(f"/v1/shared/{session['id']}/snapshot", headers={"X-Share-Token": share["token"]}).status_code == 200
+        assert http.put(f"/v1/admin/users/{user['id']}", headers=admin_headers, json={"disabled": True}).status_code == 200
+        assert http.get(f"/v1/shared/{session['id']}/snapshot", headers={"X-Share-Token": share["token"]}).status_code == 401
+
+
 def test_workspace_rejects_escape(tmp_path):
     from cloud.workspace import Workspace, WorkspaceError
 
