@@ -67,6 +67,19 @@ def test_cloud_client_quotes_workspace_paths():
     client.close()
 
 
+def test_cloud_client_sends_event_page_bounds():
+    seen = []
+    transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"code": 0, "msg": "success", "data": []})))
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=transport))
+    client.events("session-1", after=12, limit=37)
+    client.snapshot("session-1", limit=37)
+    assert seen == [
+        "https://cloud.test/v1/cloud/sessions/session-1/events?after=12&limit=37",
+        "https://cloud.test/v1/cloud/sessions/session-1/snapshot?limit=37",
+    ]
+    client.close()
+
+
 def test_cloud_client_rotates_and_clears_token():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v1/auth/rotate":
