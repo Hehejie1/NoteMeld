@@ -365,6 +365,20 @@ def test_pairing_grant_and_token_revoke(tmp_path):
         assert http.get("/v1/devices", headers=headers).status_code == 401
 
 
+def test_pairing_existing_device_preserves_omitted_key(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        device_id = "pair-existing-device"
+        assert http.post("/v1/devices", headers=headers, json={"device_id": device_id, "platform": "desktop", "display_name": "Old", "public_key": PUBLIC_KEY}).status_code == 200
+        code = http.post("/v1/pairings/start", headers=headers).json()["data"]["code"]
+        confirmed = http.post("/v1/pairings/confirm", headers=headers, json={"code": code, "device_id": device_id, "platform": "desktop", "display_name": "New"})
+        assert confirmed.status_code == 200
+        device = http.get("/v1/devices", headers=headers).json()["data"][0]
+        assert device["public_key"] == PUBLIC_KEY
+        assert device["display_name"] == "New"
+
+
 def test_grant_default_scopes_match_standard_control_policy(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

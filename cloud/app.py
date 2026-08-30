@@ -805,14 +805,25 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         digest = hashlib.sha256(payload.code.encode()).hexdigest()
         now = int(time.time())
         with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
             pairing = cx.execute("SELECT * FROM pairings WHERE code_hash=? AND status='pending' AND expires_at>? AND user_id=?", (digest, now, current["id"])).fetchone()
             if not pairing:
+                cx.execute("ROLLBACK")
                 raise HTTPException(400, "pairing code expired or invalid")
-            existing_device = cx.execute("SELECT user_id FROM devices WHERE id=?", (payload.device_id,)).fetchone()
+            existing_device = cx.execute("SELECT user_id,public_key FROM devices WHERE id=?", (payload.device_id,)).fetchone()
             if existing_device and existing_device["user_id"] != current["id"]:
+                cx.execute("ROLLBACK")
                 raise HTTPException(409, "device id is already registered to another account")
-            cx.execute("INSERT OR REPLACE INTO devices(id,user_id,public_key,platform,display_name,created_at) VALUES(?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now))
+            if existing_device:
+                public_key = payload.public_key or existing_device["public_key"]
+                cx.execute("UPDATE devices SET public_key=?,platform=?,display_name=?,revoked_at=NULL,last_seen_at=? WHERE id=? AND user_id=?", (public_key, payload.platform, payload.display_name, now, payload.device_id, current["id"]))
+                if payload.public_key and existing_device["public_key"] != payload.public_key:
+                    cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND device_id=? AND revoked_at IS NULL", (now, current["id"], payload.device_id))
+                    app.state.device_proofs.pop((current["id"], payload.device_id), None)
+            else:
+                cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,last_seen_at,created_at) VALUES(?,?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now, now))
             cx.execute("UPDATE pairings SET status='confirmed',device_id=? WHERE id=?", (payload.device_id, pairing["id"]))
+            cx.execute("COMMIT")
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True}}
 
     @app.post("/v1/grants")
