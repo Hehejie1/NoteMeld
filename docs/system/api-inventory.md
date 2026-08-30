@@ -31,7 +31,7 @@ negotiate behavior instead of hard-coding deployment policy.
 | 方法 | 路径 | 作用 | 认证 |
 | --- | --- | --- | --- |
 | GET | `/health` | 云端健康检查 | 无 |
-| POST | `/v1/auth/login` | 云端用户/管理员登录并签发 bearer token | 无（限流待补） |
+| POST | `/v1/auth/login` | 云端用户/管理员登录并签发 bearer token；按来源 IP + 账户键限流，超限返回 429 和 `Retry-After` | 无（失败尝试会被记录） |
 | POST | `/v1/auth/revoke` | 撤销当前 bearer token | bearer token |
 | POST | `/v1/auth/rotate` | 原子撤销当前 token 并签发新 token | bearer token |
 | GET | `/v1/admin/users` | 管理员查询普通用户 | admin token |
