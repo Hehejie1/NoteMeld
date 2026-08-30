@@ -396,8 +396,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def login(payload: LoginRequest, request: Request):
         source = request.client.host if request.client else "unknown"
         identity = payload.account_id or payload.username or ""
-        account_key = f"account:{source}:{identity}"
-        source_key = f"source:{source}"
+        account_key = _login_key("account", source, identity)
+        source_key = _login_key("source", source)
         now = int(time.time())
         if _login_rate_limited(db, account_key, now) or _login_rate_limited(db, source_key, now):
             raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
@@ -1563,6 +1563,11 @@ def _login_rate_limited(db: CloudDB, key: str, now: int, window_seconds: int = 6
     with db.connect() as cx:
         row = cx.execute("SELECT window_started,failed_count FROM login_attempts WHERE key=?", (key,)).fetchone()
     return bool(row and row["window_started"] > now - window_seconds and row["failed_count"] >= max_failures)
+
+
+def _login_key(namespace: str, *parts: str) -> str:
+    material = "\0".join((namespace, *parts)).encode("utf-8", "strict")
+    return hashlib.sha256(material).hexdigest()
 
 
 def _record_login_failure(db: CloudDB, key: str, now: int, window_seconds: int = 60) -> int:

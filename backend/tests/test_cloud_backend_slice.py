@@ -8,7 +8,7 @@ import pytest
 
 from fastapi.testclient import TestClient
 
-from cloud.app import _valid_nonce, create_app
+from cloud.app import _login_key, _valid_nonce, create_app
 from cloud.config import CloudSettings
 
 
@@ -21,6 +21,14 @@ def test_relay_nonce_validation_rejects_non_urlsafe_or_wrong_length_values():
     assert not _valid_nonce("!" + NONCE[1:])
     assert not _valid_nonce(base64.urlsafe_b64encode(b"short").decode().rstrip("="))
     assert not _valid_nonce(NONCE + "=")
+
+
+def test_login_rate_limit_keys_are_one_way_and_namespace_bound():
+    source_key = _login_key("source", "127.0.0.1")
+    account_key = _login_key("account", "127.0.0.1", "admin")
+    assert len(source_key) == len(account_key) == 64
+    assert "127.0.0.1" not in source_key and "admin" not in account_key
+    assert source_key != account_key
 
 
 def client(tmp_path: Path) -> TestClient:
