@@ -14,6 +14,8 @@ export function CloudSessionPanel({ client, sessionId, onCopy, onArchived }: Clo
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   if (!sessionId) return <section aria-label="Cloud session" className="p-4 text-sm text-slate-500">Select a session to begin.</section>
   if (loading && !session) return <section aria-busy="true" aria-label="Loading cloud session" className="space-y-3 p-4"><div className="h-5 w-48 animate-pulse rounded bg-slate-200" /><div className="h-24 animate-pulse rounded bg-slate-100" /></section>
@@ -28,8 +30,8 @@ export function CloudSessionPanel({ client, sessionId, onCopy, onArchived }: Clo
       </div>
       <div className="flex gap-2">
         <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={() => void controller.refreshEvents()}>Refresh</button>
-        <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={async () => { const copy = await controller.copy(); onCopy?.(copy.id) }}>Copy branch</button>
-        <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={async () => { await controller.archive(); onArchived?.() }}>Archive</button>
+        <button type="button" disabled={actionBusy} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50" onClick={async () => { setActionBusy(true); setActionError(null); try { const copy = await controller.copy(); onCopy?.(copy.id) } catch (reason) { setActionError(reason instanceof Error ? reason.message : 'Unable to copy branch') } finally { setActionBusy(false) } }}>Copy branch</button>
+        <button type="button" disabled={actionBusy} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50" onClick={async () => { setActionBusy(true); setActionError(null); try { await controller.archive(); onArchived?.() } catch (reason) { setActionError(reason instanceof Error ? reason.message : 'Unable to archive session') } finally { setActionBusy(false) } }}>Archive</button>
       </div>
     </header>
     <div role="log" aria-live="polite" className="min-h-24 flex-1 overflow-auto rounded border border-slate-200 bg-white p-3">
@@ -37,5 +39,6 @@ export function CloudSessionPanel({ client, sessionId, onCopy, onArchived }: Clo
     </div>
     <form onSubmit={async event => { event.preventDefault(); if (!input.trim() || sending) return; setSending(true); setSendError(null); try { await controller.send(input.trim(), crypto.randomUUID()); setInput(''); await controller.refreshEvents() } catch (reason) { setSendError(reason instanceof Error ? reason.message : 'Unable to send message') } finally { setSending(false) } }} className="flex gap-2"><label htmlFor="cloud-session-input" className="sr-only">Message</label><textarea id="cloud-session-input" value={input} onChange={event => setInput(event.target.value)} rows={2} placeholder="Send a message to the Agent" className="min-w-0 flex-1 resize-y rounded border border-slate-300 px-3 py-2 text-sm" /><button type="submit" disabled={sending || !input.trim()} className="self-end rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">{sending ? 'Sending…' : 'Send'}</button></form>
     {sendError ? <p role="alert" className="text-sm text-red-700">{sendError}</p> : null}
+    {actionError ? <p role="alert" className="text-sm text-red-700">{actionError}</p> : null}
   </section>
 }
