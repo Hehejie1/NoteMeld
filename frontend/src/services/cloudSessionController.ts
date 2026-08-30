@@ -14,7 +14,7 @@ export class CloudSessionController {
   private listeners = new Set<(state: CloudSessionState) => void>()
   constructor(private readonly client: CloudClient) {}
   getState() { return this.state }
-  subscribe(listener: (state: CloudSessionState) => void) { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+  subscribe(listener: (state: CloudSessionState) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   list(archived?: boolean) { return this.client.listSessions(archived) }
   private update(changes: Partial<CloudSessionState>) { this.state = { ...this.state, ...changes }; for (const listener of this.listeners) listener(this.state) }
 

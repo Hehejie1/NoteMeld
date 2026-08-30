@@ -53,3 +53,10 @@ test('cloud session controller owns snapshot and incremental event projection', 
   assert.match(source, /event\.sequence > this\.state\.lastSequence/)
   assert.match(source, /sort\(\(left, right\) => left\.sequence - right\.sequence\)/)
 })
+
+test('react cloud session hook subscribes to the shared controller lifecycle', () => {
+  const source = fs.readFileSync(new URL('../src/hooks/useCloudSession.ts', import.meta.url), 'utf8')
+  assert.match(source, /useCloudSession/)
+  assert.match(source, /controller\.subscribe/)
+  assert.match(source, /controller\.open\(sessionId\)/)
+})
