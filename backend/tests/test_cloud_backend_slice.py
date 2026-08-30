@@ -710,6 +710,17 @@ def test_workspace_cleans_interrupted_write_temporary_files(tmp_path):
     assert workspace.stats() == {"file_count": 0, "bytes_used": 0}
 
 
+def test_workspace_rejects_symlinked_root(tmp_path):
+    from cloud.workspace import Workspace, WorkspaceError
+
+    target = tmp_path / "outside"
+    target.mkdir()
+    link = tmp_path / "workspace-link"
+    link.symlink_to(target, target_is_directory=True)
+    with pytest.raises(WorkspaceError, match="symlink"):
+        Workspace(link)
+
+
 def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")

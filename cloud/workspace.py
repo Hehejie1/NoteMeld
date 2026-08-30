@@ -14,7 +14,15 @@ class WorkspaceError(ValueError):
 
 class Workspace:
     def __init__(self, root: Path):
-        self.root = root.resolve()
+        absolute_root = root.absolute()
+        current = absolute_root
+        while True:
+            if current.is_symlink():
+                raise WorkspaceError("workspace root symlink traversal is forbidden")
+            if current.parent == current:
+                break
+            current = current.parent
+        self.root = absolute_root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self._cleanup_interrupted_writes()
 
