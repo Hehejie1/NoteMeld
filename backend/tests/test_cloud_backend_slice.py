@@ -1023,6 +1023,14 @@ def test_workspace_file_api_bounds_reads_and_listing(tmp_path):
         assert len(listed["files"]) == 1 and listed["truncated"] is True
 
 
+def test_workspace_id_is_length_bounded(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        oversized = "w" * 129
+        assert http.get(f"/v1/workspaces/{oversized}/stats", headers=headers).status_code == 400
+
+
 def test_workspace_list_files_honors_internal_limit(tmp_path):
     from cloud.workspace import Workspace
 

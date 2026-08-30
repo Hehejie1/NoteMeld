@@ -1734,7 +1734,7 @@ def _validate_device_header(db: CloudDB, device_id: str | None, user_id: str) ->
 
 
 def _validate_workspace_id(workspace_id: str) -> None:
-    if not workspace_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in workspace_id):
+    if not workspace_id or len(workspace_id) > 128 or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in workspace_id):
         raise HTTPException(400, "invalid workspace id")
 
 
