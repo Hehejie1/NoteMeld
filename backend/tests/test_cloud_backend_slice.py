@@ -191,6 +191,22 @@ def test_readiness_checks_database_and_workspace(tmp_path):
         assert response.json()["checks"] == {"database": "ok", "workspace_root": "ok"}
 
 
+def test_event_reads_are_cursor_paginated(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/cloud/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        with http.app.state.db.connect() as cx:
+            for sequence in range(1, 4):
+                cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (f"event-{sequence}", session["id"], sequence, "test.event", "{}", sequence))
+        first_page = http.get(f"/v1/cloud/sessions/{session['id']}/events?after=0&limit=2", headers=headers).json()["data"]
+        second_page = http.get(f"/v1/cloud/sessions/{session['id']}/events?after=2&limit=2", headers=headers).json()["data"]
+        snapshot = http.get(f"/v1/cloud/sessions/{session['id']}/snapshot?limit=1", headers=headers).json()["data"]
+        assert [item["sequence"] for item in first_page] == [1, 2]
+        assert [item["sequence"] for item in second_page] == [3]
+        assert [item["sequence"] for item in snapshot["events"]] == [1]
+
+
 def test_pairing_grant_and_token_revoke(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
