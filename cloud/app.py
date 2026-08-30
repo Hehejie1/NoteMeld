@@ -2026,8 +2026,8 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
             path = arguments.get("path")
             if not isinstance(path, str) or len(path) > 1024:
                 return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace path"}}
-            content = workspace.read_text(path)
-            return {"ok": True, "path": path, "content": content[:100_000], "truncated": len(content) > 100_000}
+            content, truncated = workspace.read_text_bounded(path, 100_000)
+            return {"ok": True, "path": path, "content": content, "truncated": truncated}
         if name in {"workspace.write", "workspace.delete"}:
             path = arguments.get("path")
             if not isinstance(path, str) or len(path) > 1024:

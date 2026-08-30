@@ -956,6 +956,18 @@ def test_workspace_concurrent_writes_use_distinct_atomic_temporary_files(tmp_pat
         assert (tmp_path / "concurrent" / "shared.txt").stat().st_mode & 0o777 == 0o600
 
 
+def test_workspace_bounded_read_preserves_utf8_and_limit(tmp_path):
+    from cloud.workspace import Workspace
+
+    workspace = Workspace(tmp_path / "bounded")
+    workspace.write_bytes("large.txt", ("😀" * 100_000).encode("utf-8"))
+    content, truncated = workspace.read_text_bounded("large.txt", 101)
+
+    assert truncated is True
+    assert len(content.encode("utf-8")) <= 101
+    assert content == "😀" * 25
+
+
 def test_workspace_backup_and_copy_concurrent_operations_leave_no_temporary_files(tmp_path):
     from cloud.workspace import Workspace
 

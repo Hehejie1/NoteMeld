@@ -60,6 +60,23 @@ class Workspace:
             raise WorkspaceError("workspace file is unavailable")
         return path.read_text(encoding="utf-8")
 
+    def read_text_bounded(self, logical_path: str, max_bytes: int) -> tuple[str, bool]:
+        """Read at most ``max_bytes`` from a UTF-8 file without over-reading it."""
+        if max_bytes <= 0:
+            raise WorkspaceError("read limit must be positive")
+        path = self.path(logical_path)
+        if path.is_symlink() or not path.is_file():
+            raise WorkspaceError("workspace file is unavailable")
+        with path.open("rb") as handle:
+            content = handle.read(max_bytes + 1)
+        truncated = len(content) > max_bytes
+        if truncated:
+            content = content[:max_bytes]
+        # Do not return a partial UTF-8 code point when the byte limit falls
+        # in the middle of one. The ignored suffix is represented by the
+        # existing ``truncated`` flag in the Agent tool response.
+        return content.decode("utf-8", errors="ignore"), truncated
+
     def write_text(self, logical_path: str, content: str) -> None:
         self.write_bytes(logical_path, content.encode("utf-8"))
 
