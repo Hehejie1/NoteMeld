@@ -27,8 +27,8 @@ this prevents an unsafe split-brain deployment. Redis/NATS values are reserved
 until their transient Pub/Sub adapters are installed and configured.
 Install `cloud/requirements.txt` for the cloud runtime and device-proof cryptography.
 Desktop/Python client-side E2EE (X25519, Ed25519, HKDF and AES-256-GCM)
-lives in `backend/app/cloud_sync/e2ee.py`; `cloud/crypto.py` is retained only as
-a source-tree compatibility import. The relay never imports or uses the decrypt
+lives in `backend/app/cloud_sync/e2ee.py`; the cloud service does not import the
+desktop module or hold session keys. The relay never imports or uses the decrypt
 path.
 LAN-first clients do not forward that bearer to a `ws://` peer. A configured
 Host uses its bound device token over HTTPS with `POST /v1/lan/authorize` to

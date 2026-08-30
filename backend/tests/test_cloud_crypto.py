@@ -56,11 +56,6 @@ def test_e2ee_rejects_ambiguous_identity_and_noncanonical_base64():
         crypto.decrypt(b"k" * 32, "AAAAAAAAAAAAAAAA=", "YWJjZA")
 
 
-def test_legacy_cloud_crypto_path_reexports_canonical_implementation():
-    legacy = pytest.importorskip("cloud.crypto")
-    assert legacy.SessionCipher is crypto.SessionCipher
-
-
 def test_session_cipher_builds_frame_after_nonce_for_canonical_aad():
     sender = crypto.SessionCipher(b"k" * 32)
     receiver = crypto.SessionCipher(b"k" * 32)

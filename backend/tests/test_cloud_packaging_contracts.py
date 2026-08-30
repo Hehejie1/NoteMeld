@@ -32,7 +32,13 @@ def test_backend_spec_collects_cloud_sync_modules() -> None:
 
 def test_client_e2ee_is_inside_packaged_backend_namespace() -> None:
     canonical = ROOT / "backend" / "app" / "cloud_sync" / "e2ee.py"
-    compatibility = (ROOT / "cloud" / "crypto.py").read_text(encoding="utf-8")
     assert canonical.is_file()
-    assert "from app.cloud_sync.e2ee import" in compatibility
-    assert "from backend.app.cloud_sync.e2ee import" in compatibility
+    assert "class SessionCipher" in canonical.read_text(encoding="utf-8")
+
+
+def test_cloud_service_does_not_import_desktop_e2ee_module() -> None:
+    cloud_sources = list((ROOT / "cloud").glob("*.py"))
+    assert all(
+        "backend.app" not in source.read_text(encoding="utf-8")
+        for source in cloud_sources
+    )

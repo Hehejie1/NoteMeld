@@ -4,13 +4,13 @@
 
 ## 0. 预检查
 
-云服务 requirements 已声明 `cryptography`，但桌面 sidecar 的核心打包依赖没有声明；E2EE 原语位于 PyInstaller 不收集的 `cloud/` namespace。开发虚拟环境已有依赖，因此既有源码测试无法发现发布包缺口。
+云服务 requirements 已声明 `cryptography`，但桌面 sidecar 的核心打包依赖没有声明；原 E2EE 原语位于 PyInstaller 不收集的 `cloud/` namespace。开发虚拟环境已有依赖，因此既有源码测试无法发现发布包缺口。
 
 ## 1. 目标
 
 - cloud 与桌面 packaged backend 锁定相同的 `cryptography` 运行时。
 - 将 Python/桌面端侧 E2EE canonical 实现放入 `backend/app/cloud_sync/e2ee.py`，由现有 `collect_submodules("app")` 收集。
-- 保留 `cloud.crypto` 源码兼容导入，但不复制实现，也不让 Relay 获得私钥或解密能力。
+- 删除 cloud 侧仅供客户端使用的加密 helper，避免 cloud/backend 物理分离被反向 import 破坏；cloud Relay 只消费 opaque protocol，不获得私钥或解密能力。
 - token 临时文件创建即为 `0600`，写入和 rename 具备崩溃安全边界，替换失败保留旧值并清理临时文件。
 - 拒绝包含 NUL 的握手 identity、非法 key 长度和非严格 Base64 输入。
 
@@ -23,6 +23,6 @@
 ## 3. 验收
 
 - cloud 与 desktop requirements 包含相同精确 crypto pin。
-- canonical 和旧兼容导入指向同一个 `SessionCipher` 类型。
+- canonical E2EE 模块可被桌面 PyInstaller 收集，cloud 源码不反向导入 backend。
 - E2EE round trip、AAD authentication、replay/rekey 与非法输入测试通过。
 - token replace 失败后仍能读取旧 token，且不存在遗留临时文件。

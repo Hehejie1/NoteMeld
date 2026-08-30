@@ -450,8 +450,8 @@ device ID remain visible as compatibility archives.
 sequence cursor for reconnect and queue reconstruction.
 
 Python/desktop adapters use `backend/app/cloud_sync/e2ee.py` for the E2EE
-handshake and AEAD frame payload; `cloud/crypto.py` is a source compatibility
-export only. `SessionCipher` is the session-level wrapper: it requires strictly
+handshake and AEAD frame payload. The cloud service does not import the desktop
+module. `SessionCipher` is the session-level wrapper: it requires strictly
 increasing outbound sequences, rejects inbound replay before exposing
 plaintext, and advances its receive cursor only after successful
 authentication. `derive_rekeyed_session_key` derives a fresh directional key

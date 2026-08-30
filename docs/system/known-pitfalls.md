@@ -11,9 +11,9 @@
 ## 桌面源码可用，但发布包缺少端侧加密运行时
 
 - 发生过的问题/风险：开发虚拟环境已安装 `cryptography`，云端测试和令牌加密测试都通过，但桌面 `requirements-core.txt` 未声明该依赖；同时 E2EE 原语只位于不会被 PyInstaller 收集的 `cloud/crypto.py`。发布后的 sidecar 会在导入令牌存储或建立加密会话时失败。
-- 不允许：依赖开发机的传递安装；只修改 cloud requirements；把端侧私钥或解密逻辑移入 Relay；在 `cloud/` 和 `backend/app/` 长期维护两份加密实现；先普通权限创建明文临时 token 文件再 chmod。
-- 检查方式：运行 `backend/tests/test_cloud_packaging_contracts.py`、`backend/tests/test_cloud_crypto.py` 和 `backend/tests/test_cloud_token_store.py`；确认桌面与 cloud 锁定相同版本，canonical E2EE 模块位于 `app.cloud_sync`，失败的原子替换保留旧 token 且清理临时文件。
-- 修复经验：端侧加密实现放入被桌面收集的 backend namespace，旧路径仅 re-export；临时文件通过 `os.open(..., 0o600)` 创建，文件 fsync 后原子替换并尽力同步父目录。
+- 不允许：依赖开发机的传递安装；只修改 cloud requirements；把端侧私钥或解密逻辑移入 Relay；让 cloud 反向 import backend；在端侧维护两份加密实现；先普通权限创建明文临时 token 文件再 chmod。
+- 检查方式：运行 `backend/tests/test_cloud_packaging_contracts.py`、`backend/tests/test_cloud_crypto.py` 和 `backend/tests/test_cloud_token_store.py`；确认桌面与 cloud 锁定相同版本，canonical E2EE 模块位于 `app.cloud_sync`，cloud 不依赖它，失败的原子替换保留旧 token 且清理临时文件。
+- 修复经验：端侧加密实现只放入被桌面收集的 backend namespace；cloud 只消费协议，不导入端侧模块；临时文件通过 `os.open(..., 0o600)` 创建，文件 fsync 后原子替换并尽力同步父目录。
 
 ## 把 relay_accepted 当成宿主已收到
 
