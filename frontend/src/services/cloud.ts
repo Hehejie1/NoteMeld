@@ -11,6 +11,13 @@ export interface CloudModel { id: string; name: string; provider: string; model:
 export interface CloudToken { id: string; audience: string; device_id?: string | null; scopes: string[]; expires_at?: number | null; revoked_at?: number | null; created_at: number }
 export interface CloudTokenStore { load(): Promise<string | null>; save(token: string): Promise<void>; clear(): Promise<void> }
 
+export class CloudClientError extends Error {
+  constructor(message: string, readonly statusCode = 0) {
+    super(message)
+    this.name = 'CloudClientError'
+  }
+}
+
 /** Stateless adapter for cloud control-plane APIs; no local Agent state lives here. */
 export class CloudClient {
   private readonly http: AxiosInstance
@@ -33,9 +40,21 @@ export class CloudClient {
 
   private async request<T>(method: string, path: string, data?: unknown, config?: Record<string, unknown>): Promise<T> {
     await this.hydrateToken()
-    const response = await this.http.request<CloudEnvelope<T>>({ method, url: path, data, headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined, ...(config as any) })
-    if (response.data.code !== 0) throw new Error(response.data.msg || 'cloud request failed')
-    return response.data.data
+    try {
+      const response = await this.http.request<CloudEnvelope<T>>({ method, url: path, data, headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined, ...(config as any) })
+      if (!response.data || typeof response.data !== 'object' || typeof response.data.code !== 'number') {
+        throw new CloudClientError('cloud returned invalid response envelope', response.status)
+      }
+      if (response.data.code !== 0) throw new CloudClientError(response.data.msg || 'cloud request failed', response.status)
+      return response.data.data
+    } catch (error) {
+      if (error instanceof CloudClientError) throw error
+      if (axios.isAxiosError(error)) {
+        const payload = error.response?.data as Partial<CloudEnvelope<unknown>> | undefined
+        throw new CloudClientError(payload?.msg || 'cloud transport failed', error.response?.status ?? 0)
+      }
+      throw new CloudClientError('cloud transport failed')
+    }
   }
 
   async login(password: string, username?: string, accountId?: string) { const data = await this.request<{ token: string; user_id: string; role: string }>('POST', '/v1/auth/login', { password, ...(username ? { username } : {}), ...(accountId ? { account_id: accountId } : {}) }); this.token = data.token; await this.persistToken(); return data }
