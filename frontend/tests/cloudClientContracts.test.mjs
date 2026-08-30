@@ -9,6 +9,8 @@ test('cloud client exposes stateless cross-device control plane methods', () => 
     assert.match(source, new RegExp(`\\b${method}\\s*\\(`), `missing ${method}`)
   }
   assert.match(source, /\bme\s*\(/)
+  assert.match(source, /commandStatus/)
+  assert.match(source, /listCommands/)
   assert.match(source, /Authorization: `Bearer \$\{this\.token\}`/)
   assert.match(source, /class CloudClient/)
 })
