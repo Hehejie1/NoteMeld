@@ -238,8 +238,8 @@ class CloudClient:
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
 
-    def list_workspace_files(self, workspace_id: str, prefix: str = "") -> dict[str, Any]:
-        return self._request("GET", f"/v1/workspaces/{workspace_id}/files", params={"prefix": prefix})
+    def list_workspace_files(self, workspace_id: str, prefix: str = "", limit: int = 500) -> dict[str, Any]:
+        return self._request("GET", f"/v1/workspaces/{workspace_id}/files", params={"prefix": prefix, "limit": limit})
 
     def write_workspace_file(self, workspace_id: str, path: str, content: str) -> dict[str, Any]:
         return self._request("PUT", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}", json={"content": content})
