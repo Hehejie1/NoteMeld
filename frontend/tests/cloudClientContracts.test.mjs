@@ -60,3 +60,11 @@ test('react cloud session hook subscribes to the shared controller lifecycle', (
   assert.match(source, /controller\.subscribe/)
   assert.match(source, /controller\.open\(sessionId\)/)
 })
+
+test('cloud auth hook hydrates, logs in, and revokes through CloudClient', () => {
+  const source = fs.readFileSync(new URL('../src/hooks/useCloudAuth.ts', import.meta.url), 'utf8')
+  assert.match(source, /hydrateToken/)
+  assert.match(source, /client\.login\(password, username\)/)
+  assert.match(source, /revokeCurrentToken/)
+  assert.match(source, /authenticated: Boolean\(token\)/)
+})
