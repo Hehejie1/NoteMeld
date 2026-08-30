@@ -5,6 +5,8 @@ from urllib.parse import quote
 
 import httpx
 
+from .connection import validate_cloud_base_url
+
 
 class CloudClientError(RuntimeError):
     def __init__(self, status_code: int, message: str):
@@ -20,7 +22,7 @@ class CloudClient:
     """
 
     def __init__(self, base_url: str, token: str | None = None, device_id: str | None = None, client: httpx.Client | None = None, token_store: Any | None = None):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = validate_cloud_base_url(base_url)
         self.token_store = token_store
         self.token = token if token is not None else (token_store.load() if token_store is not None else None)
         self.device_id = device_id

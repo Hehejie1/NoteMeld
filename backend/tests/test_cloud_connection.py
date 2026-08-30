@@ -1,5 +1,5 @@
 import pytest
-from app.cloud_sync.connection import connection_candidates, connect_with_fallback
+from app.cloud_sync.connection import connection_candidates, connect_with_fallback, validate_cloud_base_url
 
 
 def test_connection_candidates_prioritize_lan_and_encode_session():
@@ -25,3 +25,11 @@ def test_connection_rejects_invalid_base_url():
         connection_candidates("file:///tmp", "s1")
     with pytest.raises(ValueError, match="private or local"):
         connection_candidates("https://cloud.example", "s1", ["8.8.8.8:443"])
+
+
+def test_cloud_base_url_requires_tls_for_remote_hosts():
+    assert validate_cloud_base_url("http://127.0.0.1:8583/") == "http://127.0.0.1:8583"
+    assert validate_cloud_base_url("https://cloud.example.test/") == "https://cloud.example.test"
+    for value in ("http://cloud.example.test", "https://user:pass@cloud.example.test", "https://cloud.example.test/?token=x"):
+        with pytest.raises(ValueError):
+            validate_cloud_base_url(value)

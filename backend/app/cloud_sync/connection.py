@@ -12,11 +12,20 @@ class ConnectionCandidate:
     url: str
 
 
+def validate_cloud_base_url(value: str) -> str:
+    """Validate a cloud URL before sending credentials over the network."""
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.fragment or parsed.query:
+        raise ValueError("cloud base URL must be an absolute HTTP(S) URL without credentials or query parameters")
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme == "http" and hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("remote cloud base URL must use HTTPS")
+    return value.strip().rstrip("/")
+
+
 def connection_candidates(cloud_base_url: str, session_id: str, lan_endpoints: list[str] | None = None) -> list[ConnectionCandidate]:
-    base = cloud_base_url.rstrip("/")
+    base = validate_cloud_base_url(cloud_base_url)
     parsed = urlparse(base)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("cloud base URL must be HTTP(S)")
     result = []
     for endpoint in lan_endpoints or []:
         normalized = endpoint.strip()
