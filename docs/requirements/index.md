@@ -1,6 +1,6 @@
 # Requirements Index
 
-更新时间：2026-08-27
+更新时间：2026-08-29
 
 本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
 
@@ -21,6 +21,8 @@
 - `Superseded`：被新需求替代。
 
 ## 需求列表
+
+| P9 | Clarifying | NoteMeld 多端会话、云端 Agent 与设备协同 | [`2026-08-29-multiplatform-cloud-sync-and-device-control.md`](2026-08-29-multiplatform-cloud-sync-and-device-control.md) | [`plan`](../superpowers/plans/2026-08-29-multiplatform-sync-plan.md) + [`spec`](../superpowers/specs/2026-08-29-multiplatform-sync-spec.md) + [专家评审](../superpowers/reviews/2026-08-29-multiplatform-sync-expert-review.md) + Stitch Prompt：[`2026-08-29-stitch-multiplatform-prompts.md`](../design/2026-08-29-stitch-multiplatform-prompts.md) | 三方评审发现 P0 商用安全/稳定性门禁，完成前不进入生产实现 |
 
 | P8 | Implemented (v1 core) | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | [`plan`](../superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`spec`](../superpowers/specs/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`验证`](../superpowers/tests/2026-08-27-notemeld-application-runtime-and-wiki-app.md) | 协议核心、内建包发现、桌面 process-JSONL、Web managed-worker seam、workspace 和 Wiki 应用已接入；用户包安装、真实外部 Web worker、移动端 UI、Agent 生成应用后置 |
 | P8.1 | Ready for Plan | NoteMeld 插件管理与内置目录页面 | [`2026-08-27-plugin-management-page.md`](2026-08-27-plugin-management-page.md) | 本需求第 8 节增量 Change Spec；待生成 plan/spec | 在既有 `/settings/plugins` 安装/运行控制台上增加内置 catalog、搜索/筛选、详情、添加插件/内容和安装前确认；不修改插件协议与 SDK |
