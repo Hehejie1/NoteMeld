@@ -630,6 +630,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
+        if payload.expires_at is not None and payload.expires_at <= int(time.time()):
+            raise HTTPException(422, "expires_at must be in the future")
         with db.connect() as cx:
             devices = cx.execute("SELECT id,public_key FROM devices WHERE user_id=? AND id IN (?,?) AND revoked_at IS NULL", (current["id"], payload.controller_device_id, payload.host_device_id)).fetchall()
         if len(devices) != 2:
@@ -663,6 +665,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, payload.session_id, current["id"])
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
+        if payload.expires_at is not None and payload.expires_at <= int(time.time()):
+            raise HTTPException(422, "expires_at must be in the future")
         raw = "nms_" + secrets.token_urlsafe(32)
         token_id = str(uuid.uuid4())
         now = int(time.time())
