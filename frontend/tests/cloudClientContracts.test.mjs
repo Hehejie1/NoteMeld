@@ -17,6 +17,7 @@ test('cloud client exposes injectable token storage without localStorage couplin
   assert.match(source, /hydrateToken/)
   assert.match(source, /persistToken/)
   assert.doesNotMatch(source, /localStorage/)
+  assert.match(source, /validateCloudBaseUrl/)
 })
 
 test('web token store uses encrypted IndexedDB rather than plaintext browser storage', () => {

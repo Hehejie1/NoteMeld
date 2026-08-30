@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
+import { validateCloudBaseUrl } from './connectionStrategy'
 
 export interface CloudEnvelope<T> { code: number; msg: string; data: T }
 export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; max_request_bytes: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
@@ -18,7 +19,7 @@ export class CloudClient {
   constructor(baseUrl: string, token?: string, deviceId?: string, tokenStore?: CloudTokenStore) {
     this.token = token ?? null
     this.tokenStore = tokenStore
-    this.http = axios.create({ baseURL: baseUrl.replace(/\/$/, ''), timeout: 20_000 })
+    this.http = axios.create({ baseURL: validateCloudBaseUrl(baseUrl).toString().replace(/\/$/, ''), timeout: 20_000 })
     if (deviceId) this.http.defaults.headers.common['X-Device-Id'] = deviceId
   }
 

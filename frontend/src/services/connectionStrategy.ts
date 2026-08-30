@@ -1,6 +1,14 @@
 export interface DeviceConnectivity { lan_endpoints?: string[] }
 export interface ConnectionCandidate { transport: 'lan' | 'relay'; url: string }
 
+export function validateCloudBaseUrl(value: string): URL {
+  const parsed = new URL(value.trim().replace(/\/$/, ''))
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error('cloud URL must be an http(s) URL without credentials')
+  const local = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(parsed.hostname)
+  if (parsed.protocol === 'http:' && !local) throw new Error('cloud URL must use HTTPS unless it targets localhost')
+  return parsed
+}
+
 function isPrivateLanEndpoint(endpoint: string): boolean {
   const separator = endpoint.lastIndexOf(':')
   if (separator <= 0) return false
@@ -39,7 +47,8 @@ export async function connectWithFallback<T>(candidates: ConnectionCandidate[], 
  * by the handshake/Relay protocol; these URLs are only routing hints.
  */
 export function connectionCandidates(cloudBaseUrl: string, sessionId: string, device: DeviceConnectivity): ConnectionCandidate[] {
-  const base = cloudBaseUrl.replace(/\/$/, '')
+  const parsedBase = validateCloudBaseUrl(cloudBaseUrl)
+  const base = parsedBase.toString().replace(/\/$/, '')
   const candidates: ConnectionCandidate[] = []
   for (const endpoint of device.lan_endpoints ?? []) {
     const normalized = endpoint.trim()
