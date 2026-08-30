@@ -243,18 +243,27 @@ fn generate_session_token() -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn build_runtime_payload(port: u16, session_token: String) -> FrontendRuntimePayload {
-    FrontendRuntimePayload {
+fn build_runtime_payload(
+    port: u16,
+    session_token: String,
+) -> Result<FrontendRuntimePayload, String> {
+    let cloud_base_url = match std::env::var("NOTEMELD_CLOUD_BASE_URL") {
+        Ok(value) if !value.trim().is_empty() => Some(
+            validate_cloud_base_url(value.trim())?
+                .to_string()
+                .trim_end_matches('/')
+                .to_string(),
+        ),
+        _ => None,
+    };
+    Ok(FrontendRuntimePayload {
         api_base_url: format!("http://127.0.0.1:{port}/api"),
         screenshot_base_url: format!("http://127.0.0.1:{port}/static/screenshots"),
-        cloud_base_url: std::env::var("NOTEMELD_CLOUD_BASE_URL")
-            .ok()
-            .and_then(|value| validate_cloud_base_url(value.trim()).ok())
-            .map(|url| url.to_string().trim_end_matches('/').to_string()),
+        cloud_base_url,
         mode: "desktop".to_string(),
         desktop_embedded: true,
         session_token,
-    }
+    })
 }
 
 fn build_runtime_bootstrap(payload: &FrontendRuntimePayload) -> Result<String, String> {
@@ -473,7 +482,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let port = ensure_fixed_backend_port_available().map_err(std::io::Error::other)?;
-            let runtime_payload = build_runtime_payload(port, generate_session_token());
+            let runtime_payload = build_runtime_payload(port, generate_session_token())
+                .map_err(std::io::Error::other)?;
             let runtime_bootstrap =
                 build_runtime_bootstrap(&runtime_payload).map_err(std::io::Error::other)?;
             let backend_child = spawn_backend_sidecar(app.handle(), port, &runtime_payload)
