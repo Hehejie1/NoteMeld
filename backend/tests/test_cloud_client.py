@@ -47,6 +47,14 @@ def test_cloud_client_normalizes_transport_failures():
     client.close()
 
 
+def test_cloud_client_rejects_non_object_response_envelope():
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=["not", "an", "envelope"]))
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=transport))
+    with pytest.raises(CloudClientError, match="invalid response envelope"):
+        client.snapshot("s1")
+    client.close()
+
+
 def test_cloud_client_imports_local_snapshot():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/cloud/sessions/import"

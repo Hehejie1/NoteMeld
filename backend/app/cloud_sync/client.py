@@ -290,6 +290,8 @@ class CloudClient:
             body = response.json()
         except ValueError as exc:
             raise CloudClientError(response.status_code, "cloud returned invalid JSON") from exc
+        if not isinstance(body, dict):
+            raise CloudClientError(response.status_code, "cloud returned invalid response envelope")
         if response.status_code >= 400 or body.get("code") not in (None, 0):
             raise CloudClientError(response.status_code, body.get("msg", "cloud request failed"))
         return body.get("data", body)
