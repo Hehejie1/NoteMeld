@@ -43,6 +43,10 @@ test('connection strategy orders LAN candidates before cloud relay fallback', ()
   assert.match(source, /relayWebSocketProtocols/)
   assert.match(source, /openRelayWebSocket/)
   assert.match(source, /new WebSocket\(candidate\.url, protocols\)/)
+  const crypto = fs.readFileSync(new URL('../src/services/relayCrypto.ts', import.meta.url), 'utf8')
+  assert.match(crypto, /AES-GCM/)
+  assert.match(crypto, /additionalData/)
+  assert.match(crypto, /getRandomValues/)
 })
 
 test('cloud session controller owns snapshot and incremental event projection', () => {
