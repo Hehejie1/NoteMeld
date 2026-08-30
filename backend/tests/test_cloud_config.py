@@ -37,3 +37,8 @@ def test_settings_reject_non_positive_operation_timeouts(tmp_path: Path):
         base(tmp_path, agent_timeout_seconds=0).validate()
     with pytest.raises(ValueError, match="timeouts"):
         base(tmp_path, command_wait_seconds=-1).validate()
+
+
+def test_settings_reject_non_positive_token_ttl(tmp_path: Path):
+    with pytest.raises(ValueError, match="token TTL"):
+        base(tmp_path, token_ttl_seconds=0).validate()

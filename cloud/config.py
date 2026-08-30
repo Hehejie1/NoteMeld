@@ -48,6 +48,8 @@ class CloudSettings:
     def validate(self) -> None:
         if not self.admin_username.strip() or len(self.admin_password) < 12:
             raise ValueError("admin credentials are not strong enough")
+        if self.token_ttl_seconds <= 0:
+            raise ValueError("token TTL must be positive")
         if self.max_workspace_bytes <= 0 or self.max_workspace_files <= 0 or self.max_request_bytes <= 0 or self.max_workspace_read_bytes <= 0 or self.max_workspace_list_items <= 0 or self.max_backup_list_items <= 0:
             raise ValueError("workspace and request limits must be positive")
         if not 1 <= self.workspace_warning_percent <= 100:
