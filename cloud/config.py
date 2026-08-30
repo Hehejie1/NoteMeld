@@ -25,6 +25,8 @@ class CloudSettings:
     command_lease_seconds: int = 300
     max_request_bytes: int = 16 * 1024 * 1024
     approval_ttl_seconds: int = 900
+    relay_backend: str = "memory"
+    worker_count: int = 1
 
     @property
     def database_path(self) -> Path:
@@ -46,6 +48,12 @@ class CloudSettings:
             local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
             if parsed.scheme != "https" and not local:
                 raise ValueError("remote agent URL must use HTTPS")
+        if self.relay_backend not in {"memory", "redis", "nats"}:
+            raise ValueError("unsupported relay backend")
+        if self.worker_count < 1:
+            raise ValueError("worker count must be positive")
+        if self.relay_backend == "memory" and self.worker_count > 1:
+            raise ValueError("memory relay cannot run with multiple workers")
 
 
 def load_settings() -> CloudSettings:
@@ -67,4 +75,6 @@ def load_settings() -> CloudSettings:
         command_lease_seconds=int(os.getenv("NOTEMELD_CLOUD_COMMAND_LEASE_SECONDS", "300")),
         max_request_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_REQUEST_BYTES", str(16 * 1024 * 1024))),
         approval_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS", "900")),
+        relay_backend=os.getenv("NOTEMELD_CLOUD_RELAY_BACKEND", "memory").strip().lower(),
+        worker_count=int(os.getenv("WEB_CONCURRENCY", "1")),
     )

@@ -20,6 +20,9 @@ uses the `RelayBroker` interface (`cloud/relay.py`); the default
 `InMemoryRelayBroker` is intentionally single-process. A multi-instance
 deployment must provide a transient Pub/Sub implementation behind that
 interface before placing multiple workers behind a load balancer.
+The service rejects `WEB_CONCURRENCY>1` while `NOTEMELD_CLOUD_RELAY_BACKEND=memory`;
+this prevents an unsafe split-brain deployment. Redis/NATS values are reserved
+until their transient Pub/Sub adapters are installed and configured.
 Install `cloud/requirements.txt` for the optional client-side E2EE primitives
 (X25519, Ed25519, HKDF and ChaCha20-Poly1305). The relay never imports or uses
 the decrypt path.

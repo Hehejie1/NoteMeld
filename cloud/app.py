@@ -286,6 +286,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
 
+    if settings.relay_backend != "memory":
+        raise RuntimeError(f"relay backend '{settings.relay_backend}' is not installed in this build")
     app.state.relay_broker = InMemoryRelayBroker()
     app.state.relay_sequences: dict[tuple[str, str], int] = {}
     app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
