@@ -90,6 +90,12 @@ CREATE TABLE IF NOT EXISTS relay_cursors (
 CREATE TABLE IF NOT EXISTS login_attempts (
   key TEXT PRIMARY KEY, window_started INTEGER NOT NULL, failed_count INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_commands_session_status_sequence ON commands(session_id, status, sequence);
+CREATE INDEX IF NOT EXISTS idx_events_session_sequence ON events(session_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_tokens_user_active ON tokens(user_id, revoked_at, expires_at);
+CREATE INDEX IF NOT EXISTS idx_devices_user_active ON devices(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_updated ON sessions(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audits_created ON audits(created_at DESC);
 """
 
 
@@ -102,6 +108,8 @@ class CloudDB:
         connection = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
         connection.execute("PRAGMA busy_timeout=2000")
         return connection
 
