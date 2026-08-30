@@ -12,6 +12,7 @@ const approval = fs.readFileSync(new URL('../src/components/CloudApprovalList/Cl
 const workspace = fs.readFileSync(new URL('../src/components/CloudWorkspaceBrowser/CloudWorkspaceBrowser.tsx', import.meta.url), 'utf8')
 const models = fs.readFileSync(new URL('../src/components/CloudModelList/CloudModelList.tsx', import.meta.url), 'utf8')
 const modelForm = fs.readFileSync(new URL('../src/components/CloudModelForm/CloudModelForm.tsx', import.meta.url), 'utf8')
+const users = fs.readFileSync(new URL('../src/components/CloudUserList/CloudUserList.tsx', import.meta.url), 'utf8')
 test('cloud session panel has loading, error, empty, and accessible event states', () => { assert.match(panel, /aria-busy/); assert.match(panel, /role="alert"/); assert.match(panel, /No events yet/); assert.match(panel, /role="log"/); assert.match(panel, /Copy branch/); assert.match(panel, /controller\.send/); assert.match(panel, /Message/) })
 test('cloud session list supports archive filtering and keyboard selection', () => { assert.match(list, /listSessions\(archived\)/); assert.match(list, /aria-current/); assert.match(list, /role="list"/); assert.match(list, /No archived sessions/) })
 test('device list exposes online status, LAN candidates, and revoke action', () => { assert.match(devices, /device\.online/); assert.match(devices, /lan_endpoints/); assert.match(devices, /revokeDevice/); assert.match(devices, /aria-label="Connected devices"/) })
@@ -22,3 +23,4 @@ test('approval list requires explicit approve or reject actions', () => { assert
 test('workspace browser is read-only and never exposes write or delete actions', () => { assert.match(workspace, /listWorkspaceFiles/); assert.match(workspace, /readWorkspaceFile/); assert.match(workspace, /Read-only preview/); assert.doesNotMatch(workspace, /writeWorkspaceFile|deleteWorkspaceFile/) })
 test('model list displays only provider metadata and credential presence', () => { assert.match(models, /listModels/); assert.match(models, /has_api_key/); assert.doesNotMatch(models, /api_key_ciphertext|api_key["']?\s*:/) })
 test('model form treats API key as password input and clears it after save', () => { assert.match(modelForm, /type="password"/); assert.match(modelForm, /createModel/); assert.match(modelForm, /setApiKey\('\'\)/); assert.match(modelForm, /autoComplete="new-password"/) })
+test('admin user list protects admin and supports user deletion', () => { assert.match(users, /listUsers/); assert.match(users, /deleteUser/); assert.match(users, /user\.role === 'admin'/); assert.match(users, /Protected/) })
