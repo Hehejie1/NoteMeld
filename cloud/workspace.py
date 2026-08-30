@@ -143,6 +143,7 @@ class Workspace:
             raise WorkspaceError("backup is unavailable")
         total = 0
         members: list[zipfile.ZipInfo] = []
+        member_names: set[str] = set()
         with zipfile.ZipFile(archive_path) as archive:
             for member in archive.infolist():
                 if member.external_attr >> 16 & 0o170000 == 0o120000:
@@ -162,6 +163,10 @@ class Workspace:
                     or any(part in {"", ".", ".."} for part in raw_parts)
                 ):
                     raise WorkspaceError("backup contains an unsafe path")
+                normalized_name = "/".join(raw_parts).casefold()
+                if normalized_name in member_names:
+                    raise WorkspaceError("backup contains duplicate paths")
+                member_names.add(normalized_name)
                 total += member.file_size
                 if total > max_bytes:
                     raise WorkspaceError("backup exceeds workspace quota")

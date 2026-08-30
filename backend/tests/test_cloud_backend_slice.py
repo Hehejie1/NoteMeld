@@ -1005,6 +1005,18 @@ def test_workspace_restore_rejects_empty_dot_and_nul_members(tmp_path):
             Workspace(tmp_path / f"restore-invalid-{index}").restore_backup(archive_path, 1024)
 
 
+def test_workspace_restore_rejects_duplicate_paths_case_insensitively(tmp_path):
+    from cloud.workspace import Workspace, WorkspaceError
+    import zipfile
+
+    archive_path = tmp_path / "duplicate.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("Notes.txt", "one")
+        archive.writestr("notes.txt", "two")
+    with pytest.raises(WorkspaceError, match="duplicate"):
+        Workspace(tmp_path / "restore-duplicate").restore_backup(archive_path, 1024)
+
+
 def test_workspace_file_count_quota_applies_to_writes_and_restore(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production", max_workspace_files=1)
     with TestClient(create_app(settings)) as http:
