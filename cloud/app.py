@@ -1199,6 +1199,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
+        _audit(db, current["id"], "workspace.file.write", logical_path, {"workspace_id": workspace_id, "bytes": len(payload.content.encode("utf-8"))})
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "bytes_written": len(payload.content.encode("utf-8"))}}
 
     @app.delete("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
@@ -1209,6 +1210,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             workspace.delete_file(logical_path)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
+        _audit(db, current["id"], "workspace.file.delete", logical_path, {"workspace_id": workspace_id})
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "deleted": True}}
 
     @app.post("/v1/workspaces/{workspace_id}/backups")
@@ -1218,6 +1220,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         backup_id = f"{int(time.time())}-{secrets.token_urlsafe(8)}"
         destination = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
         size = workspace.create_backup(destination)
+        _audit(db, current["id"], "workspace.backup.create", backup_id, {"workspace_id": workspace_id, "bytes": size})
         return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": size, "created_at": int(time.time())}}
 
     @app.get("/v1/workspaces/{workspace_id}/backups")
@@ -1269,6 +1272,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             restored = workspace.restore_backup(archive, settings.max_workspace_bytes, settings.max_workspace_files)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
+        _audit(db, current["id"], "workspace.backup.restore", payload.backup_id, {"workspace_id": workspace_id, **restored})
         return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
 
     @app.get("/v1/sessions")

@@ -1008,6 +1008,8 @@ def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
         assert capacity["warning"] is False
         assert http.get("/v1/workspaces/demo/files", headers=headers).json()["data"]["files"][0]["path"] == "notes/today.md"
         assert http.put("/v1/workspaces/demo/files/../escape.txt", headers=headers, json={"content": "x"}).status_code in (400, 404)
+        audits = http.get("/v1/admin/audits", headers=headers).json()["data"]
+        assert {item["action"] for item in audits}.issuperset({"workspace.file.write"})
 
 
 def test_workspace_file_api_bounds_reads_and_listing(tmp_path):
