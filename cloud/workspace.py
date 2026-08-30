@@ -172,8 +172,12 @@ class Workspace:
         member_names: set[str] = set()
         with zipfile.ZipFile(archive_path) as archive:
             for member in archive.infolist():
-                if member.external_attr >> 16 & 0o170000 == 0o120000:
+                file_mode = member.external_attr >> 16
+                file_type = file_mode & 0o170000
+                if file_type == 0o120000:
                     raise WorkspaceError("backup contains a symlink")
+                if file_type not in {0, 0o100000, 0o040000}:
+                    raise WorkspaceError("backup contains a special file")
                 is_directory = member.is_dir()
                 member_name = member.filename.rstrip("/") if is_directory else member.filename
                 raw_parts = member_name.split("/")

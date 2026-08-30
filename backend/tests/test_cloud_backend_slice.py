@@ -1062,6 +1062,19 @@ def test_workspace_restore_rejects_directory_named_symlink_members(tmp_path):
         Workspace(tmp_path / "restore").restore_backup(archive_path, 1024)
 
 
+def test_workspace_restore_rejects_special_file_members(tmp_path):
+    from cloud.workspace import Workspace, WorkspaceError
+    import zipfile
+
+    archive_path = tmp_path / "special-file.zip"
+    member = zipfile.ZipInfo("device")
+    member.external_attr = (0o010666 << 16)
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(member, "not a device")
+    with pytest.raises(WorkspaceError, match="special file"):
+        Workspace(tmp_path / "restore-special").restore_backup(archive_path, 1024)
+
+
 def test_workspace_restore_rejects_windows_style_paths_on_posix(tmp_path):
     from cloud.workspace import Workspace, WorkspaceError
     import zipfile
