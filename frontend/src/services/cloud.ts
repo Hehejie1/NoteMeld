@@ -11,6 +11,7 @@ export interface CloudTokenStore { load(): Promise<string | null>; save(token: s
 export class CloudClient {
   private readonly http: AxiosInstance
   private token: string | null
+  private tokenHydrated = false
 
   private readonly tokenStore?: CloudTokenStore
 
@@ -22,10 +23,11 @@ export class CloudClient {
   }
 
   setToken(token: string | null) { this.token = token }
-  async hydrateToken() { if (this.token === null && this.tokenStore) this.token = await this.tokenStore.load(); return this.token }
+  async hydrateToken() { if (!this.tokenHydrated) { this.tokenHydrated = true; if (this.token === null && this.tokenStore) this.token = await this.tokenStore.load() } return this.token }
   private async persistToken() { if (!this.tokenStore) return; if (this.token) await this.tokenStore.save(this.token); else await this.tokenStore.clear() }
 
   private async request<T>(method: string, path: string, data?: unknown, config?: Record<string, unknown>): Promise<T> {
+    await this.hydrateToken()
     const response = await this.http.request<CloudEnvelope<T>>({ method, url: path, data, headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined, ...(config as any) })
     if (response.data.code !== 0) throw new Error(response.data.msg || 'cloud request failed')
     return response.data.data
