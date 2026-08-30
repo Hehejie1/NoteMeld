@@ -37,6 +37,7 @@ test('connection strategy orders LAN candidates before cloud relay fallback', ()
   assert.match(source, /AbortController/)
   assert.match(source, /isPrivateLanEndpoint/)
   assert.match(source, /invalid private LAN endpoint/)
+  assert.match(source, /relayWebSocketProtocols/)
 })
 
 test('cloud session controller owns snapshot and incremental event projection', () => {
