@@ -7,11 +7,17 @@ function randomInstallId(): string {
 }
 
 /** Return a stable, non-secret install identifier for this app installation. */
-export function getOrCreateInstallId(storage: Storage = window.localStorage): string {
-  const existing = storage.getItem(INSTALL_ID_KEY)
-  if (existing && /^[a-f0-9]{32}$/.test(existing)) return existing
+export function getOrCreateInstallId(storage?: Storage): string {
   const created = randomInstallId()
-  storage.setItem(INSTALL_ID_KEY, created)
+  try {
+    const target = storage ?? window.localStorage
+    const existing = target.getItem(INSTALL_ID_KEY)
+    if (existing && /^[a-f0-9]{32}$/.test(existing)) return existing
+    target.setItem(INSTALL_ID_KEY, created)
+  } catch {
+    // Private browsing or a restrictive storage policy can deny access. The
+    // ephemeral fallback still permits this session to register safely.
+  }
   return created
 }
 
