@@ -35,6 +35,7 @@ const ApplicationHost = lazy(() => import('@/app-host/ApplicationHost').then(mod
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const StylesPlaceholder = lazy(() => import('@/pages/StylesPage'))
 const AboutPage = lazy(() => import('@/pages/AboutPage.tsx'))
+const CloudPage = lazy(() => import('@/pages/CloudPage'))
 
 const WorkspaceLayout = () => (
   <AppLayout>
@@ -70,6 +71,7 @@ const WorkspaceRoutes = () => {
           <Route path="/applications" element={<ApplicationList />} />
           <Route path="/applications/:appId" element={<ApplicationHostRoute />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/cloud" element={<CloudPage />} />
           <Route path="/settings" element={<SettingPage />}>
             <Route index element={<Navigate to="model" replace />} />
             <Route path="model" element={<Model />}>

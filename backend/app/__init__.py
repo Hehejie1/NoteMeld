@@ -26,6 +26,7 @@ def _default_cors_origins() -> list[str]:
 
 def create_app(lifespan) -> FastAPI:
     from .applications import router as applications
+    from .cloud_sync import lan_transport
     from .routers import agent, candidates, chat, config, conversation, imported_notes, ingestion, learning, mcp, migration, model, note, note_style, plugins, provider, usage, whiteboard, wiki
 
     app = FastAPI(title="NoteMeld",lifespan=lifespan)
@@ -75,5 +76,6 @@ def create_app(lifespan) -> FastAPI:
     app.include_router(candidates.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
     app.include_router(applications.asset_router, prefix="/api")
+    app.include_router(lan_transport.router)
 
     return app

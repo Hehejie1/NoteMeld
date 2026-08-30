@@ -8,6 +8,12 @@
 
 ## 数据库位置或存储方式
 
+### Cloud backend first slice
+
+独立 `cloud/` 服务使用 `NOTEMELD_CLOUD_DATA_DIR` 作为数据根，默认 `cloud_data/`；其 SQLite 为 `cloud.db`，workspace 为 `workspaces/<user_id>/<workspace_id>/`。云端元数据包含 users、tokens、devices、sessions、commands、events 和 audits；与本地 Note/Conversation/Agent 表隔离。`devices.connectivity_json` 只保存经校验的局域网候选端点，用于局域网优先连接，不承担授权或消息存储职责。
+
+device-remote relay 只在进程内保存 WebSocket peer 集合，不保存正文、密文 payload 或未送达 command。宿主已收到的 command 由本地 Host queue 持久化；relay accepted 不等于宿主 received。
+
 数据根目录由 `backend/app/utils/storage_paths.py` 统一决定：
 
 - `NOTEMELD_DATA_DIR` 已配置：使用该运行模式的数据根；其所有子目录仍由系统固定派生。
@@ -218,6 +224,14 @@ rebuild 使用 generation 号实现 latest-wins。新请求会取消正在运行
 
 ## 本地数据和远端数据边界
 
+Remote Host adapter 的本地 SQLite 使用独立 `sync_mailbox` 和
+`sync_mailbox_authority` 表。前者保存 command identity、input、严格递增
+sequence、authority epoch、process lease owner 和 queued/admitted/needs_attention/terminal 状态；
+后者保存每 session 当前 fencing epoch。它们不修改现有 Conversation、
+Agent Turn/Event 或 `PRAGMA user_version`，也不是第二套 Agent 状态机。
+
+Cloud v1 stores session metadata/events, command idempotency records, and hashed scoped bearer/share-token metadata in `cloud.db`; bearer token rows persist audience, scope JSON and nullable `device_id`, while raw login, PAT, device and share-token values are returned only at issuance and are never persisted. A null `device_id` denotes an account/PAT token; a non-null value denotes a short-lived `device-api` token issued only after recent device proof. Scope JSON is enforced at the API boundary; token rotation copies the source audience/scope/expiry/device binding. Device-token issuance and the default source-token revocation use one transaction. Device revoke atomically revokes matching device tokens and grants. `session_payloads` stores the allowlisted non-file portion and file manifest of an imported local snapshot; `session_import_requests(user_id,request_id)` stores its canonical payload hash and resulting session for retry-safe idempotency. Imported file bytes are validated in an isolated staging directory and atomically renamed into `workspaces/<user_id>/<workspace_id>/`; the source local session is never modified. Workspace backups are under `backups/<user_id>/<workspace_id>`. Hard delete removes session rows and purges that workspace/backup directory only when no remaining session references the same workspace. Workspace writes use a fsync + atomic replace sequence and reject traversal/symlink access. Restore validates archive paths and size before atomically overlaying files. Relay payloads are validated as `notemeld.sync.v1` envelopes, routed to the addressed connected device, and are not written to SQLite or disk.
+
 - NoteMeld 的主要业务数据本地持久化在 SQLite 和文件系统。
 - 远端 Provider 只负责 LLM 推理；不应假设远端保存 NoteMeld 数据。
 - 视频平台、网页和外部下载器是内容来源，不是 NoteMeld 的持久化事实源。
@@ -246,3 +260,34 @@ K0-K3 是建立在既有 `note_documents.task_id` 之上的增量索引模型，
 | `knowledge_index_states` | `layer`, `generation`, `status` | 索引 generation 和可重建状态预留。 |
 
 SQLite FTS5 表 `knowledge_chunk_fts`、`knowledge_profile_fts`、`knowledge_term_fts` 为共享在线词法索引；向量 collection 使用版本化固定名称，禁止为每篇文章创建 collection。删除文章时移除 occurrence、chunk/profile 和 FTS 行，再把文章置为 `deleted`；共享 term 只有不再被任何文章引用时才允许后续清理。
+
+Cloud-native command calls are first persisted as `queued`, claimed in sequence
+by one process-scoped worker per session, and finalized as
+`completed` or `failed` in a second transaction. Provider errors never persist
+their raw exception/payload. On startup, leftover `running` commands become
+`needs_attention` with a `turn.needs_attention` event; they are not silently
+replayed. SQLite `BEGIN IMMEDIATE` and the persisted command lease make claim
+single-winner across API processes. Startup recovery only reclaims rows with a
+missing or expired lease, so an active command in another process is not
+interrupted. The in-memory worker registry is process-local, but any process
+can observe and claim queued work from the shared database.
+Each command also records a process-scoped lease owner, lease expiry and
+attempt count for observability and recovery.
+
+Session archive writes explicitly replace the current `(user_id, session_id,
+device_id)` row, including the `NULL` device-wide archive case, because SQLite
+allows multiple `NULL` values in a composite primary key.
+
+The cloud `models` table stores per-user provider metadata and an encrypted
+provider credential. API responses never expose `api_key_ciphertext`; the
+encryption key is derived from `NOTEMELD_CLOUD_SECRET_KEY` or the bootstrap
+admin password.
+`sessions.model_id` optionally binds a cloud-native session to one enabled
+model row; copies preserve this binding while imported sessions do not carry
+provider credentials.
+
+Platform adapters should derive `device_id` with the shared
+`backend/app/cloud_sync/device_id.py` helper: a normalized platform prefix and
+32-character SHA-256 digest of the app/vendor installation identifier. The raw
+identifier is never sent to or persisted by Cloud; the resulting ID remains an
+identifier only and must still be paired with a device public key for control.

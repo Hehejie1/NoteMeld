@@ -1,8 +1,45 @@
 # Known Pitfalls
 
+## LAN-first 直连泄露 cloud bearer 或绕过 Grant
+
+- 风险：把 cloud WebSocket URL 机械替换为 `ws://192.168.x.x` 并继续携带 bearer，会让局域网监听者获得长期凭证；只检查设备 ID 或 `ipaddress.is_private` 还会接受保留地址、旧 Grant、错误 workspace 或 stale authority epoch。
+- 不允许：在 LAN hello/query/header 中发送 cloud token；把候选地址当授权；宿主自行信任控制端声明的 scope；在 AEAD 验证或 durable enqueue 前返回 received；让 Python 使用 ChaCha20 而 Web 使用 AES-GCM；允许 handler 返回任意明文结果。
+- Web 端的连接策略同样不得把 `bearer.<token>` 子协议用于 LAN；没有实现 `LanHandshake` 时必须跳过 LAN 候选并回退 `wss` Relay。
+- 检查方式：运行 `backend/tests/test_cloud_lan_authorization.py`、`test_cloud_lan_auth.py`、`test_cloud_lan_transport.py`、`test_cloud_connection.py`，以及 `frontend/tests/relayCryptoInterop.test.mjs`。
+- 修复经验：宿主用绑定 device token 通过 HTTPS 获取 60 秒云端断言；控制端只在 LAN 上提交 Ed25519 一次性 proof 和 E2EE frame；结果/event 必须继续使用 encrypted `RemoteFrame`，明文只允许无业务内容的最小 durable receipt。
+- 本地 wiring 必须走 `CloudSyncHostRuntime`/`install_lan_direct_service()` 的显式依赖注入；没有平台安全存储得到的 CloudClient、私钥和 cipher resolver 时保持端点关闭，不能为了 smoke test 从环境变量读取长期凭证。
+
+## 桌面源码可用，但发布包缺少端侧加密运行时
+
+- 发生过的问题/风险：开发虚拟环境已安装 `cryptography`，云端测试和令牌加密测试都通过，但桌面 `requirements-core.txt` 未声明该依赖；同时 E2EE 原语只位于不会被 PyInstaller 收集的 `cloud/crypto.py`。发布后的 sidecar 会在导入令牌存储或建立加密会话时失败。
+- 不允许：依赖开发机的传递安装；只修改 cloud requirements；把端侧私钥或解密逻辑移入 Relay；让 cloud 反向 import backend；在端侧维护两份加密实现；先普通权限创建明文临时 token 文件再 chmod。
+- 检查方式：运行 `backend/tests/test_cloud_packaging_contracts.py`、`backend/tests/test_cloud_crypto.py` 和 `backend/tests/test_cloud_token_store.py`；确认桌面与 cloud 锁定相同版本，canonical E2EE 模块位于 `app.cloud_sync`，cloud 不依赖它，失败的原子替换保留旧 token 且清理临时文件。
+- 修复经验：端侧加密实现只放入被桌面收集的 backend namespace；cloud 只消费协议，不导入端侧模块；临时文件通过 `os.open(..., 0o600)` 创建，文件 fsync 后原子替换并尽力同步父目录。
+
+## 把 relay_accepted 当成宿主已收到
+
+- 风险：Relay 向 peer socket 写入成功后立刻向控制端显示“已送达”，但宿主可能在解密、授权或 durable enqueue 前崩溃，command 实际丢失。
+- 不允许：云端代替宿主生成 received receipt；入队前回 receipt；receipt 携带 input/工具参数；Host 接受额外 command 字段。
+- 检查方式：`backend/tests/test_cloud_remote_host.py::test_remote_host_receipts_only_after_durable_enqueue`。
+- 修复经验：relay_accepted 只表示传输接纳；平台先验证 AEAD，再经 `RemoteHostAuthority` 授权和事务入队，成功后由宿主生成最小 received receipt。
+
+## Durable mailbox 连续领取多个 active Turn
+
+- 风险：只把 `pop()` 做成“取第一条 queued 并改 admitted”，却不先检查 active 状态，同一 session 可并行执行多个 Turn；重启后还可能越过未知副作用继续下一条。
+- 不允许：重启时把 admitted 自动当 queued；存在 `needs_attention` 时继续接收消息；authority epoch 变化后接受旧 epoch command。
+- 检查方式：`backend/tests/test_cloud_sync_protocol.py::test_durable_mailbox_allows_only_one_admitted_turn_across_restart` 和 `::test_durable_mailbox_authority_rotation_fences_old_active_turn`。
+- 修复经验：`BEGIN IMMEDIATE` 内先查 active 再 claim；启动把遗留 admitted 标 needs_attention；resume/abandon 必须显式；独立 session authority epoch 单调 fencing。
+
+## 设备撤销但设备 Bearer 仍有效
+
+- 风险：只把设备标记为 revoked、只撤销 remote grant，泄漏到该设备的 bearer 仍能继续访问 session/workspace API。
+- 不允许：把账户 token 当作长期设备身份；设备交换成功后仍默认保留 bootstrap token；签发设备 token 时不验证设备私钥；rotation 丢失 `device_id` 绑定；撤销设备后等待 token 自然过期。
+- 检查方式：`backend/tests/test_cloud_backend_slice.py::test_device_bound_token_requires_proof_and_is_revoked_with_device` 和 `::test_device_token_rotation_preserves_device_binding_and_expiry`。
+- 修复经验：账户 token 只用于 bootstrap；设备完成 Ed25519 challenge 后领取短期 `device-api` token。认证时联查 active device，设备撤销事务同时撤销 grant 和所有匹配 device token。
+
 应用协议唯一规范源：[`application-protocol-v1.md`](application-protocol-v1.md)。插件协议由 `notemeld-plugins/docs/system/plugin-protocol-v1.md` 维护。
 
-更新时间：2026-08-27
+更新时间：2026-08-30
 
 ## Application Host 越权或假运行
 

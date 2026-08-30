@@ -2,7 +2,7 @@
 
 Application Package 与运行时协议的唯一规范源是 [`application-protocol-v1.md`](application-protocol-v1.md)。
 
-更新时间：2026-08-27
+更新时间：2026-08-30
 
 本文只记录当前仓库真实系统事实，不描述理想化重构方案。新需求、方案、Bug 修复和代码改动前必须先阅读本文。
 
@@ -23,6 +23,30 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - I04 集成将 plugin/candidate router 和各自 migration registry 统一挂入同一个 FastAPI/SQLite bootstrap；设置导航同时提供插件运行、Agent 任务诊断和 candidate 审批入口。candidate 只允许人工验证/审批/拒绝，plugin candidate 审批后仍必须回到 N03 installer 的校验、权限和 active-pointer 流程。
 - Application Host：`backend/app/applications/` 是独立于 Agent/Plugin 的应用域。`applications/*/manifest.json` 是内建应用包的目录边界，Host 启动时只扫描、校验并生成 catalog，不执行应用 UI/backend；应用 API 统一挂载在 `/api/applications`，通过 `ResponseWrapper` 和 session token 保护。桌面协议由 Host 监督私有 stdin/stdout process-JSONL，应用不得监听公开端口，Host 负责启动、超时、退出、取消和回收；Web 协议固定为 Host gateway 管理的 `managed-worker` invocation seam，外部云 worker 部署和用户应用包安装仍不属于第一版。
 - Wiki application：Wiki 由独立 `notemeld-applications/apps/wiki/` 应用包提供，Host 只读取 manifest 元数据，用户进入 `/applications/:appId` 后才通过隔离 iframe 加载其静态 UI。应用通过 Application Bridge 使用 `wiki.read` capability 读取既有 Wiki store 的 graph/article。旧 `/wiki` 前端 route 和导航已移除；Wiki pipeline、`note_results/wiki`、Note authority 和旧 Wiki API 仍是数据事实源。默认 application workspace 可在 `/settings/applications` 配置。
+- Cloud backend slice：`cloud/` 是与本地 `backend/` 物理分开的 FastAPI 控制平面。当前实现提供 bootstrap admin、普通用户登录/CRUD、设备注册、cloud-native session、幂等 command/event snapshot、本地会话 full-share 导入和不落盘的 WebSocket relay。relay 默认使用单进程内存 broker；配置 `NOTEMELD_CLOUD_RELAY_BACKEND=redis` 时使用 Redis Pub/Sub 在多 worker 间传递瞬时帧，并仅以短 TTL 标记在线状态，不持久化业务 payload。导入使用显式非敏感字段 allowlist，校验来源设备、幂等键、文件 logical path/数量/大小/hash，并通过 staging 后一次发布新的独立 cloud-native session；Skill、插件、Application 包和密钥字段不进入协议。登录 token 默认带 `*` scope；用户创建的 PAT 只保存摘要，并按 auth/device/grant/session/share/workspace 作用域执行最小权限校验，rotation 不会把 PAT 提升为 wildcard。设备可通过一次性 challenge + Ed25519 proof 证明私钥持有；最近完成 proof 的设备可领取短期、有限 scope 的 `device-api` bearer，token rotation 保留设备绑定，撤销设备会原子撤销该设备的 grant 和全部设备 token。生产可要求 proof 才能建立 relay。云 native command 通过可替换的 `CloudAgentRunner` 执行：配置 OpenAI-compatible endpoint 时进行真实 `/chat/completions` 调用（瞬态 408/429/5xx 有界退避重试），未配置时仅提供明确的 deterministic smoke-test runner；同一 session 的 command 先写入 SQLite 队列，再由单进程 worker 按序领取和执行，重启后 queued 自动恢复，running 标记为 `needs_attention`。同一用户的活动命令受配额限制。Provider tool-calling 注入绑定当前云 workspace 的 `workspace.list`/`workspace.read`，写入和删除会创建可审计 approval，批准后才执行。云 workspace 默认位于 `NOTEMELD_CLOUD_DATA_DIR/workspaces/`；device-remote relay 不保存消息，也不在云端伪造执行结果。
+- Cloud SQLite 默认启用 WAL、FULL synchronous 和针对 session/command/event/token/device 的查询索引，以支持多 worker 并发访问，同时保留崩溃恢复语义。
+- Cloud HTTP middleware applies a configurable 16 MiB default Content-Length guard before JSON/Pydantic parsing to bound memory use on untrusted requests.
+- 云端通过认证的 `/v1/capabilities` 暴露协议版本、relay 是否落盘、Proof 要求、配额和功能开关，跨端启动时先协商能力。
+- 云端 Agent 的 workspace 写入/删除能力仅产生 pending approval，批准后才执行，不会隐式修改文件。
+- Pending approval 默认 15 分钟过期；过期后只能查询，不能再批准，TTL 可通过环境变量调整。
+- 本地 `backend/app/cloud_sync/client.py` 提供无状态 HTTP adapter，统一 cloud token、session、command、snapshot 和 event 请求；本地 queue/Agent 状态机不放入该 adapter。
+- `backend/app/cloud_sync/remote_host.py` 是已完成端侧 AEAD 解密后的 Host 入站边界：严格校验目标设备和授权，把 canonical command 事务写入 durable mailbox 后才生成 `received` receipt；`relay_accepted` 不是送达成功。该 adapter 只投递/领取/终结 command，不实现第二套 Agent loop。
+- `backend/app/cloud_sync/e2ee.py` 是桌面/Python adapter 的 canonical 端侧加密实现，提供 Ed25519 身份签名、X25519+HKDF 会话密钥和与 WebCrypto 对齐的 AES-256-GCM 帧加密；`SessionCipher.encrypt_frame()` 先生成 nonce，再把 nonce 与全部路由元数据组成 canonical AAD。它随桌面 sidecar 打包，密钥仍必须来自平台安全存储。cloud Relay 不导入桌面模块也不持有会话密钥；两边只依赖版本化协议与独立 runtime 依赖。
+- LAN-first 不把 cloud bearer 发到明文局域网：云端 `/v1/lan/authorize` 只允许绑定宿主的 device token 查询最长 60 秒的 Grant 断言；本地 `/v1/lan/connect/{session_id}` 经 `LanPeerAuthenticator` 完成 peer-IP 绑定的一次性 Ed25519 challenge，随后 `LanDirectService` 只接受 assertion 绑定的 E2EE command frame。`EncryptedRemoteHostHandler` 使用 AES-GCM 验证 canonical AAD 后调用 `RemoteHostAuthority`，只有 durable enqueue 成功才返回最小 `received` receipt。LAN 地址 allowlist 是显式 RFC1918/link-local/loopback/IPv6 ULA 网段，不使用标准库过宽的 `is_private`。平台启动仍需从 Keychain/Keystore 等安全存储装载 host device token、身份私钥和 session cipher，并显式安装 `LanDirectService`；未安装时端点 fail-closed。
+- `CloudSyncHostRuntime` 默认每 5 秒刷新 LAN Grant 断言；云端撤销、authority epoch 变化或刷新网络失败都会在下一次命令 admission 前拒绝，刷新间隔可由平台构造参数调整（1–60 秒）。
+- `CloudSyncHostRuntime` 是本地 Host 的依赖注入组装入口：接收已由平台安全存储构造的 `CloudClient`、durable mailbox 路径和 session cipher resolver，按 session 创建 `RemoteHostAuthority` 并通过 `install_lan_direct_service()` 挂载本地 FastAPI。它不读取环境变量中的长期 token/私钥，不创建第二套 Agent loop；平台仍负责在桌面启动生命周期中显式安装并在退出时关闭。
+- `HandshakeEnvelope` 是跨端 E2EE 握手契约：每端用注册的 Ed25519 身份签名 X25519 临时公钥，双方校验互相指向同一 session 后，以按 device id 规范排序的 transcript 派生相同 AES-256-GCM 会话密钥。平台适配层仍负责私钥安全存储、重连和后续密钥轮换。
+- `backend/app/cloud_sync/queue.py` 同时提供进程内 `SessionMailbox` 和 SQLite-backed `DurableSessionMailbox`；remote Host 使用后者保存 queued/admitted command，不替代 Agent SDK 的 canonical 状态机。Durable mailbox 通过事务门禁保证每 session 最多一个 admitted Turn；重新构造时把遗留 admitted 标为 `needs_attention`，在显式 resume/abandon 前拒绝新 command。独立 authority 表提供单调 epoch fencing，轮换时 active Turn 进入人工恢复、queued command 原子重绑新 epoch。云端 `cloud/app.py` 对 cloud-native command 使用 SQLite queued/running 状态和每 session worker；进程重启后 queued 自动继续，running 标记 `needs_attention`。
+- 云端 workspace 除 `/stats` 外提供只读 `/capacity`，返回 workspace 配额占用和所在文件系统的 total/used/free 字节及可配置告警阈值，供桌面/移动端展示容量风险；写入仍由配额校验拒绝超限请求。
+- Host 在结果已投影到 Agent 会话历史后可调用 `DurableSessionMailbox.compact()` 清理旧的 completed/failed/abandoned 投递记录；queued、admitted 和 needs_attention 永远不会被压缩，避免 mailbox 无限增长又不丢失待恢复任务。
+- 云端命令领取带有 process-scoped lease owner、过期时间和 attempt 计数；SQLite `BEGIN IMMEDIATE` 保证多进程单 claim，过期的 running 任务仍需人工恢复，不会自动重放。
+- `needs_attention` 命令可通过 recover API 明确选择 `resume` 重新排队或 `abandon` 终止，操作幂等且写入事件/审计。
+- Relay 只转发不落盘 payload，但会在 SQLite 中持久化每设备/会话的最大接收序列，重启后仍能拒绝旧帧。
+- Relay Grant 的 `workspace_refs` 现在参与授权判断；非空时只允许访问明确列出的 session workspace。
+- 命令提交在等待窗口内完成返回 200，超时但仍 queued/running 时返回 202，客户端继续通过状态或事件接口跟踪。
+- 云端 `/v1/models` 保存每个用户的 Provider/Model 元数据；凭证使用 Fernet 加密落盘，接口只返回是否存在凭证。会话可指定 `model_id`，执行时按用户读取启用模型并创建 bounded OpenAI-compatible runner，不支持的 Provider 或失效模型 fail-closed。
+- 云端 Agent 的 workspace 写入/删除工具默认只创建可审计的 `pending` approval，不直接修改文件；批准时复用安全 workspace resolver 执行并记录审计，审批列表仅返回有界内容预览；远程审批必须持有 Grant 的 `dangerous.approve` scope。
+- Durable mailbox 的 `recover(session_id, mode)` 要求启动流程明确选择 `resume` 或 `abandon`；未知副作用不会在进程重启后静默自动重放。
 
 ## 前端入口
 
@@ -306,3 +330,9 @@ Agent 负责读取这些产物、总结、决定关系，再调用 Note authorit
 桌面 Host 已接入；服务端是 contract-ready 但需自行提供 ffmpeg、下载器和
 转写/OCR 运行时；移动 native 和 WASM 在一期明确未打包/未接入。图片 ASCII
 能力不在 capability registry 中。
+## Native platform adapter boundaries
+
+The product repository reserves `android/`, `ios/`, and `harmony/` for native
+adapters. They consume the same CloudClient, TokenStore, device-id, and
+LAN-first connection contracts; the canonical Agent runtime remains outside
+the UI adapters.

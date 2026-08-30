@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-08-27
+更新时间：2026-08-30
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -8,6 +8,7 @@
 
 - 大部分后端接口挂载在 `/api` 前缀下。
 - MCP endpoint 不走 `/api`，固定为 `/mcp`。
+- 本地 LAN direct WebSocket 不走 `/api`，固定为 `/v1/lan/connect/{session_id}`；只有平台层安装 `LanDirectService` 后才可用，未配置时以 1013 关闭。
 - 普通成功响应使用 `ResponseWrapper.success()`：
 
 ```json
@@ -19,6 +20,51 @@
 - 桌面模式 Axios 请求会带 `X-NoteMeld-Session`。
 - migration 接口在 `NOTEMELD_DESKTOP_SESSION_TOKEN` 存在时校验 session token。
 - MCP 本地请求默认免 token；远程或强制配置时校验 `Authorization: Bearer <NOTEMELD_MCP_TOKEN>`。
+
+## Cloud backend（first slice）
+
+`cloud/` 是独立 FastAPI 服务，不改变本地 `/api` 路由。云端普通 API 使用 `{code,msg,data}`；远程 relay 使用 WebSocket，消息 payload 不持久化。单进程默认使用 memory broker；多 worker 部署配置 `NOTEMELD_CLOUD_RELAY_BACKEND=redis` 与 `NOTEMELD_CLOUD_RELAY_URL` 后使用 Redis Pub/Sub，Redis 只保存短 TTL 在线标记并转发瞬时帧。
+Authenticated `GET /v1/capabilities` exposes the sync protocol version, relay
+privacy, Proof requirement, quotas and feature flags so platform clients can
+negotiate behavior instead of hard-coding deployment policy.
+
+| 方法 | 路径 | 作用 | 认证 |
+| --- | --- | --- | --- |
+| GET | `/health` | 云端健康检查 | 无 |
+| POST | `/v1/auth/login` | 云端用户/管理员登录并签发 bearer token；按来源 IP + 账户键限流，超限返回 429 和 `Retry-After` | 无（失败尝试会被记录） |
+| POST | `/v1/auth/revoke` | 撤销当前 bearer token | bearer token |
+| POST | `/v1/auth/rotate` | 原子撤销当前 token 并签发新 token | bearer token |
+| GET | `/v1/admin/users` | 管理员查询普通用户 | admin token |
+| POST | `/v1/admin/users` | 管理员创建普通用户 | admin token |
+| PUT | `/v1/admin/users/{user_id}` | 管理员修改普通用户用户名、密码或禁用状态 | admin token |
+| DELETE | `/v1/admin/users/{user_id}` | 管理员删除普通用户 | admin token |
+| POST | `/v1/devices` | 注册用户设备 | bearer token |
+| GET | `/v1/devices` | 查询当前用户设备 | bearer token |
+| POST | `/v1/devices/{device_id}/revoke` | 撤销当前用户设备 | bearer token |
+| POST | `/v1/pairings/start` | 创建 5 分钟有效的一次性配对码 | bearer token |
+| POST | `/v1/pairings/confirm` | 使用配对码注册设备 | bearer token |
+| POST | `/v1/grants` | 创建设备间远程控制授权 | bearer token |
+| POST | `/v1/lan/authorize` | 为 LAN direct 握手返回最长 60 秒的 controller 公钥、Grant、scope、workspace 与 authority epoch 断言 | 绑定宿主的 device token（`grant.read`） |
+| POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
+| GET | `/v1/sessions` | 查询当前用户云端会话及收纳状态 | bearer token |
+| POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息；同一用户活动命令超过 `NOTEMELD_CLOUD_MAX_ACTIVE_COMMANDS_PER_USER` 时返回 429 | bearer token |
+| GET | `/v1/sessions/{session_id}/snapshot?limit=` | 读取 session snapshot 和有界事件页（默认 500，上限 5000） | bearer token |
+| GET | `/v1/sessions/{session_id}/events?after=&limit=` | 按 event sequence 拉取事件；`limit` 默认 500、上限 5000 | bearer token |
+| POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
+| DELETE | `/v1/sessions/{session_id}` | 硬删除当前用户云端会话 | bearer token |
+| WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token 或浏览器 `Sec-WebSocket-Protocol` bearer |
+
+本地 `/v1/lan/connect/{session_id}` 不接收 cloud bearer。控制端先发送
+`notemeld.lan.v1` hello，宿主返回一次性 challenge，控制端用已注册的
+Ed25519 设备私钥签名。宿主以自己的 device token 调用云端
+`/v1/lan/authorize`，校验有效 Grant、公钥、workspace、scope 和 authority
+epoch 后，才接受 `notemeld.sync.v1` E2EE command frame。授权最长 60 秒，
+到期必须重连；receipt 只有在端侧解密、授权和 durable enqueue 完成后返回。
+E2EE 握手消息使用 `notemeld.e2ee.handshake.v1` envelope；双方临时 X25519
+公钥和设备身份签名必须先通过校验，再按规范 transcript 派生会话密钥。
+候选地址只接受显式 RFC1918、IPv4 link-local/loopback、IPv6 ULA/link-local/
+loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标为 private
+的文档保留地址。
 
 ## Note / Task 接口
 
@@ -270,6 +316,215 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 和 WASM 列为一期 unsupported，不对未接入平台声称通过测试。
 
 ## 远端接口边界
+
+### Cloud sync backend (v1)
+
+Cloud service endpoints are intentionally separated from the local `/api` namespace. Authentication uses bearer tokens issued by `/v1/auth/login`; relay frames are opaque encrypted envelopes and are never persisted by the relay.
+All HTTP requests are rejected with 413 before parsing when their declared
+Content-Length exceeds `NOTEMELD_CLOUD_MAX_REQUEST_BYTES` (16 MiB by default).
+The canonical cloud-native session prefix is `/v1/cloud/sessions`; the earlier
+`/v1/sessions` paths remain backward-compatible aliases during client rollout.
+
+`GET /health` is a liveness probe. `GET /ready` verifies SQLite access and a
+writable Workspace root, returning HTTP 503 with per-check status when the
+instance should not receive traffic.
+
+`/v1/auth/login` accepts either the legacy username label or explicit
+`account_id`; clients should prefer `account_id` so token identity does not
+depend on a display label.
+Issued account tokens expose a stable `jti` (the opaque token ID), audience,
+scopes and expiry; only the token digest is persisted.
+Users can manage independent PAT-style tokens via `POST/GET /v1/auth/tokens`
+and `POST /v1/auth/tokens/{jti}/revoke`; raw token material is returned only
+at creation time. Login tokens currently carry wildcard scope. PAT access to
+the core session API is enforced as follows: `session.read` permits session,
+command-status, snapshot and event reads; `session.write` permits session and
+command creation. Missing scopes return HTTP 403.
+The remaining bearer APIs use the same least-privilege mapping: `auth.token`
+for PAT management, `device.read/device.write` for device and pairing
+operations, `grant.read/grant.write` for remote-control grants,
+`share.read/share.write` for share-token management, and
+`workspace.read/workspace.write` for cloud workspace reads and mutations.
+Rotation preserves the source token's audience, scopes and expiry rather than
+upgrading a PAT to a wildcard token.
+After a registered device completes the Ed25519 challenge, an account token may
+call `POST /v1/devices/{device_id}/token` to issue a 5-minute-to-30-day
+`device-api` token with an explicit non-admin scope allowlist. Rotation also
+preserves its device binding. Device revocation atomically revokes every token
+bound to that device; device key rotation does the same and requires a fresh
+proof. Device tokens cannot create PATs or other device tokens.
+`GET /v1/capabilities` advertises `features.device_tokens=true` and the
+maximum device-token TTL so clients can negotiate this flow before replacing
+their bootstrap account token.
+The exchange defaults `revoke_source_token=true`; issuance and source-token
+revocation commit atomically. A trusted management client provisioning a
+different device may explicitly set it to false.
+
+Failed logins are limited to five attempts per source/account key in a
+60-second SQLite-backed window and return HTTP 429 after the limit. The
+counter is transactional and survives an API process restart; deployments
+that move metadata to another database must preserve the same atomic window
+semantics.
+
+Web access is disabled by default; `NOTEMELD_CLOUD_CORS_ORIGINS` accepts a
+comma-separated explicit origin allowlist. Wildcard origins are not enabled by
+the default configuration.
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/v1/cloud/sessions/import` | create a new independent cloud-native session from an idempotent, allowlisted local full-share snapshot; validates active source device, secrets, paths, file count/size and SHA-256 |
+| GET | `/v1/auth/me` | validate the current bearer token and return the authenticated account role/scopes |
+| POST | `/v1/devices/register` | canonical device registration path (legacy `/v1/devices` remains supported) |
+| POST | `/v1/devices/{device_id}/challenge` | issue a one-time device proof challenge |
+| POST | `/v1/devices/{device_id}/challenge/verify` | verify an Ed25519 proof and authorize the device for a short relay window |
+| POST | `/v1/devices/{device_id}/token` | after a recent Ed25519 proof, issue a scoped short-lived bearer bound to the active device; requires an account-audience token |
+| GET | `/v1/cloud/sessions?archived=true|false` | filter sessions by archive state; omitted preserves compatibility |
+| POST | `/v1/devices/{device_id}/heartbeat` | record liveness and optionally refresh validated `lan_endpoints` candidates |
+| POST | `/v1/lan/authorize` | bound Host device obtains a 1–60 second LAN proof assertion for one active controller/session Grant; account tokens and other device tokens are rejected |
+| DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
+| GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
+| GET | `/v1/workspaces/{workspace_id}/capacity` | workspace quota usage plus filesystem total/used/free bytes and warning state |
+| GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | bounded UTF-8 file read with traversal/symlink checks; writes are atomic and reads mark truncation |
+| DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
+| GET | `/v1/workspaces/{workspace_id}/files?prefix=&limit=` | bounded list of safe logical file paths and size/mtime metadata |
+| POST/GET | `/v1/workspaces/{workspace_id}/backups?limit=` | create/list local-disk ZIP backups (list is bounded by caller and server configuration) |
+| DELETE | `/v1/workspaces/{workspace_id}/backups/{backup_id}` | delete one owned backup archive |
+| POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
+| GET | `/v1/grants` | list remote-control grants |
+| POST | `/v1/grants/{grant_id}/revoke` | revoke a grant |
+| DELETE | `/v1/grants/{grant_id}` | canonical grant revoke path (legacy POST revoke remains supported) |
+| POST/GET | `/v1/share-tokens` | create/list scoped share tokens; raw token is returned only on creation |
+| POST | `/v1/share-tokens/{id}/revoke` | revoke a share token |
+| GET | `/v1/shared/{session_id}/snapshot?limit=` | read a session snapshot with `X-Share-Token`; event page defaults to 500 and caps at 5000 |
+| GET | `/v1/shared/{session_id}/events?after=&limit=` | read a bounded event page after a cursor with `X-Share-Token` |
+| POST | `/v1/shared/{session_id}/commands` | submit a cloud-native command when the share token explicitly has `message.send` |
+| WS | `/v1/relay/connect/{session_id}?device_id=...` | validated, targeted opaque-frame relay; requires an active device and non-expired grant; returns `host_offline` when target is not connected, rejects replayed sequence numbers, enforces 120 frames/minute/connection, and forwards a host `received` receipt on the reverse direction |
+| GET | `/v1/admin/audits?limit=` | admin-only redacted security and lifecycle audit records |
+
+Only one active relay connection is retained per device/session; a newer
+connection replaces the older one with WebSocket close code `4009`.
+`relay_accepted` is transport acceptance only. The host must AEAD-verify the
+frame and durably enqueue through its local `RemoteHostAuthority` before it
+sends a `received` receipt; the relay never manufactures that receipt.
+
+Remote grants require both active devices to have registered public keys;
+device IDs alone are not sufficient to authorize E2EE control.
+The API validates registered key material as 32-byte URL-safe Base64 Ed25519
+public keys before accepting a device for a grant.
+Registered devices can rotate keys with `POST /v1/devices/{device_id}/rotate-key`;
+the old public key is replaced immediately and the rotation is audited.
+Revoking a device also revokes all active Grants that reference it in the same
+transaction.
+When omitted, a standard Grant receives `message.send`, `context.select`,
+`model.select` and `tool.invoke`; elevated approval/full-access scopes must be
+explicitly requested and are never inferred from a permanent expiry.
+`POST /v1/devices/{device_id}/heartbeat` records `last_seen_at` and may refresh
+validated private/loopback/link-local `lan_endpoints`; relay connections update
+the same field on connect. Candidates are hints only and do not grant access.
+When `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=true`, relay connect additionally
+requires a non-expired proof from the challenge/verify endpoints. Proofs are
+process-scoped and short-lived; clients must repeat the challenge after a
+restart or expiry.
+Device registration is idempotent for the owning account (metadata is updated;
+an omitted public key preserves the existing key); the same ID owned by another
+account remains a conflict. Re-registering with a changed public key revokes
+all tokens bound to that device and clears its recent proof, matching explicit
+key rotation semantics.
+Relay `command` frames additionally require the Grant's `message.send` scope;
+`receipt` and `event` frames are allowed only on an existing bidirectional Grant.
+When a Grant contains `workspace_refs`, the current session workspace must be
+listed; an empty list retains the account-level default behavior.
+The versioned frame schema carries `nonce`, `frame_type`, sequence and opaque
+`ciphertext`; relay never interprets plaintext or AEAD contents.
+Relay validates the nonce as URL-safe Base64 encoding of a 12-byte AEAD nonce;
+missing or malformed nonces are rejected before routing.
+Relay replay cursors are persisted per `(session_id, sender_device_id)` and
+advanced transactionally, so a cloud restart does not reset the highest
+accepted sequence even though frame payloads remain non-persistent.
+
+`POST /v1/sessions/{session_id}/copy` creates a new independent session and
+workspace copy, retaining `copied_from` only as provenance; it does not create
+a runtime parent/child synchronization relationship.
+`POST /v1/sessions/{session_id}/authority/rotate` increments the persisted
+authority epoch; relay rejects frames from older epochs.
+`POST /v1/sessions/{session_id}/authority/lease` acquires or renews a
+5–300-second exclusive execution lease using SQLite transactional fencing;
+another live owner receives HTTP 409.
+Session archive/restore/list accepts optional `X-Device-Id`; when present,
+archive visibility is isolated to that active device. Legacy rows without a
+device ID remain visible as compatibility archives.
+`GET /v1/sessions/{session_id}/commands?after=&limit=` lists command states by
+sequence cursor for reconnect and queue reconstruction.
+
+Python/desktop adapters use `backend/app/cloud_sync/e2ee.py` for the E2EE
+handshake and AEAD frame payload. The cloud service does not import the desktop
+module. `SessionCipher` is the session-level wrapper: it requires strictly
+increasing outbound sequences, rejects inbound replay before exposing
+plaintext, and advances its receive cursor only after successful
+authentication. `derive_rekeyed_session_key` derives a fresh directional key
+for an explicit positive epoch; adapters must exchange/confirm the epoch as
+part of their authenticated frame metadata. The cloud relay treats the
+resulting ciphertext as opaque. Cloud and desktop packaged runtimes both pin
+the required `cryptography` dependency; tests may still skip on deliberately
+minimal development environments.
+
+Workspace writes enforce the deployment-level `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES`
+quota and return `413 workspace quota exceeded` before modifying a file.
+
+`POST /v1/sessions/{id}/commands` is only valid for `cloud_native` sessions. A
+`device_remote` session must deliver commands through the host relay; the cloud
+service never fabricates a remote Agent result.
+
+Cloud-native commands are durably queued and claimed in sequence by one worker
+per session within one API process. The
+configured `CloudAgentRunner` calls an OpenAI-compatible provider when
+`NOTEMELD_CLOUD_AGENT_BASE_URL` is set; otherwise its deterministic response is
+intended only for protocol smoke tests, not production inference.
+Configured providers currently receive only session-bound read-only workspace
+tools (`workspace.list`, `workspace.read`); mutation tools require a future
+approval and are never executed implicitly.
+Commands are first persisted as `queued`, then claimed as `running`; provider failures are projected as
+`turn.failed` with a redacted error and remain queryable by command id. On
+startup, any leftover `running` command is fail-closed as `needs_attention`
+with a `turn.needs_attention` event rather than being replayed automatically.
+The command submission endpoint returns `200` for a completed command and
+`202` when the bounded wait expires while the command remains queued/running.
+Claimed commands expose a bounded lease owner/expiry and attempt count in the
+command status API. SQLite `BEGIN IMMEDIATE` makes claim single-winner across
+processes. Startup recovery only marks rows with a missing or expired lease as
+`needs_attention`; a second API process does not interrupt an actively leased
+command. Stale running work remains fail-closed until explicit recovery.
+Operators can explicitly recover `needs_attention` commands with
+`POST /v1/cloud/sessions/{session_id}/commands/{command_id}/recover` using
+`resume` (requeue) or `abandon`; both transitions are idempotent and audited.
+
+`/v1/models` provides per-user cloud model metadata CRUD and default selection.
+Provider credentials are encrypted at rest with the dedicated
+`NOTEMELD_CLOUD_SECRET_KEY` (there is no password fallback) and responses expose only
+`has_api_key`.
+Sessions may set `model_id` when created; cloud execution then resolves the
+enabled model row for that user and constructs a bounded OpenAI-compatible
+runner for the command. Unsupported providers or disabled models fail closed.
+Model base URLs must be absolute HTTP(S) URLs without embedded credentials or
+credential-like query parameters.
+
+Cloud Agent workspace mutation tools (`workspace.write`, `workspace.delete`) do
+not mutate immediately. They create an auditable `pending` approval exposed by
+`/v1/cloud/sessions/{session_id}/approvals`; resolve with `approved` or
+`rejected`. Approval currently records the decision boundary; execution resume
+is performed synchronously with the approval transition using the same safe
+workspace resolver. Remote approval additionally requires the controller's
+Grant to include the `dangerous.approve` scope; elevated scopes are accepted
+only on an administrator-created `super_admin` Grant. A `super_admin` Grant
+also inherits the standard message/context/model/tool/event scopes.
+Approval listings return only a bounded content preview.
+Pending approvals expire after `NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS` (15
+minutes by default); expired approvals are immutable and cannot be approved.
+
+The current slice provides scoped share-token read/control access and cloud
+workspace backup/restore. Multi-instance queue fencing and full end-to-end key
+exchange remain future work; device relay still requires the platform clients
+to perform the E2EE handshake before sending opaque frames.
 
 - LLM Provider 请求由后端发起，不由前端直接调用。当前主路径走 `backend/app/ai/`（notemeld-ai 抽象层）：通过 `NotemeldGPT` 适配器在 `create_chat_completion` 内调 `Models.complete()`，由 notemeld-ai 统一写 usage。旧 `backend/app/gpt/` 的 `GPTFactory`/`UniversalGPT` 过渡期保留供回滚（`from_config` 已加 `DeprecationWarning`）；`services/model.py` 的 `list_models` 仍走 `GPTFactory`（非 chat-completion 路径）。详见 `docs/system/current-architecture.md` 的 LLM 调用层章节。
 - 视频平台、网页和转写服务由后端下载器/转写器调用。
