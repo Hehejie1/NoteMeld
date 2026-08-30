@@ -15,6 +15,9 @@ class _CloudStub:
     device_id = "host-device"
     allow = True
 
+    def heartbeat(self, device_id, lan_endpoints=None):
+        return {"device_id": device_id, "lan_endpoints": lan_endpoints or []}
+
     def authorize_lan_peer(self, session_id, controller_device_id, host_device_id):
         if not self.allow:
             raise RuntimeError("revoked")
@@ -88,6 +91,19 @@ def test_host_runtime_install_is_explicit(tmp_path):
     app = FastAPI()
     runtime.install(app)
     assert app.state.lan_direct_service is runtime.service
+
+
+def test_host_runtime_exposes_explicit_presence_heartbeat(tmp_path):
+    runtime = CloudSyncHostRuntime(
+        cloud_client=_CloudStub(),  # type: ignore[arg-type]
+        host_device_id="host-device",
+        mailbox_path=tmp_path / "mailbox.sqlite",
+        cipher_resolver=lambda _: SessionCipher(b"k" * 32),
+    )
+    assert runtime.heartbeat(["192.168.1.10:8483"]) == {
+        "device_id": "host-device",
+        "lan_endpoints": ["192.168.1.10:8483"],
+    }
 
 
 def test_host_runtime_refreshes_cached_grant_and_fails_closed_on_revocation(tmp_path):

@@ -64,6 +64,10 @@ class CloudSyncHostRuntime:
     def close(self) -> None:
         self.cloud_client.close()
 
+    def heartbeat(self, lan_endpoints: list[str] | None = None) -> dict:
+        """Refresh cloud presence and publish current LAN candidates."""
+        return self.cloud_client.heartbeat(self.host_device_id, lan_endpoints)
+
     def pending(self, session_id: str):
         return self._authority_for(session_id).pending(session_id)
 
