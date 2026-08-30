@@ -23,7 +23,7 @@
 
 ## Cloud backend（first slice）
 
-`cloud/` 是独立 FastAPI 服务，不改变本地 `/api` 路由。云端普通 API 使用 `{code,msg,data}`；远程 relay 使用 WebSocket，消息 payload 不持久化。
+`cloud/` 是独立 FastAPI 服务，不改变本地 `/api` 路由。云端普通 API 使用 `{code,msg,data}`；远程 relay 使用 WebSocket，消息 payload 不持久化。单进程默认使用 memory broker；多 worker 部署配置 `NOTEMELD_CLOUD_RELAY_BACKEND=redis` 与 `NOTEMELD_CLOUD_RELAY_URL` 后使用 Redis Pub/Sub，Redis 只保存短 TTL 在线标记并转发瞬时帧。
 Authenticated `GET /v1/capabilities` exposes the sync protocol version, relay
 privacy, Proof requirement, quotas and feature flags so platform clients can
 negotiate behavior instead of hard-coding deployment policy.
@@ -47,7 +47,7 @@ negotiate behavior instead of hard-coding deployment policy.
 | POST | `/v1/lan/authorize` | 为 LAN direct 握手返回最长 60 秒的 controller 公钥、Grant、scope、workspace 与 authority epoch 断言 | 绑定宿主的 device token（`grant.read`） |
 | POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
 | GET | `/v1/sessions` | 查询当前用户云端会话及收纳状态 | bearer token |
-| POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息 | bearer token |
+| POST | `/v1/sessions/{session_id}/commands` | 以 request_id + payload_hash 幂等提交消息；同一用户活动命令超过 `NOTEMELD_CLOUD_MAX_ACTIVE_COMMANDS_PER_USER` 时返回 429 | bearer token |
 | GET | `/v1/sessions/{session_id}/snapshot?limit=` | 读取 session snapshot 和有界事件页（默认 500，上限 5000） | bearer token |
 | GET | `/v1/sessions/{session_id}/events?after=&limit=` | 按 event sequence 拉取事件；`limit` 默认 500、上限 5000 | bearer token |
 | POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
@@ -424,7 +424,9 @@ requires a non-expired proof from the challenge/verify endpoints. Proofs are
 process-scoped and short-lived; clients must repeat the challenge after a
 restart or expiry.
 Device registration is idempotent for the owning account (metadata/key is
-updated); the same ID owned by another account remains a conflict.
+updated); the same ID owned by another account remains a conflict. Re-registering
+with a changed public key revokes all tokens bound to that device and clears its
+recent proof, matching explicit key rotation semantics.
 Relay `command` frames additionally require the Grant's `message.send` scope;
 `receipt` and `event` frames are allowed only on an existing bidirectional Grant.
 When a Grant contains `workspace_refs`, the current session workspace must be
