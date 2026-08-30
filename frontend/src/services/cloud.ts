@@ -64,6 +64,9 @@ export class CloudClient {
   listGrants() { return this.request<unknown[]>('GET', '/v1/grants') }
   createGrant(controllerDeviceId: string, hostDeviceId: string, scopes?: string[], workspaceRefs?: string[]) { return this.request<Record<string, unknown>>('POST', '/v1/grants', { controller_device_id: controllerDeviceId, host_device_id: hostDeviceId, ...(scopes ? { scopes } : {}), ...(workspaceRefs ? { workspace_refs: workspaceRefs } : {}) }) }
   revokeGrant(grantId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/grants/${encodeURIComponent(grantId)}`) }
+  listShareTokens(sessionId?: string) { return this.request<unknown[]>('GET', '/v1/share-tokens', undefined, sessionId === undefined ? undefined : { params: { session_id: sessionId } }) }
+  createShareToken(sessionId: string, role = 'viewer', scopes: string[] = ['event.receive'], expiresAt?: number) { return this.request<{ token: string; id: string; expires_at?: number | null }>('POST', '/v1/share-tokens', { session_id: sessionId, role, scopes, ...(expiresAt === undefined ? {} : { expires_at: expiresAt }) }) }
+  revokeShareToken(tokenId: string) { return this.request<Record<string, unknown>>('POST', `/v1/share-tokens/${encodeURIComponent(tokenId)}/revoke`) }
   listSessions(archived?: boolean) { return this.request<CloudSession[]>('GET', '/v1/cloud/sessions', undefined, archived === undefined ? undefined : { params: { archived } }) }
   createSession(kind: CloudSession['kind'], title = 'New session', workspaceId = 'default', modelId?: string) { return this.request<CloudSession>('POST', '/v1/cloud/sessions', { kind, title, workspace_id: workspaceId, model_id: modelId }) }
   sendCommand(sessionId: string, requestId: string, input: string) { return this.request<{ command_id: string; sequence: number; status: string }>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, { request_id: requestId, input }) }

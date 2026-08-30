@@ -14,6 +14,7 @@ const models = fs.readFileSync(new URL('../src/components/CloudModelList/CloudMo
 const modelForm = fs.readFileSync(new URL('../src/components/CloudModelForm/CloudModelForm.tsx', import.meta.url), 'utf8')
 const users = fs.readFileSync(new URL('../src/components/CloudUserList/CloudUserList.tsx', import.meta.url), 'utf8')
 const userForm = fs.readFileSync(new URL('../src/components/CloudUserForm/CloudUserForm.tsx', import.meta.url), 'utf8')
+const share = fs.readFileSync(new URL('../src/components/CloudSharePanel/CloudSharePanel.tsx', import.meta.url), 'utf8')
 test('cloud session panel has loading, error, empty, and accessible event states', () => { assert.match(panel, /aria-busy/); assert.match(panel, /role="alert"/); assert.match(panel, /No events yet/); assert.match(panel, /role="log"/); assert.match(panel, /Copy branch/); assert.match(panel, /controller\.send/); assert.match(panel, /Message/) })
 test('cloud session list supports archive filtering and keyboard selection', () => { assert.match(list, /listSessions\(archived\)/); assert.match(list, /aria-current/); assert.match(list, /role="list"/); assert.match(list, /No archived sessions/) })
 test('device list exposes online status, LAN candidates, and revoke action', () => { assert.match(devices, /device\.online/); assert.match(devices, /lan_endpoints/); assert.match(devices, /revokeDevice/); assert.match(devices, /aria-label="Connected devices"/) })
@@ -26,3 +27,4 @@ test('model list displays only provider metadata and credential presence', () =>
 test('model form treats API key as password input and clears it after save', () => { assert.match(modelForm, /type="password"/); assert.match(modelForm, /createModel/); assert.match(modelForm, /setApiKey\('\'\)/); assert.match(modelForm, /autoComplete="new-password"/) })
 test('admin user list protects admin and supports user deletion', () => { assert.match(users, /listUsers/); assert.match(users, /deleteUser/); assert.match(users, /user\.role === 'admin'/); assert.match(users, /Protected/) })
 test('admin user form supports create and edit without retaining passwords', () => { assert.match(userForm, /createUser/); assert.match(userForm, /updateUser/); assert.match(userForm, /type="password"/); assert.match(userForm, /setPassword\('\'\)/) })
+test('share panel creates viewer tokens and supports revocation', () => { assert.match(share, /createShareToken/); assert.match(share, /revokeShareToken/); assert.match(share, /event\.receive/); assert.match(share, /will not be shown again/) })

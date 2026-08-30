@@ -1,0 +1,13 @@
+import { useEffect, useState } from 'react'
+import CloudClient from '../../services/cloud'
+
+type ShareToken = { id: string; role: string; scopes: string[]; expires_at?: number | null; revoked_at?: number | null }
+
+export function CloudSharePanel({ client, sessionId }: { client: CloudClient; sessionId: string }) {
+  const [tokens, setTokens] = useState<ShareToken[]>([]); const [newToken, setNewToken] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null)
+  async function refresh() { try { setTokens(await client.listShareTokens(sessionId) as ShareToken[]); setError(null) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to load share tokens') } }
+  useEffect(() => { void refresh() }, [sessionId])
+  async function create() { setBusy(true); setError(null); try { const result = await client.createShareToken(sessionId, 'viewer', ['event.receive']); setNewToken(result.token); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to create share token') } finally { setBusy(false) } }
+  async function revoke(id: string) { setBusy(true); try { await client.revokeShareToken(id); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to revoke share token') } finally { setBusy(false) } }
+  return <section aria-labelledby="share-title" className="space-y-3 p-3"><div><h2 id="share-title" className="text-base font-semibold">Share session</h2><p className="text-sm text-slate-500">Viewer links do not grant control and remain valid until revoked.</p></div><button type="button" disabled={busy} onClick={() => void create()} className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">Create viewer token</button>{newToken ? <div role="status" className="rounded bg-slate-100 p-3"><p className="text-xs text-slate-500">Copy this token now. It will not be shown again.</p><code className="mt-1 block break-all text-xs">{newToken}</code></div> : null}{tokens.length ? <ul role="list" className="space-y-2">{tokens.map(token => <li key={token.id} className="flex items-center justify-between rounded border border-slate-200 p-2 text-sm"><span>{token.role} · {token.revoked_at ? 'Revoked' : 'Active'}</span><button type="button" disabled={busy || Boolean(token.revoked_at)} onClick={() => void revoke(token.id)} className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50">Revoke</button></li>)}</ul> : <p role="status" className="text-sm text-slate-500">No share tokens.</p>}{error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}</section>
+}
