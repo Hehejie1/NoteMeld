@@ -327,6 +327,7 @@ def test_event_reads_are_cursor_paginated(tmp_path):
         first_page = http.get(f"/v1/cloud/sessions/{session['id']}/events?after=0&limit=2", headers=headers).json()["data"]
         second_page = http.get(f"/v1/cloud/sessions/{session['id']}/events?after=2&limit=2", headers=headers).json()["data"]
         snapshot = http.get(f"/v1/cloud/sessions/{session['id']}/snapshot?limit=1", headers=headers).json()["data"]
+        assert http.get(f"/v1/cloud/sessions/{session['id']}/events?after=-1", headers=headers).status_code == 422
         assert [item["sequence"] for item in first_page] == [1, 2]
         assert [item["sequence"] for item in second_page] == [3]
         assert [item["sequence"] for item in snapshot["events"]] == [1]

@@ -207,6 +207,8 @@ class CloudClient:
         return self._request("DELETE", f"/v1/cloud/sessions/{session_id}/authority/lease", params={"owner": owner})
 
     def events(self, session_id: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+        if type(after) is not int or after < 0:
+            raise ValueError("after must be non-negative")
         events = self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after, "limit": limit})
         if not isinstance(events, list):
             raise CloudClientError(502, "cloud returned invalid event page")

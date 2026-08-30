@@ -1378,6 +1378,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/shared/{session_id}/events")
     def shared_events(session_id: str, after: int = 0, limit: int = 500, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+        if after < 0:
+            raise HTTPException(422, "after must be non-negative")
         access = _authenticate_share_token(db, share_token, session_id)
         if not access:
             raise HTTPException(401, "invalid share token")
@@ -1400,6 +1402,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/sessions/{session_id}/events")
     @app.get("/v1/cloud/sessions/{session_id}/events")
     def events(session_id: str, after: int = 0, limit: int = 500, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+        if after < 0:
+            raise HTTPException(422, "after must be non-negative")
         _owned_session(db, session_id, current["id"])
         limit = max(1, min(limit, 5000))
         with db.connect() as cx:

@@ -81,6 +81,7 @@ export class CloudClient {
   listCommands(sessionId: string, after = 0, limit = 100) { return this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, undefined, { params: { after, limit } }) }
   snapshot(sessionId: string, limit = 500) { return this.request<Record<string, unknown>>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/snapshot`, undefined, { params: { limit } }) }
   async events(sessionId: string, after = 0, limit = 500): Promise<CloudEvent[]> {
+    if (!Number.isSafeInteger(after) || after < 0) throw new Error('after must be non-negative')
     const events = await this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/events`, undefined, { params: { after, limit } })
     if (!Array.isArray(events)) throw new Error('invalid cloud event page')
     let previous = after
