@@ -4,6 +4,7 @@ import { validateCloudBaseUrl } from './connectionStrategy'
 export interface CloudEnvelope<T> { code: number; msg: string; data: T }
 export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; relay_backend?: string; relay_multi_worker?: boolean; lan_first_candidates?: boolean; worker_count?: number; max_request_bytes: number; relay_max_frame_bytes?: number; device_token_max_ttl_seconds?: number; event_page_limit?: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
 export interface CloudSession { id: string; kind: 'cloud_native' | 'device_remote'; title?: string; workspace_id: string; model_id?: string | null; status?: string }
+export interface CloudEvent { sequence: number; event_type: string; payload: unknown; created_at: number }
 export interface CloudUser { id: string; username: string; role: 'admin' | 'user'; disabled: boolean; created_at: number }
 export interface CloudDevice { id: string; platform: string; display_name: string; online: boolean; last_seen_at?: number | null; connectivity?: { lan_endpoints?: string[] } }
 export interface CloudModel { id: string; name: string; provider: string; model: string; base_url?: string | null; enabled: boolean; is_default: boolean; has_api_key: boolean }
@@ -79,7 +80,18 @@ export class CloudClient {
   commandStatus(sessionId: string, commandId: string) { return this.request<Record<string, unknown>>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}`) }
   listCommands(sessionId: string, after = 0, limit = 100) { return this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, undefined, { params: { after, limit } }) }
   snapshot(sessionId: string, limit = 500) { return this.request<Record<string, unknown>>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/snapshot`, undefined, { params: { limit } }) }
-  events(sessionId: string, after = 0, limit = 500) { return this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/events`, undefined, { params: { after, limit } }) }
+  async events(sessionId: string, after = 0, limit = 500): Promise<CloudEvent[]> {
+    const events = await this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/events`, undefined, { params: { after, limit } })
+    if (!Array.isArray(events)) throw new Error('invalid cloud event page')
+    let previous = after
+    for (const event of events) {
+      if (!event || typeof event !== 'object' || typeof (event as CloudEvent).sequence !== 'number' || !Number.isSafeInteger((event as CloudEvent).sequence) || (event as CloudEvent).sequence !== previous + 1) {
+        throw new Error('event cursor gap; refresh session snapshot')
+      }
+      previous = (event as CloudEvent).sequence
+    }
+    return events as CloudEvent[]
+  }
   archiveSession(sessionId: string) { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/archive`) }
   restoreSession(sessionId: string) { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/restore`) }
   copySession(sessionId: string) { return this.request<CloudSession>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/copy`) }
