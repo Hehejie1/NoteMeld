@@ -288,6 +288,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         yield
+        _stop_queued_workers(application)
         close_relay = getattr(application.state, "relay_broker", None)
         close_relay = getattr(close_relay, "close", None)
         if callable(close_relay):
@@ -336,6 +337,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.command_locks_guard = threading.RLock()
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
+    app.state.worker_shutdown = threading.Event()
 
     if settings.relay_backend == "memory":
         app.state.relay_broker = InMemoryRelayBroker()
@@ -1854,7 +1856,8 @@ def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
 def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str) -> None:
     worker_id = f"{os.getpid()}-{uuid.uuid4()}"
     try:
-        while True:
+        shutdown = getattr(app.state, "worker_shutdown", None)
+        while shutdown is None or not shutdown.is_set():
             command = _claim_next_cloud_command(db, session_id, worker_id, int(getattr(app.state.settings, "command_lease_seconds", 300)))
             if command is None:
                 return
@@ -1880,12 +1883,28 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
                     close = getattr(runner, "close", None)
                     if callable(close):
                         close()
-            _notify_command_waiter(app, session_id, command_id)
+                _notify_command_waiter(app, session_id, command_id)
     finally:
         with app.state.command_locks_guard:
             current = app.state.queue_workers.get(session_id)
             if current is threading.current_thread():
                 app.state.queue_workers.pop(session_id, None)
+
+
+def _stop_queued_workers(app: FastAPI, timeout_seconds: float = 5.0) -> None:
+    """Signal cloud command workers to stop and wait for a bounded interval."""
+    shutdown = getattr(app.state, "worker_shutdown", None)
+    if shutdown is None:
+        return
+    shutdown.set()
+    with app.state.command_locks_guard:
+        workers = list(app.state.queue_workers.values())
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    for worker in workers:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        worker.join(timeout=remaining)
 
 
 def _claim_next_cloud_command(db: CloudDB, session_id: str, worker_id: str, lease_seconds: int):
