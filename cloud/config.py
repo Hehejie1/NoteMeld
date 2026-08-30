@@ -27,6 +27,7 @@ class CloudSettings:
     approval_ttl_seconds: int = 900
     relay_backend: str = "memory"
     worker_count: int = 1
+    device_online_ttl_seconds: int = 90
 
     @property
     def database_path(self) -> Path:
@@ -52,6 +53,8 @@ class CloudSettings:
             raise ValueError("unsupported relay backend")
         if self.worker_count < 1:
             raise ValueError("worker count must be positive")
+        if self.device_online_ttl_seconds < 5:
+            raise ValueError("device online TTL must be at least 5 seconds")
         if self.relay_backend == "memory" and self.worker_count > 1:
             raise ValueError("memory relay cannot run with multiple workers")
 
@@ -77,4 +80,5 @@ def load_settings() -> CloudSettings:
         approval_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS", "900")),
         relay_backend=os.getenv("NOTEMELD_CLOUD_RELAY_BACKEND", "memory").strip().lower(),
         worker_count=int(os.getenv("WEB_CONCURRENCY", "1")),
+        device_online_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_DEVICE_ONLINE_TTL_SECONDS", "90")),
     )

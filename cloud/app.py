@@ -578,7 +578,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         with db.connect() as cx:
             try:
-                cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,connectivity_json,created_at) VALUES(?,?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), now))
+                cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,connectivity_json,last_seen_at,created_at) VALUES(?,?,?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), now, now))
             except Exception as exc:
                 if "UNIQUE" in str(exc):
                     existing = cx.execute("SELECT user_id,revoked_at FROM devices WHERE id=?", (payload.device_id,)).fetchone()
@@ -597,6 +597,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         for row in rows:
             item = dict(row)
             item["connectivity"] = json.loads(item.pop("connectivity_json") or "{}")
+            item["online"] = bool(item["last_seen_at"] and int(time.time()) - int(item["last_seen_at"]) <= settings.device_online_ttl_seconds and not item["revoked_at"])
             result.append(item)
         return {"code": 0, "msg": "success", "data": result}
 
