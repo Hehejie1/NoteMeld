@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import base64
 import binascii
+import heapq
 from contextlib import asynccontextmanager
 import json
 import os
@@ -1222,15 +1223,23 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _validate_workspace_id(workspace_id)
         directory = settings.data_dir / "backups" / current["id"] / workspace_id
         items = []
-        paths: list[tuple[float, Any]] = []
-        if directory.is_dir():
-            for path in directory.glob("*.zip"):
+        def backup_candidates():
+            if not directory.is_dir():
+                return
+            try:
+                entries = directory.iterdir()
+            except OSError:
+                return
+            for path in entries:
+                if path.suffix != ".zip":
+                    continue
                 try:
                     stat = path.stat()
                 except OSError:
                     continue
-                paths.append((stat.st_mtime, (path, stat)))
-        paths.sort(key=lambda item: item[0], reverse=True)
+                yield (stat.st_mtime, (path, stat))
+
+        paths = heapq.nlargest(settings.max_backup_list_items + 1, backup_candidates(), key=lambda item: item[0])
         for _, (path, stat) in paths[: settings.max_backup_list_items + 1]:
             items.append({"backup_id": path.stem, "bytes": stat.st_size, "created_at": int(stat.st_mtime)})
         return {"code": 0, "msg": "success", "data": items[: settings.max_backup_list_items]}
