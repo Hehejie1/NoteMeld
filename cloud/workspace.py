@@ -6,10 +6,47 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
+from contextlib import contextmanager
 
 
 class WorkspaceError(ValueError):
     pass
+
+
+@contextmanager
+def workspace_mutation_lock(root: Path):
+    """Acquire an inter-process lock for quota-sensitive workspace mutations."""
+    lock_path = root.parent / f".{root.name}.mutation.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            handle.write(b"0")
+            handle.flush()
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 class Workspace:

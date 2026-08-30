@@ -27,7 +27,7 @@ from .config import CloudSettings, load_settings
 from .db import CloudDB
 from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
-from .workspace import Workspace
+from .workspace import Workspace, workspace_mutation_lock
 from .relay import InMemoryRelayBroker, RedisRelayBroker
 
 
@@ -1873,7 +1873,9 @@ def _workspace_lock(app: FastAPI, user_id: str, workspace_id: str):
     with app.state.workspace_locks_guard:
         lock = app.state.workspace_locks.setdefault(key, threading.RLock())
     with lock:
-        yield
+        root = app.state.settings.workspaces_dir / user_id / workspace_id
+        with workspace_mutation_lock(root):
+            yield
 
 
 def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
