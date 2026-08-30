@@ -44,6 +44,7 @@ LAN_ENDPOINT_NETWORKS = (
     ipaddress.ip_network("::1/128"),
 )
 SHARE_SCOPES = frozenset({"message.send", "event.receive"})
+_DUMMY_PASSWORD_HASH = hash_password("notemeld-dummy-password")
 
 
 class LoginRequest(BaseModel):
@@ -403,7 +404,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if not payload.username and not payload.account_id:
             raise HTTPException(400, "username or account_id is required")
         user = _user_by_account_id(db, payload.account_id) if payload.account_id else _user_by_username(db, payload.username or "")
-        if not user or user["disabled"] or not verify_password(payload.password, user["password_hash"]):
+        password_hash = user["password_hash"] if user else _DUMMY_PASSWORD_HASH
+        password_valid = verify_password(payload.password, password_hash)
+        if not user or user["disabled"] or not password_valid:
             failures = _record_login_failure(db, account_key, now)
             _record_login_failure(db, source_key, now)
             if failures > 5:
