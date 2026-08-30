@@ -10,6 +10,7 @@ import asyncio
 import json
 import secrets
 import threading
+import time
 from typing import Any, Protocol
 
 
@@ -50,6 +51,7 @@ class InMemoryRelayBroker:
 
     async def ready(self) -> bool:
         return True
+
 
     async def deliver(self, session_id: str, recipient_device_id: str, message: str, sender: Any) -> bool:
         peer = self.peer(session_id, recipient_device_id)
@@ -161,8 +163,15 @@ class RedisRelayBroker:
     async def _listen(self) -> None:
         pubsub = self._redis.pubsub()
         await pubsub.psubscribe(f"{self._prefix}:channel:*")
+        next_refresh = time.monotonic()
         try:
             while not self._closed:
+                if time.monotonic() >= next_refresh:
+                    with self._lock:
+                        active_connections = list(self._connection_ids.items())
+                    for (session_id, device_id), connection_id in active_connections:
+                        await self._redis.set(self._presence_key(session_id, device_id), connection_id, ex=self._ttl)
+                    next_refresh = time.monotonic() + max(1.0, self._ttl / 3)
                 item = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if not item or item.get("type") not in {"pmessage", "message"}:
                     await asyncio.sleep(0)
@@ -181,13 +190,18 @@ class RedisRelayBroker:
                 session_id = str(item.get("channel", "")).rsplit(":", 1)[-1]
                 recipient = payload.get("recipient_device_id")
                 peer = self.peer(session_id, recipient)
+                # Pub/Sub fans a frame out to every worker. Only the worker
+                # that owns the target websocket may acknowledge it; peers
+                # with no local target must stay silent or they can race the
+                # real delivery acknowledgement.
+                if peer is None:
+                    continue
                 delivered = False
-                if peer is not None:
-                    try:
-                        await peer.send_text(payload["message"])
-                        delivered = True
-                    except Exception:  # noqa: BLE001
-                        await self.unregister(session_id, recipient, peer)
+                try:
+                    await peer.send_text(payload["message"])
+                    delivered = True
+                except Exception:  # noqa: BLE001
+                    await self.unregister(session_id, recipient, peer)
                 await self._redis.publish(
                     self._channel(session_id),
                     json.dumps({"kind": "ack", "delivery_id": payload.get("delivery_id"), "delivered": delivered}, separators=(",", ":")),
