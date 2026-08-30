@@ -25,6 +25,8 @@ class SessionMailbox:
     """Process-local queue used by a device Host until durable ledger wiring lands."""
 
     def __init__(self, max_size: int = 1000):
+        if type(max_size) is not int or max_size < 1:
+            raise ValueError("max_size must be positive")
         self._items: deque[SessionCommand] = deque()
         self._next_sequence: dict[str, int] = {}
         self._max_size = max_size
@@ -61,6 +63,8 @@ class DurableSessionMailbox:
     """SQLite-backed mailbox for a local host that must survive restart."""
 
     def __init__(self, database: Path, max_size: int = 1000, process_owner: str | None = None):
+        if type(max_size) is not int or max_size < 1:
+            raise ValueError("max_size must be positive")
         self.database = database
         self.max_size = max_size
         self.process_owner = process_owner or _PROCESS_OWNER

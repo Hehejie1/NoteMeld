@@ -1,5 +1,6 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+import pytest
 
 from app.cloud_sync import DurableSessionMailbox, RemoteFrame, SessionMailbox, SessionCommand
 
@@ -78,6 +79,13 @@ def test_durable_mailbox_survives_reopen(tmp_path):
     assert len(reopened.pending("s1")) == 1
     assert reopened.discard_pending("s1") == 1
     assert reopened.pending("s1") == []
+
+
+def test_mailboxes_reject_invalid_capacity(tmp_path):
+    with pytest.raises(ValueError, match="max_size"):
+        SessionMailbox(max_size=0)
+    with pytest.raises(ValueError, match="max_size"):
+        DurableSessionMailbox(tmp_path / "invalid.db", max_size=0)
 
 
 def test_durable_mailbox_uses_durable_sqlite_pragmas(tmp_path):
