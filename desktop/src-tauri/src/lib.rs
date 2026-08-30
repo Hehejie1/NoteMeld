@@ -21,6 +21,7 @@ struct DesktopRuntimeState {
 struct FrontendRuntimePayload {
     api_base_url: String,
     screenshot_base_url: String,
+    cloud_base_url: Option<String>,
     mode: String,
     desktop_embedded: bool,
     session_token: String,
@@ -50,7 +51,10 @@ fn desktop_device_id(app: AppHandle) -> Result<String, String> {
     let path = data_dir.join("cloud-device-id");
     if let Ok(value) = fs::read_to_string(&path) {
         let value = value.trim().to_string();
-        if value.len() == 40 && value.starts_with("desktop-") && value[8..].chars().all(|c| c.is_ascii_hexdigit()) {
+        if value.len() == 40
+            && value.starts_with("desktop-")
+            && value[8..].chars().all(|c| c.is_ascii_hexdigit())
+        {
             return Ok(value);
         }
     }
@@ -59,7 +63,8 @@ fn desktop_device_id(app: AppHandle) -> Result<String, String> {
     let suffix: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
     let value = format!("desktop-{suffix}");
     let temporary = path.with_extension("tmp");
-    fs::write(&temporary, format!("{value}\n")).map_err(|err| format!("failed to persist device id: {err}"))?;
+    fs::write(&temporary, format!("{value}\n"))
+        .map_err(|err| format!("failed to persist device id: {err}"))?;
     fs::rename(&temporary, &path).map_err(|err| format!("failed to publish device id: {err}"))?;
     Ok(value)
 }
@@ -242,6 +247,16 @@ fn build_runtime_payload(port: u16, session_token: String) -> FrontendRuntimePay
     FrontendRuntimePayload {
         api_base_url: format!("http://127.0.0.1:{port}/api"),
         screenshot_base_url: format!("http://127.0.0.1:{port}/static/screenshots"),
+        cloud_base_url: std::env::var("NOTEMELD_CLOUD_BASE_URL")
+            .ok()
+            .and_then(|value| {
+                let trimmed = value.trim().trim_end_matches('/').to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }),
         mode: "desktop".to_string(),
         desktop_embedded: true,
         session_token,
@@ -415,6 +430,9 @@ fn spawn_backend_sidecar(
     command.env("BACKEND_HOST", "127.0.0.1");
     command.env("BACKEND_PORT", port.to_string());
     command.env("NOTEMELD_API_BASE_URL", &payload.api_base_url);
+    if let Some(cloud_base_url) = &payload.cloud_base_url {
+        command.env("NOTEMELD_CLOUD_BASE_URL", cloud_base_url);
+    }
     command.env("NOTEMELD_DATA_DIR", &data_dir);
     command.env("NOTEMELD_LOG_DIR", &log_dir);
 
