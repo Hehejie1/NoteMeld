@@ -6,7 +6,7 @@ export function CloudDeviceList({ client, onRevoke }: { client: CloudClient; onR
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  useEffect(() => { let active = true; void client.listDevices().then(value => { if (active) setDevices(value as CloudDevice[]) }).catch(reason => { if (active) setError(reason instanceof Error ? reason : new Error(String(reason))) }).finally(() => { if (active) setLoading(false) }); return () => { active = false } }, [client])
+  useEffect(() => { let active = true; const refresh = () => { void client.listDevices().then(value => { if (active) setDevices(value as CloudDevice[]) }).catch(reason => { if (active) setError(reason instanceof Error ? reason : new Error(String(reason))) }).finally(() => { if (active) setLoading(false) }) }; refresh(); const timer = window.setInterval(refresh, 15000); return () => { active = false; window.clearInterval(timer) } }, [client])
   if (loading) return <div aria-busy="true" className="space-y-2 p-3"><div className="h-10 animate-pulse rounded bg-slate-100" /><div className="h-10 animate-pulse rounded bg-slate-100" /></div>
   if (error) return <div role="alert" className="p-3 text-sm text-red-700">Unable to load devices: {error.message}</div>
   if (!devices.length) return <div role="status" className="p-4 text-sm text-slate-500">No devices connected.</div>
