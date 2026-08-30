@@ -149,7 +149,13 @@ class Workspace:
                     raise WorkspaceError("backup contains a symlink")
                 if member.is_dir():
                     continue
-                if member.filename.startswith("/") or ".." in Path(member.filename).parts:
+                member_path = Path(member.filename)
+                if (
+                    member.filename.startswith(("/", "\\"))
+                    or "\\" in member.filename
+                    or ":" in member.filename
+                    or ".." in member_path.parts
+                ):
                     raise WorkspaceError("backup contains an unsafe path")
                 total += member.file_size
                 if total > max_bytes:
