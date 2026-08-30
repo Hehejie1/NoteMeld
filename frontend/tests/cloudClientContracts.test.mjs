@@ -18,3 +18,11 @@ test('cloud client exposes injectable token storage without localStorage couplin
   assert.match(source, /persistToken/)
   assert.doesNotMatch(source, /localStorage/)
 })
+
+test('web token store uses encrypted IndexedDB rather than plaintext browser storage', () => {
+  const tokenStore = fs.readFileSync(new URL('../src/services/tokenStore.ts', import.meta.url), 'utf8')
+  assert.match(tokenStore, /IndexedDbTokenStore/)
+  assert.match(tokenStore, /indexedDB\.open/)
+  assert.match(tokenStore, /AES-GCM/)
+  assert.doesNotMatch(tokenStore, /localStorage/)
+})
