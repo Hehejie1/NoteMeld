@@ -423,10 +423,11 @@ When `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=true`, relay connect additionally
 requires a non-expired proof from the challenge/verify endpoints. Proofs are
 process-scoped and short-lived; clients must repeat the challenge after a
 restart or expiry.
-Device registration is idempotent for the owning account (metadata/key is
-updated); the same ID owned by another account remains a conflict. Re-registering
-with a changed public key revokes all tokens bound to that device and clears its
-recent proof, matching explicit key rotation semantics.
+Device registration is idempotent for the owning account (metadata is updated;
+an omitted public key preserves the existing key); the same ID owned by another
+account remains a conflict. Re-registering with a changed public key revokes
+all tokens bound to that device and clears its recent proof, matching explicit
+key rotation semantics.
 Relay `command` frames additionally require the Grant's `message.send` scope;
 `receipt` and `event` frames are allowed only on an existing bidirectional Grant.
 When a Grant contains `workspace_refs`, the current session workspace must be
