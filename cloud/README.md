@@ -24,6 +24,20 @@ and short-lived presence markers; it does not persist payloads. The service
 rejects `WEB_CONCURRENCY>1` while using the memory backend, preventing an
 unsafe split-brain deployment. NATS remains reserved until a compatible
 adapter is added.
+
+For a two-worker deployment, start Redis and configure the service before
+launching Uvicorn workers:
+
+```bash
+NOTEMELD_CLOUD_RELAY_BACKEND=redis \
+NOTEMELD_CLOUD_RELAY_URL='rediss://redis.example.internal:6380/0' \
+WEB_CONCURRENCY=2 \
+uvicorn cloud.main:app --host 0.0.0.0 --port 8583
+```
+
+Use `rediss://` for a remote Redis instance and restrict its network access to
+the cloud workers. Delivery acknowledgements are bounded by a short timeout;
+a missing acknowledgement is reported as an offline/failed delivery.
 Install `cloud/requirements.txt` for the cloud runtime and device-proof cryptography.
 Desktop/Python client-side E2EE (X25519, Ed25519, HKDF and AES-256-GCM)
 lives in `backend/app/cloud_sync/e2ee.py`; the cloud service does not import the
