@@ -348,6 +348,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "lan_first_candidates": True,
             "worker_count": settings.worker_count,
             "max_request_bytes": settings.max_request_bytes,
+            "event_page_limit": 5000,
+            "relay_max_frame_bytes": settings.relay_max_frame_bytes,
             "max_workspace_bytes": settings.max_workspace_bytes,
             "max_workspace_files": settings.max_workspace_files,
             "features": {"cloud_agent": True, "session_queue": True, "command_recovery": True, "approval_gated_mutations": True, "model_registry": True},

@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios'
 import { validateCloudBaseUrl } from './connectionStrategy'
 
 export interface CloudEnvelope<T> { code: number; msg: string; data: T }
-export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; relay_backend?: string; relay_multi_worker?: boolean; lan_first_candidates?: boolean; worker_count?: number; max_request_bytes: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
+export interface CloudCapabilities { protocol_version: string; canonical_session_prefix: string; device_proof_required: boolean; e2ee_relay_envelope: boolean; relay_persists_payload: boolean; relay_backend?: string; relay_multi_worker?: boolean; lan_first_candidates?: boolean; worker_count?: number; max_request_bytes: number; relay_max_frame_bytes?: number; event_page_limit?: number; max_workspace_bytes: number; max_workspace_files: number; features: Record<string, boolean> }
 export interface CloudSession { id: string; kind: 'cloud_native' | 'device_remote'; title?: string; workspace_id: string; model_id?: string | null; status?: string }
 export interface CloudUser { id: string; username: string; role: 'admin' | 'user'; disabled: boolean; created_at: number }
 export interface CloudDevice { id: string; platform: string; display_name: string; online: boolean; last_seen_at?: number | null; connectivity?: { lan_endpoints?: string[] } }
