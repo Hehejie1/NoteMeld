@@ -41,8 +41,8 @@ def test_bearer_token_parser_rejects_oversized_and_noncanonical_values():
     assert parse_token("nmt_abc.bad!") is None
 
 
-def client(tmp_path: Path) -> TestClient:
-    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production")
+def client(tmp_path: Path, settings: CloudSettings | None = None) -> TestClient:
+    settings = settings or CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production")
     return TestClient(create_app(settings))
 
 
@@ -1008,6 +1008,19 @@ def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
         assert capacity["warning"] is False
         assert http.get("/v1/workspaces/demo/files", headers=headers).json()["data"]["files"][0]["path"] == "notes/today.md"
         assert http.put("/v1/workspaces/demo/files/../escape.txt", headers=headers, json={"content": "x"}).status_code in (400, 404)
+
+
+def test_workspace_file_api_bounds_reads_and_listing(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_workspace_read_bytes=5, max_workspace_list_items=1)
+    with client(tmp_path, settings=settings) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.put("/v1/workspaces/bounded/files/a.txt", headers=headers, json={"content": "123456789"}).status_code == 200
+        assert http.put("/v1/workspaces/bounded/files/b.txt", headers=headers, json={"content": "b"}).status_code == 200
+        read = http.get("/v1/workspaces/bounded/files/a.txt", headers=headers).json()["data"]
+        assert read["content"] == "12345" and read["truncated"] is True
+        listed = http.get("/v1/workspaces/bounded/files", headers=headers).json()["data"]
+        assert len(listed["files"]) == 1 and listed["truncated"] is True
 
 
 def test_workspace_concurrent_writes_use_distinct_atomic_temporary_files(tmp_path):

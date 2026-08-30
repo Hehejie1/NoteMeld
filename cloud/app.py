@@ -1164,20 +1164,21 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
-            content = workspace.read_text(logical_path)
+            content, truncated = workspace.read_text_bounded(logical_path, settings.max_workspace_read_bytes)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
-        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "content": content}}
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "path": logical_path, "content": content, "truncated": truncated}}
 
     @app.get("/v1/workspaces/{workspace_id}/files")
-    def list_workspace_files(workspace_id: str, prefix: str = "", current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
+    def list_workspace_files(workspace_id: str, prefix: str = "", limit: int = 500, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
+            limit = max(1, min(limit, settings.max_workspace_list_items))
             files = workspace.list_files(prefix)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
-        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "files": files}}
+        return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, "files": files[:limit], "truncated": len(files) > limit}}
 
     @app.put("/v1/workspaces/{workspace_id}/files/{logical_path:path}")
     def write_workspace_file(workspace_id: str, logical_path: str, payload: WorkspaceWrite, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):

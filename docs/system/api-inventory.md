@@ -384,9 +384,9 @@ the default configuration.
 | DELETE | `/v1/sessions/{session_id}` | hard-delete session metadata and purge workspace/backups when no other session references that workspace |
 | GET | `/v1/workspaces/{workspace_id}/stats` | workspace file count and bytes used |
 | GET | `/v1/workspaces/{workspace_id}/capacity` | workspace quota usage plus filesystem total/used/free bytes and warning state |
-| GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | UTF-8 file read/write with traversal and symlink checks; writes are atomic |
+| GET/PUT | `/v1/workspaces/{workspace_id}/files/{path}` | bounded UTF-8 file read with traversal/symlink checks; writes are atomic and reads mark truncation |
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
-| GET | `/v1/workspaces/{workspace_id}/files?prefix=` | list safe logical file paths and size/mtime metadata |
+| GET | `/v1/workspaces/{workspace_id}/files?prefix=&limit=` | bounded list of safe logical file paths and size/mtime metadata |
 | POST/GET | `/v1/workspaces/{workspace_id}/backups` | create/list local-disk ZIP backups |
 | POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
 | GET | `/v1/grants` | list remote-control grants |
