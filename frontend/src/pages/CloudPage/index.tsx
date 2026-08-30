@@ -30,7 +30,7 @@ export default function CloudPage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [archiveAction, setArchiveAction] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
-  useEffect(() => { let active = true; const deviceId = makeDeviceId('web'); void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, deviceId, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl])
+  useEffect(() => { let active = true; void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, deviceId, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl, deviceId])
   const auth = useCloudAuth(client)
   useEffect(() => {
     if (!auth.authenticated) return
