@@ -74,3 +74,12 @@ queue sequence，不包含 input 或工具参数。
 可以同步会话历史、摘要、压缩信息、长期记忆、工具记录和 workspace 文件，
 但必须排除本地密钥、Token、插件包、Skill 包和 Application 包。远端展示
 缺失工具时应提示“当前设备不可用”，不得静默执行替代工具。
+
+云端 workspace API 的文件读取和列表均为有界操作，响应会通过 `truncated`
+标记提示客户端继续请求；客户端应使用 `/capacity` 查看配额与磁盘可用空间。
+备份支持创建、分页列出、恢复和删除，删除与恢复等变更会写入审计日志。
+
+桌面/Python Host 由平台安全存储构造 `CloudClient`、身份密钥和
+`SessionCipher` 后，通过 `attach_cloud_sync_runtime()` 注册到 backend；backend
+lifespan 负责 install/close。没有平台安全存储依赖时，LAN Host 端点保持关闭，
+不得从环境变量读取长期 token 或私钥。
