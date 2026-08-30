@@ -5,7 +5,7 @@ import test from 'node:test'
 const source = fs.readFileSync(new URL('../src/services/cloud.ts', import.meta.url), 'utf8')
 
 test('cloud client exposes stateless cross-device control plane methods', () => {
-  for (const method of ['login', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'startPairing', 'confirmPairing', 'listGrants', 'createSession', 'sendCommand', 'events', 'snapshot', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile']) {
+  for (const method of ['login', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'startPairing', 'confirmPairing', 'listGrants', 'createSession', 'sendCommand', 'events', 'snapshot', 'archiveSession', 'restoreSession', 'copySession', 'deleteSession', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile']) {
     assert.match(source, new RegExp(`\\b${method}\\s*\\(`), `missing ${method}`)
   }
   assert.match(source, /Authorization: `Bearer \$\{this\.token\}`/)
@@ -46,6 +46,9 @@ test('cloud session controller owns snapshot and incremental event projection', 
   assert.match(source, /refreshEvents/)
   assert.match(source, /lastSequence/)
   assert.match(source, /recoverCommand/)
+  assert.match(source, /archive\(\)/)
+  assert.match(source, /copy\(\)/)
+  assert.match(source, /delete\(\)/)
   assert.match(source, /event\.sequence > this\.state\.lastSequence/)
   assert.match(source, /sort\(\(left, right\) => left\.sequence - right\.sequence\)/)
 })

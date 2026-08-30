@@ -66,6 +66,7 @@ export class CloudClient {
   archiveSession(sessionId: string) { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/archive`) }
   restoreSession(sessionId: string) { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/restore`) }
   copySession(sessionId: string) { return this.request<CloudSession>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/copy`) }
+  deleteSession(sessionId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}`) }
   recoverCommand(sessionId: string, commandId: string, mode: 'resume' | 'abandon') { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}/recover`, { mode }) }
   listWorkspaceFiles(workspaceId: string, prefix = '') { return this.request<unknown[]>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files`, undefined, { params: { prefix } }) }
   readWorkspaceFile(workspaceId: string, path: string) { return this.request<Record<string, unknown>>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files/${path.split('/').map(encodeURIComponent).join('/')}`) }

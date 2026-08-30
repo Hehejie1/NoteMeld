@@ -49,4 +49,9 @@ export class CloudSessionController {
     if (!this.state.session) throw new Error('session is not open')
     return this.client.recoverCommand(this.state.session.id, commandId, mode)
   }
+
+  archive() { if (!this.state.session) throw new Error('session is not open'); return this.client.archiveSession(this.state.session.id) }
+  restore() { if (!this.state.session) throw new Error('session is not open'); return this.client.restoreSession(this.state.session.id) }
+  copy() { if (!this.state.session) throw new Error('session is not open'); return this.client.copySession(this.state.session.id) }
+  delete() { if (!this.state.session) throw new Error('session is not open'); return this.client.deleteSession(this.state.session.id) }
 }
