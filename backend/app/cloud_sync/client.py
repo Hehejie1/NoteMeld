@@ -146,8 +146,8 @@ class CloudClient:
     def send_command(self, session_id: str, request_id: str, input_text: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/cloud/sessions/{session_id}/commands", json={"request_id": request_id, "input": input_text})
 
-    def snapshot(self, session_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/cloud/sessions/{session_id}/snapshot")
+    def snapshot(self, session_id: str, limit: int = 500) -> dict[str, Any]:
+        return self._request("GET", f"/v1/cloud/sessions/{session_id}/snapshot", params={"limit": limit})
 
     def list_sessions(self, archived: bool | None = None) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/cloud/sessions", params=None if archived is None else {"archived": str(archived).lower()})
@@ -173,8 +173,8 @@ class CloudClient:
     def release_authority_lease(self, session_id: str, owner: str) -> dict[str, Any]:
         return self._request("DELETE", f"/v1/cloud/sessions/{session_id}/authority/lease", params={"owner": owner})
 
-    def events(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
-        return self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after})
+    def events(self, session_id: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+        return self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after, "limit": limit})
 
     def list_approvals(self, session_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/approvals")
@@ -225,11 +225,11 @@ class CloudClient:
     def revoke_share_token(self, token_id: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/share-tokens/{quote(token_id, safe='')}/revoke")
 
-    def shared_snapshot(self, session_id: str, share_token: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/shared/{session_id}/snapshot", headers={"X-Share-Token": share_token})
+    def shared_snapshot(self, session_id: str, share_token: str, limit: int = 500) -> dict[str, Any]:
+        return self._request("GET", f"/v1/shared/{session_id}/snapshot", params={"limit": limit}, headers={"X-Share-Token": share_token})
 
-    def shared_events(self, session_id: str, share_token: str, after: int = 0) -> list[dict[str, Any]]:
-        return self._request("GET", f"/v1/shared/{session_id}/events", params={"after": after}, headers={"X-Share-Token": share_token})
+    def shared_events(self, session_id: str, share_token: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+        return self._request("GET", f"/v1/shared/{session_id}/events", params={"after": after, "limit": limit}, headers={"X-Share-Token": share_token})
 
     def shared_command(self, session_id: str, share_token: str, request_id: str, input_text: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/shared/{session_id}/commands", headers={"X-Share-Token": share_token}, json={"request_id": request_id, "input": input_text})
