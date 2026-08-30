@@ -1236,7 +1236,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     await websocket.send_json({"type": "rejected", "error": "relay_rate_limited"})
                     continue
                 frame_times.append(now)
-                if len(message.encode()) > 256 * 1024:
+                if len(message.encode()) > min(settings.relay_max_frame_bytes, settings.max_request_bytes):
                     await websocket.send_json({"type": "rejected", "error": "frame_too_large"})
                     continue
                 try:
