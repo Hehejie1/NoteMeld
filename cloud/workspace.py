@@ -164,7 +164,12 @@ class Workspace:
                 ):
                     raise WorkspaceError("backup contains an unsafe path")
                 normalized_name = "/".join(raw_parts).casefold()
-                if normalized_name in member_names:
+                if any(
+                    existing == normalized_name
+                    or existing.startswith(normalized_name + "/")
+                    or normalized_name.startswith(existing + "/")
+                    for existing in member_names
+                ):
                     raise WorkspaceError("backup contains duplicate paths")
                 member_names.add(normalized_name)
                 total += member.file_size
