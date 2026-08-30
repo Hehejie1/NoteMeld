@@ -979,6 +979,7 @@ def test_cloud_capabilities_are_authenticated_and_explicit(tmp_path):
         assert data["protocol_version"] == "notemeld.sync.v1"
         assert data["relay_persists_payload"] is False
         assert data["relay_backend"] == "memory"
+        assert data["relay_multi_worker"] is False
         assert data["lan_first_candidates"] is True
         assert data["event_page_limit"] == 5000
         assert data["relay_max_frame_bytes"] > 0

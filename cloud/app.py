@@ -377,7 +377,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "e2ee_relay_envelope": True,
             "relay_persists_payload": False,
             "relay_backend": settings.relay_backend,
-            "relay_multi_worker": settings.relay_backend != "memory",
+            # Redis/NATS adapters are intentionally fail-fast until installed;
+            # never advertise multi-worker support for the in-memory broker.
+            "relay_multi_worker": False,
             "lan_first_candidates": True,
             "worker_count": settings.worker_count,
             "max_request_bytes": settings.max_request_bytes,
