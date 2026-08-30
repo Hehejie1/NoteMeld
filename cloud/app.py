@@ -45,6 +45,9 @@ LAN_ENDPOINT_NETWORKS = (
 )
 SHARE_SCOPES = frozenset({"message.send", "event.receive"})
 _DUMMY_PASSWORD_HASH = hash_password("notemeld-dummy-password")
+_MAX_HISTORY_MESSAGES = 200
+_MAX_HISTORY_MESSAGE_CHARS = 100_000
+_MAX_HISTORY_CHARS = 1_000_000
 
 
 class LoginRequest(BaseModel):
@@ -1906,8 +1909,22 @@ def _cloud_history(db: CloudDB, session_id: str, *, exclude_command_id: str | No
         if command["id"] in outputs:
             messages.append({"role": "assistant", "content": outputs[command["id"]]})
     # Provider requests must remain bounded even if a client imported a very
-    # large historical transcript.
-    return messages[-200:]
+    # large historical transcript. Build from the newest messages backwards so
+    # a large old import cannot crowd out the current turn context.
+    bounded: list[dict[str, str]] = []
+    total_chars = 0
+    for message in reversed(messages):
+        content = message["content"][:_MAX_HISTORY_MESSAGE_CHARS]
+        remaining = _MAX_HISTORY_CHARS - total_chars
+        if remaining <= 0:
+            break
+        content = content[:remaining]
+        bounded.append({"role": message["role"], "content": content})
+        total_chars += len(content)
+        if len(bounded) >= _MAX_HISTORY_MESSAGES:
+            break
+    bounded.reverse()
+    return bounded
 
 
 def _execute_approved_tool(*, settings: CloudSettings, session: Any, user_id: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
