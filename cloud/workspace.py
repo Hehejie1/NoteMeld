@@ -120,7 +120,7 @@ class Workspace:
         _fsync_directory(destination.parent)
         return destination.stat().st_size
 
-    def restore_backup(self, archive_path: Path, max_bytes: int) -> dict[str, int]:
+    def restore_backup(self, archive_path: Path, max_bytes: int, max_files: int | None = None) -> dict[str, int]:
         if not archive_path.is_file():
             raise WorkspaceError("backup is unavailable")
         total = 0
@@ -135,6 +135,8 @@ class Workspace:
                 if total > max_bytes:
                     raise WorkspaceError("backup exceeds workspace quota")
                 members.append(member)
+                if max_files is not None and len(members) > max_files:
+                    raise WorkspaceError("backup exceeds file-count quota")
             staging = Path(tempfile.mkdtemp(prefix="notemeld-restore-", dir=self.root.parent))
             try:
                 for member in members:

@@ -943,6 +943,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             projected = workspace.stats()["bytes_used"] - existing_size + len(payload.content.encode("utf-8"))
             if projected > settings.max_workspace_bytes:
                 raise HTTPException(413, "workspace quota exceeded")
+            if existing_size == 0 and not workspace.path(logical_path).exists() and workspace.stats()["file_count"] >= settings.max_workspace_files:
+                raise HTTPException(413, "workspace file-count quota exceeded")
             workspace.write_text(logical_path, payload.content)
         except HTTPException:
             raise
@@ -984,7 +986,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{payload.backup_id}.zip"
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         try:
-            restored = workspace.restore_backup(archive, settings.max_workspace_bytes)
+            restored = workspace.restore_backup(archive, settings.max_workspace_bytes, settings.max_workspace_files)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
         return {"code": 0, "msg": "success", "data": {"backup_id": payload.backup_id, "workspace_id": workspace_id, **restored}}
@@ -1656,6 +1658,8 @@ def _execute_approved_tool(*, settings: CloudSettings, session: Any, user_id: st
         projected = workspace.stats()["bytes_used"] - existing + len(content.encode("utf-8"))
         if projected > settings.max_workspace_bytes:
             raise ValueError("workspace quota exceeded")
+        if existing == 0 and not workspace.path(path).exists() and workspace.stats()["file_count"] >= settings.max_workspace_files:
+            raise ValueError("workspace file-count quota exceeded")
         workspace.write_text(path, content)
         return {"ok": True, "path": path, "bytes_written": len(content.encode("utf-8"))}
     if tool_name == "workspace.delete":

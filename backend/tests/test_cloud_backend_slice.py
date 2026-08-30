@@ -786,6 +786,18 @@ def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
         assert http.put("/v1/workspaces/demo/files/../escape.txt", headers=headers, json={"content": "x"}).status_code in (400, 404)
 
 
+def test_workspace_file_count_quota_applies_to_writes_and_restore(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production", max_workspace_files=1)
+    with TestClient(create_app(settings)) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        assert http.put("/v1/workspaces/quota/files/one.txt", headers=headers, json={"content": "1"}).status_code == 200
+        rejected = http.put("/v1/workspaces/quota/files/two.txt", headers=headers, json={"content": "2"})
+        assert rejected.status_code == 413 and "file-count" in rejected.json()["detail"]
+        backup = http.post("/v1/workspaces/quota/backups", headers=headers).json()["data"]["backup_id"]
+        assert http.post("/v1/workspaces/quota/backups/restore", headers=headers, json={"backup_id": backup}).status_code == 200
+
+
 def test_grant_listing_and_revocation(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
