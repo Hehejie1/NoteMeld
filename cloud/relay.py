@@ -48,6 +48,9 @@ class InMemoryRelayBroker:
     async def close(self) -> None:
         return None
 
+    async def ready(self) -> bool:
+        return True
+
     async def deliver(self, session_id: str, recipient_device_id: str, message: str, sender: Any) -> bool:
         peer = self.peer(session_id, recipient_device_id)
         if peer is None or peer is sender:
@@ -199,3 +202,9 @@ class RedisRelayBroker:
             self._listener_task.cancel()
             await asyncio.gather(self._listener_task, return_exceptions=True)
         await self._redis.aclose()
+
+    async def ready(self) -> bool:
+        try:
+            return bool(await self._redis.ping())
+        except Exception:  # noqa: BLE001 - readiness must fail closed
+            return False

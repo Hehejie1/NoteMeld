@@ -362,7 +362,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"ok": True, "service": "notemeld-cloud"}
 
     @app.get("/ready")
-    def readiness() -> dict:
+    async def readiness() -> dict:
         checks: dict[str, str] = {}
         try:
             with db.connect() as cx:
@@ -371,6 +371,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         except Exception:
             checks["database"] = "error"
         checks["workspace_root"] = "ok" if settings.workspaces_dir.is_dir() and os.access(settings.workspaces_dir, os.W_OK) else "error"
+        if settings.relay_backend == "redis":
+            relay_ready = await app.state.relay_broker.ready()
+            checks["relay"] = "ok" if relay_ready else "error"
         if settings.require_device_proof:
             try:
                 import cryptography  # noqa: F401
