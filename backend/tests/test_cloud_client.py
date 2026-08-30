@@ -85,6 +85,35 @@ def test_cloud_client_device_proof_contract():
     client.close()
 
 
+def test_cloud_client_extended_control_plane_contracts():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.raw_path, request.content))
+        return httpx.Response(200, json={"code": 0, "msg": "success", "data": [] if request.method == "GET" else {"ok": True}})
+
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client.revoke_device("device/id")
+    client.rotate_device_key("device/id", "public-key")
+    client.list_grants()
+    client.delete_session("session/id")
+    client.command_status("session/id", "command/id")
+    client.list_commands("session/id", after=3, limit=7)
+    client.list_share_tokens("session/id")
+    client.revoke_share_token("share/id")
+    assert [item[:2] for item in seen] == [
+        ("DELETE", b"/v1/devices/device%2Fid"),
+        ("POST", b"/v1/devices/device%2Fid/rotate-key"),
+        ("GET", b"/v1/grants"),
+        ("DELETE", b"/v1/cloud/sessions/session%2Fid"),
+        ("GET", b"/v1/cloud/sessions/session%2Fid/commands/command%2Fid"),
+        ("GET", b"/v1/cloud/sessions/session%2Fid/commands?after=3&limit=7"),
+        ("GET", b"/v1/share-tokens?session_id=session%2Fid"),
+        ("POST", b"/v1/share-tokens/share%2Fid/revoke"),
+    ]
+    client.close()
+
+
 def test_cloud_client_admin_and_personal_token_contracts():
     seen = []
 

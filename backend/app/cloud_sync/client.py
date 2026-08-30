@@ -86,6 +86,12 @@ class CloudClient:
     def list_devices(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/devices")
 
+    def revoke_device(self, device_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/devices/{quote(device_id, safe='')}")
+
+    def rotate_device_key(self, device_id: str, public_key: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/devices/{quote(device_id, safe='')}/rotate-key", json={"public_key": public_key})
+
     def create_grant(self, controller_device_id: str, host_device_id: str, role: str = "standard", scopes: list[str] | None = None, workspace_refs: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
         payload = {"controller_device_id": controller_device_id, "host_device_id": host_device_id, "role": role, "workspace_refs": workspace_refs or [], "expires_at": expires_at}
         if scopes is not None:
@@ -93,7 +99,10 @@ class CloudClient:
         return self._request("POST", "/v1/grants", json=payload)
 
     def revoke_grant(self, grant_id: str) -> dict[str, Any]:
-        return self._request("POST", f"/v1/grants/{grant_id}/revoke")
+        return self._request("POST", f"/v1/grants/{quote(grant_id, safe='')}/revoke")
+
+    def list_grants(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/grants")
 
     def heartbeat(self, device_id: str | None = None) -> dict[str, Any]:
         return self._request("POST", f"/v1/devices/{device_id or self.device_id}/heartbeat")
@@ -140,6 +149,9 @@ class CloudClient:
     def copy_session(self, session_id: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/cloud/sessions/{session_id}/copy")
 
+    def delete_session(self, session_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/cloud/sessions/{quote(session_id, safe='')}")
+
     def rotate_authority(self, session_id: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/cloud/sessions/{session_id}/authority/rotate")
 
@@ -160,6 +172,12 @@ class CloudClient:
 
     def recover_command(self, session_id: str, command_id: str, mode: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/cloud/sessions/{session_id}/commands/{command_id}/recover", json={"mode": mode})
+
+    def command_status(self, session_id: str, command_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/cloud/sessions/{quote(session_id, safe='')}/commands/{quote(command_id, safe='')}")
+
+    def list_commands(self, session_id: str, after: int = 0, limit: int = 100) -> list[dict[str, Any]]:
+        return self._request("GET", f"/v1/cloud/sessions/{quote(session_id, safe='')}/commands", params={"after": after, "limit": limit})
 
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{workspace_id}/files/{quote(path, safe='/')}")
@@ -187,6 +205,13 @@ class CloudClient:
 
     def create_share_token(self, session_id: str, role: str = "viewer", scopes: list[str] | None = None, expires_at: int | None = None) -> dict[str, Any]:
         return self._request("POST", "/v1/share-tokens", json={"session_id": session_id, "role": role, "scopes": scopes or [], "expires_at": expires_at})
+
+    def list_share_tokens(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        params = {"session_id": session_id} if session_id else None
+        return self._request("GET", "/v1/share-tokens", params=params)
+
+    def revoke_share_token(self, token_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/share-tokens/{quote(token_id, safe='')}/revoke")
 
     def shared_snapshot(self, session_id: str, share_token: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/shared/{session_id}/snapshot", headers={"X-Share-Token": share_token})

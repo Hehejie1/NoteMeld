@@ -672,9 +672,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         return {"code": 0, "msg": "success", "data": {"id": token_id, "token": raw, "session_id": payload.session_id, "role": payload.role, "scopes": payload.scopes, "expires_at": payload.expires_at}}
 
     @app.get("/v1/share-tokens")
-    def list_share_tokens(current=Depends(_auth_dependency(db, required_scope="share.read"))):
+    def list_share_tokens(session_id: str | None = None, current=Depends(_auth_dependency(db, required_scope="share.read"))):
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+            if session_id is None:
+                rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? ORDER BY created_at DESC", (current["id"],)).fetchall()
+            else:
+                rows = cx.execute("SELECT id,session_id,role,scopes_json,expires_at,revoked_at,created_at FROM share_tokens WHERE user_id=? AND session_id=? ORDER BY created_at DESC", (current["id"], session_id)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "scopes": json.loads(row["scopes_json"])} for row in rows]}
 
     @app.post("/v1/share-tokens/{token_id}/revoke")
