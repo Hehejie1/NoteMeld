@@ -96,7 +96,16 @@ class RedisRelayBroker:
         return f"{self._prefix}:online:{session_id}:{device_id}"
 
     async def _ensure_listener(self) -> None:
-        if self._listener_task is None:
+        if self._listener_task is None or self._listener_task.done():
+            previous = self._listener_task
+            if previous is not None:
+                # Consume the exception from a failed listener task so it is
+                # not reported as an unhandled asyncio task error. A later
+                # register/deliver call will create a fresh listener.
+                try:
+                    previous.exception()
+                except BaseException:
+                    pass
             self._listener_task = asyncio.create_task(self._listen())
 
     async def register(self, session_id: str, device_id: str, peer: Any) -> Any | None:
@@ -134,6 +143,7 @@ class RedisRelayBroker:
             return not self._peers.get(session_id)
 
     async def deliver(self, session_id: str, recipient_device_id: str, message: str, sender: Any) -> bool:
+        await self._ensure_listener()
         local = self.peer(session_id, recipient_device_id)
         if local is not None:
             try:
