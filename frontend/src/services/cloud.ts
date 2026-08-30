@@ -126,14 +126,16 @@ export class CloudClient {
   copySession(sessionId: string) { return this.request<CloudSession>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/copy`) }
   deleteSession(sessionId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}`) }
   recoverCommand(sessionId: string, commandId: string, mode: 'resume' | 'abandon') { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}/recover`, { mode }) }
-  listWorkspaceFiles(workspaceId: string, prefix = '') { return this.request<unknown[]>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files`, undefined, { params: { prefix } }) }
+  listWorkspaceFiles(workspaceId: string, prefix = '', limit = 500) { return this.request<Record<string, unknown>>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files`, undefined, { params: { prefix, limit } }) }
   readWorkspaceFile(workspaceId: string, path: string) { return this.request<Record<string, unknown>>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files/${path.split('/').map(encodeURIComponent).join('/')}`) }
   writeWorkspaceFile(workspaceId: string, path: string, content: string) { return this.request<Record<string, unknown>>('PUT', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files/${path.split('/').map(encodeURIComponent).join('/')}`, { content }) }
   deleteWorkspaceFile(workspaceId: string, path: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/workspaces/${encodeURIComponent(workspaceId)}/files/${path.split('/').map(encodeURIComponent).join('/')}`) }
   workspaceStats(workspaceId: string) { return this.request<Record<string, unknown>>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/stats`) }
+  workspaceCapacity(workspaceId: string) { return this.request<Record<string, unknown>>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/capacity`) }
   createWorkspaceBackup(workspaceId: string) { return this.request<Record<string, unknown>>('POST', `/v1/workspaces/${encodeURIComponent(workspaceId)}/backups`) }
-  listWorkspaceBackups(workspaceId: string) { return this.request<unknown[]>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/backups`) }
+  listWorkspaceBackups(workspaceId: string, limit = 100) { return this.request<unknown[]>('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/backups`, undefined, { params: { limit } }) }
   restoreWorkspaceBackup(workspaceId: string, backupId: string) { return this.request<Record<string, unknown>>('POST', `/v1/workspaces/${encodeURIComponent(workspaceId)}/backups/restore`, { backup_id: backupId }) }
+  deleteWorkspaceBackup(workspaceId: string, backupId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/workspaces/${encodeURIComponent(workspaceId)}/backups/${encodeURIComponent(backupId)}`) }
   listApprovals(sessionId: string) { return this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/approvals`) }
   resolveApproval(sessionId: string, approvalId: string, status: 'approved' | 'rejected', note?: string) { return this.request<Record<string, unknown>>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}/resolve`, { status, note }) }
 }
