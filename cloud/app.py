@@ -489,7 +489,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             _validate_model_base_url(payload.base_url)
         model_id = str(uuid.uuid4())
         now = int(time.time())
-        master_key = app.state.settings.secret_key or app.state.settings.admin_password
+        master_key = app.state.settings.secret_key
+        if payload.api_key and not master_key:
+            raise HTTPException(503, "NOTEMELD_CLOUD_SECRET_KEY is required for provider credentials")
         try:
             encrypted_key = encrypt_secret(payload.api_key, master_key) if payload.api_key else None
         except RuntimeError as exc:
@@ -510,8 +512,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(400, "no changes supplied")
         if changes.get("base_url"):
             _validate_model_base_url(changes["base_url"])
-        master_key = app.state.settings.secret_key or app.state.settings.admin_password
+        master_key = app.state.settings.secret_key
         if "api_key" in changes:
+            if changes["api_key"] and not master_key:
+                raise HTTPException(503, "NOTEMELD_CLOUD_SECRET_KEY is required for provider credentials")
             try:
                 changes["api_key_ciphertext"] = encrypt_secret(changes.pop("api_key"), master_key) if changes["api_key"] else None
             except RuntimeError as exc:
@@ -1620,7 +1624,9 @@ def _runner_for_session(app: FastAPI, db: CloudDB, session: Any):
         model = cx.execute("SELECT provider,model,base_url,api_key_ciphertext,enabled FROM models WHERE id=? AND user_id=?", (model_id, session["user_id"])).fetchone()
     if not model or not model["enabled"] or model["provider"] not in {"openai", "openai-compatible"} or not model["base_url"]:
         raise RuntimeError("configured session model is unavailable")
-    master_key = app.state.settings.secret_key or app.state.settings.admin_password
+    master_key = app.state.settings.secret_key
+    if model["api_key_ciphertext"] and not master_key:
+        raise RuntimeError("cloud secret key is unavailable")
     api_key = decrypt_secret(model["api_key_ciphertext"], master_key) if model["api_key_ciphertext"] else None
     return OpenAICompatibleAgentRunner(base_url=model["base_url"], model=model["model"], api_key=api_key, timeout_seconds=app.state.settings.agent_timeout_seconds)
 

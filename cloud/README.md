@@ -5,6 +5,7 @@ Local development:
 ```bash
 NOTEMELD_CLOUD_ADMIN_USERNAME=admin \
 NOTEMELD_CLOUD_ADMIN_PASSWORD='change-me-please-123' \
+NOTEMELD_CLOUD_SECRET_KEY='replace-with-a-long-random-secret' \
 NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES=1000000000 \
 NOTEMELD_CLOUD_MAX_WORKSPACE_FILES=10000 \
 NOTEMELD_CLOUD_CORS_ORIGINS='https://app.example.com' \
@@ -51,6 +52,9 @@ executed implicitly.
 Write/delete tools are exposed only as approval-producing capabilities. They
 never mutate the workspace until an authorized caller resolves the approval as
 `approved`; the approval endpoint then executes through the same safe resolver.
+Provider API keys are accepted only when `NOTEMELD_CLOUD_SECRET_KEY` is set.
+Keep this key stable across restarts and backups; the administrator password is
+never reused as an encryption master key.
 
 Container build/run from the NoteMeld repository root:
 

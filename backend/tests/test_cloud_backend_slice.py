@@ -17,7 +17,7 @@ NONCE = base64.urlsafe_b64encode(b"n" * 12).decode()
 
 
 def client(tmp_path: Path) -> TestClient:
-    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production")
     return TestClient(create_app(settings))
 
 
@@ -252,6 +252,13 @@ def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
         assert http.delete(f"/v1/models/{model['id']}", headers=headers).status_code == 200
         assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "base_url": "file:///etc/passwd"}).status_code == 422
         assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "api_key": "secret", "unexpected": "must-reject"}).status_code == 422
+
+
+def test_cloud_model_secret_requires_dedicated_master_key(tmp_path):
+    with TestClient(create_app(CloudSettings(tmp_path / "data", "admin", "admin-password-123"))) as http:
+        token = login(http, "admin", "admin-password-123")
+        response = http.post("/v1/models", headers={"Authorization": f"Bearer {token}"}, json={"name": "OpenAI", "provider": "openai", "model": "gpt-test", "api_key": "sk-private"})
+        assert response.status_code == 503
 
 
 def test_cloud_model_update_reports_encryption_dependency_failure(tmp_path, monkeypatch):
