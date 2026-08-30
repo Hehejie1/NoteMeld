@@ -983,6 +983,17 @@ def test_login_bruteforce_limit_survives_process_restart(tmp_path):
         assert restarted.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code == 429
 
 
+def test_login_bruteforce_limit_is_atomic_under_concurrency(tmp_path):
+    with client(tmp_path) as http:
+        def attempt(_: int) -> int:
+            return http.post("/v1/auth/login", json={"username": "admin", "password": "wrong-password-123"}).status_code
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            statuses = list(pool.map(attempt, range(8)))
+        assert statuses.count(401) == 5
+        assert statuses.count(429) == 3
+
+
 def test_password_change_revokes_existing_tokens(tmp_path):
     with client(tmp_path) as http:
         admin = login(http, "admin", "admin-password-123")
