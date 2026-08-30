@@ -68,6 +68,20 @@ def test_cloud_client_rotates_and_clears_token():
     client.close()
 
 
+def test_cloud_client_persists_token_store_across_instances():
+    class Store:
+        value = None
+        def load(self): return self.value
+        def save(self, token): self.value = token
+        def clear(self): self.value = None
+
+    store = Store()
+    client = CloudClient("https://cloud.test", token="nmt_initial", token_store=store, client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"code": 0, "msg": "success", "data": {"revoked": True}}))))
+    client.revoke_token()
+    assert store.value is None
+    client.close()
+
+
 def test_cloud_client_device_proof_contract():
     seen = []
 

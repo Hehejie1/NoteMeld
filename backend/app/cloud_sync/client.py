@@ -19,9 +19,10 @@ class CloudClient:
     local queue and event replay semantics.
     """
 
-    def __init__(self, base_url: str, token: str | None = None, device_id: str | None = None, client: httpx.Client | None = None):
+    def __init__(self, base_url: str, token: str | None = None, device_id: str | None = None, client: httpx.Client | None = None, token_store: Any | None = None):
         self.base_url = base_url.rstrip("/")
-        self.token = token
+        self.token_store = token_store
+        self.token = token if token is not None else (token_store.load() if token_store is not None else None)
         self.device_id = device_id
         self._client = client or httpx.Client(timeout=20.0)
 
@@ -38,6 +39,7 @@ class CloudClient:
             raise ValueError("username or account_id is required")
         data = self._request("POST", "/v1/auth/login", json=payload)
         self.token = data["token"]
+        self._persist_token()
         return data
 
     def capabilities(self) -> dict[str, Any]:
@@ -46,12 +48,19 @@ class CloudClient:
     def rotate_token(self) -> dict[str, Any]:
         data = self._request("POST", "/v1/auth/rotate")
         self.token = data["token"]
+        self._persist_token()
         return data
 
     def revoke_token(self) -> dict[str, Any]:
         data = self._request("POST", "/v1/auth/revoke")
         self.token = None
+        if self.token_store is not None:
+            self.token_store.clear()
         return data
+
+    def _persist_token(self) -> None:
+        if self.token_store is not None and self.token is not None:
+            self.token_store.save(self.token)
 
     def list_personal_tokens(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/auth/tokens")
