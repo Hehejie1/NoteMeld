@@ -207,7 +207,16 @@ class CloudClient:
         return self._request("DELETE", f"/v1/cloud/sessions/{session_id}/authority/lease", params={"owner": owner})
 
     def events(self, session_id: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
-        return self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after, "limit": limit})
+        events = self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after, "limit": limit})
+        if not isinstance(events, list):
+            raise CloudClientError(502, "cloud returned invalid event page")
+        previous = after
+        for event in events:
+            sequence = event.get("sequence") if isinstance(event, dict) else None
+            if type(sequence) is not int or sequence != previous + 1:
+                raise CloudClientError(409, "event cursor gap; refresh session snapshot")
+            previous = sequence
+        return events
 
     def list_approvals(self, session_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/approvals")

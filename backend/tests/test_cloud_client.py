@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from app.cloud_sync.client import CloudClient, CloudClientError
 
@@ -77,6 +78,15 @@ def test_cloud_client_sends_event_page_bounds():
         "https://cloud.test/v1/cloud/sessions/session-1/events?after=12&limit=37",
         "https://cloud.test/v1/cloud/sessions/session-1/snapshot?limit=37",
     ]
+    client.close()
+
+
+def test_cloud_client_rejects_event_cursor_gaps():
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"code": 0, "msg": "success", "data": [{"sequence": 14}]}))
+    client = CloudClient("https://cloud.test", token="nmt_test", client=httpx.Client(transport=transport))
+    with pytest.raises(CloudClientError, match="cursor gap") as error:
+        client.events("session-1", after=12)
+    assert error.value.status_code == 409
     client.close()
 
 
