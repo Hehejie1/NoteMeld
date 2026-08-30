@@ -17,3 +17,9 @@ def test_memory_relay_rejects_multiple_workers(tmp_path: Path):
 def test_unknown_relay_backend_is_rejected(tmp_path: Path):
     with pytest.raises(ValueError, match="unsupported relay"):
         settings(tmp_path, relay_backend="unknown").validate()
+
+
+def test_remote_redis_relay_requires_tls(tmp_path: Path):
+    with pytest.raises(ValueError, match="rediss"):
+        settings(tmp_path, relay_backend="redis", relay_url="redis://redis.example.internal:6379/0").validate()
+    settings(tmp_path, relay_backend="redis", relay_url="rediss://redis.example.internal:6380/0").validate()

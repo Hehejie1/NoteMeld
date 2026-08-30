@@ -61,6 +61,8 @@ class CloudSettings:
             parsed = urlparse(self.relay_url)
             if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname:
                 raise ValueError("relay URL must use redis:// or rediss://")
+            if parsed.scheme == "redis" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+                raise ValueError("remote relay URL must use rediss://")
         if self.worker_count < 1:
             raise ValueError("worker count must be positive")
         if self.device_online_ttl_seconds < 5:
