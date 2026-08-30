@@ -1266,7 +1266,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 if peer is None or peer is websocket:
                     await websocket.send_json({"type": "failed", "error": "host_offline", "frame_id": envelope["frame_id"]})
                     continue
-                await peer.send_text(message)
+                try:
+                    await peer.send_text(message)
+                except Exception:  # noqa: BLE001 - a peer can disconnect between lookup and delivery
+                    app.state.relay_broker.unregister(session_id, envelope["recipient_device_id"], peer)
+                    await websocket.send_json({"type": "failed", "error": "host_offline", "frame_id": envelope["frame_id"]})
+                    continue
                 await websocket.send_json({"type": "relay_accepted", "frame_id": envelope["frame_id"]})
         except WebSocketDisconnect:
             app.state.relay_broker.unregister(session_id, device_id, websocket)
