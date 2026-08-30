@@ -65,7 +65,7 @@ client may explicitly retain its source token when provisioning another device.
 Workspace writes are bounded by `NOTEMELD_CLOUD_MAX_WORKSPACE_BYTES` (1 GB by
 default) and `NOTEMELD_CLOUD_MAX_WORKSPACE_FILES` (10,000 by default), returning
 HTTP 413 when either quota would be exceeded. Workspace ZIP
-backups can be created/listed/restored through the `/v1/workspaces/.../backups`
+backups can be created/listed/restored/deleted through the `/v1/workspaces/.../backups`
 endpoints; restore is a validated file overlay.
 
 `POST /v1/cloud/sessions/import` creates a new cloud-native session from an

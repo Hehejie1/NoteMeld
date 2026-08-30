@@ -388,6 +388,7 @@ the default configuration.
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
 | GET | `/v1/workspaces/{workspace_id}/files?prefix=&limit=` | bounded list of safe logical file paths and size/mtime metadata |
 | POST/GET | `/v1/workspaces/{workspace_id}/backups` | create/list local-disk ZIP backups |
+| DELETE | `/v1/workspaces/{workspace_id}/backups/{backup_id}` | delete one owned backup archive |
 | POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
 | GET | `/v1/grants` | list remote-control grants |
 | POST | `/v1/grants/{grant_id}/revoke` | revoke a grant |

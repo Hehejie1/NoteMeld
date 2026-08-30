@@ -182,6 +182,9 @@ class CloudClient:
     def snapshot(self, session_id: str, limit: int = 500) -> dict[str, Any]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/snapshot", params={"limit": limit})
 
+    def delete_workspace_backup(self, workspace_id: str, backup_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/v1/workspaces/{quote(workspace_id, safe='')}/backups/{quote(backup_id, safe='')}")
+
     def workspace_capacity(self, workspace_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/workspaces/{quote(workspace_id, safe='')}/capacity")
 

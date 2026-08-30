@@ -1367,6 +1367,9 @@ def test_workspace_backup_list_and_restore(tmp_path):
         restored = http.post("/v1/workspaces/backup/backups/restore", headers=headers, json={"backup_id": backup["backup_id"]})
         assert restored.status_code == 200
         assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).json()["data"]["content"] == "before"
+        deleted = http.delete(f"/v1/workspaces/backup/backups/{backup['backup_id']}", headers=headers)
+        assert deleted.status_code == 200 and deleted.json()["data"]["deleted"] is True
+        assert http.delete(f"/v1/workspaces/backup/backups/{backup['backup_id']}", headers=headers).status_code == 404
         assert http.delete("/v1/workspaces/backup/files/a.txt", headers=headers).status_code == 200
         assert http.get("/v1/workspaces/backup/files/a.txt", headers=headers).status_code == 400
 

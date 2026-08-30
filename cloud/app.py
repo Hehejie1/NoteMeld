@@ -1226,6 +1226,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             items.append({"backup_id": path.stem, "bytes": path.stat().st_size, "created_at": int(path.stat().st_mtime)})
         return {"code": 0, "msg": "success", "data": items}
 
+    @app.delete("/v1/workspaces/{workspace_id}/backups/{backup_id}")
+    def delete_backup(workspace_id: str, backup_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
+        _validate_workspace_id(workspace_id)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", backup_id):
+            raise HTTPException(422, "invalid backup id")
+        archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
+        try:
+            archive.unlink()
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "backup not found") from exc
+        _audit(db, current["id"], "workspace.backup.delete", backup_id, {"workspace_id": workspace_id})
+        return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "deleted": True}}
+
     @app.post("/v1/workspaces/{workspace_id}/backups/restore")
     def restore_workspace(workspace_id: str, payload: WorkspaceRestore, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
