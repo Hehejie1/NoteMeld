@@ -51,6 +51,12 @@ Relay 或同步任务。
 写入本地 durable mailbox，再回传 receipt；处理完成后再标记 mailbox
 completed。
 
+`relay_accepted` 只表示 Relay 已把 frame 写入在线 peer socket，不表示宿主
+已经接收。宿主平台层必须先用 envelope AAD 完成 AEAD 解密，再把明文 command
+交给 `RemoteHostAuthority`（或原生等价实现）；只有授权校验和 durable enqueue
+成功后才能构造 `status=received` receipt。receipt 只含 frame/request/session/
+queue sequence，不包含 input 或工具参数。
+
 ## 本地队列与恢复
 
 平台适配层只调用 `DurableSessionMailbox`（或等价的原生实现）：

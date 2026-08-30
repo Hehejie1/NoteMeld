@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
-import base64
 from dataclasses import dataclass
 
 
@@ -46,13 +47,16 @@ class RemoteFrame:
     def validate(self) -> None:
         if self.protocol_version != PROTOCOL_VERSION:
             raise ValueError("unsupported sync protocol")
-        if not self.session_id or not self.sender_device_id or not self.recipient_device_id or not self.frame_id or not self.ciphertext:
+        text_fields = (self.session_id, self.sender_device_id, self.recipient_device_id, self.frame_id, self.ciphertext, self.nonce, self.frame_type)
+        if any(not isinstance(value, str) or not value for value in text_fields):
             raise ValueError("incomplete remote frame")
-        if self.sequence < 1 or self.authority_epoch < 0 or self.frame_type not in {"command", "receipt", "event"}:
+        if any(len(value) > 4096 for value in (self.session_id, self.sender_device_id, self.recipient_device_id, self.frame_id)) or len(self.nonce) > 24 or len(self.ciphertext) > 4 * 1024 * 1024:
+            raise ValueError("remote frame field is too large")
+        if type(self.sequence) is not int or type(self.authority_epoch) is not int or self.sequence < 1 or self.authority_epoch < 0 or self.frame_type not in {"command", "receipt", "event"}:
             raise ValueError("invalid remote frame metadata")
         try:
-            nonce = base64.urlsafe_b64decode(self.nonce + "=" * (-len(self.nonce) % 4))
-        except (ValueError, TypeError):
+            nonce = base64.b64decode(self.nonce + "=" * (-len(self.nonce) % 4), altchars=b"-_", validate=True)
+        except (ValueError, TypeError, binascii.Error):
             raise ValueError("invalid remote frame nonce") from None
         if len(nonce) != 12:
             raise ValueError("invalid remote frame nonce")
@@ -62,6 +66,8 @@ class RemoteFrame:
 
     @classmethod
     def from_json(cls, payload: str) -> "RemoteFrame":
+        if not isinstance(payload, str) or len(payload) > 5 * 1024 * 1024:
+            raise ValueError("remote frame JSON is too large")
         try:
             value = json.loads(payload)
         except (TypeError, json.JSONDecodeError) as exc:
@@ -75,5 +81,8 @@ class RemoteFrame:
             authority_epoch=value["authority_epoch"], protocol_version=value["protocol_version"],
             nonce=value["nonce"], frame_type=value["frame_type"],
         )
-        frame.validate()
+        try:
+            frame.validate()
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid remote frame fields") from exc
         return frame

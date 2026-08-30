@@ -1,5 +1,12 @@
 # Known Pitfalls
 
+## 把 relay_accepted 当成宿主已收到
+
+- 风险：Relay 向 peer socket 写入成功后立刻向控制端显示“已送达”，但宿主可能在解密、授权或 durable enqueue 前崩溃，command 实际丢失。
+- 不允许：云端代替宿主生成 received receipt；入队前回 receipt；receipt 携带 input/工具参数；Host 接受额外 command 字段。
+- 检查方式：`backend/tests/test_cloud_remote_host.py::test_remote_host_receipts_only_after_durable_enqueue`。
+- 修复经验：relay_accepted 只表示传输接纳；平台先验证 AEAD，再经 `RemoteHostAuthority` 授权和事务入队，成功后由宿主生成最小 received receipt。
+
 ## Durable mailbox 连续领取多个 active Turn
 
 - 风险：只把 `pop()` 做成“取第一条 queued 并改 admitted”，却不先检查 active 状态，同一 session 可并行执行多个 Turn；重启后还可能越过未知副作用继续下一条。

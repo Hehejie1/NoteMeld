@@ -57,6 +57,13 @@ def test_remote_frame_from_json_validates_shape_and_fields():
         pass
     else:
         raise AssertionError("malformed frame must be rejected")
+    wrong_type = frame.to_json().replace('"sequence":1', '"sequence":"1"')
+    try:
+        RemoteFrame.from_json(wrong_type)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("wrong field type must be rejected")
 
 
 def test_durable_mailbox_survives_reopen(tmp_path):
