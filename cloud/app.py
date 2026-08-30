@@ -1680,7 +1680,7 @@ def _runner_for_session(app: FastAPI, db: CloudDB, session: Any):
     if model["api_key_ciphertext"] and not master_key:
         raise RuntimeError("cloud secret key is unavailable")
     api_key = decrypt_secret(model["api_key_ciphertext"], master_key) if model["api_key_ciphertext"] else None
-    return OpenAICompatibleAgentRunner(base_url=model["base_url"], model=model["model"], api_key=api_key, timeout_seconds=app.state.settings.agent_timeout_seconds)
+    return OpenAICompatibleAgentRunner(base_url=model["base_url"], model=model["model"], api_key=api_key, timeout_seconds=app.state.settings.agent_timeout_seconds, max_retries=getattr(app.state.settings, "agent_max_retries", 2))
 
 
 def _validate_model_base_url(value: str) -> None:

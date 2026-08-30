@@ -20,3 +20,5 @@ def test_settings_allow_local_agent_and_validate_limits(tmp_path: Path):
     base(tmp_path, agent_base_url="http://127.0.0.1:9000").validate()
     with pytest.raises(ValueError, match="limits"):
         base(tmp_path, max_request_bytes=0).validate()
+    with pytest.raises(ValueError, match="max retries"):
+        base(tmp_path, agent_max_retries=4).validate()

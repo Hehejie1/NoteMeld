@@ -129,5 +129,6 @@ def create_agent_runner(settings: Any) -> CloudAgentRunner:
             model=settings.agent_model,
             api_key=settings.agent_api_key,
             timeout_seconds=settings.agent_timeout_seconds,
+            max_retries=getattr(settings, "agent_max_retries", 2),
         )
     return DeterministicAgentRunner()

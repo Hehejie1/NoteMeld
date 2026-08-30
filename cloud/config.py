@@ -28,6 +28,7 @@ class CloudSettings:
     relay_backend: str = "memory"
     worker_count: int = 1
     device_online_ttl_seconds: int = 90
+    agent_max_retries: int = 2
 
     @property
     def database_path(self) -> Path:
@@ -55,6 +56,8 @@ class CloudSettings:
             raise ValueError("worker count must be positive")
         if self.device_online_ttl_seconds < 5:
             raise ValueError("device online TTL must be at least 5 seconds")
+        if not 0 <= self.agent_max_retries <= 3:
+            raise ValueError("agent max retries must be between 0 and 3")
         if self.relay_backend == "memory" and self.worker_count > 1:
             raise ValueError("memory relay cannot run with multiple workers")
 
@@ -81,4 +84,5 @@ def load_settings() -> CloudSettings:
         relay_backend=os.getenv("NOTEMELD_CLOUD_RELAY_BACKEND", "memory").strip().lower(),
         worker_count=int(os.getenv("WEB_CONCURRENCY", "1")),
         device_online_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_DEVICE_ONLINE_TTL_SECONDS", "90")),
+        agent_max_retries=int(os.getenv("NOTEMELD_CLOUD_AGENT_MAX_RETRIES", "2")),
     )
