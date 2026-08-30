@@ -60,6 +60,8 @@ Ed25519 设备私钥签名。宿主以自己的 device token 调用云端
 `/v1/lan/authorize`，校验有效 Grant、公钥、workspace、scope 和 authority
 epoch 后，才接受 `notemeld.sync.v1` E2EE command frame。授权最长 60 秒，
 到期必须重连；receipt 只有在端侧解密、授权和 durable enqueue 完成后返回。
+E2EE 握手消息使用 `notemeld.e2ee.handshake.v1` envelope；双方临时 X25519
+公钥和设备身份签名必须先通过校验，再按规范 transcript 派生会话密钥。
 候选地址只接受显式 RFC1918、IPv4 link-local/loopback、IPv6 ULA/link-local/
 loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标为 private
 的文档保留地址。

@@ -10,6 +10,7 @@ import binascii
 import os
 import re
 from dataclasses import dataclass, replace
+from typing import Any
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
@@ -73,6 +74,114 @@ def verify_handshake(
         _unb64(signature, expected_length=64),
         _handshake_message(session_id, sender, recipient, ephemeral_public),
     )
+
+
+@dataclass(frozen=True)
+class HandshakeEnvelope:
+    """Signed ephemeral-key offer exchanged directly by two devices."""
+
+    session_id: str
+    sender_device_id: str
+    recipient_device_id: str
+    ephemeral_public: str
+    signature: str
+
+    def __post_init__(self) -> None:
+        _handshake_message(
+            self.session_id,
+            self.sender_device_id,
+            self.recipient_device_id,
+            _unb64(self.ephemeral_public, expected_length=32),
+        )
+        _unb64(self.signature, expected_length=64)
+
+    def signing_bytes(self) -> bytes:
+        return _handshake_message(
+            self.session_id,
+            self.sender_device_id,
+            self.recipient_device_id,
+            _unb64(self.ephemeral_public, expected_length=32),
+        )
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "protocol_version": "notemeld.e2ee.handshake.v1",
+            "session_id": self.session_id,
+            "sender_device_id": self.sender_device_id,
+            "recipient_device_id": self.recipient_device_id,
+            "ephemeral_public": self.ephemeral_public,
+            "signature": self.signature,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Any) -> "HandshakeEnvelope":
+        if not isinstance(value, dict) or value.get("protocol_version") != "notemeld.e2ee.handshake.v1":
+            raise ValueError("invalid handshake envelope")
+        fields = ("session_id", "sender_device_id", "recipient_device_id", "ephemeral_public", "signature")
+        if any(type(value.get(field)) is not str for field in fields):
+            raise ValueError("invalid handshake envelope")
+        return cls(*(value[field] for field in fields))
+
+
+def create_handshake_envelope(
+    signing_private: bytes,
+    session_id: str,
+    sender: str,
+    recipient: str,
+    ephemeral_public: bytes,
+) -> HandshakeEnvelope:
+    """Create a signed, JSON-safe handshake offer."""
+    return HandshakeEnvelope(
+        session_id=session_id,
+        sender_device_id=sender,
+        recipient_device_id=recipient,
+        ephemeral_public=_b64(ephemeral_public),
+        signature=sign_handshake(signing_private, session_id, sender, recipient, ephemeral_public),
+    )
+
+
+def verify_handshake_envelope(envelope: HandshakeEnvelope, signing_public: bytes) -> None:
+    if not isinstance(envelope, HandshakeEnvelope):
+        raise ValueError("invalid handshake envelope")
+    verify_handshake(
+        signing_public,
+        envelope.signature,
+        envelope.session_id,
+        envelope.sender_device_id,
+        envelope.recipient_device_id,
+        _unb64(envelope.ephemeral_public, expected_length=32),
+    )
+
+
+def derive_handshake_session_key(
+    local_ephemeral_private: bytes,
+    local: HandshakeEnvelope,
+    peer: HandshakeEnvelope,
+) -> bytes:
+    """Derive one symmetric key from two mutually addressed envelopes.
+
+    The transcript orders the endpoints deterministically, so both sides
+    derive the same key even though their sender/recipient directions differ.
+    Callers must verify each envelope's Ed25519 signature before deriving.
+    """
+    if not isinstance(local, HandshakeEnvelope) or not isinstance(peer, HandshakeEnvelope):
+        raise ValueError("invalid handshake envelope")
+    if (
+        local.session_id != peer.session_id
+        or local.sender_device_id != peer.recipient_device_id
+        or local.recipient_device_id != peer.sender_device_id
+    ):
+        raise ValueError("handshake endpoint mismatch")
+    local_public = _unb64(local.ephemeral_public, expected_length=32)
+    peer_public = _unb64(peer.ephemeral_public, expected_length=32)
+    if local.sender_device_id < peer.sender_device_id:
+        first_id, first_public, second_id, second_public = local.sender_device_id, local_public, peer.sender_device_id, peer_public
+    else:
+        first_id, first_public, second_id, second_public = peer.sender_device_id, peer_public, local.sender_device_id, local_public
+    transcript = _handshake_transcript(local.session_id, first_id, first_public, second_id, second_public)
+    private = x25519.X25519PrivateKey.from_private_bytes(local_ephemeral_private)
+    shared = private.exchange(x25519.X25519PublicKey.from_public_bytes(peer_public))
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=transcript).derive(shared)
 
 
 def derive_session_key(
@@ -221,6 +330,28 @@ def _handshake_message(
         + recipient.encode()
         + b"\0"
         + ephemeral_public
+    )
+
+
+def _handshake_transcript(
+    session_id: str,
+    first_id: str,
+    first_public: bytes,
+    second_id: str,
+    second_public: bytes,
+) -> bytes:
+    if (
+        not isinstance(first_public, bytes)
+        or len(first_public) != 32
+        or not isinstance(second_public, bytes)
+        or len(second_public) != 32
+    ):
+        raise ValueError("invalid handshake transcript key")
+    return (
+        b"notemeld-e2ee-transcript-v1\0"
+        + _handshake_message(session_id, first_id, second_id, b"")
+        + first_public
+        + second_public
     )
 
 

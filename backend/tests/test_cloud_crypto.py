@@ -25,6 +25,21 @@ def test_e2ee_handshake_and_aead_roundtrip():
         crypto.decrypt(second_key, nonce, ciphertext, b"session:2")
 
 
+def test_signed_handshake_envelopes_derive_same_key_in_both_directions():
+    a_signing_private, a_signing_public = crypto.generate_identity()
+    b_signing_private, b_signing_public = crypto.generate_identity()
+    a_ephemeral_private, a_ephemeral_public = crypto.generate_ephemeral()
+    b_ephemeral_private, b_ephemeral_public = crypto.generate_ephemeral()
+    a_offer = crypto.create_handshake_envelope(a_signing_private, "session", "device-a", "device-b", a_ephemeral_public)
+    b_offer = crypto.create_handshake_envelope(b_signing_private, "session", "device-b", "device-a", b_ephemeral_public)
+    crypto.verify_handshake_envelope(a_offer, a_signing_public)
+    crypto.verify_handshake_envelope(b_offer, b_signing_public)
+    assert crypto.derive_handshake_session_key(a_ephemeral_private, a_offer, b_offer) == crypto.derive_handshake_session_key(b_ephemeral_private, b_offer, a_offer)
+    tampered = dict(b_offer.as_dict(), recipient_device_id="device-c")
+    with pytest.raises(ValueError, match="endpoint"):
+        crypto.derive_handshake_session_key(a_ephemeral_private, a_offer, crypto.HandshakeEnvelope.from_dict(tampered))
+
+
 def test_session_cipher_rejects_replay_and_supports_explicit_rekey():
     first_private, first_public = crypto.generate_ephemeral()
     second_private, second_public = crypto.generate_ephemeral()

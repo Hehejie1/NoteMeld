@@ -9,7 +9,10 @@ from .connection import (
 )
 from .device_id import make_device_id
 from .e2ee import (
+    HandshakeEnvelope,
     SessionCipher,
+    create_handshake_envelope,
+    derive_handshake_session_key,
     derive_rekeyed_session_key,
     derive_session_key,
     generate_ephemeral,
@@ -56,17 +59,21 @@ __all__ = [
     "RemoteHostError",
     "RemoteHostReceipt",
     "SessionCipher",
+    "HandshakeEnvelope",
     "SessionCommand",
     "SessionMailbox",
     "connect_with_fallback",
     "connection_candidates",
     "derive_rekeyed_session_key",
+    "derive_handshake_session_key",
     "derive_session_key",
     "generate_ephemeral",
     "generate_identity",
+    "create_handshake_envelope",
     "install_lan_direct_service",
     "make_device_id",
     "sign_handshake",
     "validate_cloud_base_url",
     "verify_handshake",
+    "verify_handshake_envelope",
 ]
