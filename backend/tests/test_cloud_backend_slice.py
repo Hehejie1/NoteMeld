@@ -960,6 +960,19 @@ def test_workspace_backup_and_copy_concurrent_operations_leave_no_temporary_file
     assert not list((tmp_path / "destination").rglob(".*.copy.tmp"))
 
 
+def test_workspace_restore_rejects_directory_named_symlink_members(tmp_path):
+    from cloud.workspace import Workspace, WorkspaceError
+    import zipfile
+
+    archive_path = tmp_path / "malicious.zip"
+    member = zipfile.ZipInfo("linked/")
+    member.external_attr = (0o120777 << 16) | 0x10
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(member, "")
+    with pytest.raises(WorkspaceError, match="symlink"):
+        Workspace(tmp_path / "restore").restore_backup(archive_path, 1024)
+
+
 def test_workspace_file_count_quota_applies_to_writes_and_restore(tmp_path):
     settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production", max_workspace_files=1)
     with TestClient(create_app(settings)) as http:

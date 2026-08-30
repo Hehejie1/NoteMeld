@@ -145,10 +145,12 @@ class Workspace:
         members: list[zipfile.ZipInfo] = []
         with zipfile.ZipFile(archive_path) as archive:
             for member in archive.infolist():
-                if member.is_dir() or member.filename.startswith("/") or ".." in Path(member.filename).parts:
-                    raise WorkspaceError("backup contains an unsafe path")
                 if member.external_attr >> 16 & 0o170000 == 0o120000:
                     raise WorkspaceError("backup contains a symlink")
+                if member.is_dir():
+                    continue
+                if member.filename.startswith("/") or ".." in Path(member.filename).parts:
+                    raise WorkspaceError("backup contains an unsafe path")
                 total += member.file_size
                 if total > max_bytes:
                     raise WorkspaceError("backup exceeds workspace quota")
