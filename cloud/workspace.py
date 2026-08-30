@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import zipfile
@@ -15,6 +16,17 @@ class Workspace:
     def __init__(self, root: Path):
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self._cleanup_interrupted_writes()
+
+    def _cleanup_interrupted_writes(self) -> None:
+        """Remove only temporary files produced by this workspace writer."""
+        generated = re.compile(r"^\..+\.\d+(?:\.copy)?\.tmp$")
+        for path in self.root.rglob("*"):
+            if path.is_file() and generated.match(path.name):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def path(self, logical_path: str) -> Path:
         if not logical_path or "\x00" in logical_path:
@@ -53,12 +65,14 @@ class Workspace:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         temporary.replace(path)
+        _fsync_directory(path.parent)
 
     def delete_file(self, logical_path: str) -> None:
         path = self.path(logical_path)
         if path.is_symlink() or not path.is_file():
             raise WorkspaceError("workspace file is unavailable")
         path.unlink()
+        _fsync_directory(path.parent)
 
     def stats(self) -> dict[str, int]:
         files = 0
@@ -95,6 +109,7 @@ class Workspace:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         temporary.replace(destination)
+        _fsync_directory(destination.parent)
         return destination.stat().st_size
 
     def restore_backup(self, archive_path: Path, max_bytes: int) -> dict[str, int]:
@@ -128,6 +143,7 @@ class Workspace:
                         target = self.path(source.relative_to(staging).as_posix())
                         target.parent.mkdir(parents=True, exist_ok=True)
                         os.replace(source, target)
+                _fsync_directory(self.root)
             finally:
                 shutil.rmtree(staging, ignore_errors=True)
         return {"file_count": len(members), "bytes_restored": total}
@@ -148,5 +164,18 @@ class Workspace:
             with temporary.open("rb") as handle:
                 os.fsync(handle.fileno())
             temporary.replace(target)
+            _fsync_directory(target.parent)
             copied += 1
         return {"file_count": copied, "bytes_copied": stats["bytes_used"]}
+
+
+def _fsync_directory(path: Path) -> None:
+    """Persist directory entry updates where the platform supports it."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

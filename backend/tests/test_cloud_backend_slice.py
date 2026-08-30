@@ -697,6 +697,19 @@ def test_workspace_rejects_escape(tmp_path):
         raise AssertionError("path traversal was accepted")
 
 
+def test_workspace_cleans_interrupted_write_temporary_files(tmp_path):
+    from cloud.workspace import Workspace
+
+    root = tmp_path / "crash"
+    root.mkdir()
+    (root / ".notes.txt.123.tmp").write_text("partial", encoding="utf-8")
+    (root / ".copy.txt.456.copy.tmp").write_text("partial", encoding="utf-8")
+    workspace = Workspace(root)
+    assert not (root / ".notes.txt.123.tmp").exists()
+    assert not (root / ".copy.txt.456.copy.tmp").exists()
+    assert workspace.stats() == {"file_count": 0, "bytes_used": 0}
+
+
 def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
