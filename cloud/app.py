@@ -218,6 +218,7 @@ class ShareTokenCreate(BaseModel):
 
 def create_app(settings: CloudSettings | None = None) -> FastAPI:
     settings = settings or load_settings()
+    settings.validate()
     db = CloudDB(settings.database_path)
     db.init()
     _recover_running_commands(db)

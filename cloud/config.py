@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,19 @@ class CloudSettings:
     @property
     def workspaces_dir(self) -> Path:
         return self.data_dir / "workspaces"
+
+    def validate(self) -> None:
+        if not self.admin_username.strip() or len(self.admin_password) < 12:
+            raise ValueError("admin credentials are not strong enough")
+        if self.max_workspace_bytes <= 0 or self.max_workspace_files <= 0 or self.max_request_bytes <= 0:
+            raise ValueError("workspace and request limits must be positive")
+        if "*" in self.cors_origins:
+            raise ValueError("wildcard CORS is not allowed")
+        if self.agent_base_url:
+            parsed = urlparse(self.agent_base_url)
+            local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+            if parsed.scheme != "https" and not local:
+                raise ValueError("remote agent URL must use HTTPS")
 
 
 def load_settings() -> CloudSettings:
