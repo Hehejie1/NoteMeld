@@ -1316,7 +1316,7 @@ def _authenticate_token(db: CloudDB, authorization: str | None):
     token_id, secret = parsed
     with db.connect() as cx:
         row = cx.execute("SELECT u.*,t.expires_at,t.revoked_at,t.audience,t.scopes_json FROM tokens t JOIN users u ON u.id=t.user_id WHERE t.id=? AND t.digest=?", (token_id, token_digest(token_id, secret))).fetchone()
-    if not row or row["revoked_at"] or row["disabled"] or (row["expires_at"] and row["expires_at"] < int(time.time())):
+    if not row or row["revoked_at"] or row["disabled"] or (row["expires_at"] is not None and row["expires_at"] <= int(time.time())):
         return None
     return row
 
