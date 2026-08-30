@@ -437,11 +437,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _clear_login_failures(db, source_key)
         raw, digest = issue_token()
         now = int(time.time())
+        expires_at = token_expiry(settings.token_ttl_seconds)
         with db.connect() as cx:
             token_id = raw[4:].split(".", 1)[0]
-            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (token_id, user["id"], digest, token_expiry(settings.token_ttl_seconds), "cloud-api", '["*"]', now))
+            cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (token_id, user["id"], digest, expires_at, "cloud-api", '["*"]', now))
         _audit(db, user["id"], "auth.login", user["id"], {"role": user["role"]})
-        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "user_id": user["id"], "role": user["role"], "audience": "cloud-api", "scopes": ["*"], "expires_at": token_expiry(settings.token_ttl_seconds)}}
+        return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "user_id": user["id"], "role": user["role"], "audience": "cloud-api", "scopes": ["*"], "expires_at": expires_at}}
 
     @app.post("/v1/auth/revoke")
     def revoke_token(authorization: Annotated[str | None, Header()] = None):
