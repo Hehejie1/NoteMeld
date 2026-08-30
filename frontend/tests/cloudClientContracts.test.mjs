@@ -26,3 +26,10 @@ test('web token store uses encrypted IndexedDB rather than plaintext browser sto
   assert.match(tokenStore, /AES-GCM/)
   assert.doesNotMatch(tokenStore, /localStorage/)
 })
+
+test('connection strategy orders LAN candidates before cloud relay fallback', () => {
+  const source = fs.readFileSync(new URL('../src/services/connectionStrategy.ts', import.meta.url), 'utf8')
+  assert.match(source, /transport: 'lan'/)
+  assert.match(source, /transport: 'relay'/)
+  assert.match(source, /candidates\.push\(\{ transport: 'relay'/)
+})
