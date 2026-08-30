@@ -9,6 +9,8 @@ export function useCloudSession(client: CloudClient, sessionId?: string) {
   useEffect(() => {
     if (!sessionId) return
     void controller.open(sessionId)
+    const timer = window.setInterval(() => { void controller.refreshEvents().catch(() => undefined) }, 5000)
+    return () => window.clearInterval(timer)
   }, [controller, sessionId])
   return { ...state, controller }
 }

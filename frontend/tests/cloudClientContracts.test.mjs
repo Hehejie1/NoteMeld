@@ -59,6 +59,8 @@ test('react cloud session hook subscribes to the shared controller lifecycle', (
   assert.match(source, /useCloudSession/)
   assert.match(source, /controller\.subscribe/)
   assert.match(source, /controller\.open\(sessionId\)/)
+  assert.match(source, /setInterval/)
+  assert.match(source, /refreshEvents\(\)\.catch/)
 })
 
 test('cloud auth hook hydrates, logs in, and revokes through CloudClient', () => {
