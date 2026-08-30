@@ -347,6 +347,7 @@ the default configuration.
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/v1/cloud/sessions/import` | create a new independent cloud-native session from an idempotent, allowlisted local full-share snapshot; validates active source device, secrets, paths, file count/size and SHA-256 |
+| GET | `/v1/auth/me` | validate the current bearer token and return the authenticated account role/scopes |
 | POST | `/v1/devices/register` | canonical device registration path (legacy `/v1/devices` remains supported) |
 | POST | `/v1/devices/{device_id}/challenge` | issue a one-time device proof challenge |
 | POST | `/v1/devices/{device_id}/challenge/verify` | verify an Ed25519 proof and authorize the device for a short relay window |
