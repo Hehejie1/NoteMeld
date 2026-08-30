@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cloud.app import _login_key, _valid_nonce, create_app
+from cloud.security import parse_token
 from cloud.config import CloudSettings
 
 
@@ -30,6 +31,14 @@ def test_login_rate_limit_keys_are_one_way_and_namespace_bound():
     assert len(source_key) == len(account_key) == 64
     assert "127.0.0.1" not in source_key and "admin" not in account_key
     assert source_key != account_key
+
+
+def test_bearer_token_parser_rejects_oversized_and_noncanonical_values():
+    assert parse_token("nmt_abc.DEF_123") == ("abc", "DEF_123")
+    assert parse_token("nmt_abc.bad.secret") is None
+    assert parse_token("nmt_abc." + "x" * 385) is None
+    assert parse_token("nmt_abc." + "x" * 1000) is None
+    assert parse_token("nmt_abc.bad!") is None
 
 
 def client(tmp_path: Path) -> TestClient:

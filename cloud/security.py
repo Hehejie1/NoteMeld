@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import secrets
 import time
+import re
 
 
 def encrypt_secret(value: str, master_key: str) -> str:
@@ -50,10 +51,17 @@ def issue_token() -> tuple[str, str]:
 
 
 def parse_token(raw: str) -> tuple[str, str] | None:
-    if not raw.startswith("nmt_") or "." not in raw[4:]:
+    if not isinstance(raw, str) or len(raw) > 512 or not raw.startswith("nmt_") or "." not in raw[4:]:
         return None
     token_id, secret = raw[4:].split(".", 1)
-    if not token_id or not secret:
+    if (
+        not token_id
+        or not secret
+        or len(token_id) > 128
+        or len(secret) > 384
+        or re.fullmatch(r"[A-Za-z0-9_-]+", token_id) is None
+        or re.fullmatch(r"[A-Za-z0-9_-]+", secret) is None
+    ):
         return None
     return token_id, secret
 
