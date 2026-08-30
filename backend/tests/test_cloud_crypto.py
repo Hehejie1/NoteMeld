@@ -2,7 +2,7 @@ import pytest
 
 
 pytest.importorskip("cryptography")
-crypto = pytest.importorskip("cloud.crypto")
+crypto = pytest.importorskip("app.cloud_sync.e2ee")
 
 
 def test_e2ee_handshake_and_aead_roundtrip():
@@ -37,3 +37,19 @@ def test_session_cipher_rejects_replay_and_supports_explicit_rekey():
     assert rotated_first == rotated_second and rotated_first != first_key
     with pytest.raises(ValueError):
         crypto.derive_rekeyed_session_key(first_key, "session", "device-a", "device-b", 0)
+
+
+def test_e2ee_rejects_ambiguous_identity_and_noncanonical_base64():
+    signing_private, _ = crypto.generate_identity()
+    _, ephemeral_public = crypto.generate_ephemeral()
+    with pytest.raises(ValueError, match="identity"):
+        crypto.sign_handshake(signing_private, "session\0forged", "device-a", "device-b", ephemeral_public)
+    with pytest.raises(ValueError, match="base64"):
+        crypto.decrypt(b"k" * 32, "not valid!", "also invalid!")
+    with pytest.raises(ValueError, match="base64"):
+        crypto.decrypt(b"k" * 32, "AAAAAAAAAAAAAAAA=", "YWJjZA")
+
+
+def test_legacy_cloud_crypto_path_reexports_canonical_implementation():
+    legacy = pytest.importorskip("cloud.crypto")
+    assert legacy.SessionCipher is crypto.SessionCipher

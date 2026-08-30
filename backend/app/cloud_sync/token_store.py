@@ -34,14 +34,40 @@ class EncryptedTokenStore:
         payload = AESGCM(self._key).encrypt(nonce, token.encode("utf-8"), b"notemeld-token-v1")
         envelope = {"version": self.VERSION, "nonce": nonce.hex(), "ciphertext": payload.hex()}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
-        with open(temp, "w", encoding="utf-8") as handle:
-            os.chmod(temp, 0o600)
-            json.dump(envelope, handle, separators=(",", ":"))
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp, self.path)
-        os.chmod(self.path, 0o600)
+        temp = self.path.with_name(f".{self.path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+        descriptor = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor = -1
+                json.dump(envelope, handle, separators=(",", ":"))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp, self.path)
+            self._sync_parent_directory()
+        except Exception:
+            if descriptor >= 0:
+                os.close(descriptor)
+            try:
+                temp.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+
+    def _sync_parent_directory(self) -> None:
+        """Persist the rename where the host filesystem supports directory fsync."""
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            descriptor = os.open(self.path.parent, flags)
+        except OSError:
+            return
+        try:
+            os.fsync(descriptor)
+        except OSError:
+            # Windows and some network filesystems do not support fsync on a
+            # directory handle. The file itself was already fsynced above.
+            pass
+        finally:
+            os.close(descriptor)
 
     def load(self) -> str | None:
         if not self.path.exists():
@@ -61,3 +87,4 @@ class EncryptedTokenStore:
             self.path.unlink()
         except FileNotFoundError:
             return
+        self._sync_parent_directory()

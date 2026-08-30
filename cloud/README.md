@@ -25,9 +25,11 @@ interface before placing multiple workers behind a load balancer.
 The service rejects `WEB_CONCURRENCY>1` while `NOTEMELD_CLOUD_RELAY_BACKEND=memory`;
 this prevents an unsafe split-brain deployment. Redis/NATS values are reserved
 until their transient Pub/Sub adapters are installed and configured.
-Install `cloud/requirements.txt` for the optional client-side E2EE primitives
-(X25519, Ed25519, HKDF and ChaCha20-Poly1305). The relay never imports or uses
-the decrypt path.
+Install `cloud/requirements.txt` for the cloud runtime and device-proof cryptography.
+Desktop/Python client-side E2EE (X25519, Ed25519, HKDF and ChaCha20-Poly1305)
+lives in `backend/app/cloud_sync/e2ee.py`; `cloud/crypto.py` is retained only as
+a source-tree compatibility import. The relay never imports or uses the decrypt
+path.
 Set `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=1` in production to require a recent
 Ed25519 device proof before relay connections. The device must obtain a
 challenge and sign `notemeld-device-proof-v1\\0<device_id>\\0<challenge>` with
