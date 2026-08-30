@@ -52,6 +52,13 @@ class PersonalTokenCreate(BaseModel):
             raise ValueError("wildcard token scope cannot be combined")
         return value
 
+    @field_validator("expires_at")
+    @classmethod
+    def validate_expiry(cls, value: int | None) -> int | None:
+        if value is not None and value <= int(time.time()):
+            raise ValueError("expires_at must be in the future")
+        return value
+
 
 class PairingConfirm(BaseModel):
     code: str = Field(min_length=8, max_length=64)

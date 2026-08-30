@@ -141,7 +141,7 @@ def test_device_revoke_also_revokes_grants(tmp_path):
         assert listed["revoked_at"] is not None
 
 
-def test_expired_grants_and_share_tokens_are_rejected_on_create(tmp_path):
+def test_expired_grants_share_tokens_and_personal_tokens_are_rejected_on_create(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
         headers = {"Authorization": f"Bearer {token}"}
@@ -150,6 +150,7 @@ def test_expired_grants_and_share_tokens_are_rejected_on_create(tmp_path):
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "expiry-controller", "host_device_id": "expiry-host", "expires_at": 1}).status_code == 422
         session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
         assert http.post("/v1/share-tokens", headers=headers, json={"session_id": session["id"], "expires_at": 1}).status_code == 422
+        assert http.post("/v1/auth/tokens", headers=headers, json={"scopes": ["session.read"], "expires_at": 1}).status_code == 422
 
 
 def test_device_heartbeat_updates_last_seen(tmp_path):
