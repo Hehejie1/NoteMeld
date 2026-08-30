@@ -31,6 +31,14 @@ test('web token store uses encrypted IndexedDB rather than plaintext browser sto
   assert.doesNotMatch(tokenStore, /localStorage/)
 })
 
+test('web device identity is stable, platform-prefixed, and non-secret', () => {
+  const identity = fs.readFileSync(new URL('../src/services/deviceIdentity.ts', import.meta.url), 'utf8')
+  assert.match(identity, /getOrCreateInstallId/)
+  assert.match(identity, /makeDeviceId/)
+  assert.match(identity, /notemeld\.install-id\.v1/)
+  assert.match(identity, /crypto\.getRandomValues/)
+})
+
 test('connection strategy orders LAN candidates before cloud relay fallback', () => {
   const source = fs.readFileSync(new URL('../src/services/connectionStrategy.ts', import.meta.url), 'utf8')
   assert.match(source, /transport: 'lan'/)

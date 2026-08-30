@@ -15,12 +15,13 @@ import { CloudApprovalList } from '../../components/CloudApprovalList'
 import { CloudWorkspaceBrowser } from '../../components/CloudWorkspaceBrowser'
 import { CloudUserList } from '../../components/CloudUserList'
 import { CloudUserForm } from '../../components/CloudUserForm'
+import { makeDeviceId } from '../../services/deviceIdentity'
 
 export default function CloudPage() {
   const baseUrl = import.meta.env.VITE_CLOUD_BASE_URL || 'http://127.0.0.1:8583'
-  const [client, setClient] = useState(() => new CloudClient(baseUrl))
+  const [client, setClient] = useState(() => new CloudClient(baseUrl, undefined, makeDeviceId('web')))
   const [secureStorageReady, setSecureStorageReady] = useState(false)
-  useEffect(() => { let active = true; void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, undefined, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl])
+  useEffect(() => { let active = true; const deviceId = makeDeviceId('web'); void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, deviceId, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl])
   const auth = useCloudAuth(client)
   if (!secureStorageReady) return <main aria-busy="true" className="p-6 text-sm text-slate-500">Preparing secure cloud storage…</main>
   const [selectedId, setSelectedId] = useState<string>()
