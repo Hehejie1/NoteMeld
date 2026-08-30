@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 from typing import Callable, Any
 from urllib.parse import quote, urlparse, urlunparse
 
@@ -16,7 +17,20 @@ def connection_candidates(cloud_base_url: str, session_id: str, lan_endpoints: l
     parsed = urlparse(base)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("cloud base URL must be HTTP(S)")
-    result = [ConnectionCandidate("lan", f"ws://{endpoint.strip()}/v1/relay/connect/{quote(session_id, safe='')}") for endpoint in (lan_endpoints or []) if endpoint.strip()]
+    result = []
+    for endpoint in lan_endpoints or []:
+        normalized = endpoint.strip()
+        if not normalized:
+            continue
+        host, separator, port_text = normalized.rpartition(":")
+        try:
+            address = ipaddress.ip_address(host.strip("[]"))
+            port = int(port_text)
+        except ValueError as exc:
+            raise ValueError("invalid LAN endpoint") from exc
+        if not separator or not 1 <= port <= 65535 or not (address.is_private or address.is_loopback or address.is_link_local):
+            raise ValueError("LAN endpoint must use a private or local address")
+        result.append(ConnectionCandidate("lan", f"ws://{normalized}/v1/relay/connect/{quote(session_id, safe='')}"))
     relay_scheme = "wss" if parsed.scheme == "https" else "ws"
     result.append(ConnectionCandidate("relay", urlunparse((relay_scheme, parsed.netloc, f"/v1/relay/connect/{quote(session_id, safe='')}", "", "", ""))))
     return result

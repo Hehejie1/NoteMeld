@@ -23,3 +23,5 @@ def test_connection_fallback_tries_next_candidate():
 def test_connection_rejects_invalid_base_url():
     with pytest.raises(ValueError):
         connection_candidates("file:///tmp", "s1")
+    with pytest.raises(ValueError, match="private or local"):
+        connection_candidates("https://cloud.example", "s1", ["8.8.8.8:443"])
