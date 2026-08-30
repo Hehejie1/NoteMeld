@@ -10,6 +10,7 @@ import shutil
 import threading
 import time
 import uuid
+import fnmatch
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
@@ -1335,6 +1336,8 @@ def _decode_import_files(files: list[SessionImportFile], max_bytes: int, max_fil
         parts = logical_path.split("/")
         if "\\" in logical_path or ":" in logical_path or logical_path.startswith("/") or len(parts) > 32 or any(part in ("", ".", "..") for part in parts):
             raise HTTPException(400, "invalid imported workspace path")
+        if _non_shareable_path(parts):
+            raise HTTPException(400, "imported workspace path is not shareable")
         if logical_path in seen:
             raise HTTPException(409, "duplicate imported workspace path")
         seen.add(logical_path)
@@ -1351,6 +1354,20 @@ def _decode_import_files(files: list[SessionImportFile], max_bytes: int, max_fil
             raise HTTPException(413, "workspace quota exceeded")
         decoded.append((logical_path, content))
     return decoded
+
+
+def _non_shareable_path(parts: list[str]) -> bool:
+    """Identify local-only credentials and extension packages by path."""
+    local_only_dirs = {".git", ".ssh", ".aws", ".azure", ".gnupg", "skills", "plugins", "applications", "app-packages"}
+    for part in parts:
+        name = part.casefold()
+        if name in local_only_dirs:
+            return True
+        if name == ".env" or name.startswith(".env."):
+            return True
+        if any(fnmatch.fnmatch(name, pattern) for pattern in ("*.pem", "*.key", "*.p12", "*.pfx", "credentials*", "secrets*", "cookies*")):
+            return True
+    return False
 
 
 def _recover_running_commands(db: CloudDB) -> None:

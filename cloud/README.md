@@ -31,8 +31,10 @@ endpoints; restore is a validated file overlay.
 explicitly allowlisted local snapshot. It validates the registered source
 device, request idempotency, sensitive configuration keys, file paths,
 Base64 content, declared size and SHA-256 before atomically publishing the
-workspace and metadata. Skill, plugin and Application package fields are not
-part of the accepted schema.
+workspace and metadata. Local-only paths such as `.env`, private-key files,
+credential/secret files, VCS metadata, and `skills/`, `plugins/`, or
+`applications/` packages are rejected rather than uploaded. Skill, plugin and
+Application package fields are also not part of the accepted schema.
 
 Cloud-native commands use `CloudAgentRunner`. Set the optional
 `NOTEMELD_CLOUD_AGENT_BASE_URL`, model and API key variables to call an

@@ -620,6 +620,10 @@ def test_full_share_import_rejects_secrets_packages_and_bad_file_hash(tmp_path):
         assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "files": [bad_file]}).status_code == 400
         empty_file = {"path": "C:/ambiguous.txt", "content_base64": "", "sha256": hashlib.sha256(b"").hexdigest(), "size": 0, "mime_type": "text/plain"}
         assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "files": [empty_file]}).status_code == 400
+        safe_content = base64.urlsafe_b64encode(b"local-only").decode()
+        for path in (".env", "skills/demo.md", "keys/device.pem"):
+            blocked = {"path": path, "content_base64": safe_content, "sha256": hashlib.sha256(b"local-only").hexdigest(), "size": 10, "mime_type": "text/plain"}
+            assert http.post("/v1/cloud/sessions/import", headers=headers, json={**base_payload, "request_id": f"guard-{path}", "files": [blocked]}).status_code == 400
 
 
 def test_session_archive_delete_and_token_rotate(tmp_path):
