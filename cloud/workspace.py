@@ -58,7 +58,11 @@ class Workspace:
         path = self.path(logical_path)
         if path.is_symlink() or not path.is_file():
             raise WorkspaceError("workspace file is unavailable")
-        return path.read_text(encoding="utf-8")
+        try:
+            with self._open_readonly(path) as handle:
+                return handle.read().decode("utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise WorkspaceError("workspace file is unavailable") from exc
 
     def read_text_bounded(self, logical_path: str, max_bytes: int) -> tuple[str, bool]:
         """Read at most ``max_bytes`` from a UTF-8 file without over-reading it."""
@@ -67,8 +71,11 @@ class Workspace:
         path = self.path(logical_path)
         if path.is_symlink() or not path.is_file():
             raise WorkspaceError("workspace file is unavailable")
-        with path.open("rb") as handle:
-            content = handle.read(max_bytes + 1)
+        try:
+            with self._open_readonly(path) as handle:
+                content = handle.read(max_bytes + 1)
+        except OSError as exc:
+            raise WorkspaceError("workspace file is unavailable") from exc
         truncated = len(content) > max_bytes
         if truncated:
             content = content[:max_bytes]
@@ -76,6 +83,12 @@ class Workspace:
         # in the middle of one. The ignored suffix is represented by the
         # existing ``truncated`` flag in the Agent tool response.
         return content.decode("utf-8", errors="ignore"), truncated
+
+    @staticmethod
+    def _open_readonly(path: Path):
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        return os.fdopen(descriptor, "rb")
 
     def write_text(self, logical_path: str, content: str) -> None:
         self.write_bytes(logical_path, content.encode("utf-8"))
