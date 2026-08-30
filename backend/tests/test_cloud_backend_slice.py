@@ -533,7 +533,8 @@ def test_remote_approval_requires_controller_grant_scope(tmp_path):
             cx.execute("INSERT INTO approvals(id,user_id,session_id,command_id,tool_name,arguments_json,status,requested_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (approval_id, user_id, session["id"], "cmd", "workspace.write", '{"path":"remote.txt","content":"approved"}', "pending", "remote-agent", int(time.time())))
         denied = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers={**headers, "X-Device-Id": "approval-controller"}, json={"status": "approved"})
         assert denied.status_code == 403
-        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "approval-controller", "host_device_id": "approval-host", "scopes": ["dangerous.approve"]}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "approval-controller", "host_device_id": "approval-host", "scopes": ["dangerous.approve"]}).status_code == 403
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "approval-controller", "host_device_id": "approval-host", "role": "super_admin", "scopes": ["dangerous.approve"]}).status_code == 200
         allowed = http.post(f"/v1/sessions/{session['id']}/approvals/{approval_id}/resolve", headers={**headers, "X-Device-Id": "approval-controller"}, json={"status": "approved"})
         assert allowed.status_code == 200 and allowed.json()["data"]["status"] == "approved"
 

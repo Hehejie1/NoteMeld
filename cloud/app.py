@@ -715,6 +715,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db, required_scope="grant.write"))):
         if payload.role == "super_admin" and current["role"] != "admin":
             raise HTTPException(403, "permission denied")
+        elevated_scopes = {"dangerous.approve", "approval.remote.resolve", "session.permission.manage", "session.full_access", "full_access"}
+        if payload.role != "super_admin" and elevated_scopes.intersection(payload.scopes):
+            raise HTTPException(403, "elevated scopes require a super_admin grant")
         if payload.expires_at is not None and payload.expires_at <= int(time.time()):
             raise HTTPException(422, "expires_at must be in the future")
         with db.connect() as cx:
