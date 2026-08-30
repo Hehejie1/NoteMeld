@@ -67,3 +67,15 @@ export function connectionCandidates(cloudBaseUrl: string, sessionId: string, de
   candidates.push({ transport: 'relay', url: relay.toString() })
   return candidates
 }
+
+export function openRelayWebSocket(cloudBaseUrl: string, sessionId: string, device: DeviceConnectivity, token: string, timeoutMs = 3_000): Promise<{ connection: WebSocket; candidate: ConnectionCandidate }> {
+  const protocols = relayWebSocketProtocols(token)
+  return connectWithFallback(connectionCandidates(cloudBaseUrl, sessionId, device), (candidate, signal) => new Promise<WebSocket>((resolve, reject) => {
+    const socket = new WebSocket(candidate.url, protocols)
+    const abort = () => { socket.close(); reject(new DOMException('relay connection timed out', 'AbortError')) }
+    if (signal.aborted) { abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    socket.onopen = () => { signal.removeEventListener('abort', abort); resolve(socket) }
+    socket.onerror = () => { signal.removeEventListener('abort', abort); socket.close(); reject(new Error('relay connection failed')) }
+  }), timeoutMs)
+}
