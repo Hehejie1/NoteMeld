@@ -666,8 +666,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     existing = cx.execute("SELECT user_id,revoked_at,public_key FROM devices WHERE id=?", (payload.device_id,)).fetchone()
                     if not existing or existing["user_id"] != current["id"]:
                         raise HTTPException(409, "device already registered") from exc
-                    cx.execute("UPDATE devices SET public_key=?,platform=?,display_name=?,connectivity_json=?,revoked_at=NULL,last_seen_at=? WHERE id=? AND user_id=?", (payload.public_key, payload.platform, payload.display_name, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), now, payload.device_id, current["id"]))
-                    if existing["public_key"] != payload.public_key:
+                    public_key = payload.public_key or existing["public_key"]
+                    cx.execute("UPDATE devices SET public_key=?,platform=?,display_name=?,connectivity_json=?,revoked_at=NULL,last_seen_at=? WHERE id=? AND user_id=?", (public_key, payload.platform, payload.display_name, json.dumps({"lan_endpoints": payload.lan_endpoints}, separators=(",", ":")), now, payload.device_id, current["id"]))
+                    if payload.public_key and existing["public_key"] != payload.public_key:
                         cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND device_id=? AND revoked_at IS NULL", (now, current["id"], payload.device_id))
                         app.state.device_proofs.pop((current["id"], payload.device_id), None)
                 else:

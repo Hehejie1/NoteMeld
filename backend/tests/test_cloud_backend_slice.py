@@ -149,6 +149,17 @@ def test_same_account_device_registration_is_idempotent(tmp_path):
         assert http.get("/v1/devices", headers=headers).json()["data"][0]["display_name"] == "New"
 
 
+def test_device_reregistration_without_key_preserves_existing_key(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {"device_id": "key-preserving-device", "platform": "desktop", "display_name": "Desktop", "public_key": PUBLIC_KEY}
+        assert http.post("/v1/devices", headers=headers, json=payload).status_code == 200
+        assert http.post("/v1/devices", headers=headers, json={"device_id": payload["device_id"], "platform": "desktop", "display_name": "Renamed"}).status_code == 200
+        device = http.get("/v1/devices", headers=headers).json()["data"][0]
+        assert device["public_key"] == PUBLIC_KEY
+
+
 def test_device_key_rotation_replaces_public_key(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
