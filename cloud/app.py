@@ -339,6 +339,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.command_locks_guard = threading.RLock()
     app.state.workspace_locks: dict[str, threading.RLock] = {}
     app.state.workspace_locks_guard = threading.RLock()
+    app.state.user_locks: dict[str, threading.RLock] = {}
+    app.state.user_locks_guard = threading.RLock()
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
     app.state.worker_shutdown = threading.Event()
@@ -562,30 +564,31 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.delete("/v1/admin/users/{user_id}")
     def delete_user(user_id: str, current=Depends(_auth_dependency(db, "admin", "admin"))):
-        workspace_ids: list[str] = []
-        with db.connect() as cx:
-            cx.execute("BEGIN IMMEDIATE")
-            workspace_ids = [str(row["workspace_id"]) for row in cx.execute("SELECT workspace_id FROM sessions WHERE user_id=?", (user_id,)).fetchall()]
-            cx.execute("DELETE FROM share_tokens WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM grants WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM pairings WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM events WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
-            cx.execute("DELETE FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
-            cx.execute("DELETE FROM session_import_requests WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM session_payloads WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
-            cx.execute("DELETE FROM relay_cursors WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
-            cx.execute("DELETE FROM session_archives WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM models WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM tokens WHERE user_id=?", (user_id,))
-            cx.execute("DELETE FROM devices WHERE user_id=?", (user_id,))
-            result = cx.execute("DELETE FROM users WHERE id=? AND role='user'", (user_id,))
-            cx.execute("COMMIT")
-        if result.rowcount != 1:
-            raise HTTPException(404, "user not found")
-        for workspace_id in workspace_ids:
-            shutil.rmtree(settings.workspaces_dir / user_id / workspace_id, ignore_errors=True)
-            shutil.rmtree(settings.data_dir / "backups" / user_id / workspace_id, ignore_errors=True)
+        with _user_lock(app, user_id):
+            workspace_ids: list[str] = []
+            with db.connect() as cx:
+                cx.execute("BEGIN IMMEDIATE")
+                workspace_ids = [str(row["workspace_id"]) for row in cx.execute("SELECT workspace_id FROM sessions WHERE user_id=?", (user_id,)).fetchall()]
+                cx.execute("DELETE FROM share_tokens WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM grants WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM pairings WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM events WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+                cx.execute("DELETE FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+                cx.execute("DELETE FROM session_import_requests WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM session_payloads WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+                cx.execute("DELETE FROM relay_cursors WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)", (user_id,))
+                cx.execute("DELETE FROM session_archives WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM models WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM tokens WHERE user_id=?", (user_id,))
+                cx.execute("DELETE FROM devices WHERE user_id=?", (user_id,))
+                result = cx.execute("DELETE FROM users WHERE id=? AND role='user'", (user_id,))
+                cx.execute("COMMIT")
+            if result.rowcount != 1:
+                raise HTTPException(404, "user not found")
+            for workspace_id in workspace_ids:
+                shutil.rmtree(settings.workspaces_dir / user_id / workspace_id, ignore_errors=True)
+                shutil.rmtree(settings.data_dir / "backups" / user_id / workspace_id, ignore_errors=True)
         _audit(db, current["id"], "admin.user.delete", user_id, {})
         return {"code": 0, "msg": "success", "data": {"deleted": True}}
 
@@ -1861,6 +1864,14 @@ def _ensure_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: 
 
 
 @contextmanager
+def _user_lock(app: FastAPI, user_id: str):
+    with app.state.user_locks_guard:
+        lock = app.state.user_locks.setdefault(user_id, threading.RLock())
+    with lock:
+        yield
+
+
+@contextmanager
 def _workspace_lock(app: FastAPI, user_id: str, workspace_id: str):
     """Serialize quota check and filesystem mutation within one worker.
 
@@ -1873,10 +1884,11 @@ def _workspace_lock(app: FastAPI, user_id: str, workspace_id: str):
     key = f"{user_id}\0{workspace_id}"
     with app.state.workspace_locks_guard:
         lock = app.state.workspace_locks.setdefault(key, threading.RLock())
-    with lock:
-        root = app.state.settings.workspaces_dir / user_id / workspace_id
-        with workspace_mutation_lock(root):
-            yield
+    with _user_lock(app, user_id):
+        with lock:
+            root = app.state.settings.workspaces_dir / user_id / workspace_id
+            with workspace_mutation_lock(root):
+                yield
 
 
 def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
