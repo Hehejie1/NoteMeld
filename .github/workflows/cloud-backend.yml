@@ -18,6 +18,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,4 +35,6 @@ jobs:
       - name: Compile cloud and sync adapters
         run: PYTHONPATH=.:backend python -m compileall -q cloud backend/app/cloud_sync
       - name: Run cloud backend regression
+        env:
+          NOTEMELD_CLOUD_RELAY_TEST_URL: redis://127.0.0.1:6379/0
         run: PYTHONPATH=.:backend python -m pytest backend/tests/test_cloud_*.py -q

@@ -190,7 +190,8 @@ class RedisRelayBroker:
                     json.dumps({"kind": "ack", "delivery_id": payload.get("delivery_id"), "delivered": delivered}, separators=(",", ":")),
                 )
         finally:
-            await pubsub.close()
+            close = getattr(pubsub, "aclose", None) or pubsub.close
+            await close()
 
     async def close(self) -> None:
         self._closed = True
