@@ -1072,6 +1072,22 @@ def test_workspace_concurrent_writes_use_distinct_atomic_temporary_files(tmp_pat
         assert (tmp_path / "concurrent" / "shared.txt").stat().st_mode & 0o777 == 0o600
 
 
+def test_workspace_mutation_lock_rejects_symlink_lock_target(tmp_path):
+    if os.name == "nt":
+        pytest.skip("symlink lock hardening uses O_NOFOLLOW on Unix")
+    from cloud.workspace import workspace_mutation_lock
+
+    root = tmp_path / "locked"
+    root.mkdir()
+    outside = tmp_path / "outside.lock"
+    outside.write_text("sentinel", encoding="utf-8")
+    (tmp_path / ".locked.mutation.lock").symlink_to(outside)
+    with pytest.raises(OSError):
+        with workspace_mutation_lock(root):
+            pass
+    assert outside.read_text(encoding="utf-8") == "sentinel"
+
+
 def test_workspace_bounded_read_preserves_utf8_and_limit(tmp_path):
     from cloud.workspace import Workspace
 

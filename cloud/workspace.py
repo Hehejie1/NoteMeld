@@ -18,7 +18,18 @@ def workspace_mutation_lock(root: Path):
     """Acquire an inter-process lock for quota-sensitive workspace mutations."""
     lock_path = root.parent / f".{root.name}.mutation.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+b") as handle:
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(lock_path, flags, 0o600)
+    try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
+        else:  # pragma: no cover - Windows ACLs are managed by the parent directory
+            os.chmod(lock_path, 0o600)
+        handle = os.fdopen(descriptor, "a+b")
+    except Exception:
+        os.close(descriptor)
+        raise
+    with handle:
         if os.name == "nt":
             import msvcrt
 
