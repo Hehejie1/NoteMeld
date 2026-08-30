@@ -72,7 +72,11 @@ export class CloudClient {
   createShareToken(sessionId: string, role = 'viewer', scopes: string[] = ['event.receive'], expiresAt?: number) { return this.request<{ token: string; id: string; expires_at?: number | null }>('POST', '/v1/share-tokens', { session_id: sessionId, role, scopes, ...(expiresAt === undefined ? {} : { expires_at: expiresAt }) }) }
   revokeShareToken(tokenId: string) { return this.request<Record<string, unknown>>('POST', `/v1/share-tokens/${encodeURIComponent(tokenId)}/revoke`) }
   sharedSnapshot(sessionId: string, shareToken: string, limit = 500) { return this.request<Record<string, unknown>>('GET', `/v1/shared/${encodeURIComponent(sessionId)}/snapshot`, undefined, { params: { limit }, headers: { 'X-Share-Token': shareToken } }) }
-  sharedEvents(sessionId: string, shareToken: string, after = 0, limit = 500) { return this.request<unknown[]>('GET', `/v1/shared/${encodeURIComponent(sessionId)}/events`, undefined, { params: { after, limit }, headers: { 'X-Share-Token': shareToken } }) }
+  async sharedEvents(sessionId: string, shareToken: string, after = 0, limit = 500): Promise<CloudEvent[]> {
+    if (!Number.isSafeInteger(after) || after < 0) throw new Error('after must be non-negative')
+    const events = await this.request<unknown[]>('GET', `/v1/shared/${encodeURIComponent(sessionId)}/events`, undefined, { params: { after, limit }, headers: { 'X-Share-Token': shareToken } })
+    return this.validateEventPage(events, after)
+  }
   sharedCommand(sessionId: string, shareToken: string, requestId: string, input: string) { return this.request<Record<string, unknown>>('POST', `/v1/shared/${encodeURIComponent(sessionId)}/commands`, { request_id: requestId, input }, { headers: { 'X-Share-Token': shareToken } }) }
   listSessions(archived?: boolean) { return this.request<CloudSession[]>('GET', '/v1/cloud/sessions', undefined, archived === undefined ? undefined : { params: { archived } }) }
   createSession(kind: CloudSession['kind'], title = 'New session', workspaceId = 'default', modelId?: string) { return this.request<CloudSession>('POST', '/v1/cloud/sessions', { kind, title, workspace_id: workspaceId, model_id: modelId }) }
@@ -83,6 +87,10 @@ export class CloudClient {
   async events(sessionId: string, after = 0, limit = 500): Promise<CloudEvent[]> {
     if (!Number.isSafeInteger(after) || after < 0) throw new Error('after must be non-negative')
     const events = await this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/events`, undefined, { params: { after, limit } })
+    return this.validateEventPage(events, after)
+  }
+
+  private validateEventPage(events: unknown[], after: number): CloudEvent[] {
     if (!Array.isArray(events)) throw new Error('invalid cloud event page')
     let previous = after
     for (const event of events) {

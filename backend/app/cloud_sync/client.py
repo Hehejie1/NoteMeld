@@ -210,15 +210,7 @@ class CloudClient:
         if type(after) is not int or after < 0:
             raise ValueError("after must be non-negative")
         events = self._request("GET", f"/v1/cloud/sessions/{session_id}/events", params={"after": after, "limit": limit})
-        if not isinstance(events, list):
-            raise CloudClientError(502, "cloud returned invalid event page")
-        previous = after
-        for event in events:
-            sequence = event.get("sequence") if isinstance(event, dict) else None
-            if type(sequence) is not int or sequence != previous + 1:
-                raise CloudClientError(409, "event cursor gap; refresh session snapshot")
-            previous = sequence
-        return events
+        return self._validate_event_page(events, after)
 
     def list_approvals(self, session_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/approvals")
@@ -273,7 +265,10 @@ class CloudClient:
         return self._request("GET", f"/v1/shared/{session_id}/snapshot", params={"limit": limit}, headers={"X-Share-Token": share_token})
 
     def shared_events(self, session_id: str, share_token: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
-        return self._request("GET", f"/v1/shared/{session_id}/events", params={"after": after, "limit": limit}, headers={"X-Share-Token": share_token})
+        if type(after) is not int or after < 0:
+            raise ValueError("after must be non-negative")
+        events = self._request("GET", f"/v1/shared/{session_id}/events", params={"after": after, "limit": limit}, headers={"X-Share-Token": share_token})
+        return self._validate_event_page(events, after)
 
     def shared_command(self, session_id: str, share_token: str, request_id: str, input_text: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/shared/{session_id}/commands", headers={"X-Share-Token": share_token}, json={"request_id": request_id, "input": input_text})
@@ -298,3 +293,15 @@ class CloudClient:
         if response.status_code >= 400 or body.get("code") not in (None, 0):
             raise CloudClientError(response.status_code, body.get("msg", "cloud request failed"))
         return body.get("data", body)
+
+    @staticmethod
+    def _validate_event_page(events: Any, after: int) -> list[dict[str, Any]]:
+        if not isinstance(events, list):
+            raise CloudClientError(502, "cloud returned invalid event page")
+        previous = after
+        for event in events:
+            sequence = event.get("sequence") if isinstance(event, dict) else None
+            if type(sequence) is not int or sequence != previous + 1:
+                raise CloudClientError(409, "event cursor gap; refresh session snapshot")
+            previous = sequence
+        return events
