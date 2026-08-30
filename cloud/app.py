@@ -990,11 +990,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/sessions")
     @app.get("/v1/cloud/sessions")
-    def list_sessions(device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+    def list_sessions(archived: bool | None = None, device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None, current=Depends(_auth_dependency(db, required_scope="session.read"))):
         _validate_device_header(db, device_id, current["id"])
         with db.connect() as cx:
             rows = cx.execute("SELECT s.*, COALESCE((SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id=?), (SELECT archived_at FROM session_archives WHERE session_id=s.id AND user_id=? AND device_id IS NULL)) AS archived_at FROM sessions s WHERE s.user_id=? ORDER BY s.updated_at DESC", (current["id"], device_id, current["id"], current["id"])).fetchall()
-        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+        result = [dict(row) for row in rows]
+        if archived is not None:
+            result = [item for item in result if bool(item["archived_at"]) is archived]
+        return {"code": 0, "msg": "success", "data": result}
 
     @app.post("/v1/sessions/{session_id}/archive")
     @app.post("/v1/cloud/sessions/{session_id}/archive")

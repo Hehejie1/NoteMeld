@@ -653,6 +653,8 @@ def test_session_archive_delete_and_token_rotate(tmp_path):
         assert http.post(f"/v1/sessions/{session['id']}/archive", headers=headers).status_code == 200
         assert http.post(f"/v1/sessions/{session['id']}/archive", headers=headers).status_code == 200
         assert http.get("/v1/sessions", headers=headers).json()["data"][0]["archived_at"]
+        assert http.get("/v1/sessions?archived=true", headers=headers).json()["data"][0]["id"] == session["id"]
+        assert http.get("/v1/sessions?archived=false", headers=headers).json()["data"] == []
         with http.app.state.db.connect() as cx:
             assert cx.execute("SELECT COUNT(*) FROM session_archives WHERE session_id=?", (session["id"],)).fetchone()[0] == 1
         assert http.post(f"/v1/sessions/{session['id']}/restore", headers=headers).status_code == 200
@@ -676,6 +678,7 @@ def test_archive_isolated_by_device_header(tmp_path):
         assert http.post(f"/v1/sessions/{session['id']}/archive", headers=device_a).status_code == 200
         assert http.get("/v1/sessions", headers=device_a).json()["data"][0]["archived_at"]
         assert http.get("/v1/sessions", headers=device_b).json()["data"][0]["archived_at"] is None
+        assert http.get("/v1/sessions?archived=true", headers=device_b).json()["data"] == []
 
 
 def test_device_remote_cannot_execute_in_cloud(tmp_path):

@@ -58,7 +58,7 @@ export class CloudClient {
   listGrants() { return this.request<unknown[]>('GET', '/v1/grants') }
   createGrant(controllerDeviceId: string, hostDeviceId: string, scopes?: string[], workspaceRefs?: string[]) { return this.request<Record<string, unknown>>('POST', '/v1/grants', { controller_device_id: controllerDeviceId, host_device_id: hostDeviceId, ...(scopes ? { scopes } : {}), ...(workspaceRefs ? { workspace_refs: workspaceRefs } : {}) }) }
   revokeGrant(grantId: string) { return this.request<Record<string, unknown>>('DELETE', `/v1/grants/${encodeURIComponent(grantId)}`) }
-  listSessions() { return this.request<CloudSession[]>('GET', '/v1/cloud/sessions') }
+  listSessions(archived?: boolean) { return this.request<CloudSession[]>('GET', '/v1/cloud/sessions', undefined, archived === undefined ? undefined : { params: { archived } }) }
   createSession(kind: CloudSession['kind'], title = 'New session', workspaceId = 'default', modelId?: string) { return this.request<CloudSession>('POST', '/v1/cloud/sessions', { kind, title, workspace_id: workspaceId, model_id: modelId }) }
   sendCommand(sessionId: string, requestId: string, input: string) { return this.request<{ command_id: string; sequence: number; status: string }>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, { request_id: requestId, input }) }
   snapshot(sessionId: string) { return this.request<Record<string, unknown>>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/snapshot`) }

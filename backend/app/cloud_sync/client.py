@@ -147,8 +147,8 @@ class CloudClient:
     def snapshot(self, session_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/cloud/sessions/{session_id}/snapshot")
 
-    def list_sessions(self) -> list[dict[str, Any]]:
-        return self._request("GET", "/v1/cloud/sessions")
+    def list_sessions(self, archived: bool | None = None) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/cloud/sessions", params=None if archived is None else {"archived": str(archived).lower()})
 
     def archive_session(self, session_id: str) -> dict[str, Any]:
         return self._request("POST", f"/v1/cloud/sessions/{session_id}/archive")
