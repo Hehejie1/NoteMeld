@@ -22,6 +22,14 @@ export default function CloudPage() {
   const [deviceId] = useState(() => makeDeviceId('web'))
   const [client, setClient] = useState(() => new CloudClient(baseUrl, undefined, deviceId))
   const [secureStorageReady, setSecureStorageReady] = useState(false)
+  const [selectedId, setSelectedId] = useState<string>()
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
+  const [showArchived, setShowArchived] = useState(false)
+  const [listVersion, setListVersion] = useState(0)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [archiveAction, setArchiveAction] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   useEffect(() => { let active = true; const deviceId = makeDeviceId('web'); void openIndexedDbTokenStore().then(store => { if (active) { setClient(new CloudClient(baseUrl, undefined, deviceId, store)); setSecureStorageReady(true) } }).catch(() => { if (active) setSecureStorageReady(true) }); return () => { active = false } }, [baseUrl])
   const auth = useCloudAuth(client)
   useEffect(() => {
@@ -33,14 +41,6 @@ export default function CloudPage() {
     return () => { active = false; window.clearInterval(timer) }
   }, [auth.authenticated, client, deviceId])
   if (!secureStorageReady) return <main aria-busy="true" className="p-6 text-sm text-slate-500">Preparing secure cloud storage…</main>
-  const [selectedId, setSelectedId] = useState<string>()
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
-  const [showArchived, setShowArchived] = useState(false)
-  const [listVersion, setListVersion] = useState(0)
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [archiveAction, setArchiveAction] = useState(false)
-  const [archiveError, setArchiveError] = useState<string | null>(null)
   async function createSession() {
     setCreating(true); setCreateError(null)
     try { const session = await client.createSession('cloud_native'); setSelectedId(session.id); setSelectedWorkspaceId(session.workspace_id); setListVersion(value => value + 1) } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Unable to create session') } finally { setCreating(false) }
