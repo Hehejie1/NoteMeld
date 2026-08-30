@@ -249,14 +249,8 @@ fn build_runtime_payload(port: u16, session_token: String) -> FrontendRuntimePay
         screenshot_base_url: format!("http://127.0.0.1:{port}/static/screenshots"),
         cloud_base_url: std::env::var("NOTEMELD_CLOUD_BASE_URL")
             .ok()
-            .and_then(|value| {
-                let trimmed = value.trim().trim_end_matches('/').to_string();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed)
-                }
-            }),
+            .and_then(|value| validate_cloud_base_url(value.trim()).ok())
+            .map(|url| url.to_string().trim_end_matches('/').to_string()),
         mode: "desktop".to_string(),
         desktop_embedded: true,
         session_token,
