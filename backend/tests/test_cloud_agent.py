@@ -44,6 +44,22 @@ def test_openai_compatible_runner_redacts_provider_failures():
     client.close()
 
 
+def test_openai_compatible_runner_retries_transient_provider_failure():
+    attempts = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        if len(attempts) == 1:
+            return httpx.Response(503, headers={"retry-after": "0"}, text="temporary outage")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "recovered"}}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    runner = OpenAICompatibleAgentRunner(base_url="https://provider.example", model="model-a", api_key=None, client=client, max_retries=2)
+    assert runner.complete(input_text="hello", messages=[]).content == "recovered"
+    assert len(attempts) == 2
+    client.close()
+
+
 def test_openai_compatible_runner_executes_bounded_workspace_tool_round():
     requests = []
 

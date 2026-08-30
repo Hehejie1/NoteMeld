@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import time
 from typing import Any, Callable, Protocol
 
 import httpx
@@ -36,11 +37,12 @@ class DeterministicAgentRunner:
 
 
 class OpenAICompatibleAgentRunner:
-    def __init__(self, *, base_url: str, model: str, api_key: str | None, timeout_seconds: float = 120.0, client: httpx.Client | None = None):
+    def __init__(self, *, base_url: str, model: str, api_key: str | None, timeout_seconds: float = 120.0, client: httpx.Client | None = None, max_retries: int = 2):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
+        self.max_retries = max(0, min(max_retries, 3))
         self._client = client or httpx.Client(timeout=timeout_seconds)
 
     def close(self) -> None:
@@ -57,12 +59,24 @@ class OpenAICompatibleAgentRunner:
                 request_json: dict[str, Any] = {"model": self.model, "messages": conversation, "stream": False}
                 if tools:
                     request_json["tools"] = [{"type": "function", "function": tool} for tool in tools]
-                response = self._client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=headers,
-                    json=request_json,
-                    timeout=self.timeout_seconds,
-                )
+                response: httpx.Response | None = None
+                for attempt in range(self.max_retries + 1):
+                    response = self._client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=request_json,
+                        timeout=self.timeout_seconds,
+                    )
+                    transient = response.status_code in {408, 429} or 500 <= response.status_code <= 504
+                    if not transient or attempt >= self.max_retries:
+                        break
+                    retry_after = response.headers.get("retry-after")
+                    try:
+                        delay = min(2.0, max(0.0, float(retry_after))) if retry_after is not None else min(2.0, 0.25 * (2 ** attempt))
+                    except ValueError:
+                        delay = min(2.0, 0.25 * (2 ** attempt))
+                    time.sleep(delay)
+                assert response is not None
                 response.raise_for_status()
                 if len(response.content) > 4 * 1024 * 1024:
                     raise ValueError("provider response exceeds limit")
