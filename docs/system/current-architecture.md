@@ -321,3 +321,9 @@ Agent 负责读取这些产物、总结、决定关系，再调用 Note authorit
 桌面 Host 已接入；服务端是 contract-ready 但需自行提供 ffmpeg、下载器和
 转写/OCR 运行时；移动 native 和 WASM 在一期明确未打包/未接入。图片 ASCII
 能力不在 capability registry 中。
+## Native platform adapter boundaries
+
+The product repository reserves `android/`, `ios/`, and `harmony/` for native
+adapters. They consume the same CloudClient, TokenStore, device-id, and
+LAN-first connection contracts; the canonical Agent runtime remains outside
+the UI adapters.
