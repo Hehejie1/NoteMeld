@@ -1,5 +1,8 @@
 # NoteMeld Harmony adapter
 
+The shared lifecycle and Relay contract is documented in
+`docs/system/cloud-adapter-contract.md`.
+
 Harmony-specific adapter boundary for the shared cloud sync protocol.
 
 - Use Harmony secure storage for the TokenStore encryption key.

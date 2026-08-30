@@ -1,5 +1,8 @@
 # NoteMeld Android adapter
 
+The shared lifecycle and Relay contract is documented in
+`docs/system/cloud-adapter-contract.md`.
+
 Android-specific adapter boundary for the shared cloud sync protocol.
 
 - Use Android Keystore to provide the key for the `CloudTokenStore` contract.

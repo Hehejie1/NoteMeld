@@ -1,5 +1,8 @@
 # NoteMeld iOS adapter
 
+The shared lifecycle and Relay contract is documented in
+`docs/system/cloud-adapter-contract.md`.
+
 iOS-specific adapter boundary for the shared cloud sync protocol.
 
 - Store the TokenStore encryption key in Keychain with device-only access.
