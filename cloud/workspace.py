@@ -28,7 +28,7 @@ class Workspace:
 
     def _cleanup_interrupted_writes(self) -> None:
         """Remove only temporary files produced by this workspace writer."""
-        generated = re.compile(r"^\..+\.\d+(?:\.copy)?\.tmp$")
+        generated = re.compile(r"^\..+\.(?:\d+(?:\.copy)?|[A-Za-z0-9_-]+)\.tmp$")
         for path in self.root.rglob("*"):
             if path.is_file() and generated.match(path.name):
                 try:
@@ -68,12 +68,21 @@ class Workspace:
         if path.exists() and path.is_symlink():
             raise WorkspaceError("symlink writes are forbidden")
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary.write_bytes(content)
-        with temporary.open("rb") as handle:
-            os.fsync(handle.fileno())
-        temporary.replace(path)
-        _fsync_directory(path.parent)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            os.chmod(temporary, 0o600)
+            temporary.write_bytes(content)
+            with temporary.open("rb") as handle:
+                os.fsync(handle.fileno())
+            temporary.replace(path)
+            _fsync_directory(path.parent)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
     def delete_file(self, logical_path: str) -> None:
         path = self.path(logical_path)

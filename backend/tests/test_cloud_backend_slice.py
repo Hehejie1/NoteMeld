@@ -1,6 +1,7 @@
 from pathlib import Path
 import base64
 import hashlib
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -930,6 +931,19 @@ def test_workspace_file_api_is_atomic_and_scoped(tmp_path):
         assert stats == {"workspace_id": "demo", "file_count": 1, "bytes_used": 5}
         assert http.get("/v1/workspaces/demo/files", headers=headers).json()["data"]["files"][0]["path"] == "notes/today.md"
         assert http.put("/v1/workspaces/demo/files/../escape.txt", headers=headers, json={"content": "x"}).status_code in (400, 404)
+
+
+def test_workspace_concurrent_writes_use_distinct_atomic_temporary_files(tmp_path):
+    from cloud.workspace import Workspace
+
+    workspace = Workspace(tmp_path / "concurrent")
+    values = [f"value-{index}" * 100 for index in range(8)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda value: workspace.write_text("shared.txt", value), values))
+    assert workspace.read_text("shared.txt") in values
+    assert not list((tmp_path / "concurrent").glob(".shared.txt.*.tmp"))
+    if os.name != "nt":
+        assert (tmp_path / "concurrent" / "shared.txt").stat().st_mode & 0o777 == 0o600
 
 
 def test_workspace_file_count_quota_applies_to_writes_and_restore(tmp_path):
