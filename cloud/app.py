@@ -1327,6 +1327,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/sessions/{session_id}/commands")
     @app.get("/v1/cloud/sessions/{session_id}/commands")
     def list_commands(session_id: str, after: int = 0, limit: int = 100, current=Depends(_auth_dependency(db, required_scope="session.read"))):
+        if after < 0:
+            raise HTTPException(422, "after must be non-negative")
         _owned_session(db, session_id, current["id"])
         limit = max(1, min(limit, 500))
         with db.connect() as cx:

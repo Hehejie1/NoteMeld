@@ -102,7 +102,7 @@ export class CloudClient {
   createSession(kind: CloudSession['kind'], title = 'New session', workspaceId = 'default', modelId?: string) { return this.request<CloudSession>('POST', '/v1/cloud/sessions', { kind, title, workspace_id: workspaceId, model_id: modelId }) }
   sendCommand(sessionId: string, requestId: string, input: string) { return this.request<{ command_id: string; sequence: number; status: string }>('POST', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, { request_id: requestId, input }) }
   commandStatus(sessionId: string, commandId: string) { return this.request<Record<string, unknown>>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}`) }
-  listCommands(sessionId: string, after = 0, limit = 100) { return this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, undefined, { params: { after, limit } }) }
+  listCommands(sessionId: string, after = 0, limit = 100) { if (!Number.isSafeInteger(after) || after < 0) throw new Error('after must be non-negative'); return this.request<unknown[]>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`, undefined, { params: { after, limit } }) }
   snapshot(sessionId: string, limit = 500) { return this.request<Record<string, unknown>>('GET', `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/snapshot`, undefined, { params: { limit } }) }
   async events(sessionId: string, after = 0, limit = 500): Promise<CloudEvent[]> {
     if (!Number.isSafeInteger(after) || after < 0) throw new Error('after must be non-negative')

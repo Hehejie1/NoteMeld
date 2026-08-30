@@ -225,6 +225,8 @@ class CloudClient:
         return self._request("GET", f"/v1/cloud/sessions/{quote(session_id, safe='')}/commands/{quote(command_id, safe='')}")
 
     def list_commands(self, session_id: str, after: int = 0, limit: int = 100) -> list[dict[str, Any]]:
+        if type(after) is not int or after < 0:
+            raise ValueError("after must be non-negative")
         return self._request("GET", f"/v1/cloud/sessions/{quote(session_id, safe='')}/commands", params={"after": after, "limit": limit})
 
     def read_workspace_file(self, workspace_id: str, path: str) -> dict[str, Any]:
