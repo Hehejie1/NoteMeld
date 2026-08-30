@@ -80,6 +80,13 @@ def test_durable_mailbox_survives_reopen(tmp_path):
     assert reopened.pending("s1") == []
 
 
+def test_durable_mailbox_uses_durable_sqlite_pragmas(tmp_path):
+    mailbox = DurableSessionMailbox(tmp_path / "queue-pragmas.db")
+    with mailbox._connect() as cx:
+        assert cx.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        assert cx.execute("PRAGMA synchronous").fetchone()[0] == 2
+
+
 def test_durable_mailbox_recovery_requires_explicit_choice(tmp_path):
     mailbox = DurableSessionMailbox(tmp_path / "queue.db")
     mailbox.enqueue("s1", "r1", "hello")

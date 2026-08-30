@@ -218,5 +218,7 @@ class DurableSessionMailbox:
     def _connect(self) -> sqlite3.Connection:
         cx = sqlite3.connect(self.database, isolation_level=None)
         cx.row_factory = sqlite3.Row
+        cx.execute("PRAGMA journal_mode=WAL")
+        cx.execute("PRAGMA synchronous=FULL")
         cx.execute("PRAGMA busy_timeout=2000")
         return cx
