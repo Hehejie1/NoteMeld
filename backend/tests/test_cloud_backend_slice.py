@@ -835,6 +835,8 @@ def test_cloud_capabilities_are_authenticated_and_explicit(tmp_path):
         data = response.json()["data"]
         assert data["protocol_version"] == "notemeld.sync.v1"
         assert data["relay_persists_payload"] is False
+        assert data["relay_backend"] == "memory"
+        assert data["lan_first_candidates"] is True
         assert data["features"]["approval_gated_mutations"] is True
 
 
