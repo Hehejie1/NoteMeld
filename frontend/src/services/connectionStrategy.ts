@@ -1,6 +1,23 @@
 export interface DeviceConnectivity { lan_endpoints?: string[] }
 export interface ConnectionCandidate { transport: 'lan' | 'relay'; url: string }
 
+export async function connectWithFallback<T>(candidates: ConnectionCandidate[], connect: (candidate: ConnectionCandidate, signal: AbortSignal) => Promise<T>, timeoutMs = 3_000): Promise<{ connection: T; candidate: ConnectionCandidate }> {
+  let lastError: unknown = new Error('no connection candidates')
+  for (const candidate of candidates) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const connection = await connect(candidate, controller.signal)
+      return { connection, candidate }
+    } catch (error) {
+      lastError = error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw lastError
+}
+
 /**
  * Build deterministic connection candidates. Authorization is still performed
  * by the handshake/Relay protocol; these URLs are only routing hints.
