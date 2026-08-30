@@ -887,9 +887,12 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         scopes = set(json.loads(row["scopes_json"]))
         if row["role"] == "super_admin":
             scopes.update({"message.send", "context.select", "model.select", "tool.invoke", "event.receive"})
+        # Keep a one-second boundary margin so a caller observing the value
+        # immediately before this request cannot see a window longer than the
+        # advertised 60 seconds when the wall clock crosses an integer second.
         valid_until = min(
-            int(row["expires_at"]) if row["expires_at"] is not None else now + 60,
-            now + 60,
+            int(row["expires_at"]) if row["expires_at"] is not None else now + 59,
+            now + 59,
         )
         result = {
             "session_id": payload.session_id,
