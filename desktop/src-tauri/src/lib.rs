@@ -45,6 +45,26 @@ fn desktop_runtime_bootstrap(app: AppHandle) -> String {
 }
 
 #[tauri::command]
+fn desktop_device_id(app: AppHandle) -> Result<String, String> {
+    let (data_dir, _) = resolve_desktop_paths(&app)?;
+    let path = data_dir.join("cloud-device-id");
+    if let Ok(value) = fs::read_to_string(&path) {
+        let value = value.trim().to_string();
+        if value.len() == 40 && value.starts_with("desktop-") && value[8..].chars().all(|c| c.is_ascii_hexdigit()) {
+            return Ok(value);
+        }
+    }
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(|err| format!("failed to generate device id: {err}"))?;
+    let suffix: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    let value = format!("desktop-{suffix}");
+    let temporary = path.with_extension("tmp");
+    fs::write(&temporary, format!("{value}\n")).map_err(|err| format!("failed to persist device id: {err}"))?;
+    fs::rename(&temporary, &path).map_err(|err| format!("failed to publish device id: {err}"))?;
+    Ok(value)
+}
+
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     let trimmed = url.trim();
     if !(trimmed.starts_with("https://") || trimmed.starts_with("http://")) {
@@ -467,6 +487,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_mode,
             desktop_runtime_bootstrap,
+            desktop_device_id,
             desktop_stop_backend,
             open_external_url,
             probe_cloud,
