@@ -1430,12 +1430,16 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                     continue
                 try:
                     envelope = json.loads(message)
+                    if not isinstance(envelope, dict):
+                        raise ValueError("invalid relay envelope")
                     sequence = envelope.get("sequence")
                     frame_type = envelope.get("frame_type", "command")
                     if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not _valid_nonce(envelope.get("nonce")) or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
                     with db.connect() as cx:
                         session_row = cx.execute("SELECT authority_epoch,workspace_id FROM sessions WHERE id=?", (session_id,)).fetchone()
+                        if session_row is None:
+                            raise ValueError("session unavailable")
                         epoch = session_row["authority_epoch"]
                     if envelope.get("authority_epoch") != epoch:
                         raise ValueError("stale authority epoch")
@@ -1444,7 +1448,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                         raise ValueError("relay grant missing")
                     if not _accept_relay_sequence(db, session_id, device_id, sequence):
                         raise ValueError("replayed relay envelope")
-                except (ValueError, json.JSONDecodeError, TypeError):
+                except (ValueError, json.JSONDecodeError, TypeError, AttributeError):
                     await websocket.send_json({"type": "rejected", "error": "invalid_envelope"})
                     continue
                 peer = app.state.relay_broker.peer(session_id, envelope["recipient_device_id"])

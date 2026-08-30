@@ -1009,6 +1009,8 @@ def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "relay-controller", "recipient_device_id": "relay-host", "sequence": 1, "frame_id": "frame-1", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=relay-controller", headers=headers) as socket:
+            socket.send_json([])
+            assert socket.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
             socket.send_json(frame)
             assert socket.receive_json()["error"] == "host_offline"
             socket.send_json(frame)
