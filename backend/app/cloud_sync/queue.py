@@ -144,6 +144,29 @@ class DurableSessionMailbox:
             row = cx.execute("SELECT status FROM sync_mailbox WHERE session_id=? AND request_id=?", (session_id, request_id)).fetchone()
         return str(row[0]) if row else None
 
+    def compact(self, session_id: str, keep_completed: int = 1000) -> int:
+        """Drop terminal delivery rows after their result is durably projected."""
+        if type(keep_completed) is not int or keep_completed < 0:
+            raise ValueError("keep_completed must be non-negative")
+        with self._connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            rows = cx.execute(
+                "SELECT request_id FROM sync_mailbox WHERE session_id=? "
+                "AND status IN ('completed','failed','abandoned') "
+                "ORDER BY sequence DESC LIMIT -1 OFFSET ?",
+                (session_id, keep_completed),
+            ).fetchall()
+            if not rows:
+                cx.execute("COMMIT")
+                return 0
+            result = cx.executemany(
+                "DELETE FROM sync_mailbox WHERE session_id=? AND request_id=? "
+                "AND status IN ('completed','failed','abandoned')",
+                ((session_id, row[0]) for row in rows),
+            )
+            cx.execute("COMMIT")
+            return result.rowcount
+
     def discard_pending(self, session_id: str) -> int:
         with self._connect() as cx:
             result = cx.execute("UPDATE sync_mailbox SET status='abandoned',lease_owner=NULL WHERE session_id=? AND status IN ('queued','admitted','needs_attention')", (session_id,))

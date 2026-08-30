@@ -68,6 +68,10 @@ class CloudSyncHostRuntime:
     def rotate_authority(self, session_id: str, new_epoch: int) -> int:
         return self._authority_for(session_id).rotate_authority(session_id, new_epoch)
 
+    def compact(self, session_id: str, keep_completed: int = 1000) -> int:
+        """Compact terminal delivery rows after Agent results are projected."""
+        return self.mailbox.compact(session_id, keep_completed)
+
     def _authorize_lan_peer(
         self,
         session_id: str,

@@ -99,6 +99,20 @@ def test_remote_host_drives_one_active_turn_and_explicit_recovery(tmp_path):
     assert restarted.pending("session-1") == []
 
 
+def test_durable_mailbox_compacts_only_terminal_rows(tmp_path):
+    mailbox = DurableSessionMailbox(tmp_path / "compact.db")
+    mailbox.enqueue("session-1", "r1", "one")
+    mailbox.enqueue("session-1", "r2", "two")
+    assert mailbox.pop("session-1").request_id == "r1"
+    assert mailbox.complete("session-1", "r1") is True
+    assert mailbox.pop("session-1").request_id == "r2"
+    assert mailbox.fail("session-1", "r2") is True
+    assert mailbox.compact("session-1", keep_completed=1) == 1
+    assert [item.request_id for item in mailbox.pending("session-1")] == []
+    assert mailbox.status("session-1", "r2") == "failed"
+    assert mailbox.status("session-1", "r1") is None
+
+
 def test_remote_host_normalizes_mailbox_failures_without_plaintext(tmp_path):
     database = tmp_path / "remote-queue.db"
     authority = RemoteHostAuthority(
