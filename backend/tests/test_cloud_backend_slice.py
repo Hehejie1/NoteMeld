@@ -1380,6 +1380,20 @@ def test_workspace_quota_is_enforced(tmp_path):
         assert http.put("/v1/workspaces/quota/files/b.txt", headers=headers, json={"content": "5"}).status_code == 413
 
 
+def test_concurrent_workspace_writes_serialize_quota_admission(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", max_workspace_bytes=4)
+    with TestClient(create_app(settings)) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        def write(name: str) -> int:
+            return http.put(f"/v1/workspaces/race/files/{name}.txt", headers=headers, json={"content": "1234"}).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses = list(pool.map(write, ("a", "b")))
+        assert sorted(statuses) == [200, 413]
+
+
 def test_workspace_backup_list_and_restore(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
