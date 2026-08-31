@@ -385,3 +385,11 @@
 - 不允许重新引入的错误做法：产品业务失败直接返回 ABI driver error；在 UI/CLI 执行工具；Host 自己循环调用模型；把工具参数、Provider payload、凭证或异常原文写入 ToolResult/日志；用进程内 Session map 关联并发结果。
 - 检查方式：`backend/tests/agent_host/test_tool_driver.py` 覆盖五类稳定错误，`test_tool_scheduler_integration.py` 使用真实 standalone SDK artifact 断言 tool call → Capability Registry → ToolResult → 第二轮模型，并发两个 Session 的 call id/result 不串。
 - 修复经验：NoteMeld 只实现薄 ToolDriver 并只调用 Capability Registry。产品成功和可恢复失败都转换为 `{call_id, output}` ToolResult；失败 output 使用稳定脱敏 code。只有 callback/ABI 自身格式损坏才返回 driver-level error，调度、并发、取消和下一轮模型始终归 SDK 所有。
+
+## Agent SSE 尾帧或跨 Turn 事件污染前端
+
+- 风险：SSE 在 UTF-8 多字节字符中间断块、连接结束时留下未分隔尾帧，或错误事件混入当前流，可能造成回复截断、乱码、重复拼接或跨会话串话。
+- 根因：reader 只解析出现 `\\n\\n` 的帧；decoder 未在结束时 flush；前端 reducer 只按“最后一条 assistant 消息”归并 delta，未校验 `turn_id`、sequence 和 streaming 状态。
+- 不允许重新引入的错误做法：把非法/负 sequence 当作有效事件；接受其他 Turn 的事件；把已完成 assistant 消息继续追加；只在正常网络关闭前提下测试 SSE。
+- 检查方式：覆盖 UTF-8 chunk 边界、最后无空行尾帧、重复/乱序 sequence、错误 `turn_id`、空 payload、重复 `message.completed` 和终态后 delta；运行 `cd frontend && pnpm test:contracts`。
+- 修复经验：SSE 使用流式 `TextDecoder` 并在 EOF flush，解析尾帧；客户端拒绝不属于当前 Turn 或没有合法 sequence 的事件；reducer 只追加正在流式的 assistant 消息，终态后不再修改消息。

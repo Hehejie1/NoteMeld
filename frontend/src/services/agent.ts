@@ -83,41 +83,52 @@ export async function* streamAgentEvents(turnId: string, afterSequence = -1): As
   const decoder = new TextDecoder()
   let buffer = ''
   let lastEventId: number | null = null
-  let currentEventType = 'agent.event'
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const frames = buffer.split('\n\n')
-    buffer = frames.pop() || ''
-    for (const frame of frames) {
+  const parseFrame = function* (frame: string): Generator<AgentEvent> {
       const dataLines: string[] = []
+      let frameEventType = 'agent.event'
       const lines = frame.split('\n')
       for (const line of lines) {
         if (!line || line.startsWith(':')) continue
-        if (line.startsWith('event:')) currentEventType = line.slice(6).trim()
+        if (line.startsWith('event:')) frameEventType = line.slice(6).trim() || 'agent.event'
         else if (line.startsWith('id:')) lastEventId = Number.parseInt(line.slice(3).trim(), 10)
         else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
       }
-      if (!dataLines.length) continue
+      if (!dataLines.length) return
       const eventText = dataLines.join('\n')
-      if (!eventText) continue
+      if (!eventText) return
       let event: AgentEvent
       try {
         event = JSON.parse(eventText) as AgentEvent
-      } catch (error) {
-        continue
+      } catch {
+        return
       }
-      if (event.type && event.type !== 'agent.schema') {
-        yield {
-          ...event,
-          type: event.type || currentEventType,
-          event_id: event.event_id || String(lastEventId || event.sequence || 0),
-          sequence: event.sequence ?? (Number.isFinite(lastEventId) ? lastEventId : -1),
-          turn_id: event.turn_id || turnId,
-        }
+      const sequence = event.sequence ?? (Number.isFinite(lastEventId) ? lastEventId : -1)
+      const eventTurnId = event.turn_id || turnId
+      const eventType = event.type || frameEventType
+      if (eventType === 'agent.schema' || eventTurnId !== turnId || !Number.isInteger(sequence) || sequence < 0) return
+      yield {
+        ...event,
+        type: eventType,
+        event_id: event.event_id || String(lastEventId ?? sequence),
+        sequence,
+        turn_id: eventTurnId,
       }
     }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        buffer += decoder.decode()
+        break
+      }
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n')
+      buffer = frames.pop() || ''
+      for (const frame of frames) yield* parseFrame(frame)
+    }
+    if (buffer.trim()) yield* parseFrame(buffer)
+  } finally {
+    reader.releaseLock()
   }
 }
 
