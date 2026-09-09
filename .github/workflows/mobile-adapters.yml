@@ -40,8 +40,9 @@ jobs:
           api-level: 34
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot
           disable-animations: true
+          environment-variables: ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL=5
           script: |
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             adb shell am force-stop com.notemeld.mobile
