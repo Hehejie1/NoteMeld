@@ -16,5 +16,8 @@ installing with `hdc`.
   `make_device_id("harmony", install_id)`.
 - Reuse CloudClient and the canonical relay/session schemas; do not duplicate
   Agent runtime or queue semantics in the UI adapter.
-- Harmony remote execution is fail-closed until its native LAN/Relay E2EE
-  WebSocket frame transport is implemented; it must never silently execute through Cloud-native.
+- Harmony remote execution uses the native LAN-first/Relay E2EE WebSocket frame
+  transport in `HarmonyRemoteTransport` and fails closed if that transport or
+  its secure identity cannot be initialized; it must never silently execute
+  through Cloud-native. Physical-device LAN/Relay interoperability remains a
+  release validation gate, separate from source/build verification.
