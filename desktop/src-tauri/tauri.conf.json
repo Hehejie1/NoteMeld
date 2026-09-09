@@ -36,7 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../../packages/notemeld-applications/apps": "applications"
+      "resources/applications": "applications"
     }
   },
   "plugins": {

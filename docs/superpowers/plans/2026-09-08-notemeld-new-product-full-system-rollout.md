@@ -323,6 +323,8 @@
 
   Mobile CI 首次真实回归发现 iOS 工程使用 Xcode 26 project format `objectVersion = 77`，而 `macos-14` runner 的 Xcode 15.4 无法读取。工程未使用新格式特性，已降为兼容 Xcode 15 的 `objectVersion = 56`；本机 Xcode 26.5 Simulator 构建 `BUILD SUCCEEDED`，待候选分支重新触发 iOS job。
 
+  正式 `v0.0.4` Release 首次触发后，三平台均在 Tauri 构建前的资源校验失败：桌面配置引用仓库外的 `../../../packages/notemeld-applications/apps`，GitHub checkout 不包含工作区兄弟仓库。已将当前可发布的 Wiki Application bundle 纳入 `desktop/src-tauri/resources/applications/wiki`，并让默认/macOS/Windows Tauri 配置统一从仓库内资源打包；这同时消除了发布机依赖未 checkout 的外部工作区。首次运行不创建 Release，旧 `v0.0.4` 标签原先指向 2026-07-28 旧提交，已校正为当前 `main` 合并提交后重新触发发布验证。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
