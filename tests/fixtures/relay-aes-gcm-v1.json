@@ -1,0 +1,17 @@
+{
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "plaintext": "{\"request_id\":\"request-1\",\"input\":\"hello\"}",
+  "frame": {
+    "protocol_version": "notemeld.sync.v1",
+    "session_id": "session-1",
+    "sender_device_id": "controller-1",
+    "recipient_device_id": "host-1",
+    "sequence": 1,
+    "frame_id": "frame-1",
+    "authority_epoch": 1,
+    "nonce": "AAECAwQFBgcICQoL",
+    "frame_type": "command",
+    "ciphertext": "PCCkfrSQp2j5Hv7vk9NaH-an8lGDD3JNGkvH7HMZdcYjKoyUyq1-91bZEBhI6ix2r7cOwdEQp_4cXA"
+  },
+  "associated_data": "{\"authority_epoch\":1,\"frame_id\":\"frame-1\",\"frame_type\":\"command\",\"nonce\":\"AAECAwQFBgcICQoL\",\"protocol_version\":\"notemeld.sync.v1\",\"recipient_device_id\":\"host-1\",\"sender_device_id\":\"controller-1\",\"sequence\":1,\"session_id\":\"session-1\"}"
+}

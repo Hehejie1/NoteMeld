@@ -6,10 +6,6 @@ REPO_BRANCH="${NOTEMELD_REPO_BRANCH:-main}"
 
 INSTALL_ROOT="${NOTEMELD_HOME:-$HOME/.notemeld}"
 APP_DIR="${INSTALL_ROOT}/app"
-DATA_DIR="${INSTALL_ROOT}/data"
-LOG_DIR="${INSTALL_ROOT}/logs"
-MODEL_DIR="${INSTALL_ROOT}/models"
-CONFIG_DIR="${INSTALL_ROOT}/config"
 BIN_DIR="${NOTEMELD_BIN_DIR:-$HOME/.local/bin}"
 CLI_PATH="${BIN_DIR}/notemeld"
 
@@ -62,13 +58,14 @@ ensure_path() {
 }
 
 install_repo() {
-  mkdir -p "$INSTALL_ROOT" "$DATA_DIR" "$LOG_DIR" "$MODEL_DIR" "$CONFIG_DIR"
+  mkdir -p "$INSTALL_ROOT"
 
   if [[ -d "$APP_DIR/.git" ]]; then
     log "Updating existing NoteMeld repository"
     git -C "$APP_DIR" fetch origin "$REPO_BRANCH"
     git -C "$APP_DIR" checkout "$REPO_BRANCH"
     git -C "$APP_DIR" pull --ff-only origin "$REPO_BRANCH"
+    mkdir -p "$APP_DIR/desktop/data" "$APP_DIR/desktop/logs"
     return 0
   fi
 
@@ -78,6 +75,8 @@ install_repo() {
 
   log "Cloning NoteMeld from ${REPO_URL}"
   git clone --branch "$REPO_BRANCH" "$REPO_URL" "$APP_DIR"
+
+  mkdir -p "$APP_DIR/desktop/data" "$APP_DIR/desktop/logs"
 }
 
 install_backend() {
@@ -90,13 +89,13 @@ install_backend() {
   fi
 
   .venv/bin/python -m pip install --upgrade pip
-  .venv/bin/python -m pip install -r backend/requirements.txt
+  .venv/bin/python -m pip install -r desktop/backend/requirements.txt
 }
 
 install_frontend() {
   log "Installing frontend dependencies"
 
-  cd "$APP_DIR/frontend"
+  cd "$APP_DIR/desktop/frontend"
   corepack enable
   corepack pnpm install --registry https://registry.npmjs.org
 }
@@ -118,7 +117,7 @@ install_cli() {
 set -euo pipefail
 
 export NOTEMELD_HOME="${NOTEMELD_HOME:-$HOME/.notemeld}"
-exec "$NOTEMELD_HOME/app/scripts/notemeld" "$@"
+exec "$NOTEMELD_HOME/app/scripts/desktop/notemeld" "$@"
 EOF
 
   chmod +x "$CLI_PATH"

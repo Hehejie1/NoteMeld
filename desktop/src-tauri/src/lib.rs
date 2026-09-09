@@ -1,4 +1,6 @@
 use serde::Serialize;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     net::TcpListener,
@@ -6,8 +8,6 @@ use std::{
     process::{Child, Command},
     sync::Mutex,
 };
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use tauri::{webview::PageLoadEvent, AppHandle, Manager, RunEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
@@ -21,9 +21,17 @@ struct DesktopRuntimeState {
 struct FrontendRuntimePayload {
     api_base_url: String,
     screenshot_base_url: String,
+    cloud_base_url: Option<String>,
     mode: String,
     desktop_embedded: bool,
     session_token: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudProbeResult {
+    status_code: u16,
+    ready: bool,
 }
 
 #[tauri::command]
@@ -35,6 +43,30 @@ fn desktop_runtime_mode() -> &'static str {
 fn desktop_runtime_bootstrap(app: AppHandle) -> String {
     let state = app.state::<DesktopRuntimeState>();
     state.runtime_bootstrap.clone()
+}
+
+#[tauri::command]
+fn desktop_device_id(app: AppHandle) -> Result<String, String> {
+    let (data_dir, _) = resolve_desktop_paths(&app)?;
+    let path = data_dir.join("cloud-device-id");
+    if let Ok(value) = fs::read_to_string(&path) {
+        let value = value.trim().to_string();
+        if value.len() == 40
+            && value.starts_with("desktop-")
+            && value[8..].chars().all(|c| c.is_ascii_hexdigit())
+        {
+            return Ok(value);
+        }
+    }
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(|err| format!("failed to generate device id: {err}"))?;
+    let suffix: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    let value = format!("desktop-{suffix}");
+    let temporary = path.with_extension("tmp");
+    fs::write(&temporary, format!("{value}\n"))
+        .map_err(|err| format!("failed to persist device id: {err}"))?;
+    fs::rename(&temporary, &path).map_err(|err| format!("failed to publish device id: {err}"))?;
+    Ok(value)
 }
 
 #[tauri::command]
@@ -69,6 +101,44 @@ fn open_external_url(url: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|err| format!("failed to open external url: {err}"))
+}
+
+fn validate_cloud_base_url(value: &str) -> Result<reqwest::Url, String> {
+    let trimmed = value.trim().trim_end_matches('/');
+    let parsed = reqwest::Url::parse(trimmed).map_err(|_| "invalid cloud URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.username() != ""
+        || parsed.password().is_some()
+    {
+        return Err("cloud URL must be an http(s) URL without credentials".to_string());
+    }
+    if parsed.scheme() == "http" {
+        let host = parsed.host_str().unwrap_or_default();
+        if !matches!(host, "127.0.0.1" | "localhost" | "::1") {
+            return Err("cloud URL must use HTTPS unless it targets localhost".to_string());
+        }
+    }
+    Ok(parsed)
+}
+
+#[tauri::command]
+fn probe_cloud(base_url: String) -> Result<CloudProbeResult, String> {
+    let base = validate_cloud_base_url(&base_url)?;
+    let endpoint = base
+        .join("ready")
+        .map_err(|_| "invalid cloud URL".to_string())?;
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|err| format!("failed to create cloud client: {err}"))?
+        .get(endpoint)
+        .send()
+        .map_err(|err| format!("cloud probe failed: {err}"))?;
+    let status = response.status();
+    Ok(CloudProbeResult {
+        status_code: status.as_u16(),
+        ready: status.is_success(),
+    })
 }
 
 #[tauri::command]
@@ -109,7 +179,8 @@ fn repo_root() -> Result<PathBuf, String> {
 }
 
 fn ensure_dir(path: &Path) -> Result<(), String> {
-    fs::create_dir_all(path).map_err(|err| format!("failed to create directory {}: {err}", path.display()))
+    fs::create_dir_all(path)
+        .map_err(|err| format!("failed to create directory {}: {err}", path.display()))
 }
 
 #[cfg(unix)]
@@ -172,13 +243,30 @@ fn generate_session_token() -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn build_runtime_payload(port: u16, session_token: String) -> FrontendRuntimePayload {
-    FrontendRuntimePayload {
+fn build_runtime_payload(
+    port: u16,
+    session_token: String,
+) -> Result<FrontendRuntimePayload, String> {
+    let cloud_base_url = normalize_cloud_base_url(std::env::var("NOTEMELD_CLOUD_BASE_URL").ok())?;
+    Ok(FrontendRuntimePayload {
         api_base_url: format!("http://127.0.0.1:{port}/api"),
         screenshot_base_url: format!("http://127.0.0.1:{port}/static/screenshots"),
+        cloud_base_url,
         mode: "desktop".to_string(),
         desktop_embedded: true,
         session_token,
+    })
+}
+
+fn normalize_cloud_base_url(value: Option<String>) -> Result<Option<String>, String> {
+    match value {
+        Some(value) if !value.trim().is_empty() => Ok(Some(
+            validate_cloud_base_url(value.trim())?
+                .to_string()
+                .trim_end_matches('/')
+                .to_string(),
+        )),
+        _ => Ok(None),
     }
 }
 
@@ -188,7 +276,7 @@ fn build_runtime_bootstrap(payload: &FrontendRuntimePayload) -> Result<String, S
 }
 
 fn resolve_dev_backend_command(repo_root: &Path) -> Option<(PathBuf, Vec<String>, PathBuf)> {
-    let script = repo_root.join("backend/desktop_entry.py");
+    let script = repo_root.join("desktop/backend/desktop_entry.py");
     let python_candidates = [
         repo_root.join(".venv/bin/python3"),
         repo_root.join(".venv/bin/python"),
@@ -199,7 +287,7 @@ fn resolve_dev_backend_command(repo_root: &Path) -> Option<(PathBuf, Vec<String>
             return Some((
                 python,
                 vec![script.to_string_lossy().into_owned()],
-                repo_root.join("backend"),
+                repo_root.join("desktop/backend"),
             ));
         }
     }
@@ -301,7 +389,9 @@ fn ensure_packaged_ffmpeg_dir(app: &AppHandle, data_dir: &Path) -> Result<Option
                 if status.success() {
                     Ok(())
                 } else {
-                    Err(format!("failed to extract bundled ffmpeg runtime: exit status {status}"))
+                    Err(format!(
+                        "failed to extract bundled ffmpeg runtime: exit status {status}"
+                    ))
                 }
             })?;
     }
@@ -334,30 +424,9 @@ fn spawn_backend_sidecar(
         .or_else(|| resolve_packaged_backend_command(app))
         .ok_or_else(|| "failed to locate desktop backend command".to_string())?;
 
-    let (data_dir, log_dir) = resolve_desktop_paths(app)?;
-    let note_output_dir = data_dir.join("note_results");
-    let vector_store_dir = data_dir.join("chroma");
-    let config_dir = data_dir.join("config");
-    let model_dir = data_dir.join("models");
-    let app_data_dir = data_dir.join("data");
-    let frame_dir = app_data_dir.join("output_frames");
-    let upload_dir = data_dir.join("uploads");
-    let static_dir = data_dir.join("static");
-    let screenshot_dir = static_dir.join("screenshots");
-    let database_path = data_dir.join("notemeld.db");
-    let downloader_config = config_dir.join("downloader.json");
-
-    for path in [
-        &note_output_dir,
-        &vector_store_dir,
-        &config_dir,
-        &model_dir,
-        &frame_dir,
-        &upload_dir,
-        &screenshot_dir,
-    ] {
-        ensure_dir(path)?;
-    }
+    let (app_data_root, log_dir) = resolve_desktop_paths(app)?;
+    let data_dir = app_data_root.join("data");
+    ensure_dir(&data_dir)?;
 
     let mut command = Command::new(program);
     command.args(args);
@@ -368,23 +437,15 @@ fn spawn_backend_sidecar(
     command.env("BACKEND_HOST", "127.0.0.1");
     command.env("BACKEND_PORT", port.to_string());
     command.env("NOTEMELD_API_BASE_URL", &payload.api_base_url);
+    if let Some(cloud_base_url) = &payload.cloud_base_url {
+        command.env("NOTEMELD_CLOUD_BASE_URL", cloud_base_url);
+    }
     command.env("NOTEMELD_DATA_DIR", &data_dir);
     command.env("NOTEMELD_LOG_DIR", &log_dir);
-    command.env("NOTE_OUTPUT_DIR", &note_output_dir);
-    command.env("VECTOR_DB_DIR", &vector_store_dir);
-    command.env("NOTEMELD_DOWNLOADER_CONFIG", &downloader_config);
-    command.env("NOTEMELD_TRANSCRIBER_CONFIG", config_dir.join("transcriber.json"));
-    command.env("NOTEMELD_DATABASE_PATH", &database_path);
-    command.env("DATABASE_URL", format!("sqlite:///{}", database_path.display()));
-    command.env("NOTEMELD_MODEL_DIR", &model_dir);
-    command.env("NOTEMELD_APP_DATA_DIR", &app_data_dir);
-    command.env("NOTEMELD_FRAME_DIR", &frame_dir);
-    command.env("DATA_DIR", &app_data_dir);
-    command.env("UPLOAD_DIR", &upload_dir);
-    command.env("STATIC_DIR", &static_dir);
-    command.env("OUT_DIR", &screenshot_dir);
 
-    if let Some(ffmpeg_dir) = optional_packaged_ffmpeg_dir(ensure_packaged_ffmpeg_dir(app, &data_dir)) {
+    if let Some(ffmpeg_dir) =
+        optional_packaged_ffmpeg_dir(ensure_packaged_ffmpeg_dir(app, &data_dir))
+    {
         command.env("FFMPEG_BIN_PATH", ffmpeg_dir);
     } else if let Ok(ffmpeg_path) = std::env::var("FFMPEG_BIN_PATH") {
         command.env("FFMPEG_BIN_PATH", ffmpeg_path);
@@ -406,6 +467,15 @@ fn kill_backend(app: &AppHandle) {
     }
 }
 
+/// Explicit stop is separate from window exit so a CLI turn can outlive the
+/// desktop UI. The product `notemeld stop` command remains the process-level
+/// stop entry point; this command is available to a future desktop settings
+/// action without changing the shared Host lifecycle.
+#[tauri::command]
+fn desktop_stop_backend(app: AppHandle) {
+    kill_backend(&app);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -414,13 +484,15 @@ pub fn run() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let port = ensure_fixed_backend_port_available().map_err(std::io::Error::other)?;
-            let runtime_payload = build_runtime_payload(port, generate_session_token());
+            let runtime_payload = build_runtime_payload(port, generate_session_token())
+                .map_err(std::io::Error::other)?;
             let runtime_bootstrap =
                 build_runtime_bootstrap(&runtime_payload).map_err(std::io::Error::other)?;
-            let backend_child =
-                spawn_backend_sidecar(app.handle(), port, &runtime_payload).map_err(std::io::Error::other)?;
+            let backend_child = spawn_backend_sidecar(app.handle(), port, &runtime_payload)
+                .map_err(std::io::Error::other)?;
 
             app.manage(DesktopRuntimeState {
                 backend_child: Mutex::new(Some(backend_child)),
@@ -442,7 +514,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_mode,
             desktop_runtime_bootstrap,
+            desktop_device_id,
+            desktop_stop_backend,
             open_external_url,
+            probe_cloud,
             get_autostart_enabled,
             set_autostart_enabled
         ])
@@ -450,7 +525,10 @@ pub fn run() {
         .expect("error while building NoteMeld desktop")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                kill_backend(app_handle);
+                // Keep the process-scoped AgentSdkHost alive for an existing
+                // CLI turn. It is stopped explicitly, not as a side effect
+                // of closing the UI window.
+                let _ = app_handle;
             }
         });
 }
@@ -460,7 +538,8 @@ mod tests {
     #[cfg(unix)]
     use super::{
         desktop_backend_port, ensure_executable_permissions, ensure_fixed_backend_port_available,
-        optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable,
+        normalize_cloud_base_url, optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable,
+        validate_cloud_base_url,
     };
     #[cfg(unix)]
     use std::{
@@ -552,7 +631,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn packaged_ffmpeg_setup_failure_does_not_abort_desktop_startup() {
-        let result = optional_packaged_ffmpeg_dir(Err("ffmpeg runtime is not executable".to_string()));
+        let result =
+            optional_packaged_ffmpeg_dir(Err("ffmpeg runtime is not executable".to_string()));
 
         assert!(result.is_none());
     }
@@ -560,6 +640,26 @@ mod tests {
     #[test]
     fn desktop_backend_port_is_fixed_for_mcp_clients() {
         assert_eq!(desktop_backend_port(), 8483);
+    }
+
+    #[test]
+    fn cloud_url_validation_allows_local_http_and_remote_https_only() {
+        assert!(validate_cloud_base_url("http://127.0.0.1:8583").is_ok());
+        assert!(validate_cloud_base_url("https://cloud.example.test/").is_ok());
+        assert!(validate_cloud_base_url("http://cloud.example.test").is_err());
+        assert!(validate_cloud_base_url("https://user:pass@cloud.example.test").is_err());
+    }
+
+    #[test]
+    fn optional_cloud_url_normalization_fails_closed() {
+        assert_eq!(normalize_cloud_base_url(None).unwrap(), None);
+        assert_eq!(
+            normalize_cloud_base_url(Some(" https://cloud.example.test/ ".to_string()))
+                .unwrap()
+                .as_deref(),
+            Some("https://cloud.example.test")
+        );
+        assert!(normalize_cloud_base_url(Some("http://cloud.example.test".to_string())).is_err());
     }
 
     #[test]

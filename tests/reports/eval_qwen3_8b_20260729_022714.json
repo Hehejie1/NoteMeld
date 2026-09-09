@@ -1,0 +1,83 @@
+{
+  "model": "qwen3:8b",
+  "timestamp": "2025-07-29T01:30:00",
+  "hardware": "MacBook Pro 2019 Intel, 32GB RAM, AMD Radeon Pro 5500M 8GB VRAM",
+  "results": {
+    "lcsts": {
+      "dataset": "LCSTS",
+      "total": 30,
+      "success": 30,
+      "failed": 0,
+      "metrics": {
+        "avg_rouge_1": 0.1752,
+        "avg_rouge_2": 0.0567,
+        "avg_rouge_l": 0.1653,
+        "avg_keyword_coverage": 0.9,
+        "avg_elapsed": 24.2
+      },
+      "details": []
+    },
+    "halluqa": {
+      "dataset": "HalluQA",
+      "total": 30,
+      "success": 30,
+      "failed": 0,
+      "hallucinated": 11,
+      "non_hallucination_rate": 0.6333,
+      "hallucination_rate": 0.3667,
+      "avg_elapsed": 25.5,
+      "category_stats": {
+        "Misleading": {
+          "total": 12,
+          "hallucinated": 5
+        },
+        "Knowledge": {
+          "total": 18,
+          "hallucinated": 6
+        }
+      },
+      "details": []
+    },
+    "business": {
+      "dataset": "NoteMeld业务场景",
+      "total": 3,
+      "success": 2,
+      "failed": 0,
+      "avg_elapsed": 85.7,
+      "details": [
+        {
+          "id": "biz_meeting_001",
+          "type": "meeting_summary",
+          "status": "success",
+          "output": "(会议摘要)",
+          "metrics": {
+            "keyword_coverage": 0.56,
+            "point_coverage": 0.0,
+            "elapsed": 111.3
+          }
+        },
+        {
+          "id": "biz_template_001",
+          "type": "template_format",
+          "status": "partial",
+          "output": "(JSON解析失败)",
+          "metrics": {
+            "format_accuracy": 0.0,
+            "elapsed": 72.0
+          }
+        },
+        {
+          "id": "biz_factual_001",
+          "type": "factual_consistency",
+          "status": "success",
+          "output": "(事实一致性回答)",
+          "metrics": {
+            "factual_accuracy": 0.0,
+            "forbidden_hits": 4,
+            "elapsed": 73.8
+          }
+        }
+      ]
+    }
+  }
+}

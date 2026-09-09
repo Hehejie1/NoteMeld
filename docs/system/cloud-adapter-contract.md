@@ -1,0 +1,108 @@
+# NoteMeld 跨端云同步适配契约
+
+本文定义桌面端、Web、Android、iOS 和 Harmony 对 `cloud/` 与
+`backend/app/cloud_sync/` 的最小接入边界。Agent loop、会话状态机和命令
+队列语义由宿主 runtime 负责，平台适配层不得复制实现。
+
+## 设备身份
+
+每个安装实例生成一个持久化的随机安装标识；设备 ID 使用
+`<platform>-<install-id>`，其中 platform 取 `desktop`、`web`、`android`、
+`ios` 或 `harmony`。安装标识不是密码，也不能从设备 ID 推导 Token。
+
+平台安全存储要求：
+
+- 桌面端：系统 Keychain/Credential Manager/Secret Service。
+- Web：加密 IndexedDB；禁止把云 Token 写入 localStorage。
+- Android：Android Keystore。
+- iOS：Keychain，使用 device-only 访问级别。
+- Harmony：系统安全存储。
+
+## 设备生命周期
+
+登录成功后适配层必须：
+
+1. 注册设备（重复注册必须安全幂等）。
+2. 发送一次立即心跳。
+3. 按云端 `device_online_ttl_seconds` 的三分之一左右周期发送心跳。
+4. 注销或宿主停止时停止定时器。
+
+心跳失败不能删除本地会话或队列；下次网络恢复时先重新注册/心跳，再恢复
+Relay 或同步任务。
+
+## 连接策略
+
+1. 使用受控端上报的私有 LAN endpoint 尝试 `ws://` 直连。
+2. LAN 连接失败后回退到云端 `wss://` Relay。
+3. 远程云端地址必须是 HTTPS；HTTP 只允许本机开发地址。
+4. Relay 只传递加密 envelope，不发送明文会话内容。
+
+## Relay envelope
+
+所有平台必须实现同一协议版本 `notemeld.sync.v1`，并校验：
+
+- `session_id`、发送方和接收方设备 ID。
+- 单调递增的发送序列号和 `authority_epoch`。
+- `frame_id`、12 字节 nonce、`frame_type`。
+- AEAD ciphertext 和绑定 envelope 元数据的 AAD。
+
+收到 `host_offline`、`invalid_envelope` 或权限错误时，控制端必须将本次
+发送标记为失败；不能把未送达消息伪装成本地已完成。受控端收到命令后先
+写入本地 durable mailbox，再回传 receipt；处理完成后再标记 mailbox
+completed。
+
+`relay_accepted` 只表示 Relay 已把 frame 写入在线 peer socket，不表示宿主
+已经接收。宿主平台层必须先用 envelope AAD 完成 AEAD 解密，再把明文 command
+交给 `RemoteHostAuthority`（或原生等价实现）；只有授权校验和 durable enqueue
+成功后才能构造 `status=received` receipt。receipt 只含 frame/request/session/
+queue sequence，不包含 input 或工具参数。`CloudSyncHostRuntime.install()` 同时启动
+`RemoteAgentMailboxConsumer`：它按 session 领取 durable command，创建 canonical Agent
+Turn 并调用现有 `NativeAgentExecutor`；只有 terminal event 才会 complete/fail mailbox。
+consumer 只负责 mailbox lease、终态回写和事件投影，不复制 Agent loop。
+
+## 本地队列与恢复
+
+平台适配层只调用 `DurableSessionMailbox`（或等价的原生实现）：
+
+- `enqueue` 使用客户端 request id 幂等。
+- 同一 session 只允许一个 admitted；有 active/needs_attention 时 `pop` 不得领取下一条。
+- `pop` 后状态为 admitted；崩溃重启转为 needs_attention，并在恢复前拒绝新 command。
+- 用户选择继续时回到 queued，选择放弃时变为 abandoned。
+- authority epoch 只允许单调增加；轮换时 fence 旧 active Turn，并把未执行 queued command 重绑到新 epoch。
+- 队列和本地会话数据不得放入云端 Relay 的临时消息存储。
+
+## workspace 与本地专属数据
+
+本地 workspace 默认只读；写入、删除和危险工具必须经过宿主确认。分享快照
+可以同步会话历史、摘要、压缩信息、长期记忆、工具记录和 workspace 文件，
+但必须排除本地密钥、Token、插件包、Skill 包和 Application 包。远端展示
+缺失工具时应提示“当前设备不可用”，不得静默执行替代工具。
+
+云端 workspace API 的文件读取和列表均为有界操作，响应会通过 `truncated`
+标记提示客户端继续请求；客户端应使用 `/capacity` 查看配额与磁盘可用空间。
+备份支持创建、分页列出、恢复和删除，删除与恢复等变更会写入审计日志。
+配额检查与文件系统变更通过按用户/Workspace 的进程锁及跨进程锁文件串行化；锁文件位于
+workspace 同级目录、仅用于协调，不属于用户 workspace 内容。
+
+桌面/Python Host 由平台安全存储构造 `CloudClient`、身份密钥和
+`SessionCipher` 后，通过 `attach_cloud_sync_runtime()` 注册到 backend；backend
+lifespan 负责 install/close。没有平台安全存储依赖时，LAN Host 端点保持关闭，
+不得从环境变量读取长期 token 或私钥。
+
+桌面运行时也可通过受 `X-NoteMeld-Session` 保护的本地
+`/api/cloud-sync/host/bootstrap` 完成这次组装：请求只携带 Cloud access token，
+后端从 OS credential store 加载 Host signing identity，并在内存中创建
+`CloudClient`。`/api/cloud-sync/host/relay/{session_id}/start|stop` 只负责 Relay
+连接生命周期；session cipher 仍必须由平台先注入，bootstrap 不会降低 E2EE 要求。
+bootstrap 成功后，runtime 会周期性读取当前 Host 的有效 Grant 与活动
+`device_remote` sessions，自动启停对应 Relay；Cloud 暂时不可用时只跳过本轮，
+不关闭本地 Agent/LAN 服务，恢复后继续对账。
+
+远程会话的 AES-GCM `SessionCipher` 由平台密钥协商/安全存储层构造后，必须显式
+注入 `CloudSyncHostRuntime.install_session_cipher(session_id,
+controller_device_id, cipher)`。runtime 只保存 cipher 实例以维护序列与重放游标，
+不会暴露或持久化会话密钥；会话撤销、重协商或 Host 关闭时应移除对应实例。
+LAN 连接可以在 proof 之后发送 `notemeld.e2ee.handshake.v1` signed X25519
+offer；Host 必须用 cloud assertion 中的 controller public key 验证，再返回自己的
+signed offer。Relay 连接也支持以 `frame_type=handshake` 转发该 signed envelope；
+Relay 只路由 opaque frame，握手验证和 session key 派生仍在两端完成。

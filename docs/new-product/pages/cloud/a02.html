@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 多端数据设计</title><link rel="stylesheet" href="../../assets/product-docs.css"></head>
+<body data-page="A02"><main class="doc-shell">
+  <header class="doc-hero"><span class="doc-kicker">NOTEMELD · DATA RESPONSIBILITY</span><h1>多端数据库与数据设计</h1><p>说明产品事实、Cloud 控制面、Agent 事件和移动端缓存各自负责什么。标记为待确认或待补充的内容不会被误认为生产实现。</p></header>
+  <section class="doc-card"><div class="table-scroll"><table class="doc-table"><thead><tr><th>数据实体</th><th>职责</th><th>归属页面</th><th>状态</th></tr></thead><tbody data-schema-body><tr><td colspan="4">正在读取数据模型配置…</td></tr></tbody></table></div></section>
+  <section class="doc-card"><h2>Cloud SQLite 字段与关系</h2><p class="doc-meta">以下字段来自 <code>cloud/db.py</code> 的实际 schema；文件正文和备份归档属于外部文件事实源，数据库保存索引与控制面元数据。</p><div class="doc-grid database-details" data-database-details><p>正在读取字段定义…</p></div></section>
+  <section class="doc-grid"><article class="doc-card"><span class="doc-badge">事实源</span><h2>桌面端 SQLite + 文件</h2><p>会话消息、笔记、任务状态、Wiki 和 Agent 事件由本地运行时持久化；UI 只读取服务层投影，不直接改表。</p></article><article class="doc-card"><span class="doc-badge">控制面</span><h2>Cloud SQLite</h2><p>保存用户、设备、授权、云端会话元数据、命令队列、审批和审计；Relay 不保存消息明文。</p></article><article class="doc-card"><span class="doc-badge">投影</span><h2>移动端缓存</h2><p>缓存会话摘要、设置和同步游标；移动端不能把缓存状态当成 Agent 执行事实，离线操作必须标注待同步。</p></article></section>
+  <section class="doc-card"><h2>设计决策与待确认项</h2><ul data-open-questions></ul><p data-doc-error></p></section>
+  <section class="doc-card"><h2>决策记录</h2><div class="doc-grid" data-decision-log><p>正在读取决策记录…</p></div></section>
+</main><script src="../../assets/product-docs.js"></script></body></html>

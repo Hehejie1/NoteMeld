@@ -1,0 +1,14 @@
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [{
+      "name": "default",
+      "compatibleSdkVersion": 23,
+      "compileSdkVersion": 23,
+      "targetSdkVersion": 23,
+      "runtimeOS": "OpenHarmony"
+    }],
+    "buildModeSet": [{ "name": "debug" }, { "name": "release" }]
+  },
+  "modules": [{ "name": "entry", "srcPath": "./entry" }]
+}

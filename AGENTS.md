@@ -1,6 +1,12 @@
 # AGENTS.md
 
+应用包由独立的 `../notemeld-applications/` 仓库维护；NoteMeld 只能消费其已构建的 manifest/UI 产物和 Application Protocol，不得把应用源码重新放回 `desktop/frontend/src/`。
+
 本文件是 NoteMeld 项目中所有 AI Agent 和开发者的硬规则。任何新需求、方案、代码修改、Bug 修复、重构、接口变更、数据模型变更开始前，必须遵守。
+
+## 产品范式
+
+NoteMeld 的核心范式是：**AI 编译知识，人验证和消费**。对外定位是"你的 AI 研究助手"——后台运行，标记驱动，随时提供参考和来源。对内架构隐喻是"知识编译器"——Wiki-First Retrieval，管线思维，增量重建。所有改动应服务这个范式：AI 负责下载、转写、理解、抽取、构建图谱；人负责标记来源、验证结果、消费知识。详细战略调研见 `docs/research/knowledge-compiler-paradigm.md`。
 
 ## 必读文档
 
@@ -114,11 +120,53 @@ Bug 修复必须说明：
 按改动范围选择验证：
 
 ```bash
-python3 -m compileall backend/app
-pytest backend/tests
-cd frontend && pnpm test:contracts
-cd frontend && pnpm build
-scripts/run_core_regression.sh
+python3 -m compileall desktop/backend/app
+pytest desktop/backend/tests
+cd desktop/frontend && pnpm test:contracts
+cd desktop/frontend && pnpm build
+scripts/desktop/run_core_regression.sh
 ```
 
 打包、桌面、MCP、上传、迁移、Wiki 相关改动必须优先运行对应契约测试。
+
+## CI/CD 打包发布
+
+工作流：`.github/workflows/release.yml`，产物发布到 GitHub Releases。
+
+### 触发方式
+
+- **自动（推荐）**：推送 `v*` 格式的 Git Tag 即触发全平台构建：
+  ```bash
+  git tag v0.0.x
+  git push origin v0.0.x
+  ```
+- **手动**：GitHub → Actions → Release Desktop App → Run workflow。
+
+### 产物清单
+
+每次 Release 产出以下资产：
+
+| 平台 | 文件名模式 | 架构 |
+|------|-----------|------|
+| macOS Apple Silicon | `NoteMeld_<version>_aarch64.dmg` | M1/M2/M3 |
+| macOS Intel | `NoteMeld_<version>_x64.dmg` | x86_64 |
+| Windows | `NoteMeld_<version>_x64_en-US.msi` | x86_64 |
+| 后端 Sidecar | `notemeld-backend.exe` | Windows 后端可执行文件 |
+
+macOS Intel 版本在 Apple Silicon runner 上通过 Rosetta 2 交叉编译（`arch -x86_64`），因为 `macos-13` Intel runner 已弃用。
+
+### 工作流步骤摘要
+
+1. Checkout + Node 20 + pnpm 9 + Python 3.11 + Rust stable
+2. 下载对应架构的 ffmpeg runtime
+3. 安装前端/桌面/后端依赖
+4. PyInstaller 打包后端 sidecar
+5. Tauri `tauri build` 生成 `.dmg` / `.msi`
+6. `softprops/action-gh-release` 创建 Release 并上传所有资产
+
+### 注意事项
+
+- Release job 依赖三个 build job 全部成功（`needs: [build-macos, build-macos-intel, build-windows]`）。
+- 任一平台构建失败，Release 会被 skipped，不会发布半成品。
+- 默认本地打包在没有签名密钥时保持 `createUpdaterArtifacts: false`；Release workflow 或提供 `TAURI_SIGNING_PRIVATE_KEY(_PATH)` 时启用签名 updater artifact，并发布 `latest.json`。
+- 官网 `https://notemeld.wiki/` 首页通过 JavaScript 调 GitHub API 获取最新 Release 并匹配上述文件名模式动态下载。

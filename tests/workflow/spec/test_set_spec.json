@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "name": "NoteMeld 业务测试集规范",
+  "description": "定义一条 NoteMeld 业务评测用例的所有字段。用于统一 LCSTS / 业务 / 幻觉 / 回归的数据集结构，便于跨模型、跨版本对比。",
+  "fields": {
+    "id": {
+      "type": "string",
+      "required": true,
+      "example": "biz_video_001",
+      "description": "全局唯一 ID，建议前缀分层：lcsts_xxx / biz_xxx / hallu_xxx / reg_xxx"
+    },
+    "dataset": {
+      "type": "enum",
+      "values": ["lcsts", "business", "hallucination", "regression"],
+      "description": "所属数据集"
+    },
+    "category": {
+      "type": "string",
+      "required": true,
+      "example": "video_summarization",
+      "values_suggestion": [
+        "video_summarization",
+        "text_summarization",
+        "meeting_minutes",
+        "template_adherence",
+        "hallucination",
+        "vision_grounding",
+        "subtitle_citation",
+        "content_citation",
+        "long_video",
+        "edge_case"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "required": true,
+      "schema": {
+        "text": "可选，输入文本（转录稿或原文字）",
+        "source_type": "transcript | raw_text | url | markdown",
+        "duration_seconds": "可选，视频时长",
+        "frame_paths": "可选，关键帧图片路径列表（绝对或相对 tests/ 根目录）",
+        "subtitle_segments": "可选，字幕时间段列表 [{start,end,text}]"
+      }
+    },
+    "expected": {
+      "type": "object",
+      "required": true,
+      "schema": {
+        "summary": "参考摘要（ROUGE / BERTScore 计算）",
+        "keywords": "必含关键词列表",
+        "template_id": "关联 template_definitions.json 中的模板 ID",
+        "required_sections": "模板要求必须出现的段落标题",
+        "forbidden_claims": "原文不存在、模型不得编造的事实",
+        "required_citations": "必须出现的 *Content-[mm:ss] / *Screenshot-[mm:ss] 标记",
+        "required_screenshot_slots": "必须截图锚点的时间段",
+        "length_range": {"min": 100, "max": 2000, "description": "期望输出字数区间"}
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": true,
+      "schema": {
+        "metrics": ["rouge_1", "rouge_l", "hallucination_rate", "template_adherence", "section_recall", "citation_precision"],
+        "weights": {
+          "hallucination_rate": 0.35,
+          "template_adherence": 0.25,
+          "section_recall": 0.15,
+          "citation_precision": 0.15,
+          "rouge_1": 0.10
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "schema": {
+        "origin": "public_benchmark | production_data | synthetic | user_reported_bug",
+        "evidence": "素材证据路径（如 vector_db/note_results/xxx_transcript.json）",
+        "collected_by": "采集者 ID",
+        "collected_at": "ISO 时间",
+        "annotator_count": ">= 2",
+        "annotation_agreement": "0~1，Kappa 一致性系数"
+      }
+    }
+  },
+  "evaluation_pipeline": {
+    "steps": [
+      "1. 文本总结质量：ROUGE-1 / ROUGE-L / BERTScore",
+      "2. 幻觉检测：Factual Hallucination Rate（见 hallucination/factual_benchmark.json）",
+      "3. 模板遵循度：字段完整率 + 必填段落召回率",
+      "4. 字幕引用正确率：*Screenshot-[mm:ss] 与实际关键帧时间段的 IOU",
+      "5. 时间戳引用正确率：*Content-[mm:ss] 与字幕时间段的偏差 <= 5s",
+      "6. 章节召回率：期望段落是否全部出现（解决「3 段只出 2 段」问题）"
+    ]
+  }
+}

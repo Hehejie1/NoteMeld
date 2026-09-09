@@ -1,6 +1,6 @@
 <div align="center">
   <h1>NoteMeld</h1>
-  <p><b>源知库 · 你的专属知识库</b></p>
+  <p><b>源知库 · 你的 AI 研究助手</b></p>
   <p>
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" />
     <img src="https://img.shields.io/badge/frontend-react%2019-blue" />
@@ -20,7 +20,24 @@
 
 ## ✨ 什么是 NoteMeld
 
-**NoteMeld（源知库）** 是一款自托管的 AI 知识工作台，把你每天接触的网页、本地文件、音频、AI 对话等多种信息源，沉淀为**可追溯、可复用、可持续增长的个人知识库**。
+**NoteMeld（源知库）** 是你的本地 AI 研究助手：把你看过的网页、视频、音频、文件和 AI 对话，整理成以后真正用得上的个人知识。
+
+它不只是生成一篇摘要。NoteMeld 会将来源编译为结构化 Markdown 笔记，并进一步识别主题、概念、论点、证据和关系，形成一个**可追溯、可关联、持续生长的知识库**。当你再次遇到问题时，可以搜索、问答，或让 Codex、Cursor、Claude Code 等 AI 工具调用这些知识。
+
+NoteMeld 的核心理念是：**AI 编译知识，人验证和消费。** 你负责标记值得保存的来源、校验重要结论和做最终决定；AI 负责整理、关联和在需要时找回上下文。
+
+### NoteMeld 能帮你什么
+
+- **统一摄入**：将网页、视频、音频、PDF、本地文件和 AI 对话放入同一个研究入口。
+- **自动整理**：生成结构化 Markdown 笔记，保留来源、时间和处理过程。
+- **知识关联**：从笔记中提取实体、概念、论点、证据和关系，发现不同资料之间的联系。
+- **来源问答**：回答问题时回到相关笔记和证据，方便核验，而不是只给出无依据的生成文本。
+- **AI 协同**：通过 MCP 将你的知识库接入 AI IDE，让 AI 在工作时理解你过去的研究上下文。
+- **本地优先**：资料保存在自己的设备上，核心产物是可读取、可迁移的 Markdown 和本地数据。
+
+### 它不是什么
+
+NoteMeld 不是只会收藏链接的稍后阅读工具，也不是只针对单个文件问答的聊天机器人，更不是要求你手动维护文件夹、标签和双向链接的传统笔记软件。它的目标是让知识在导入后继续被整理、验证、关联和复用。
 
 <p align="center">
   <img src="./docs/images/index.png" alt="NoteMeld 首页" width="100%" />
@@ -30,9 +47,9 @@
 
 | 步骤 | 说明 |
 |---|---|
-| **1. 采集** | 粘贴链接 / 上传文件 / 接入 AI 对话 |
-| **2. 生成笔记** | AI 自动整理为结构化 Markdown |
-| **3. 沉淀 Wiki** | 抽取实体与概念，构建个人知识图谱 |
+| **1. 标记来源** | 粘贴网页或视频链接，上传文件，或导入 AI 对话 |
+| **2. AI 编译知识** | 自动下载、转写、整理为 Markdown，并抽取主题、概念、论点和证据 |
+| **3. 验证与复用** | 在知识库中搜索、问答、查看来源，或通过 MCP 交给你的 AI 工具使用 |
 
 <p align="center">
   <img src="./docs/images/note.png" alt="结构化笔记" width="45%" />
@@ -71,10 +88,17 @@ notemeld
 git clone https://github.com/Hehejie1/NoteMeld.git
 cd NoteMeld
 cp .env.example .env
+# 可选：插件仓库默认查找 NoteMeld 同级目录的 notemeld-plugins；
+# 若插件仓库在其他位置，在 .env 中设置 NOTEMELD_PLUGINS_DIR
 bash run_notemeld.sh
 ```
 
 访问：<http://127.0.0.1:3015>
+
+官方插件源码和 Release 包位于独立的
+[`notemeld-plugins`](../notemeld-plugins/) 仓库。NoteMeld 只负责插件安装、
+权限、运行时和 Note 宿主适配，不在本仓库维护插件实现；生产环境应通过
+GitHub/Gitee Release 安装并经过 manifest、版本和 hash 校验。
 
 ## 🔌 MCP 接入
 
@@ -92,6 +116,19 @@ claude mcp add notemeld --transport http http://127.0.0.1:8483/mcp
 ```
 
 > 详细配置请参阅 <a href="https://notemeld.wiki/faq/">帮助文档</a>
+
+### MCP 工具与客户端
+
+桌面端固定使用 `http://127.0.0.1:8483/mcp`。可用工具包括
+`generate_note`、`get_task`、`get_note` 和 `list_models`；Claude Code / Cursor / Codex / OpenClaw 等 HTTP MCP 客户端均可通过该地址接入。Markdown 上传同时兼容
+`application/octet-stream` 和 `binary/octet-stream`。
+
+### 正式发布门禁
+
+DMG 发布必须使用 `--release` 构建，并完成 Developer ID 签名、notarization、
+`stapler staple` 和 Gatekeeper 验证；开发环境的本地构建不代表正式发布完成。
+
+桌面端可在设置中开启“开机自动启动 NoteMeld”；若系统策略不允许，也可以在 macOS 登录项或 Windows 启动应用中手动添加。
 
 ---
 

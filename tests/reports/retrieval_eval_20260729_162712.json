@@ -1,0 +1,5862 @@
+{
+  "timestamp": "20260729_162712",
+  "wiki_dir": "/Users/hehejie/ai/NoteMeld/vector_db/note_results/wiki",
+  "elapsed_seconds": 11.1,
+  "summary": {
+    "total_queries": 60,
+    "overall": {
+      "recall@3": 0.3833,
+      "recall@5": 0.5,
+      "recall@10": 0.6667,
+      "mrr": 0.312,
+      "citation_accuracy": 0.1667
+    },
+    "by_category": {
+      "concept_definition": {
+        "count": 23,
+        "recall@3": 0.3913,
+        "recall@5": 0.4783,
+        "recall@10": 0.6522,
+        "mrr": 0.3621,
+        "citation_accuracy": 0.2609
+      },
+      "detail": {
+        "count": 17,
+        "recall@3": 0.4706,
+        "recall@5": 0.5882,
+        "recall@10": 0.7647,
+        "mrr": 0.3569,
+        "citation_accuracy": 0.1765
+      },
+      "how_to": {
+        "count": 18,
+        "recall@3": 0.2778,
+        "recall@5": 0.4444,
+        "recall@10": 0.6111,
+        "mrr": 0.2218,
+        "citation_accuracy": 0.0556
+      },
+      "comparison": {
+        "count": 1,
+        "recall@3": 0.0,
+        "recall@5": 0.0,
+        "recall@10": 0.0,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0
+      },
+      "entity_lookup": {
+        "count": 1,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr": 0.3333,
+        "citation_accuracy": 0.0
+      }
+    },
+    "missed_cases": [
+      {
+        "id": "q006",
+        "query": "如何构建AI Agent",
+        "expected_pages": [
+          "AI_Agent构建"
+        ],
+        "retrieved_pages": [
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "AI_Agent",
+          "529734e1-1388-4e0f-a2a0-22af4650438b"
+        ]
+      },
+      {
+        "id": "q007",
+        "query": "Workflow和Agent有什么区别",
+        "expected_pages": [
+          "workflow",
+          "Chains_与_Agents_边界",
+          "AI_Workflow"
+        ],
+        "retrieved_pages": [
+          "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "f242d381-d542-4c61-beb2-98837067096f",
+          "Agentic_AI",
+          "AI_Agent"
+        ]
+      },
+      {
+        "id": "q008",
+        "query": "什么是workflow-first",
+        "expected_pages": [
+          "workflow",
+          "AI_Workflow",
+          "Agentic_workflow"
+        ],
+        "retrieved_pages": [
+          "过程空话",
+          "Agent",
+          "Human_in_the_loop",
+          "任务拆解",
+          "方向感"
+        ]
+      },
+      {
+        "id": "q009",
+        "query": "如何减少幻觉",
+        "expected_pages": [
+          "Faithfulness",
+          "事实性保障",
+          "Citation_核验"
+        ],
+        "retrieved_pages": [
+          "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "减少幻觉",
+          "减少幻觉",
+          "业务价值",
+          "全文理解"
+        ]
+      },
+      {
+        "id": "q010",
+        "query": "幻觉是什么",
+        "expected_pages": [
+          "Faithfulness",
+          "事实性保障"
+        ],
+        "retrieved_pages": [
+          "过程空话",
+          "Chains_与_Agents_边界",
+          "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "AI_Agent底层逻辑",
+          "产品经理"
+        ]
+      },
+      {
+        "id": "q012",
+        "query": "Chunking怎么切分文档",
+        "expected_pages": [
+          "Chunking"
+        ],
+        "retrieved_pages": [
+          "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "预处理",
+          "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "文档分块",
+          "上下文窗口"
+        ]
+      },
+      {
+        "id": "q014",
+        "query": "向量检索的原理是什么",
+        "expected_pages": [
+          "Embedding",
+          "embedding向量"
+        ],
+        "retrieved_pages": [
+          "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "RAG",
+          "问题向量化",
+          "向量距离",
+          "80789969-a9f9-4479-9018-349fcdb01193"
+        ]
+      },
+      {
+        "id": "q020",
+        "query": "AI产品创业从0到1怎么做",
+        "expected_pages": [
+          "AI_产品创业",
+          "AI_创业",
+          "从_0_到_1",
+          "AI_产品_MVP_拆解"
+        ],
+        "retrieved_pages": [
+          "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "AI_产品经理"
+        ]
+      },
+      {
+        "id": "q022",
+        "query": "产品经理必须懂算法吗",
+        "expected_pages": [
+          "AI_产品经理是否必须懂算法链路"
+        ],
+        "retrieved_pages": [
+          "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "AI_产品经理",
+          "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+          "产品经理"
+        ]
+      },
+      {
+        "id": "q024",
+        "query": "什么是ReAct",
+        "expected_pages": [
+          "ReAct_框架"
+        ],
+        "retrieved_pages": [
+          "过程空话",
+          "Agent",
+          "Human_in_the_loop",
+          "任务拆解",
+          "方向感"
+        ]
+      },
+      {
+        "id": "q025",
+        "query": "什么是思维链CoT",
+        "expected_pages": [
+          "Chain_of_Thought"
+        ],
+        "retrieved_pages": [
+          "过程空话",
+          "Agent",
+          "Human_in_the_loop",
+          "任务拆解",
+          "方向感"
+        ]
+      },
+      {
+        "id": "q027",
+        "query": "Reflection是什么",
+        "expected_pages": [
+          "Reflection",
+          "Replan___Reflection"
+        ],
+        "retrieved_pages": [
+          "过程空话",
+          "Chains_与_Agents_边界",
+          "reflection_step",
+          "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "AI_Agent底层逻辑"
+        ]
+      },
+      {
+        "id": "q028",
+        "query": "如何做SOP",
+        "expected_pages": [
+          "SOP",
+          "SOP_化自动化"
+        ],
+        "retrieved_pages": [
+          "业务价值",
+          "AI自动化适配判断",
+          "产品经理",
+          "用户价值",
+          "项目价值表达"
+        ]
+      },
+      {
+        "id": "q029",
+        "query": "个人知识库怎么搭建",
+        "expected_pages": [
+          "个人知识库",
+          "个人知识库架构"
+        ],
+        "retrieved_pages": [
+          "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "RAG",
+          "向量数据库",
+          "向量数据库",
+          "预处理"
+        ]
+      },
+      {
+        "id": "q045",
+        "query": "Scaling Law是什么",
+        "expected_pages": [
+          "Scaling_Law"
+        ],
+        "retrieved_pages": [
+          "过程空话",
+          "Chains_与_Agents_边界",
+          "AI_Agent底层逻辑",
+          "产品经理",
+          "方向感"
+        ]
+      },
+      {
+        "id": "q048",
+        "query": "Synthetic Data合成数据怎么用",
+        "expected_pages": [
+          "Synthetic_Data"
+        ],
+        "retrieved_pages": [
+          "eb6237cd-4b6c-4721-8182-c543e2105ccc",
+          "80789969-a9f9-4479-9018-349fcdb01193",
+          "LLM",
+          "朱利可",
+          "数据标注公司"
+        ]
+      },
+      {
+        "id": "q051",
+        "query": "个人AI工作流怎么搭建",
+        "expected_pages": [
+          "个人_AI_工作流",
+          "专业工作流"
+        ],
+        "retrieved_pages": [
+          "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "AI_转型路径",
+          "02dacc55-629e-4c75-9a63-208ec8f45316"
+        ]
+      },
+      {
+        "id": "q053",
+        "query": "AI自动化的边界在哪里",
+        "expected_pages": [
+          "AI_自动化边界",
+          "SOP_化自动化"
+        ],
+        "retrieved_pages": [
+          "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "AI_转型路径"
+        ]
+      },
+      {
+        "id": "q056",
+        "query": "AI SaaS怎么试错",
+        "expected_pages": [
+          "AI_SaaS_试错"
+        ],
+        "retrieved_pages": [
+          "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "AI_转型路径"
+        ]
+      },
+      {
+        "id": "q059",
+        "query": "什么是Agent路由",
+        "expected_pages": [
+          "Agent_路由"
+        ],
+        "retrieved_pages": [
+          "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "Agent",
+          "f242d381-d542-4c61-beb2-98837067096f",
+          "AI_Agent",
+          "b2f69316-ce9b-4052-bc8e-60f37e8f5637"
+        ]
+      }
+    ],
+    "missed_count": 20
+  },
+  "per_query_results": [
+    {
+      "id": "q001",
+      "query": "什么是RAG",
+      "category": "concept_definition",
+      "expected_pages": [
+        "RAG"
+      ],
+      "retrieved_pages": [
+        "RAG",
+        "RAG",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "RAGAS",
+        "全文理解",
+        "OpenAI_text-embedding-3-large",
+        "RAG_产品设计",
+        "RAG_知识库治理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 30.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 27.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 24.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "OpenAI_text-embedding-3-large",
+          "title": "OpenAI text-embedding-3-large",
+          "score": 14.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG_产品设计",
+          "title": "RAG 产品设计",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_知识库治理",
+          "title": "RAG 知识库治理",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 2.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q002",
+      "query": "RAG的全称是什么",
+      "category": "detail",
+      "expected_pages": [
+        "RAG"
+      ],
+      "retrieved_pages": [
+        "RAG",
+        "RAG",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "全文理解",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "OpenAI_text-embedding-3-large",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "RAGAS",
+        "文档分块",
+        "RAG_产品设计"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 36.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 36.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 24.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 22.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "OpenAI_text-embedding-3-large",
+          "title": "OpenAI text-embedding-3-large",
+          "score": 20.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "文档分块",
+          "title": "文档分块",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_产品设计",
+          "title": "RAG 产品设计",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 2.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q003",
+      "query": "RAG擅长什么不擅长什么",
+      "category": "detail",
+      "expected_pages": [
+        "RAG",
+        "RAG_的局限"
+      ],
+      "retrieved_pages": [
+        "RAG",
+        "RAG",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "OpenAI_text-embedding-3-large",
+        "RAGAS",
+        "全文理解",
+        "RAG_产品设计",
+        "RAG_知识库治理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 34.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 31.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 24.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "OpenAI_text-embedding-3-large",
+          "title": "OpenAI text-embedding-3-large",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_产品设计",
+          "title": "RAG 产品设计",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_知识库治理",
+          "title": "RAG 知识库治理",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q004",
+      "query": "什么是Agent",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Agent",
+        "Agents"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "Agent",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "AI_Agent",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "AI_Agent",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+        "Agent_集群统筹",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "观察执行结果"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 30.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 29.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 28.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 26.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 26.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 23.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent_集群统筹",
+          "title": "Agent 集群统筹",
+          "score": 19.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "观察执行结果",
+          "title": "观察执行结果",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q005",
+      "query": "AI Agent的底层逻辑是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "AI_Agent底层逻辑"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "观察执行结果",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "AI_Agent底层逻辑",
+        "AI_Agent",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "AI_Agent",
+        "长期记忆"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 134.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 115.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "观察执行结果",
+          "title": "观察执行结果",
+          "score": 80.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 74.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 72.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 61.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 57.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 57.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 50.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "长期记忆",
+          "title": "长期记忆",
+          "score": 50.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q006",
+      "query": "如何构建AI Agent",
+      "category": "how_to",
+      "expected_pages": [
+        "AI_Agent构建"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "AI_Agent",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "AI_Agent",
+        "LangChain",
+        "AI_转型路径"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 112.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 97.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 73.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 62.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 57.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 54.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 50.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 48.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 47.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 42.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q007",
+      "query": "Workflow和Agent有什么区别",
+      "category": "comparison",
+      "expected_pages": [
+        "workflow",
+        "Chains_与_Agents_边界",
+        "AI_Workflow"
+      ],
+      "retrieved_pages": [
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "Agentic_AI",
+        "AI_Agent",
+        "Agent",
+        "AI_Agent",
+        "Agentic_workflow",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+        "Agent_集群统筹"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 38.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 30.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 28.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agentic_AI",
+          "title": "Agentic AI",
+          "score": 27.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 26.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 25.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 23.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Agentic_workflow",
+          "title": "Agentic workflow",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent_集群统筹",
+          "title": "Agent 集群统筹",
+          "score": 19.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q008",
+      "query": "什么是workflow-first",
+      "category": "concept_definition",
+      "expected_pages": [
+        "workflow",
+        "AI_Workflow",
+        "Agentic_workflow"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Chains_与_Agents_边界",
+        "产品经理",
+        "用户价值",
+        "81df45b7-69c2-4021-a988-07bfecf2e18a",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "81df45b7-69c2-4021-a988-07bfecf2e18a",
+          "title": "什么是Agent？小白2分钟听懂！",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q009",
+      "query": "如何减少幻觉",
+      "category": "how_to",
+      "expected_pages": [
+        "Faithfulness",
+        "事实性保障",
+        "Citation_核验"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "减少幻觉",
+        "减少幻觉",
+        "业务价值",
+        "全文理解",
+        "LangChain",
+        "减少幻觉",
+        "LangChain",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "RAG"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 32.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "减少幻觉",
+          "title": "减少幻觉",
+          "score": 24.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "减少幻觉",
+          "title": "减少幻觉",
+          "score": 13.5,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "业务价值",
+          "title": "业务价值",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 8.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "减少幻觉",
+          "title": "减少幻觉",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 7.5,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 7.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q010",
+      "query": "幻觉是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Faithfulness",
+        "事实性保障"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Chains_与_Agents_边界",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "AI_Agent底层逻辑",
+        "产品经理",
+        "方向感",
+        "用户价值",
+        "AI_Agent",
+        "ev4",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 12.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ev4",
+          "title": "ev4",
+          "score": 7.0,
+          "source_type": "wiki_evidence"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q011",
+      "query": "RAG评测怎么做",
+      "category": "how_to",
+      "expected_pages": [
+        "RAG评测",
+        "三层_RAG_评测体系",
+        "RAG评测三层框架"
+      ],
+      "retrieved_pages": [
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "RAGAS",
+        "RAG",
+        "业务级评测",
+        "Golden_Dataset",
+        "RAG评测",
+        "组件级评测",
+        "RAG",
+        "三层_RAG_评测体系",
+        "02dacc55-629e-4c75-9a63-208ec8f45316"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 58.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 40.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 35.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "业务级评测",
+          "title": "业务级评测",
+          "score": 33.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 30.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG评测",
+          "title": "RAG评测",
+          "score": 30.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "组件级评测",
+          "title": "组件级评测",
+          "score": 30.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 27.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "三层_RAG_评测体系",
+          "title": "三层 RAG 评测体系",
+          "score": 25.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 24.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.6666666666666666,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q012",
+      "query": "Chunking怎么切分文档",
+      "category": "detail",
+      "expected_pages": [
+        "Chunking"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "预处理",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "文档分块",
+        "上下文窗口",
+        "文本切块",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "文档预处理",
+        "官方英文文档",
+        "529734e1-1388-4e0f-a2a0-22af4650438b"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 43.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "预处理",
+          "title": "预处理",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 18.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "文档分块",
+          "title": "文档分块",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "上下文窗口",
+          "title": "上下文窗口",
+          "score": 17.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "文本切块",
+          "title": "文本切块",
+          "score": 17.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 16.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "文档预处理",
+          "title": "文档预处理",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "官方英文文档",
+          "title": "官方英文文档",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 12.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q013",
+      "query": "什么是Embedding",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Embedding",
+        "embedding向量"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "过程空话",
+        "问题向量化",
+        "Agent",
+        "Embedding",
+        "Human_in_the_loop",
+        "OpenAI_text-embedding-3-large",
+        "任务拆解",
+        "方向感",
+        "全文理解"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 22.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "问题向量化",
+          "title": "问题向量化",
+          "score": 10.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Embedding",
+          "title": "Embedding",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "OpenAI_text-embedding-3-large",
+          "title": "OpenAI text-embedding-3-large",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.2,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 5
+      }
+    },
+    {
+      "id": "q014",
+      "query": "向量检索的原理是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Embedding",
+        "embedding向量"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "RAG",
+        "问题向量化",
+        "向量距离",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "RAG",
+        "向量数据库",
+        "组件级评测",
+        "全文理解",
+        "过程空话"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 55.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 21.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "问题向量化",
+          "title": "问题向量化",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "向量距离",
+          "title": "向量距离",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "向量数据库",
+          "title": "向量数据库",
+          "score": 17.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "组件级评测",
+          "title": "组件级评测",
+          "score": 17.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q015",
+      "query": "什么是Prompt Engineering",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Prompt_Engineering",
+        "Prompt工程"
+      ],
+      "retrieved_pages": [
+        "Prompt_Engineering",
+        "过程空话",
+        "Prompt模板系统",
+        "模块化组件",
+        "Prompt_软约束",
+        "任务拆解",
+        "Agent",
+        "Human_in_the_loop",
+        "方向感",
+        "0200a5cf-2936-4e0d-989c-be503d3a5d5d"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "Prompt_Engineering",
+          "title": "Prompt Engineering",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Prompt模板系统",
+          "title": "Prompt模板系统",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "模块化组件",
+          "title": "模块化组件",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Prompt_软约束",
+          "title": "Prompt 软约束",
+          "score": 10.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 10.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "0200a5cf-2936-4e0d-989c-be503d3a5d5d",
+          "title": "面试必考题：大模型输出JSON不稳怎么办？",
+          "score": 9.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q016",
+      "query": "JSON Schema有什么用",
+      "category": "detail",
+      "expected_pages": [
+        "JSON_Schema",
+        "JSON_稳定性"
+      ],
+      "retrieved_pages": [
+        "0200a5cf-2936-4e0d-989c-be503d3a5d5d",
+        "Prompt_软约束",
+        "纵深防御体系",
+        "temperature",
+        "过程空话",
+        "JSON_稳定性",
+        "few-shot_examples",
+        "面试官",
+        "大模型输出JSON不稳定处理方案",
+        "工具自动修复小错误"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "0200a5cf-2936-4e0d-989c-be503d3a5d5d",
+          "title": "面试必考题：大模型输出JSON不稳怎么办？",
+          "score": 28.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Prompt_软约束",
+          "title": "Prompt 软约束",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "纵深防御体系",
+          "title": "纵深防御体系",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "temperature",
+          "title": "temperature",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "JSON_稳定性",
+          "title": "JSON 稳定性",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "few-shot_examples",
+          "title": "few-shot examples",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "面试官",
+          "title": "面试官",
+          "score": 10.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "大模型输出JSON不稳定处理方案",
+          "title": "大模型输出JSON不稳定处理方案",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "工具自动修复小错误",
+          "title": "工具自动修复小错误",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q017",
+      "query": "什么是MCP",
+      "category": "concept_definition",
+      "expected_pages": [
+        "MCP"
+      ],
+      "retrieved_pages": [
+        "MCP",
+        "MCP",
+        "过程空话",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "Agent_集群统筹",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "统一鉴权中心"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "MCP",
+          "title": "MCP",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "MCP",
+          "title": "MCP",
+          "score": 14.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 11.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent_集群统筹",
+          "title": "Agent 集群统筹",
+          "score": 10.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "统一鉴权中心",
+          "title": "统一鉴权中心",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 2.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q018",
+      "query": "LangChain V1.2有什么变化",
+      "category": "detail",
+      "expected_pages": [
+        "LangChain_V1_2_版本变化",
+        "LangChain_项目组织"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "LangChain",
+        "LangChain_V1_2_版本变化",
+        "Large_Language_Model",
+        "stream_调用",
+        "LangchainV1_2",
+        "LLM_应用开发框架",
+        "环境变量管理",
+        "模块化封装",
+        "Chains_与_Agents_边界"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 53.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 26.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "LangChain_V1_2_版本变化",
+          "title": "LangChain V1.2 版本变化",
+          "score": 23.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Large_Language_Model",
+          "title": "Large Language Model",
+          "score": 23.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "stream_调用",
+          "title": "stream 调用",
+          "score": 23.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangchainV1_2",
+          "title": "LangchainV1.2",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "LLM_应用开发框架",
+          "title": "LLM 应用开发框架",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "环境变量管理",
+          "title": "环境变量管理",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "模块化封装",
+          "title": "模块化封装",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.3333333333333333,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 3
+      }
+    },
+    {
+      "id": "q019",
+      "query": "什么是MVP",
+      "category": "concept_definition",
+      "expected_pages": [
+        "MVP",
+        "低成本_MVP",
+        "AI_coding_降低_MVP_成本"
+      ],
+      "retrieved_pages": [
+        "MVP",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "过程空话",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Chains_与_Agents_边界",
+        "产品经理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "MVP",
+          "title": "MVP",
+          "score": 17.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 13.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 10.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 0.3333333333333333,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q020",
+      "query": "AI产品创业从0到1怎么做",
+      "category": "how_to",
+      "expected_pages": [
+        "AI_产品创业",
+        "AI_创业",
+        "从_0_到_1",
+        "AI_产品_MVP_拆解"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "AI_产品经理",
+        "AI_转型路径",
+        "齐白石",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+        "AI_图像产品工作流"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 152.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 105.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 82.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 66.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 56.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 56.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "齐白石",
+          "title": "齐白石",
+          "score": 54.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 53.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+          "title": "AI 产品经理岗位 JD 深度拆解与求职避雷指南",
+          "score": 44.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_图像产品工作流",
+          "title": "AI 图像产品工作流",
+          "score": 42.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q021",
+      "query": "AI产品经理需要什么能力",
+      "category": "detail",
+      "expected_pages": [
+        "AI_产品经理能力框架",
+        "传统产品经理基本功"
+      ],
+      "retrieved_pages": [
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "AI_产品经理",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+        "产品经理",
+        "传统产品经理基本功",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "AI_转型路径"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 218.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 208.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 204.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+          "title": "AI 产品经理岗位 JD 深度拆解与求职避雷指南",
+          "score": 173.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 164.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "传统产品经理基本功",
+          "title": "传统产品经理基本功",
+          "score": 158.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 154.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 149.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 122.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 112.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q022",
+      "query": "产品经理必须懂算法吗",
+      "category": "detail",
+      "expected_pages": [
+        "AI_产品经理是否必须懂算法链路"
+      ],
+      "retrieved_pages": [
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "AI_产品经理",
+        "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+        "产品经理",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+        "传统产品经理基本功",
+        "项目价值",
+        "AI产品经理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 176.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 152.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 144.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+          "title": "AI 产品经理岗位 JD 深度拆解与求职避雷指南",
+          "score": 142.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 141.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 138.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 134.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "传统产品经理基本功",
+          "title": "传统产品经理基本功",
+          "score": 97.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "项目价值",
+          "title": "项目价值",
+          "score": 90.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI产品经理",
+          "title": "AI产品经理",
+          "score": 81.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q023",
+      "query": "AI应用开发框架有哪些",
+      "category": "entity_lookup",
+      "expected_pages": [
+        "LLM_应用开发框架",
+        "AI_应用开发"
+      ],
+      "retrieved_pages": [
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "LLM_应用开发框架",
+        "LangChain",
+        "基础项目能力",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "Prompt_Engineering",
+        "LangGraph",
+        "AI_应用开发岗位",
+        "MCP"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 257.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 148.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "LLM_应用开发框架",
+          "title": "LLM 应用开发框架",
+          "score": 103.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 101.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "基础项目能力",
+          "title": "基础项目能力",
+          "score": 99.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 88.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Prompt_Engineering",
+          "title": "Prompt Engineering",
+          "score": 87.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangGraph",
+          "title": "LangGraph",
+          "score": 86.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_应用开发岗位",
+          "title": "AI 应用开发岗位",
+          "score": 85.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "MCP",
+          "title": "MCP",
+          "score": 81.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.3333333333333333,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 3
+      }
+    },
+    {
+      "id": "q024",
+      "query": "什么是ReAct",
+      "category": "concept_definition",
+      "expected_pages": [
+        "ReAct_框架"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Chains_与_Agents_边界",
+        "产品经理",
+        "用户价值",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+        "81df45b7-69c2-4021-a988-07bfecf2e18a"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "81df45b7-69c2-4021-a988-07bfecf2e18a",
+          "title": "什么是Agent？小白2分钟听懂！",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q025",
+      "query": "什么是思维链CoT",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Chain_of_Thought"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Chains_与_Agents_边界",
+        "产品经理",
+        "用户价值",
+        "81df45b7-69c2-4021-a988-07bfecf2e18a",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "81df45b7-69c2-4021-a988-07bfecf2e18a",
+          "title": "什么是Agent？小白2分钟听懂！",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q026",
+      "query": "什么是Tree of Thoughts",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Tree_of_Thoughts"
+      ],
+      "retrieved_pages": [
+        "Input___Output",
+        "Tree_of_Thoughts",
+        "过程空话",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "Agent",
+        "Microsoft_云服务",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Microsoft_Research_Asia"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "Input___Output",
+          "title": "Input → Output",
+          "score": 19.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Tree_of_Thoughts",
+          "title": "Tree of Thoughts",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 11.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 10.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Microsoft_云服务",
+          "title": "Microsoft 云服务",
+          "score": 10.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Microsoft_Research_Asia",
+          "title": "Microsoft Research Asia",
+          "score": 8.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q027",
+      "query": "Reflection是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Reflection",
+        "Replan___Reflection"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Chains_与_Agents_边界",
+        "reflection_step",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "AI_Agent底层逻辑",
+        "产品经理",
+        "方向感",
+        "用户价值",
+        "AI_Agent",
+        "ev4"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "reflection_step",
+          "title": "reflection step",
+          "score": 11.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 10.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ev4",
+          "title": "ev4",
+          "score": 7.0,
+          "source_type": "wiki_evidence"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q028",
+      "query": "如何做SOP",
+      "category": "how_to",
+      "expected_pages": [
+        "SOP",
+        "SOP_化自动化"
+      ],
+      "retrieved_pages": [
+        "业务价值",
+        "AI自动化适配判断",
+        "产品经理",
+        "用户价值",
+        "项目价值表达",
+        "Python",
+        "指标验证",
+        "行业地图",
+        "行业研究系统",
+        "业务指标"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "业务价值",
+          "title": "业务价值",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI自动化适配判断",
+          "title": "AI自动化适配判断",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "项目价值表达",
+          "title": "项目价值表达",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Python",
+          "title": "Python",
+          "score": 6.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "指标验证",
+          "title": "指标验证",
+          "score": 6.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "行业地图",
+          "title": "行业地图",
+          "score": 6.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "行业研究系统",
+          "title": "行业研究系统",
+          "score": 6.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "业务指标",
+          "title": "业务指标",
+          "score": 5.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q029",
+      "query": "个人知识库怎么搭建",
+      "category": "how_to",
+      "expected_pages": [
+        "个人知识库",
+        "个人知识库架构"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "RAG",
+        "向量数据库",
+        "向量数据库",
+        "预处理",
+        "Embedding",
+        "用户提问流程",
+        "大模型",
+        "信息过载",
+        "向量距离"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 117.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 65.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "向量数据库",
+          "title": "向量数据库",
+          "score": 48.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "向量数据库",
+          "title": "向量数据库",
+          "score": 48.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "预处理",
+          "title": "预处理",
+          "score": 48.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Embedding",
+          "title": "Embedding",
+          "score": 45.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户提问流程",
+          "title": "用户提问流程",
+          "score": 45.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "大模型",
+          "title": "大模型",
+          "score": 37.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "信息过载",
+          "title": "信息过载",
+          "score": 36.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "向量距离",
+          "title": "向量距离",
+          "score": 33.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q030",
+      "query": "企业文档问答的难点是什么",
+      "category": "detail",
+      "expected_pages": [
+        "企业文档问答",
+        "RAG_的局限"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "企业文档问答",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "企业文档问答",
+        "全文理解",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "RAG",
+        "预处理",
+        "上下文窗口"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 72.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "企业文档问答",
+          "title": "企业文档问答",
+          "score": 31.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "企业文档问答",
+          "title": "企业文档问答",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 20.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 18.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 17.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "预处理",
+          "title": "预处理",
+          "score": 17.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "上下文窗口",
+          "title": "上下文窗口",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q031",
+      "query": "什么是Golden Dataset",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Golden_Dataset"
+      ],
+      "retrieved_pages": [
+        "Golden_Dataset",
+        "Golden_Dataset",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "Reference_Chunk",
+        "过程空话",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Chains_与_Agents_边界"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 24.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 20.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Reference_Chunk",
+          "title": "Reference Chunk",
+          "score": 12.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 2.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q032",
+      "query": "Context Recall和Context Precision是什么",
+      "category": "detail",
+      "expected_pages": [
+        "Context_Recall",
+        "Context_Precision",
+        "Answer_Relevancy"
+      ],
+      "retrieved_pages": [
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "Context_Recall",
+        "Context_Recall",
+        "Context_Precision",
+        "Context_Precision",
+        "Answer_Relevancy",
+        "过程空话",
+        "Chains_与_Agents_边界",
+        "AI_Agent底层逻辑",
+        "产品经理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 34.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Context_Recall",
+          "title": "Context Recall",
+          "score": 30.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Context_Recall",
+          "title": "Context Recall",
+          "score": 26.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Context_Precision",
+          "title": "Context Precision",
+          "score": 16.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Context_Precision",
+          "title": "Context Precision",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Answer_Relevancy",
+          "title": "Answer Relevancy",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.6666666666666667,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q033",
+      "query": "Bad Case怎么分析",
+      "category": "how_to",
+      "expected_pages": [
+        "Bad_Case_分析机制",
+        "bad_case_分析",
+        "bad_case_闭环"
+      ],
+      "retrieved_pages": [
+        "bad_case_闭环",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "bad_case_分析",
+        "Bad_Case_分析机制",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "生成效果评价",
+        "传统产品经理基本功",
+        "Best_Case_沉淀",
+        "用户行为数据闭环",
+        "AI_产品经理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "bad_case_闭环",
+          "title": "bad case 闭环",
+          "score": 35.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 32.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "bad_case_分析",
+          "title": "bad case 分析",
+          "score": 29.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Bad_Case_分析机制",
+          "title": "Bad Case 分析机制",
+          "score": 27.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 26.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "生成效果评价",
+          "title": "生成效果评价",
+          "score": 25.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "传统产品经理基本功",
+          "title": "传统产品经理基本功",
+          "score": 19.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Best_Case_沉淀",
+          "title": "Best Case 沉淀",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户行为数据闭环",
+          "title": "用户行为数据闭环",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q034",
+      "query": "什么是Human in the loop",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Human_in_the_loop"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "ea0339b1-2534-426b-93b9-cfd4767ac93d",
+        "human_in_the_loop",
+        "Human_in_the_loop",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "LangChain",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "stream_调用",
+        "invoke_方法",
+        "terrain_alignment"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 58.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "ea0339b1-2534-426b-93b9-cfd4767ac93d",
+          "title": "Shapezo - Select a Map Area and Generate 3D Building Models Instantly",
+          "score": 46.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "human_in_the_loop",
+          "title": "human in the loop",
+          "score": 43.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 33.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 31.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 30.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 30.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "stream_调用",
+          "title": "stream 调用",
+          "score": 29.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "invoke_方法",
+          "title": "invoke 方法",
+          "score": 28.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "terrain_alignment",
+          "title": "terrain alignment",
+          "score": 26.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.25,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 4
+      }
+    },
+    {
+      "id": "q035",
+      "query": "subagent怎么设计",
+      "category": "how_to",
+      "expected_pages": [
+        "subagent",
+        "Claude_Code_subagent_设计"
+      ],
+      "retrieved_pages": [
+        "RAG_产品设计",
+        "Claude_Code_subagent_设计",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+        "Golden_Dataset",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "纵深防御体系",
+        "项目流程编排能力",
+        "RAG_知识库治理",
+        "RAGAS",
+        "项目级鉴权和访问控制"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RAG_产品设计",
+          "title": "RAG 产品设计",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Claude_Code_subagent_设计",
+          "title": "Claude Code subagent 设计",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 8.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 8.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "纵深防御体系",
+          "title": "纵深防御体系",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "项目流程编排能力",
+          "title": "项目流程编排能力",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_知识库治理",
+          "title": "RAG 知识库治理",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "项目级鉴权和访问控制",
+          "title": "项目级鉴权和访问控制",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q036",
+      "query": "AI编程的正确流程是什么",
+      "category": "detail",
+      "expected_pages": [
+        "AI_编程的正确流程",
+        "AI_coding"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "AI_编程的正确流程",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "AI_转型路径",
+        "AI_Agent",
+        "LangChain",
+        "齐白石"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 107.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 70.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 59.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 57.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_编程的正确流程",
+          "title": "AI 编程的正确流程",
+          "score": 48.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 43.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 43.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 36.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 35.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "齐白石",
+          "title": "齐白石",
+          "score": 33.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.2,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 5
+      }
+    },
+    {
+      "id": "q037",
+      "query": "Claude Code怎么极限使用",
+      "category": "how_to",
+      "expected_pages": [
+        "Claude_Code_极限使用",
+        "Claude_Code_极限使用事件"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "Claude_Code",
+        "Cursor",
+        "Anthropic",
+        "机器时间换人的时间",
+        "a154ee9d-6fd2-4b85-b3d1-4a72a207aeb2",
+        "AI_图像产品工作流",
+        "Claude_Code_极限使用事件",
+        "Claude_Code_极限使用",
+        "Fast3D"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 58.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Claude_Code",
+          "title": "Claude Code",
+          "score": 33.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Cursor",
+          "title": "Cursor",
+          "score": 24.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Anthropic",
+          "title": "Anthropic",
+          "score": 22.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "机器时间换人的时间",
+          "title": "机器时间换人的时间",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "a154ee9d-6fd2-4b85-b3d1-4a72a207aeb2",
+          "title": "如何用 Codex 1 小时进入陌生行业？",
+          "score": 20.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_图像产品工作流",
+          "title": "AI 图像产品工作流",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Claude_Code_极限使用事件",
+          "title": "Claude Code 极限使用事件",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Claude_Code_极限使用",
+          "title": "Claude Code 极限使用",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Fast3D",
+          "title": "Fast3D",
+          "score": 16.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.125,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 8
+      }
+    },
+    {
+      "id": "q038",
+      "query": "模型temperature参数怎么设",
+      "category": "detail",
+      "expected_pages": [
+        "temperature"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "0200a5cf-2936-4e0d-989c-be503d3a5d5d",
+        "temperature",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "纵深防御体系",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "VLA",
+        "模型选择",
+        "Fast3D",
+        "全文理解"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 29.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "0200a5cf-2936-4e0d-989c-be503d3a5d5d",
+          "title": "面试必考题：大模型输出JSON不稳怎么办？",
+          "score": 25.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "temperature",
+          "title": "temperature",
+          "score": 22.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 22.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "纵深防御体系",
+          "title": "纵深防御体系",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 18.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "VLA",
+          "title": "VLA",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "模型选择",
+          "title": "模型选择",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Fast3D",
+          "title": "Fast3D",
+          "score": 17.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.3333333333333333,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 3
+      }
+    },
+    {
+      "id": "q039",
+      "query": "batch批量调用怎么做",
+      "category": "how_to",
+      "expected_pages": [
+        "batch_调用"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "batch_调用",
+        "invoke_方法",
+        "stream_调用",
+        "链式调用",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "Models",
+        "调用记忆",
+        "Golden_Dataset",
+        "后台任务"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 26.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "batch_调用",
+          "title": "batch 调用",
+          "score": 23.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "invoke_方法",
+          "title": "invoke 方法",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "stream_调用",
+          "title": "stream 调用",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "链式调用",
+          "title": "链式调用",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 13.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Models",
+          "title": "Models",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "调用记忆",
+          "title": "调用记忆",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "后台任务",
+          "title": "后台任务",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q040",
+      "query": "stream流式调用有什么好处",
+      "category": "detail",
+      "expected_pages": [
+        "stream_调用"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "stream_调用",
+        "链式调用",
+        "invoke_方法",
+        "batch_调用",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "过程空话",
+        "Large_Language_Model",
+        "面试官",
+        "LangChain"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 36.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "stream_调用",
+          "title": "stream 调用",
+          "score": 28.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "链式调用",
+          "title": "链式调用",
+          "score": 28.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "invoke_方法",
+          "title": "invoke 方法",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "batch_调用",
+          "title": "batch 调用",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 13.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Large_Language_Model",
+          "title": "Large Language Model",
+          "score": 10.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "面试官",
+          "title": "面试官",
+          "score": 10.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 2
+      }
+    },
+    {
+      "id": "q041",
+      "query": "RAG pipeline完整流程是什么",
+      "category": "detail",
+      "expected_pages": [
+        "RAG_pipeline",
+        "RAG_的完整流程",
+        "RAG_链路",
+        "RAG_链路设计"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "RAG",
+        "RAG",
+        "RAG_的完整流程",
+        "项目流程编排能力",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "RAG_产品设计",
+        "RAG_知识库治理",
+        "RAGAS"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 48.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 38.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 30.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 27.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_的完整流程",
+          "title": "RAG 的完整流程",
+          "score": 25.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "项目流程编排能力",
+          "title": "项目流程编排能力",
+          "score": 22.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG_产品设计",
+          "title": "RAG 产品设计",
+          "score": 19.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_知识库治理",
+          "title": "RAG 知识库治理",
+          "score": 19.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 18.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.2,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.25,
+        "first_hit_rank": 5
+      }
+    },
+    {
+      "id": "q042",
+      "query": "什么是混合检索",
+      "category": "concept_definition",
+      "expected_pages": [
+        "RAG"
+      ],
+      "retrieved_pages": [
+        "RAG",
+        "RAG",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "组件级评测",
+        "混合检索",
+        "过程空话",
+        "任务拆解",
+        "a154ee9d-6fd2-4b85-b3d1-4a72a207aeb2",
+        "Context_Recall"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 30.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 22.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "组件级评测",
+          "title": "组件级评测",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "混合检索",
+          "title": "混合检索",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "a154ee9d-6fd2-4b85-b3d1-4a72a207aeb2",
+          "title": "如何用 Codex 1 小时进入陌生行业？",
+          "score": 11.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Context_Recall",
+          "title": "Context Recall",
+          "score": 10.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 2.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q043",
+      "query": "引用怎么核验",
+      "category": "how_to",
+      "expected_pages": [
+        "Citation_核验"
+      ],
+      "retrieved_pages": [
+        "RAGAS",
+        "Golden_Dataset",
+        "纵深防御体系",
+        "Citation_核验",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "Citation 核验",
+        "核验机制",
+        "真实痛点",
+        "Citation 核验",
+        "核验机制"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "纵深防御体系",
+          "title": "纵深防御体系",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Citation_核验",
+          "title": "Citation 核验",
+          "score": 6.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 5.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Citation 核验",
+          "title": "Citation 核验",
+          "score": 5.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "核验机制",
+          "title": "核验机制",
+          "score": 5.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "真实痛点",
+          "title": "真实痛点",
+          "score": 5.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Citation 核验",
+          "title": "Citation 核验",
+          "score": 4.5,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "核验机制",
+          "title": "核验机制",
+          "score": 4.5,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.25,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 4
+      }
+    },
+    {
+      "id": "q044",
+      "query": "RAG知识库怎么治理",
+      "category": "how_to",
+      "expected_pages": [
+        "RAG_知识库治理"
+      ],
+      "retrieved_pages": [
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "RAG",
+        "RAG",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "RAG_知识库治理",
+        "RAG_产品设计",
+        "OpenAI_text-embedding-3-large",
+        "全文理解",
+        "RAGAS",
+        "向量数据库"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 81.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 56.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 48.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 41.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "RAG_知识库治理",
+          "title": "RAG 知识库治理",
+          "score": 41.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_产品设计",
+          "title": "RAG 产品设计",
+          "score": 40.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "OpenAI_text-embedding-3-large",
+          "title": "OpenAI text-embedding-3-large",
+          "score": 26.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "全文理解",
+          "title": "全文理解",
+          "score": 26.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAGAS",
+          "title": "RAGAS",
+          "score": 25.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "向量数据库",
+          "title": "向量数据库",
+          "score": 24.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.2,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 5
+      }
+    },
+    {
+      "id": "q045",
+      "query": "Scaling Law是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Scaling_Law"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Chains_与_Agents_边界",
+        "AI_Agent底层逻辑",
+        "产品经理",
+        "方向感",
+        "用户价值",
+        "eb6237cd-4b6c-4721-8182-c543e2105ccc",
+        "AI_Agent",
+        "ev4",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "eb6237cd-4b6c-4721-8182-c543e2105ccc",
+          "title": "机器人数据的综述：新时代的石油",
+          "score": 8.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ev4",
+          "title": "ev4",
+          "score": 7.0,
+          "source_type": "wiki_evidence"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q046",
+      "query": "RLHF三阶段训练是什么",
+      "category": "detail",
+      "expected_pages": [
+        "RLHF_三阶段训练"
+      ],
+      "retrieved_pages": [
+        "RLHF_三阶段训练",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+        "字节",
+        "AI_Agent_面试准备",
+        "针对性准备",
+        "评测集与训练集构建",
+        "过程空话",
+        "AI_Agent_开发岗",
+        "Chains_与_Agents_边界",
+        "RLHF 三阶段训练"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "RLHF_三阶段训练",
+          "title": "RLHF 三阶段训练",
+          "score": 54.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 53.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "字节",
+          "title": "字节",
+          "score": 33.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_Agent_面试准备",
+          "title": "AI Agent 面试准备",
+          "score": 23.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "针对性准备",
+          "title": "针对性准备",
+          "score": 22.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "评测集与训练集构建",
+          "title": "评测集与训练集构建",
+          "score": 16.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent_开发岗",
+          "title": "AI Agent 开发岗",
+          "score": 13.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RLHF 三阶段训练",
+          "title": "RLHF 三阶段训练",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 1.0,
+        "citation_accuracy": 1.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "id": "q047",
+      "query": "Self-Consistency是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Self-Consistency"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Chains_与_Agents_边界",
+        "Self-Consistency",
+        "AI_Agent底层逻辑",
+        "产品经理",
+        "方向感",
+        "用户价值",
+        "AI_Agent",
+        "ev4",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Self-Consistency",
+          "title": "Self-Consistency",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "ev4",
+          "title": "ev4",
+          "score": 7.0,
+          "source_type": "wiki_evidence"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.3333333333333333,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 3
+      }
+    },
+    {
+      "id": "q048",
+      "query": "Synthetic Data合成数据怎么用",
+      "category": "detail",
+      "expected_pages": [
+        "Synthetic_Data"
+      ],
+      "retrieved_pages": [
+        "eb6237cd-4b6c-4721-8182-c543e2105ccc",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "LLM",
+        "朱利可",
+        "数据标注公司",
+        "Golden_Dataset",
+        "数据治理",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "合成数据",
+        "数据金字塔框架"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "eb6237cd-4b6c-4721-8182-c543e2105ccc",
+          "title": "机器人数据的综述：新时代的石油",
+          "score": 50.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 42.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "LLM",
+          "title": "LLM",
+          "score": 27.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "朱利可",
+          "title": "朱利可",
+          "score": 27.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "数据标注公司",
+          "title": "数据标注公司",
+          "score": 25.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Golden_Dataset",
+          "title": "Golden Dataset",
+          "score": 23.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "数据治理",
+          "title": "数据治理",
+          "score": 23.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 21.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "合成数据",
+          "title": "合成数据",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "数据金字塔框架",
+          "title": "数据金字塔框架",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q049",
+      "query": "什么是Zero-Shot泛化",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Zero-Shot_泛化"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Agent",
+        "Human_in_the_loop",
+        "任务拆解",
+        "方向感",
+        "Chains_与_Agents_边界",
+        "产品经理",
+        "用户价值",
+        "Zero-Shot_泛化",
+        "81df45b7-69c2-4021-a988-07bfecf2e18a"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 12.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Human_in_the_loop",
+          "title": "Human in the loop",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "任务拆解",
+          "title": "任务拆解",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 7.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 7.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Zero-Shot_泛化",
+          "title": "Zero-Shot 泛化",
+          "score": 6.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "81df45b7-69c2-4021-a988-07bfecf2e18a",
+          "title": "什么是Agent？小白2分钟听懂！",
+          "score": 6.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.1111111111111111,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 9
+      }
+    },
+    {
+      "id": "q050",
+      "query": "Transformer架构是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Transformer架构"
+      ],
+      "retrieved_pages": [
+        "过程空话",
+        "Chains_与_Agents_边界",
+        "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+        "AI_Agent底层逻辑",
+        "LangChain_V1_2_版本变化",
+        "产品经理",
+        "方向感",
+        "用户价值",
+        "RAG",
+        "Transformer架构"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "过程空话",
+          "title": "过程空话",
+          "score": 14.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Chains_与_Agents_边界",
+          "title": "Chains 与 Agents 边界",
+          "score": 13.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "90763d8b-8446-4aed-bb07-7a7e0e533f15",
+          "title": "这就是RAG：一看就懂的个人知识库架构",
+          "score": 11.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent底层逻辑",
+          "title": "AI Agent底层逻辑",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "LangChain_V1_2_版本变化",
+          "title": "LangChain V1.2 版本变化",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 9.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "方向感",
+          "title": "方向感",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "用户价值",
+          "title": "用户价值",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG",
+          "title": "RAG",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "Transformer架构",
+          "title": "Transformer架构",
+          "score": 8.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.1,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 10
+      }
+    },
+    {
+      "id": "q051",
+      "query": "个人AI工作流怎么搭建",
+      "category": "how_to",
+      "expected_pages": [
+        "个人_AI_工作流",
+        "专业工作流"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "AI_转型路径",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "f87e18a9-2926-462d-8388-3a1f3d5b5e92",
+        "齐白石",
+        "AI_产品经理",
+        "AI_图像产品工作流"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 104.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 70.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 66.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 59.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 56.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 53.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "f87e18a9-2926-462d-8388-3a1f3d5b5e92",
+          "title": "AI短剧产品经理岗位JD深度拆解与求职指南",
+          "score": 42.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "齐白石",
+          "title": "齐白石",
+          "score": 38.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 35.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_图像产品工作流",
+          "title": "AI 图像产品工作流",
+          "score": 35.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q052",
+      "query": "AI场景怎么判断要不要做",
+      "category": "how_to",
+      "expected_pages": [
+        "AI_场景判断",
+        "AI_化场景判断",
+        "AI_化场景拆解",
+        "AI_场景落地选择"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "AI_化场景判断",
+        "AI_转型路径",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "642b66fa-20e8-4d87-a8d2-82443f1c6ebc",
+        "LangChain"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 93.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 72.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 68.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 61.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 57.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_化场景判断",
+          "title": "AI 化场景判断",
+          "score": 48.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 47.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 33.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "642b66fa-20e8-4d87-a8d2-82443f1c6ebc",
+          "title": "AI产品经理（社交方向）JD深度拆解与求职指南",
+          "score": 32.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 32.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.25,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q053",
+      "query": "AI自动化的边界在哪里",
+      "category": "detail",
+      "expected_pages": [
+        "AI_自动化边界",
+        "SOP_化自动化"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "AI_转型路径",
+        "AI自动化适配判断",
+        "齐白石",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "数据治理",
+        "AI_产品经理"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 150.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 65.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 64.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 53.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 51.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI自动化适配判断",
+          "title": "AI自动化适配判断",
+          "score": 44.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "齐白石",
+          "title": "齐白石",
+          "score": 42.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 41.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "数据治理",
+          "title": "数据治理",
+          "score": 32.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 31.0,
+          "source_type": "wiki_entity"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q054",
+      "query": "业务指标怎么优化",
+      "category": "how_to",
+      "expected_pages": [
+        "业务指标",
+        "业务指标优化"
+      ],
+      "retrieved_pages": [
+        "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "80789969-a9f9-4479-9018-349fcdb01193",
+        "业务指标",
+        "业务级评测",
+        "业务结果",
+        "业务价值",
+        "生成效果评价",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "真实自助解决率"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 96.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 68.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "80789969-a9f9-4479-9018-349fcdb01193",
+          "title": "RAG怎么评测？别再只会背指标！",
+          "score": 62.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "业务指标",
+          "title": "业务指标",
+          "score": 44.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "业务级评测",
+          "title": "业务级评测",
+          "score": 41.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "业务结果",
+          "title": "业务结果",
+          "score": 37.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "业务价值",
+          "title": "业务价值",
+          "score": 28.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "生成效果评价",
+          "title": "生成效果评价",
+          "score": 28.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 27.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "真实自助解决率",
+          "title": "真实自助解决率",
+          "score": 23.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.25,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 4
+      }
+    },
+    {
+      "id": "q055",
+      "query": "RAG项目怎么体现产品价值",
+      "category": "detail",
+      "expected_pages": [
+        "RAG_项目如何体现产品价值"
+      ],
+      "retrieved_pages": [
+        "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "项目价值",
+        "项目价值表达",
+        "RAG_项目如何体现产品价值",
+        "产品经理",
+        "业务价值",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "业务结果"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 116.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 116.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 86.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "项目价值",
+          "title": "项目价值",
+          "score": 84.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "项目价值表达",
+          "title": "项目价值表达",
+          "score": 72.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "RAG_项目如何体现产品价值",
+          "title": "RAG 项目如何体现产品价值",
+          "score": 56.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "产品经理",
+          "title": "产品经理",
+          "score": 53.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "业务价值",
+          "title": "业务价值",
+          "score": 51.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 48.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "业务结果",
+          "title": "业务结果",
+          "score": 47.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q056",
+      "query": "AI SaaS怎么试错",
+      "category": "how_to",
+      "expected_pages": [
+        "AI_SaaS_试错"
+      ],
+      "retrieved_pages": [
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "AI_转型路径",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "LangChain",
+        "齐白石",
+        "AI_Agent",
+        "f242d381-d542-4c61-beb2-98837067096f"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 90.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 66.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 57.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 53.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 42.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 39.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "LangChain",
+          "title": "LangChain",
+          "score": 31.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "齐白石",
+          "title": "齐白石",
+          "score": 31.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 28.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 28.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q057",
+      "query": "AI原生产品体系是什么",
+      "category": "concept_definition",
+      "expected_pages": [
+        "AI_原生产品体系"
+      ],
+      "retrieved_pages": [
+        "529734e1-1388-4e0f-a2a0-22af4650438b",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "02dacc55-629e-4c75-9a63-208ec8f45316",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "AI_转型路径",
+        "AI_原生产品体系",
+        "AI_产品经理",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "齐白石",
+        "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "529734e1-1388-4e0f-a2a0-22af4650438b",
+          "title": "每日推荐一个神仙岗位",
+          "score": 155.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 120.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "02dacc55-629e-4c75-9a63-208ec8f45316",
+          "title": "AI 产品经理的完整工作链路",
+          "score": 87.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 70.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_转型路径",
+          "title": "AI 转型路径",
+          "score": 68.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_原生产品体系",
+          "title": "AI 原生产品体系",
+          "score": 60.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI_产品经理",
+          "title": "AI 产品经理",
+          "score": 56.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 55.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "齐白石",
+          "title": "齐白石",
+          "score": 46.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "069bf3a8-02f5-4ba8-b67e-1da1f0d72d76",
+          "title": "AI 产品经理岗位 JD 深度拆解与求职避雷指南",
+          "score": 44.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": true,
+        "mrr": 0.16666666666666666,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 1.0,
+        "first_hit_rank": 6
+      }
+    },
+    {
+      "id": "q058",
+      "query": "付费意愿怎么验证",
+      "category": "how_to",
+      "expected_pages": [
+        "付费意愿验证"
+      ],
+      "retrieved_pages": [
+        "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+        "d3c280f2-2c7b-4c61-b066-a227c151e817",
+        "付费意愿验证",
+        "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+        "付费意愿验证",
+        "验证思路",
+        "预期指标",
+        "AI 产品创业",
+        "单点功能",
+        "未经验证的假设"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "5eef52f5-cd9b-491d-942e-8ce7d2e5e6a3",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 23.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "d3c280f2-2c7b-4c61-b066-a227c151e817",
+          "title": "产品经理面试中如何回答项目价值",
+          "score": 20.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "付费意愿验证",
+          "title": "付费意愿验证",
+          "score": 20.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "2fc2f010-a67b-47e0-9561-ecb77d66aea1",
+          "title": "AI高度的心得体验",
+          "score": 17.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "付费意愿验证",
+          "title": "付费意愿验证",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "验证思路",
+          "title": "验证思路",
+          "score": 15.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "预期指标",
+          "title": "预期指标",
+          "score": 11.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "AI 产品创业",
+          "title": "AI 产品创业",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "单点功能",
+          "title": "单点功能",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "未经验证的假设",
+          "title": "未经验证的假设",
+          "score": 9.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.3333333333333333,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 2.0,
+        "first_hit_rank": 3
+      }
+    },
+    {
+      "id": "q059",
+      "query": "什么是Agent路由",
+      "category": "concept_definition",
+      "expected_pages": [
+        "Agent_路由"
+      ],
+      "retrieved_pages": [
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "Agent",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "AI_Agent",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "AI_Agent",
+        "Agent_集群统筹",
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+        "观察执行结果"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 30.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 30.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 28.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 26.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 26.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 23.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Agent_集群统筹",
+          "title": "Agent 集群统筹",
+          "score": 21.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 20.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "观察执行结果",
+          "title": "观察执行结果",
+          "score": 18.0,
+          "source_type": "wiki_concept"
+        }
+      ],
+      "metrics": {
+        "recall@3": false,
+        "recall@5": false,
+        "recall@10": false,
+        "mrr": 0.0,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.0,
+        "first_hit_rank": 0
+      }
+    },
+    {
+      "id": "q060",
+      "query": "Agent集群怎么统筹治理",
+      "category": "how_to",
+      "expected_pages": [
+        "Agent_集群统筹",
+        "Agent_集群与系统治理"
+      ],
+      "retrieved_pages": [
+        "c8d39c29-0921-4855-9db0-a831c61123e1",
+        "Agent_集群统筹",
+        "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+        "链路治理视角",
+        "f242d381-d542-4c61-beb2-98837067096f",
+        "AI_Agent",
+        "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+        "AI_Agent",
+        "Agent",
+        "ebf3c59e-aab0-4004-bc90-5605f14d3274"
+      ],
+      "retrieved_details": [
+        {
+          "page_id": "c8d39c29-0921-4855-9db0-a831c61123e1",
+          "title": "我面试了13家AI公司的应用开发岗，太炸裂了",
+          "score": 43.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "Agent_集群统筹",
+          "title": "Agent 集群统筹",
+          "score": 42.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "3651ef33-bd00-407d-bb3a-b6af1f5c0bc1",
+          "title": "10分钟彻底搞懂AI Agent底层逻辑！讲透它是什么、怎么运行、如何构建，全程干货无废话，帮你少走99%弯路！ p26 25-LangchainV1.2最新版-hello-langchain",
+          "score": 30.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "链路治理视角",
+          "title": "链路治理视角",
+          "score": 30.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "f242d381-d542-4c61-beb2-98837067096f",
+          "title": "AI Agent 底层逻辑：定义、运行机制与构成",
+          "score": 28.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 24.0,
+          "source_type": "wiki_concept"
+        },
+        {
+          "page_id": "b2f69316-ce9b-4052-bc8e-60f37e8f5637",
+          "title": "什么是智能体AI？",
+          "score": 23.0,
+          "source_type": "wiki_claim"
+        },
+        {
+          "page_id": "AI_Agent",
+          "title": "AI Agent",
+          "score": 22.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "Agent",
+          "title": "Agent",
+          "score": 22.0,
+          "source_type": "wiki_entity"
+        },
+        {
+          "page_id": "ebf3c59e-aab0-4004-bc90-5605f14d3274",
+          "title": "AI Agent 开发岗面试考察重点与准备建议",
+          "score": 19.0,
+          "source_type": "wiki_claim"
+        }
+      ],
+      "metrics": {
+        "recall@3": true,
+        "recall@5": true,
+        "recall@10": true,
+        "mrr": 0.5,
+        "citation_accuracy": 0.0,
+        "hit_ratio": 0.5,
+        "first_hit_rank": 2
+      }
+    }
+  ]
+}

@@ -2,6 +2,7 @@
   "bundle": {
     "resources": {
       "bin/backend/notemeld-backend": "bin/backend/notemeld-backend",
+      "../../../packages/notemeld-applications/apps": "applications",
       "resources/ffmpeg/ffmpeg-runtime-macos.zip": "ffmpeg/ffmpeg-runtime.zip"
     }
   }

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "fallback": {
+    "context_window_tokens": 4096,
+    "supports_vision": false,
+    "supports_stream": true
+  },
+  "models": [
+    {
+      "match": "deepseek-chat",
+      "context_window_tokens": 65536,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "deepseek-reasoner",
+      "context_window_tokens": 65536,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4o",
+      "context_window_tokens": 128000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4o-mini",
+      "context_window_tokens": 128000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4.1",
+      "context_window_tokens": 1000000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4.1-mini",
+      "context_window_tokens": 1000000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "deepseek-r1:*",
+      "context_window_tokens": 131072,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "qwen2.5vl:*",
+      "context_window_tokens": 32768,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "qwen3-vl:*",
+      "context_window_tokens": 32768,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "qwen3:*",
+      "context_window_tokens": 32768,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "qwen2:*",
+      "context_window_tokens": 32768,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "gemma3:*",
+      "context_window_tokens": 32768,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "deepseek-*",
+      "context_window_tokens": 32768,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4o-*",
+      "context_window_tokens": 128000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4.1-*",
+      "context_window_tokens": 1000000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4-turbo*",
+      "context_window_tokens": 128000,
+      "supports_vision": true,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-4-*",
+      "context_window_tokens": 8192,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "gpt-3.5-*",
+      "context_window_tokens": 16385,
+      "supports_vision": false,
+      "supports_stream": true
+    },
+    {
+      "match": "chatgpt-*",
+      "context_window_tokens": 128000,
+      "supports_vision": true,
+      "supports_stream": true
+    }
+  ]
+}

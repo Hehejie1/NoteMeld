@@ -13,6 +13,9 @@ jobs:
   build-macos:
     name: Build macOS (Apple Silicon)
     runs-on: macos-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -42,7 +45,7 @@ jobs:
         run: brew install ffmpeg
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: desktop/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Install desktop dependencies
@@ -50,7 +53,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
-        working-directory: backend
+        working-directory: desktop/backend
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
@@ -59,14 +62,14 @@ jobs:
       - name: Build backend sidecar
         run: |
           NOTEMELD_SKIP_PORTABILITY_CHECK=1 \
-          NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3 \
+          NOTEMELD_PYTHON_BIN=desktop/backend/.venv/bin/python3 \
           NOTEMELD_TARGET_ARCH=arm64 \
           FFMPEG_BIN_PATH=$(dirname "$(which ffmpeg)") \
-          ./packaging/scripts/build-backend-macos.sh
+          ./scripts/desktop/packaging/scripts/build-backend-macos.sh
 
-      - name: Build desktop app
+      - name: Build desktop app with signed updater artifact
         working-directory: desktop
-        run: pnpm tauri build --target aarch64-apple-darwin
+        run: pnpm tauri build --target aarch64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       - name: Collect artifacts
         run: |
@@ -75,7 +78,11 @@ jobs:
           if [ -d "$BUNDLE_DIR/dmg" ]; then
             cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
           fi
-          cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
+          find "$BUNDLE_DIR" -type f -name "*.dmg" -exec cp {} dist/ \;
+          for artifact in $(find "$BUNDLE_DIR" -type f -name "*.app.tar.gz"); do
+            cp "$artifact" "dist/NoteMeld_${GITHUB_REF_NAME#v}_aarch64.app.tar.gz"
+            cp "$artifact.sig" "dist/NoteMeld_${GITHUB_REF_NAME#v}_aarch64.app.tar.gz.sig"
+          done
           ls -la dist/
 
       - name: Upload artifacts
@@ -87,6 +94,9 @@ jobs:
   build-macos-intel:
     name: Build macOS (Intel)
     runs-on: macos-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -126,7 +136,7 @@ jobs:
           ls -la /tmp/ffmpeg-x86/
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: desktop/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Install desktop dependencies
@@ -134,7 +144,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies (x86_64)
-        working-directory: backend
+        working-directory: desktop/backend
         run: |
           arch -x86_64 python3 -m venv .venv
           arch -x86_64 .venv/bin/python -m pip install --upgrade pip
@@ -144,18 +154,18 @@ jobs:
         run: |
           arch -x86_64 bash -c '
             export NOTEMELD_SKIP_PORTABILITY_CHECK=1
-            export NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3
+            export NOTEMELD_PYTHON_BIN=desktop/backend/.venv/bin/python3
             export NOTEMELD_TARGET_ARCH=x86_64
             export FFMPEG_BIN_PATH=/tmp/ffmpeg-x86
             export ARCHFLAGS="-arch x86_64"
             export CFLAGS="-arch x86_64"
             export LDFLAGS="-arch x86_64"
-            ./packaging/scripts/build-backend-macos.sh
+            ./scripts/desktop/packaging/scripts/build-backend-macos.sh
           '
 
-      - name: Build desktop app (x86_64)
+      - name: Build desktop app (x86_64) with signed updater artifact
         working-directory: desktop
-        run: arch -x86_64 pnpm tauri build --target x86_64-apple-darwin
+        run: arch -x86_64 pnpm tauri build --target x86_64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       - name: Collect artifacts
         run: |
@@ -164,7 +174,11 @@ jobs:
           if [ -d "$BUNDLE_DIR/dmg" ]; then
             cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
           fi
-          cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
+          find "$BUNDLE_DIR" -type f -name "*.dmg" -exec cp {} dist/ \;
+          for artifact in $(find "$BUNDLE_DIR" -type f -name "*.app.tar.gz"); do
+            cp "$artifact" "dist/NoteMeld_${GITHUB_REF_NAME#v}_x64.app.tar.gz"
+            cp "$artifact.sig" "dist/NoteMeld_${GITHUB_REF_NAME#v}_x64.app.tar.gz.sig"
+          done
           ls -la dist/
 
       - name: Upload artifacts
@@ -176,6 +190,9 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -215,7 +232,7 @@ jobs:
           Test-Path (Join-Path $ffmpegBin "ffprobe.exe")
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: desktop/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Install desktop dependencies
@@ -223,7 +240,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
-        working-directory: backend
+        working-directory: desktop/backend
         run: |
           python -m venv .venv
           .venv\Scripts\python -m pip install --upgrade pip
@@ -232,7 +249,7 @@ jobs:
       - name: Build backend sidecar
         shell: pwsh
         env:
-          NOTEMELD_PYTHON_BIN: backend\.venv\Scripts\python.exe
+          NOTEMELD_PYTHON_BIN: desktop\backend\.venv\Scripts\python.exe
         run: |
           $ffmpegExe = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
           if ($ffmpegExe) {
@@ -248,11 +265,11 @@ jobs:
               Write-Host "WARNING: ffmpeg not found"
             }
           }
-          powershell -ExecutionPolicy Bypass -File .\packaging\scripts\build-backend-windows.ps1
+          powershell -ExecutionPolicy Bypass -File .\scripts\desktop\packaging\scripts\build-backend-windows.ps1
 
-      - name: Build desktop app
+      - name: Build desktop app with signed updater artifact
         working-directory: desktop
-        run: pnpm tauri build
+        run: pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       - name: Collect artifacts
         run: |
@@ -261,7 +278,7 @@ jobs:
           if (Test-Path "$bundleDir\msi") {
             Get-ChildItem -Path "$bundleDir\msi" -Filter "*.msi" -Recurse | Copy-Item -Destination dist\
           }
-          Get-ChildItem -Path $bundleDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Get-ChildItem -Path $bundleDir -File -Recurse | Where-Object { $_.Name -match '\.(msi|msi\.zip|msi\.zip\.sig|exe|exe\.sig)$' } | Copy-Item -Destination dist\
           Write-Host "Collected artifacts:"
           Get-ChildItem -Path dist\ | Format-Table Name, Length
 
@@ -292,6 +309,20 @@ jobs:
           cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
           cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
+          python3 scripts/desktop/packaging/scripts/generate-latest-json.py \
+            release "${GITHUB_REF_NAME#v}" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("release/latest.json").read_text(encoding="utf-8"))
+          required = {"darwin-aarch64", "darwin-x86_64", "windows-x86_64"}
+          missing = sorted(required - set(manifest.get("platforms", {})))
+          if missing:
+              raise SystemExit(f"release manifest is missing required platforms: {', '.join(missing)}")
+          print("validated updater platforms:", ", ".join(sorted(manifest["platforms"])))
+          PY
           ls -la release/
 
       - name: Create GitHub Release
@@ -302,5 +333,39 @@ jobs:
             release/*.msi
             release/*.exe
             release/*.app.tar.gz
+            release/*.app.tar.gz.sig
+            release/*.msi.zip
+            release/*.msi.zip.sig
+            release/latest.json
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+
+      - name: Verify public updater manifest and signed assets
+        env:
+          RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "${RELEASE_BASE_URL}/latest.json" -o /tmp/notemeld-latest.json
+          python3 - /tmp/notemeld-latest.json <<'PY'
+          import json
+          import sys
+          from urllib.request import Request, urlopen
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              manifest = json.load(stream)
+          required = {"darwin-aarch64", "darwin-x86_64", "windows-x86_64"}
+          platforms = manifest.get("platforms", {})
+          missing = sorted(required - set(platforms))
+          if missing:
+              raise SystemExit(f"public updater manifest is missing: {', '.join(missing)}")
+          for platform, entry in platforms.items():
+              for key in ("url", "signature"):
+                  if not entry.get(key):
+                      raise SystemExit(f"{platform} updater entry has no {key}")
+              request = Request(entry["url"], method="HEAD", headers={"User-Agent": "NoteMeld-release-check"})
+              with urlopen(request, timeout=20) as response:
+                  if response.status < 200 or response.status >= 400:
+                      raise SystemExit(f"{platform} updater asset returned HTTP {response.status}")
+          print("public updater manifest and assets verified")
+          PY

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NoteMeld · Design System</title>
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="stylesheet" href="./primitives.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--nm-color-bg); color: var(--nm-color-text); font: 14px/1.5 var(--nm-font-sans); }
+    main { width: min(1120px, calc(100% - 40px)); margin: 0 auto; padding: 48px 0 72px; }
+    header { max-width: 720px; margin-bottom: 32px; }
+    h1 { margin: 8px 0; font-size: clamp(30px, 5vw, 48px); line-height: 1.08; letter-spacing: -.04em; }
+    h2 { margin: 0 0 16px; font-size: 18px; }
+    p { color: var(--nm-color-text-muted); line-height: 1.7; }
+    section { margin-top: 24px; padding: 24px; }
+    .eyebrow { color: var(--nm-color-accent-strong); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .stack { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .swatch { display: grid; gap: 8px; }
+    .swatch i { height: 42px; border-radius: var(--nm-radius-md); border: 1px solid var(--nm-color-border); background: var(--swatch); }
+    .swatch small { color: var(--nm-color-text-muted); }
+    [data-nm-toast] { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); opacity: .92; }
+    [data-nm-toast].is-visible { transform: translate(-50%, 0); opacity: 1; }
+    [data-nm-toast] { padding: 10px 14px; border-radius: var(--nm-radius-pill); background: var(--nm-color-text); color: var(--nm-color-surface); transition: transform var(--nm-motion-fast), opacity var(--nm-motion-fast); }
+    @media (max-width: 640px) { main { width: min(100% - 24px, 1120px); padding-top: 28px; } section { padding: 18px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <span class="eyebrow">NOTEMELD · DESIGN SYSTEM</span>
+      <h1>跨端设计语言的 HTML 参考实现</h1>
+      <p>这里展示 Tokens、交互原语和状态语义。Android、iOS、鸿蒙、桌面端与 Web 使用各自的原生实现，但应以相同的语义和交互契约为准。</p>
+    </header>
+
+    <section class="nm-surface">
+      <h2>按钮原语</h2>
+      <div class="stack">
+        <button class="nm-button" data-variant="primary" data-nm-toast="主操作已触发">主操作</button>
+        <button class="nm-button" data-variant="secondary" data-nm-toast="次要操作已触发">次要操作</button>
+        <button class="nm-button" data-variant="ghost" data-nm-toast="幽灵操作已触发">幽灵操作</button>
+        <button class="nm-button" data-variant="danger" data-nm-toast="危险操作需要业务确认" data-nm-toast-tone="danger">危险操作</button>
+        <button class="nm-icon-button" aria-label="更多操作" data-nm-toast="更多操作">⋯</button>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="nm-surface">
+        <h2>字段与状态</h2>
+        <label class="nm-field"><span class="nm-visually-hidden">搜索</span><input placeholder="搜索 Workspace"></label>
+        <hr class="nm-divider">
+        <div class="stack">
+          <span class="nm-badge" data-status="running">运行中</span>
+          <span class="nm-badge" data-status="waiting">等待审批</span>
+          <span class="nm-badge" data-status="completed">已完成</span>
+          <span class="nm-badge" data-status="failed">失败</span>
+        </div>
+      </section>
+      <section class="nm-surface">
+        <h2>状态反馈</h2>
+        <div class="nm-state"><strong>暂无内容</strong><p>明确告诉用户当前状态和下一步可以做什么。</p><button class="nm-button" data-variant="secondary" data-nm-toast="开始创建">开始创建</button></div>
+      </section>
+    </div>
+
+    <section class="nm-surface">
+      <h2>语义颜色</h2>
+      <div class="grid">
+        <div class="swatch"><i style="--swatch: var(--nm-color-bg)"></i><small>背景 / --nm-color-bg</small></div>
+        <div class="swatch"><i style="--swatch: var(--nm-color-surface)"></i><small>表面 / --nm-color-surface</small></div>
+        <div class="swatch"><i style="--swatch: var(--nm-color-accent)"></i><small>强调 / --nm-color-accent</small></div>
+        <div class="swatch"><i style="--swatch: var(--nm-color-danger-soft)"></i><small>危险背景 / --nm-color-danger-soft</small></div>
+      </div>
+    </section>
+  </main>
+  <script src="./primitives.js"></script>
+</body>
+</html>

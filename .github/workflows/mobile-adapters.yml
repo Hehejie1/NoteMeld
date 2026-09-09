@@ -1,0 +1,66 @@
+name: Mobile adapters
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "ios/**"
+      - "harmony/**"
+      - "desktop/frontend/tests/mobilePlatformAdapterContracts.test.mjs"
+      - ".github/workflows/mobile-adapters.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "ios/**"
+      - "harmony/**"
+      - "desktop/frontend/tests/mobilePlatformAdapterContracts.test.mjs"
+      - ".github/workflows/mobile-adapters.yml"
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Android adapter build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+      - name: Assemble Android debug adapter
+        working-directory: android
+        run: gradle --no-daemon :app:assembleDebug
+
+  ios:
+    name: iOS adapter build
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build iOS Simulator adapter
+        run: >-
+          xcodebuild
+          -project ios/NoteMeldMobile.xcodeproj
+          -scheme NoteMeldMobile
+          -sdk iphonesimulator
+          -configuration Debug
+          -derivedDataPath ios/build/ci
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+  source-contracts:
+    name: Native source contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run mobile adapter contracts
+        working-directory: desktop/frontend
+        run: node --test tests/mobilePlatformAdapterContracts.test.mjs

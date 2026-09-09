@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.NoteMeld" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#4B7CF3</item>
+        <item name="android:navigationBarColor">#F7F8FB</item>
+        <item name="android:statusBarColor">#F7F8FB</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

@@ -127,8 +127,8 @@ MANIFEST
 # PyInstaller (keep packaging spec)
 *.manifest
 *.spec
-!packaging/backend/pyinstaller/
-!packaging/backend/pyinstaller/backend.spec
+!scripts/packaging/backend/pyinstaller/
+!scripts/packaging/backend/pyinstaller/backend.spec
 
 # Installer logs
 pip-log.txt
@@ -246,6 +246,8 @@ ffmpg*/
 # --- Logs ---
 logs/
 *.log
+desktop/logs/
+cloud/logs/
 
 # Runtime data
 pids
@@ -270,13 +272,27 @@ frontend/tmp-*.png
 /wiki.png
 
 # Superpowers (local only)
-superpowers/
+/superpowers/
 
 # Local dev
 .NoteMeld-dev/*
 
+# --- Per-project runtime data ---
+desktop/data/
+cloud/data/
+
 # --- Docs ---
-# 忽略 docs 下所有内容，只保留 system,images 目录
+# 忽略 docs 下其他内容，保留长期系统文档和本需求的可交付闭环文档
 /docs/*
 !/docs/system/
 !/docs/images/
+!/docs/architecture/
+!/docs/requirements/
+!/docs/new-product/
+!/docs/new-product/**
+!/docs/superpowers/
+!/docs/superpowers/plans/
+!/docs/superpowers/specs/
+!/docs/superpowers/tests/
+!/docs/superpowers/goals/
+# Rust build outputs are local SDK test artifacts, never source or release inputs.

@@ -7,8 +7,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:bundle": "tauri bundle",
-    "build:mac": "bash ../packaging/scripts/build-desktop-macos.sh",
-    "build:win": "powershell -ExecutionPolicy Bypass -File \"..\\packaging\\scripts\\build-desktop-windows.ps1\""
+    "build:mac": "bash ../scripts/desktop/packaging/scripts/build-desktop-macos.sh",
+    "build:win": "powershell -ExecutionPolicy Bypass -File \"..\\scripts\\desktop\\packaging\\scripts\\build-desktop-windows.ps1\""
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

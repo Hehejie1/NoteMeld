@@ -20,6 +20,11 @@ Requirements (auto-installed if missing on macOS with Homebrew):
 - npm
 - corepack
 
+Agent SDK:
+- uses the sibling ../notemeld-agent-sdk fixed wheel automatically when present
+- set NOTEMELD_AGENT_SDK_WHEEL to override the wheel path explicitly
+- the wheel is installed into the source-mode virtualenv automatically
+
 After startup:
 - open http://127.0.0.1:3015
 - configure Trae MCP with url http://127.0.0.1:8483/mcp
@@ -29,26 +34,21 @@ EOF
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="${ROOT_DIR}/backend"
-FRONTEND_DIR="${ROOT_DIR}/frontend"
+BACKEND_DIR="${ROOT_DIR}/desktop/backend"
+FRONTEND_DIR="${ROOT_DIR}/desktop/frontend"
 VENV_DIR="${ROOT_DIR}/.venv"
 NOTEMELD_RUNTIME_MODE="${NOTEMELD_RUNTIME_MODE:-source-script}"
-LOG_DIR="${ROOT_DIR}/logs"
-DATA_DIR="${ROOT_DIR}/vector_db"
-NOTE_OUTPUT_DIR="${DATA_DIR}/note_results"
-VECTOR_STORE_DIR="${DATA_DIR}/chroma"
-DOWNLOADER_CONFIG="${DATA_DIR}/config/downloader.json"
-DATABASE_PATH="${DATA_DIR}/notemeld.db"
-MODEL_DIR="${DATA_DIR}/models"
-APP_DATA_DIR="${DATA_DIR}/data"
-FRAME_DIR="${APP_DATA_DIR}/output_frames"
-UPLOAD_DIR="${DATA_DIR}/uploads"
-STATIC_DIR="${DATA_DIR}/static"
-SCREENSHOT_DIR="${STATIC_DIR}/screenshots"
+LOG_DIR="${ROOT_DIR}/desktop/logs"
+DATA_ROOT="${ROOT_DIR}/desktop/data"
 BACKEND_LOG="${LOG_DIR}/run_notemeld_backend.log"
 FRONTEND_LOG="${LOG_DIR}/run_notemeld_frontend.log"
 BACKEND_STAMP="${VENV_DIR}/.backend_deps_installed"
 BACKEND_REQUIREMENTS="${BACKEND_DIR}/requirements.txt"
+NOTEMELD_AGENT_SDK_WHEEL="${NOTEMELD_AGENT_SDK_WHEEL:-}"
+export NOTEMELD_AGENT_SDK_WHEEL
+EXPECTED_NOTEMELD_AGENT_SDK_VERSION="0.1.0"
+EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION="1"
+EXPECTED_NOTEMELD_AGENT_ABI_VERSION="1"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -291,18 +291,6 @@ wait_for_url() {
   return 1
 }
 
-migrate_dir_if_exists() {
-  local source_dir="$1"
-  local target_dir="$2"
-  local label="$3"
-
-  if [[ -d "${source_dir}" ]]; then
-    mkdir -p "${target_dir}"
-    cp -Rn "${source_dir}/." "${target_dir}/" 2>/dev/null || true
-    log "Migrated ${label} to ${target_dir}"
-  fi
-}
-
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
@@ -351,24 +339,7 @@ require_cmd lsof
 
 [[ -d "${BACKEND_DIR}" ]] || fail "Backend directory not found: ${BACKEND_DIR}"
 [[ -d "${FRONTEND_DIR}" ]] || fail "Frontend directory not found: ${FRONTEND_DIR}"
-mkdir -p "${LOG_DIR}" "${NOTE_OUTPUT_DIR}" "${VECTOR_STORE_DIR}" "$(dirname "${DOWNLOADER_CONFIG}")" "${MODEL_DIR}" "${FRAME_DIR}" "${UPLOAD_DIR}" "${SCREENSHOT_DIR}"
-
-if [[ ! -f "${DOWNLOADER_CONFIG}" && -f "${ROOT_DIR}/config/downloader.json" ]]; then
-  cp "${ROOT_DIR}/config/downloader.json" "${DOWNLOADER_CONFIG}"
-  log "Migrated downloader config to ${DOWNLOADER_CONFIG}"
-fi
-
-migrate_dir_if_exists "${ROOT_DIR}/note_results" "${NOTE_OUTPUT_DIR}" "root note results"
-migrate_dir_if_exists "${BACKEND_DIR}/note_results" "${NOTE_OUTPUT_DIR}" "backend note results"
-migrate_dir_if_exists "${BACKEND_DIR}/models" "${MODEL_DIR}" "backend model cache"
-migrate_dir_if_exists "${BACKEND_DIR}/data" "${APP_DATA_DIR}" "backend runtime data"
-migrate_dir_if_exists "${BACKEND_DIR}/uploads" "${UPLOAD_DIR}" "uploaded files"
-migrate_dir_if_exists "${BACKEND_DIR}/static" "${STATIC_DIR}" "static assets"
-
-if [[ ! -f "${DATABASE_PATH}" && -f "${BACKEND_DIR}/notemeld.db" ]]; then
-  cp "${BACKEND_DIR}/notemeld.db" "${DATABASE_PATH}"
-  log "Migrated SQLite database to ${DATABASE_PATH}"
-fi
+mkdir -p "${LOG_DIR}" "${DATA_ROOT}/tmp"
 
 if port_in_use "${FRONTEND_PORT}"; then
   warn "Port ${FRONTEND_PORT} is already in use, attempting to free..."
@@ -406,23 +377,54 @@ if [[ ! -f "${BACKEND_STAMP}" || "${BACKEND_REQUIREMENTS}" -nt "${BACKEND_STAMP}
   touch "${BACKEND_STAMP}"
 fi
 
+ensure_agent_sdk() {
+  local check_code='import sys
+from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable
+try:
+    AgentSdkRuntime.load(binding_path="packaged")
+except AgentSdkUnavailable as error:
+    print(str(error), file=sys.stderr)
+    raise SystemExit(1)
+'
+  local sdk_error=""
+  if sdk_error="$(PYTHONPATH="${VENV_DIR}/../desktop/backend${PYTHONPATH:+:${PYTHONPATH}}" \
+    "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
+    return 0
+  fi
+
+  if [[ -z "${NOTEMELD_AGENT_SDK_WHEEL}" ]]; then
+    local sdk_root="${ROOT_DIR}/../notemeld-agent-sdk"
+    local wheel_candidates=()
+    shopt -s nullglob
+    wheel_candidates+=("${sdk_root}/dist-native/x86_64-apple-darwin/"*.whl)
+    wheel_candidates+=("${sdk_root}/dist-wheel/"*.whl)
+    shopt -u nullglob
+    if (( ${#wheel_candidates[@]} > 0 )); then
+      NOTEMELD_AGENT_SDK_WHEEL="${wheel_candidates[0]}"
+      export NOTEMELD_AGENT_SDK_WHEEL
+      log "Using local Agent SDK wheel: ${NOTEMELD_AGENT_SDK_WHEEL}"
+    fi
+  fi
+  [[ -n "${NOTEMELD_AGENT_SDK_WHEEL}" ]] \
+    || fail "${sdk_error:-Agent SDK is missing or incompatible}. Set NOTEMELD_AGENT_SDK_WHEEL to the compiled wheel before starting NoteMeld."
+  [[ -f "${NOTEMELD_AGENT_SDK_WHEEL}" ]] || fail "The configured NOTEMELD_AGENT_SDK_WHEEL does not exist."
+  log "Installing standalone notemeld-agent-sdk wheel"
+  "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check --no-deps \
+    --force-reinstall "${NOTEMELD_AGENT_SDK_WHEEL}" >/dev/null 2>&1 \
+    || fail "Agent SDK wheel installation failed."
+  if ! sdk_error="$(PYTHONPATH="${VENV_DIR}/../desktop/backend${PYTHONPATH:+:${PYTHONPATH}}" \
+    "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
+    fail "${sdk_error:-Installed notemeld-agent-sdk is incompatible} (expected SDK_VERSION=${EXPECTED_NOTEMELD_AGENT_SDK_VERSION} SCHEMA_VERSION=${EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION} ABI_VERSION=${EXPECTED_NOTEMELD_AGENT_ABI_VERSION})"
+  fi
+}
+
+ensure_agent_sdk
+
 log "Preparing default transcriber"
 (
   cd "${BACKEND_DIR}"
-  export NOTEMELD_DATA_DIR="${DATA_DIR}"
+  export NOTEMELD_DATA_DIR="${DATA_ROOT}"
   export NOTEMELD_LOG_DIR="${LOG_DIR}"
-  export NOTE_OUTPUT_DIR="${NOTE_OUTPUT_DIR}"
-  export VECTOR_DB_DIR="${VECTOR_STORE_DIR}"
-  export NOTEMELD_DOWNLOADER_CONFIG="${DOWNLOADER_CONFIG}"
-  export NOTEMELD_DATABASE_PATH="${DATABASE_PATH}"
-  export DATABASE_URL="sqlite:///${DATABASE_PATH}"
-  export NOTEMELD_MODEL_DIR="${MODEL_DIR}"
-  export NOTEMELD_APP_DATA_DIR="${APP_DATA_DIR}"
-  export NOTEMELD_FRAME_DIR="${FRAME_DIR}"
-  export DATA_DIR="${APP_DATA_DIR}"
-  export UPLOAD_DIR="${UPLOAD_DIR}"
-  export STATIC_DIR="${STATIC_DIR}"
-  export OUT_DIR="${SCREENSHOT_DIR}"
   "${VENV_DIR}/bin/python" "${BACKEND_DIR}/app/services/transcriber_bootstrap.py"
 ) || warn "Transcriber bootstrap failed, continuing anyway"
 
@@ -457,20 +459,8 @@ if ! port_in_use "${BACKEND_PORT}"; then
   log "Starting backend on ${BACKEND_PORT}"
   (
     cd "${BACKEND_DIR}"
-    export NOTEMELD_DATA_DIR="${DATA_DIR}"
+    export NOTEMELD_DATA_DIR="${DATA_ROOT}"
     export NOTEMELD_LOG_DIR="${LOG_DIR}"
-    export NOTE_OUTPUT_DIR="${NOTE_OUTPUT_DIR}"
-    export VECTOR_DB_DIR="${VECTOR_STORE_DIR}"
-    export NOTEMELD_DOWNLOADER_CONFIG="${DOWNLOADER_CONFIG}"
-    export NOTEMELD_DATABASE_PATH="${DATABASE_PATH}"
-    export DATABASE_URL="sqlite:///${DATABASE_PATH}"
-    export NOTEMELD_MODEL_DIR="${MODEL_DIR}"
-    export NOTEMELD_APP_DATA_DIR="${APP_DATA_DIR}"
-    export NOTEMELD_FRAME_DIR="${FRAME_DIR}"
-    export DATA_DIR="${APP_DATA_DIR}"
-    export UPLOAD_DIR="${UPLOAD_DIR}"
-    export STATIC_DIR="${STATIC_DIR}"
-    export OUT_DIR="${SCREENSHOT_DIR}"
     "${VENV_DIR}/bin/python" main.py
   ) >"${BACKEND_LOG}" 2>&1 &
   BACKEND_PID=$!
@@ -499,6 +489,7 @@ log "Starting frontend on ${FRONTEND_PORT}"
   cd "${FRONTEND_DIR}"
   VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_PORT}/api" \
   VITE_SCREENSHOT_BASE_URL="http://127.0.0.1:${BACKEND_PORT}/static/screenshots" \
+  VITE_CLOUD_BASE_URL="${VITE_CLOUD_BASE_URL:-http://127.0.0.1:8583}" \
   corepack pnpm dev --host 0.0.0.0 --port "${FRONTEND_PORT}"
 ) >"${FRONTEND_LOG}" 2>&1 &
 FRONTEND_PID=$!

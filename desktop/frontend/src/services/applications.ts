@@ -1,0 +1,256 @@
+import request from '@/utils/request'
+
+export type ApplicationStatus =
+  | 'installed'
+  | 'disabled'
+  | 'starting'
+  | 'running'
+  | 'stopped'
+  | 'failed'
+  | 'needs_attention'
+
+export type ApplicationRunStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting_user'
+  | 'cancelled'
+  | 'failed'
+  | 'completed'
+  | 'interrupted'
+
+export interface ApplicationPlatformSupport {
+  desktop?: 'supported' | 'unsupported'
+  web?: 'supported' | 'unsupported'
+  mobile?: 'supported' | 'unsupported'
+}
+
+export interface ApplicationDiagnostic {
+  code: string
+  message: string
+  capability?: string
+}
+
+export interface ApplicationSummary {
+  id: string
+  name: string
+  version: string
+  description?: string
+  icon?: string
+  status: ApplicationStatus
+  enabled: boolean
+  platforms?: ApplicationPlatformSupport
+  capabilities?: string[]
+  missing_capabilities?: string[]
+  diagnostics?: ApplicationDiagnostic[]
+}
+
+export interface ApplicationDetail extends ApplicationSummary {
+  protocol?: string
+  permissions?: string[]
+  runtime?: {
+    kind?: string
+    entry?: string
+  }
+  ui?: {
+    entry?: string
+  }
+}
+
+export interface ApplicationWorkspaceSetting {
+  workspace_ref: string
+  configured: boolean
+  root: string
+  external_read_roots?: string[]
+}
+
+export interface ApplicationInstance {
+  id: string
+  app_id: string
+  title: string
+  status?: ApplicationStatus
+  workspace?: string
+}
+
+export interface ApplicationRun {
+  run_id: string
+  app_id: string
+  instance_id: string
+  status: ApplicationRunStatus
+  request_id?: string | null
+  runtime_kind?: string
+  cancel_requested?: boolean
+  error?: { code?: string | null; message?: string | null } | null
+}
+
+export interface ApplicationPackageCandidate {
+  status: 'pending_approval'
+  candidate: { id: string; status: string }
+  package_sha256: string
+  manifest: { id: string; name: string; version: string }
+}
+
+export interface WikiGraphNode {
+  id: string
+  label: string
+  type: string
+  size?: number
+  weight?: number
+  community_id?: number
+  community_color?: string
+  community_label?: string
+  community_cohesion?: number
+  community_is_weak?: boolean
+}
+
+export interface WikiGraphEdge {
+  source: string
+  target: string
+  type: string
+  weight?: number
+}
+
+export interface WikiGraphCluster {
+  id: string
+  label: string
+  node_ids: string[]
+  type?: string
+  color?: string
+  cohesion?: number
+  is_weak?: boolean
+}
+
+export interface WikiGraph {
+  nodes: WikiGraphNode[]
+  edges: WikiGraphEdge[]
+  clusters: WikiGraphCluster[]
+}
+
+export interface WikiArticleEntity {
+  name: string
+  entity_type?: string
+  aliases?: string[]
+  description?: string
+  claims?: string[]
+  confidence?: number
+}
+
+export interface WikiArticleConcept {
+  name: string
+  aliases?: string[]
+  description?: string
+  related?: string[]
+  claims?: string[]
+  confidence?: number
+}
+
+export interface WikiArticleClaim {
+  claim: string
+  target_name?: string
+  target_type?: string
+  evidence_ids?: string[]
+  confidence?: number
+}
+
+export interface WikiArticleEvidence {
+  evidence_id: string
+  text: string
+  timestamp?: number | null
+  url?: string | null
+}
+
+export interface WikiArticleRelation {
+  source: string
+  target: string
+  relation_type: string
+  weight?: number
+}
+
+export interface WikiArticleDetail {
+  id: string
+  title: string
+  source_type?: string
+  summary?: string
+  topics?: string[]
+  entities: WikiArticleEntity[]
+  concepts: WikiArticleConcept[]
+  claims: WikiArticleClaim[]
+  evidence: WikiArticleEvidence[]
+  relations: WikiArticleRelation[]
+  markdown?: string
+}
+
+const applicationPath = (appId: string) => `/applications/${encodeURIComponent(appId)}`
+
+export const getApplicationWorkspaceSetting = async (): Promise<ApplicationWorkspaceSetting> =>
+  request.get<ApplicationWorkspaceSetting>('/applications/settings/workspace') as unknown as Promise<ApplicationWorkspaceSetting>
+
+export const setApplicationWorkspaceSetting = async (root: string): Promise<ApplicationWorkspaceSetting> =>
+  request.put<ApplicationWorkspaceSetting>('/applications/settings/workspace', { root }) as unknown as Promise<ApplicationWorkspaceSetting>
+
+export const setExternalApplicationReadRoots = async (roots: string[]): Promise<{ external_read_roots: string[] }> =>
+  request.put<{ external_read_roots: string[] }>('/applications/settings/external-read-roots', { roots }) as unknown as Promise<{ external_read_roots: string[] }>
+
+export const listApplications = async (): Promise<ApplicationSummary[]> =>
+  request.get<ApplicationSummary[]>('/applications') as unknown as Promise<ApplicationSummary[]>
+
+export const installApplicationPackage = async (file: File, replace = false): Promise<ApplicationPackageCandidate> => {
+  const form = new FormData()
+  form.append('package', file)
+  return request.post<ApplicationPackageCandidate>(`/applications/packages?replace=${replace ? 'true' : 'false'}`, form, { timeout: 0 }) as unknown as Promise<ApplicationPackageCandidate>
+}
+
+export const activateApplicationCandidate = async (candidateId: string): Promise<unknown> =>
+  request.post<unknown>(`/applications/candidates/${encodeURIComponent(candidateId)}/activate`) as unknown as Promise<unknown>
+
+export const getApplication = async (appId: string): Promise<ApplicationDetail> =>
+  request.get<ApplicationDetail>(applicationPath(appId)) as unknown as Promise<ApplicationDetail>
+
+export const enableApplication = async (appId: string): Promise<ApplicationDetail> =>
+  request.post<ApplicationDetail>(`${applicationPath(appId)}/enable`) as unknown as Promise<ApplicationDetail>
+
+export const disableApplication = async (appId: string): Promise<ApplicationDetail> =>
+  request.post<ApplicationDetail>(`${applicationPath(appId)}/disable`) as unknown as Promise<ApplicationDetail>
+
+export const listApplicationInstances = async (appId: string): Promise<ApplicationInstance[]> =>
+  request.get<ApplicationInstance[]>(`${applicationPath(appId)}/instances`) as unknown as Promise<ApplicationInstance[]>
+
+export const createApplicationInstance = async (
+  appId: string,
+  payload: { title?: string },
+): Promise<ApplicationInstance> =>
+  request.post<ApplicationInstance>(`${applicationPath(appId)}/instances`, payload) as unknown as Promise<ApplicationInstance>
+
+export const startApplicationRun = async (
+  appId: string,
+  instanceId: string,
+): Promise<ApplicationRun> =>
+  request.post<ApplicationRun>(`${applicationPath(appId)}/instances/${encodeURIComponent(instanceId)}/runs`, {}) as unknown as Promise<ApplicationRun>
+
+export const getApplicationRun = async (runId: string): Promise<ApplicationRun> =>
+  request.get<ApplicationRun>(`/applications/runs/${encodeURIComponent(runId)}`) as unknown as Promise<ApplicationRun>
+
+export const invokeApplicationRun = async (
+  runId: string,
+  method: string,
+  input: Record<string, unknown> = {},
+  mode: 'sync' | 'async' = 'sync',
+): Promise<Record<string, unknown>> =>
+  request.post<Record<string, unknown>>(`/applications/runs/${encodeURIComponent(runId)}/invoke`, { method, input, mode }) as unknown as Promise<Record<string, unknown>>
+
+export const invokeApplicationCapability = async <T>(
+  runId: string,
+  capability: string,
+  method: string,
+  input: Record<string, unknown> = {},
+  mode: 'sync' | 'async' = 'sync',
+): Promise<T> =>
+  request.post<T>(`/applications/runs/${encodeURIComponent(runId)}/capability`, { capability, method, input, mode }) as unknown as Promise<T>
+
+export const getApplicationPermissions = async (appId: string): Promise<Record<string, { requested: boolean; granted: boolean }>> =>
+  request.get<Record<string, { requested: boolean; granted: boolean }>>(`${applicationPath(appId)}/permissions`) as unknown as Promise<Record<string, { requested: boolean; granted: boolean }>>
+
+export const setApplicationPermissions = async (appId: string, grants: Record<string, boolean>): Promise<Record<string, { requested: boolean; granted: boolean }>> =>
+  request.put<Record<string, { requested: boolean; granted: boolean }>>(`${applicationPath(appId)}/permissions`, { grants }) as unknown as Promise<Record<string, { requested: boolean; granted: boolean }>>
+
+export const cancelApplicationRun = async (runId: string): Promise<ApplicationRun> =>
+  request.post<ApplicationRun>(`/applications/runs/${encodeURIComponent(runId)}/cancel`) as unknown as Promise<ApplicationRun>
