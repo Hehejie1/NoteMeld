@@ -15,7 +15,7 @@ tests/
 │   ├── test_metrics_offline.py    #   指标单元测试（无需模型）
 │   ├── spec/                      #   9 种笔记模板 + 用例字段规范
 │   ├── public_benchmarks/         #   L1 公开基准（LCSTS / HalluQA / 基准信息）
-│   ├── business/                  #   L2 业务场景（来自 vector_db 真实素材）
+│   ├── business/                  #   L2 业务场景（来自 desktop/data 真实素材）
 │   ├── hallucination/             #   L2 幻觉专项（总结类事实一致性）
 │   └── regression/                #   L3 线上问题回归（永久保留）
 │
@@ -107,7 +107,7 @@ python3 tests/workflow/evaluate_model.py --model qwen3:8b --only-factual
 python3 tests/agent/evaluate_retrieval.py
 
 # 指定 wiki 目录
-python3 tests/agent/evaluate_retrieval.py --wiki-dir vector_db/note_results/wiki
+python3 tests/agent/evaluate_retrieval.py --wiki-dir desktop/data/note_results/wiki
 
 # 输出报告到 tests/reports/（JSON + Markdown）
 ls tests/reports/retrieval_eval_latest.md

@@ -39,6 +39,8 @@
 
 应用协议唯一规范源：[`application-protocol-v1.md`](application-protocol-v1.md)。插件协议由 `notemeld-plugins/docs/system/plugin-protocol-v1.md` 维护。
 
+- 本地 workspace 可能将独立插件仓库放在 `packages/notemeld-plugins/`；官方 `official.link-note` fixture 的发现必须同时支持已打包资源、`NOTEMELD_PLUGINS_DIR`、根目录 sibling 和 workspace `packages/` 路径。全新数据目录启动时缺失 fixture 必须明确失败，不能静默回退到旧实现。
+
 更新时间：2026-08-30
 
 ## Application Host 越权或假运行
@@ -46,7 +48,7 @@
 - 风险：应用 UI 直接调用旧产品 router/SQLite，应用 backend 自行监听公网端口，或 Host 仅把 Run 标记为 running 却绕过 manifest、workspace 和 capability 校验。
 - 防线：应用必须声明 `notemeld.application.v1` manifest；桌面使用 Host 监督的私有 process-JSONL/RPC，Web 使用 Host gateway 的 managed-worker seam；所有调用重新检查 session、app/instance、平台、权限和 capability。
 - 不允许：把宿主 session token 放入应用环境变量/UI；应用使用绝对系统路径或 `..`；Wiki 应用复制 graph/article 作为第二事实源；用旧 `/wiki` UI route 作为兼容入口。
-- 当前边界：本期已实现内建包发现、桌面 Host 监督的私有 process-JSONL、Web 本地 managed-worker seam、Wiki capability 和设置 API；用户应用包安装、真正外部 Web worker 部署、移动端 UI 和 Agent 自动生成应用仍未实现，不得在发布说明中宣称已完成。
+- 当前边界：已实现内建包发现、候选审批后的应用包安装、桌面 Host 监督的私有 process-JSONL、Web 本地 managed-worker seam、Cloud worker、Wiki capability、设置 API、应用对 process-jsonl 插件的受监督 `plugin.invoke`，以及 iOS/Android/Harmony 的原生 LAN-first/E2EE Relay。Harmony 的 ArkTS/CryptoFramework transport 已通过 HAP 编译，但尚未在真实 Harmony 设备上完成端到端互操作验证；外部 Web worker 部署、Host-port 插件、完整 Agent/File/Artifact adapter 和 Agent 自动生成应用仍未实现，不得在发布说明中宣称已完成。
 - 加载边界：应用中心只能读取 manifest catalog；不得在应用列表 import 全部应用组件或启动所有 backend。只有用户点击应用后，Host 才能动态加载对应 bundle 并创建 instance/run。
 
 ## Application workspace 配置泄露或跨实例访问
@@ -276,8 +278,8 @@
 - 发生过的问题：源码启动后根目录出现 `note_results`、`static` 等目录，下载器和临时文件也可能落到工作目录或系统临时目录，用户无法判断哪份数据是事实源。
 - 根因：`.env` 相对路径、子目录级环境变量、旧启动脚本迁移复制和下载器 `DATA_DIR` 回退同时存在。
 - 不允许重新引入的错误做法：恢复 `NOTE_OUTPUT_DIR`、`VECTOR_DB_DIR`、`STATIC_DIR`、`OUT_DIR`、`UPLOAD_DIR`、`DATA_DIR` 等子目录覆盖；启动时扫描并复制根目录旧数据；把 NoteMeld 运行时临时文件写到工作目录或系统临时目录。
-- 检查方式：检查 `storage_paths.py` 的所有子路径是否从 `data_root()` 派生；运行启动契约并确认数据只在 `vector_db/`、日志只在 `logs/`。
-- 修复经验：数据根只允许单一运行模式注入口，业务子目录固定；应用临时文件写入 `vector_db/tmp`，日志根固定为 `logs`。
+- 检查方式：检查 `storage_paths.py` 的所有子路径是否从 `data_root()` 派生；运行启动契约并确认桌面数据只在 `desktop/data/`、日志只在 `desktop/logs/`。
+- 修复经验：数据根只允许单一运行模式注入口，业务子目录固定；应用临时文件写入 `desktop/data/tmp`，日志根固定为 `desktop/logs`，云端使用独立 `cloud/data` 或部署持久卷。
 
 ## Agent 变更流程缺失
 

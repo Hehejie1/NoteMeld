@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>NoteMeld · 设置</title>
+  <link rel="stylesheet" href="../../assets/mobile.css">
+</head>
+<body class="mobile-preview" data-page="M03">
+  <div class="iphone-shell">
+    <div class="iphone-island"></div>
+    <main class="mobile-screen settings-screen mobile-settings-hub">
+      <header class="mobile-header settings-header">
+        <button class="icon-only" data-go="M01" aria-label="返回首页"><i data-icon="chevron-left"></i></button>
+        <strong>设置</strong><span></span>
+      </header>
+
+      <section class="settings-group" data-motion>
+        <button data-go="M04"><span><i data-icon="brain"></i>记忆库</span><em>4 个分类</em><i data-icon="chevron-right"></i></button>
+      </section>
+
+      <section class="settings-group" data-motion>
+        <div class="setting-theme"><span><i data-icon="palette"></i>主题</span><div class="theme-tabs"><button class="active">系统</button><button>浅色</button><button>深色</button></div></div>
+        <button data-language-open><span><i data-icon="languages"></i>语言</span><em>跟随系统</em><i data-icon="chevron-right"></i></button>
+        <button data-go="M05"><span><i data-icon="type"></i>字体大小</span><em data-font-summary>标准</em><i data-icon="chevron-right"></i></button>
+        <button data-notification-toggle aria-pressed="true"><span><i data-icon="bell"></i>消息通知设置</span><em data-notification-state>已开启</em><i data-icon="chevron-right"></i></button>
+      </section>
+
+      <section class="settings-group" data-motion>
+        <button data-log-export><span><i data-icon="message-square-share"></i>分享日志</span><em>生成 ZIP</em><i data-icon="chevron-right"></i></button>
+        <button class="danger" data-clear-log><span><i data-icon="trash-2"></i>清除日志</span><em data-log-state>42 MB</em><i data-icon="chevron-right"></i></button>
+        <button data-go="M06"><span><i data-icon="hard-drive"></i>存储空间</span><em>9.27 MB</em><i data-icon="chevron-right"></i></button>
+      </section>
+
+      <footer class="version-info" data-motion><span class="brand-mini"><img src="../../assets/logo.png" alt="NoteMeld"></span><strong>NoteMeld</strong><small>版本 1.4.0 · Build 20260901</small></footer>
+    </main>
+
+    <div class="sheet-backdrop" data-sheet-backdrop hidden></div>
+    <section class="mobile-sheet settings-sheet" data-language-sheet hidden>
+      <div class="sheet-handle"></div><h2>选择语言</h2>
+      <button class="sheet-choice" data-language-choice="跟随系统">跟随系统<span class="check">✓</span></button>
+      <button class="sheet-choice" data-language-choice="简体中文">简体中文</button>
+      <button class="sheet-choice" data-language-choice="繁體中文">繁體中文</button>
+      <button class="sheet-choice" data-language-choice="English">English</button>
+    </section>
+    <section class="mobile-sheet settings-sheet log-sheet" data-log-sheet hidden>
+      <div class="sheet-handle"></div>
+      <h2>选择日志时间范围</h2>
+      <p class="sheet-description">将导出所选时间范围内的运行日志，敏感字段会自动脱敏。</p>
+      <button class="sheet-choice" data-log-range="最近 1 小时">最近 1 小时</button>
+      <button class="sheet-choice" data-log-range="最近 24 小时">最近 24 小时</button>
+      <button class="sheet-choice" data-log-range="最近 3 天">最近 3 天</button>
+      <button class="sheet-choice" data-log-range="全部日志（7 天）">全部日志（7 天）</button>
+      <div class="export-progress" data-export-progress hidden><span></span><strong>日志导出</strong><small data-export-state>准备文件…</small></div>
+      <button class="sheet-action" data-share-zip hidden>分享 ZIP</button>
+    </section>
+  </div>
+  <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../assets/vendor/gsap.min.js"></script>
+  <script src="../../assets/mobile.js?v=20260901-7"></script>
+</body>
+</html>

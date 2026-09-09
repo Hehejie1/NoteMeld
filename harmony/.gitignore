@@ -1,0 +1,7 @@
+.hvigor/
+.sdk/
+.ohpm/
+oh_modules/
+build/
+entry/build/
+*.hap

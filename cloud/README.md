@@ -14,6 +14,29 @@ NOTEMELD_CLOUD_CORS_ORIGINS='https://app.example.com' \
 PYTHONPATH=. uvicorn cloud.main:app --host 127.0.0.1 --port 8583
 ```
 
+验证码默认使用开发模式，固定返回可配置的 `dev_code`（默认 `888888`）。生产环境设置
+`NOTEMELD_CLOUD_OTP_DEV_MODE=0`，并配置
+`NOTEMELD_CLOUD_SMTP_HOST`、`NOTEMELD_CLOUD_SMTP_PORT`、
+`NOTEMELD_CLOUD_SMTP_SENDER`；可选配置 SMTP 用户名、密码和
+`NOTEMELD_CLOUD_SMTP_STARTTLS`。生产响应不会返回验证码，邮件发送失败时
+验证码会立即失效并返回 503。
+
+管理员邀请在生产模式下也通过同一 SMTP 适配器发送。配置
+`NOTEMELD_CLOUD_INVITE_BASE_URL` 为公开 Cloud 前端地址（例如
+`https://app.example.com`）；邮件链接进入 `/invite/<token>`，服务端只保存
+token 摘要，创建邀请接口不会返回原始 token。开发 OTP 模式仍返回一次性邀请
+token，便于本地 smoke test；SMTP 投递失败会撤销邀请并返回 503。
+
+Workspace 备份开发环境默认写入 Cloud 数据目录下的本地文件系统。生产环境设置
+`NOTEMELD_CLOUD_BACKUP_STORAGE=s3`，并配置 `NOTEMELD_CLOUD_S3_BUCKET` 及 S3
+兼容服务的 endpoint、region 和凭证；SQLite 仅保存备份索引，ZIP 内容由对象存储负责。
+同一账号可以保存多个 Agent Provider/模型配置，并通过用户偏好或管理员组织偏好选择默认模型。
+
+生产部署必须设置 `NOTEMELD_CLOUD_ENV=production`。启动校验会拒绝开发验证码、
+缺失 OpenAI-compatible Agent Provider、local backup、memory relay、未启用设备
+签名证明、非 HTTPS 邀请地址或未显式配置 CORS 的配置，避免 Cloud 在生产中静默
+退回 deterministic runner 或单进程内存状态。
+
 The first slice provides an isolated FastAPI control plane, SQLite metadata,
 local-disk cloud workspaces, admin/user authentication, cloud-native session
 commands, and an ephemeral WebSocket relay. The default in-memory relay is a
@@ -120,3 +143,21 @@ For repeatable local deployment, copy the admin variables into an environment
 file (see `cloud/.env.example`) and run `docker compose -f cloud/compose.yaml up --build` from the
 repository root. The compose healthcheck uses `/ready` and persists data in
 the `notemeld-cloud-data` volume.
+
+移动端 Cloud-native 纵向烟测：先启动 Cloud，再执行以下命令。脚本使用与
+Android/iOS 相同的 HTTP 顺序，覆盖登录、设备注册与 heartbeat、创建会话、提交命令、
+轮询命令状态、读取事件游标和读取快照；不会输出 bearer token 或密码。
+
+```bash
+NOTEMELD_CLOUD_ADMIN_USERNAME=admin \
+NOTEMELD_CLOUD_ADMIN_PASSWORD='change-me-please-123' \
+python3 scripts/cloud/smoke_mobile_cloud.py \
+  --base-url http://127.0.0.1:8583
+```
+
+成功时输出脱敏 JSON，包含 `session_id`、终态 `command_status`、`snapshot_seq`
+和事件类型。该脚本适合接入 Cloud 部署后的 smoke gate；移动端运行时仍负责
+保存 session/event cursor，并从 `/v1/sessions/{id}/events?after=N` 增量同步。
+# Cloud layout
+
+云端 FastAPI 服务的源码全部位于本目录。`frontend` 是桌面 React 前端的唯一源码入口映射，用于让云端网页复用同一套页面与服务契约，避免复制和分叉。

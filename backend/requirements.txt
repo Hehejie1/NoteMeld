@@ -1,4 +1,0 @@
--r ../packaging/backend/requirements-core.txt
--r ../packaging/backend/requirements-transcriber.txt
--r ../packaging/backend/requirements-rag.txt
--r ../packaging/backend/requirements-export.txt

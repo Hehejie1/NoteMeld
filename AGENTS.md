@@ -1,6 +1,6 @@
 # AGENTS.md
 
-应用包由独立的 `../notemeld-applications/` 仓库维护；NoteMeld 只能消费其已构建的 manifest/UI 产物和 Application Protocol，不得把应用源码重新放回 `frontend/src/`。
+应用包由独立的 `../notemeld-applications/` 仓库维护；NoteMeld 只能消费其已构建的 manifest/UI 产物和 Application Protocol，不得把应用源码重新放回 `desktop/frontend/src/`。
 
 本文件是 NoteMeld 项目中所有 AI Agent 和开发者的硬规则。任何新需求、方案、代码修改、Bug 修复、重构、接口变更、数据模型变更开始前，必须遵守。
 
@@ -120,11 +120,11 @@ Bug 修复必须说明：
 按改动范围选择验证：
 
 ```bash
-python3 -m compileall backend/app
-pytest backend/tests
-cd frontend && pnpm test:contracts
-cd frontend && pnpm build
-scripts/run_core_regression.sh
+python3 -m compileall desktop/backend/app
+pytest desktop/backend/tests
+cd desktop/frontend && pnpm test:contracts
+cd desktop/frontend && pnpm build
+scripts/desktop/run_core_regression.sh
 ```
 
 打包、桌面、MCP、上传、迁移、Wiki 相关改动必须优先运行对应契约测试。
@@ -168,5 +168,5 @@ macOS Intel 版本在 Apple Silicon runner 上通过 Rosetta 2 交叉编译（`a
 
 - Release job 依赖三个 build job 全部成功（`needs: [build-macos, build-macos-intel, build-windows]`）。
 - 任一平台构建失败，Release 会被 skipped，不会发布半成品。
-- `tauri.conf.json` 中 `createUpdaterArtifacts: false`，不生成 `.sig` 文件。
+- 默认本地打包在没有签名密钥时保持 `createUpdaterArtifacts: false`；Release workflow 或提供 `TAURI_SIGNING_PRIVATE_KEY(_PATH)` 时启用签名 updater artifact，并发布 `latest.json`。
 - 官网 `https://notemeld.wiki/` 首页通过 JavaScript 调 GitHub API 获取最新 Release 并匹配上述文件名模式动态下载。

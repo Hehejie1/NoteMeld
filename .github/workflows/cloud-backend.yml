@@ -4,14 +4,16 @@ on:
   push:
     paths:
       - "cloud/**"
-      - "backend/app/cloud_sync/**"
-      - "backend/tests/test_cloud_*.py"
+      - "desktop/backend/app/cloud_sync/**"
+      - "desktop/backend/tests/test_cloud_*.py"
+      - "scripts/cloud/smoke_mobile_cloud.py"
       - ".github/workflows/cloud-backend.yml"
   pull_request:
     paths:
       - "cloud/**"
-      - "backend/app/cloud_sync/**"
-      - "backend/tests/test_cloud_*.py"
+      - "desktop/backend/app/cloud_sync/**"
+      - "desktop/backend/tests/test_cloud_*.py"
+      - "scripts/cloud/smoke_mobile_cloud.py"
       - ".github/workflows/cloud-backend.yml"
 
 jobs:
@@ -33,8 +35,35 @@ jobs:
       - name: Install cloud dependencies
         run: python -m pip install -r cloud/requirements.txt pytest
       - name: Compile cloud and sync adapters
-        run: PYTHONPATH=.:backend python -m compileall -q cloud backend/app/cloud_sync
+        run: PYTHONPATH=.:desktop/backend python -m compileall -q cloud desktop/backend/app/cloud_sync
       - name: Run cloud backend regression
         env:
           NOTEMELD_CLOUD_RELAY_TEST_URL: redis://127.0.0.1:6379/0
-        run: PYTHONPATH=.:backend python -m pytest backend/tests/test_cloud_*.py -q
+        run: PYTHONPATH=.:desktop/backend python -m pytest desktop/backend/tests/test_cloud_*.py -q
+      - name: Validate cloud compose configuration
+        env:
+          NOTEMELD_CLOUD_ADMIN_USERNAME: ci-admin
+          NOTEMELD_CLOUD_ADMIN_PASSWORD: ci-compose-password
+        run: docker compose -f cloud/compose.yaml config --quiet
+      - name: Build cloud release image
+        run: docker build -f cloud/Dockerfile -t notemeld-cloud:ci-${{ github.sha }} .
+      - name: Run mobile Cloud-native smoke gate
+        env:
+          NOTEMELD_CLOUD_ADMIN_USERNAME: ci-admin
+          NOTEMELD_CLOUD_ADMIN_PASSWORD: ci-mobile-smoke-password
+          NOTEMELD_CLOUD_SECRET_KEY: ci-mobile-smoke-secret-key
+        run: |
+          set -euo pipefail
+          docker run -d --name notemeld-cloud-ci \
+            -p 8583:8583 \
+            -e NOTEMELD_CLOUD_ADMIN_USERNAME \
+            -e NOTEMELD_CLOUD_ADMIN_PASSWORD \
+            -e NOTEMELD_CLOUD_SECRET_KEY \
+            notemeld-cloud:ci-${{ github.sha }}
+          trap 'docker rm -f notemeld-cloud-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:8583/ready >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8583/ready >/dev/null
+          python scripts/cloud/smoke_mobile_cloud.py --base-url http://127.0.0.1:8583

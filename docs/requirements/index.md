@@ -22,6 +22,10 @@
 
 ## 需求列表
 
+| P10 | Clarifying | NoteMeld new-product 桌面端完整系统重构（v2） | [`2026-09-06-notemeld-new-product-desktop-system-v2.md`](2026-09-06-notemeld-new-product-desktop-system-v2.md) | 待用户确认范围、优先级、生产完成口径和安全/兼容性边界 | 将 new-product 从交互原型提升为 D01/D03/D06/D09 的完整生产系统目标 |
+
+| P10.1 | Draft for Plan | NoteMeld new-product 真实系统接口矩阵（v1） | [`2026-09-08-notemeld-new-product-interface-matrix-v1.md`](2026-09-08-notemeld-new-product-interface-matrix-v1.md) | [总计划](../superpowers/plans/2026-09-08-notemeld-new-product-full-system-rollout.md)；待扩展 Cloud/移动端并确认 3 个系统缺口 | 将桌面宿主和 APP01–APP04 映射到真实 service、router、数据、权限和测试 |
+
 | P9 | Clarifying | NoteMeld 多端会话、云端 Agent 与设备协同 | [`2026-08-29-multiplatform-cloud-sync-and-device-control.md`](2026-08-29-multiplatform-cloud-sync-and-device-control.md) | [`plan`](../superpowers/plans/2026-08-29-multiplatform-sync-plan.md) + [`spec`](../superpowers/specs/2026-08-29-multiplatform-sync-spec.md) + [专家评审](../superpowers/reviews/2026-08-29-multiplatform-sync-expert-review.md) + Stitch Prompt：[`2026-08-29-stitch-multiplatform-prompts.md`](../design/2026-08-29-stitch-multiplatform-prompts.md) | 三方评审发现 P0 商用安全/稳定性门禁，完成前不进入生产实现 |
 
 | P8 | Implemented (v1 core) | NoteMeld 应用运行时与 Wiki 应用化 | [`2026-08-27-notemeld-application-runtime-and-wiki-app.md`](2026-08-27-notemeld-application-runtime-and-wiki-app.md) | [`plan`](../superpowers/plans/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`spec`](../superpowers/specs/2026-08-27-notemeld-application-runtime-and-wiki-app.md) + [`验证`](../superpowers/tests/2026-08-27-notemeld-application-runtime-and-wiki-app.md) | 协议核心、内建包发现、桌面 process-JSONL、Web managed-worker seam、workspace 和 Wiki 应用已接入；用户包安装、真实外部 Web worker、移动端 UI、Agent 生成应用后置 |

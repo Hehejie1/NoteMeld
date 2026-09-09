@@ -1,0 +1,47 @@
+:root {
+  --nm-doc-bg: #f7f8fb;
+  --nm-doc-surface: #ffffff;
+  --nm-doc-muted: #7d879a;
+  --nm-doc-border: #dfe4ec;
+  --nm-doc-border-soft: #edf0f5;
+  --nm-doc-accent-soft: #e8efff;
+  --nm-doc-accent-strong: #2864e8;
+  --nm-doc-radius-md: 9px;
+  --nm-doc-radius-lg: 12px;
+}
+
+.nm-d03-workspace { background: var(--nm-doc-bg); }
+.nm-d03-header,
+.nm-d03-context-panel,
+.nm-d03-file-panel { border-color: var(--nm-doc-border-soft); background: var(--nm-doc-surface); }
+.nm-d03-header { min-height: 68px; padding-inline: 1.75rem; }
+.nm-d03-action { height: 32px; width: 32px; border-radius: var(--nm-doc-radius-md); color: var(--nm-doc-muted); }
+.nm-d03-action:hover,
+.nm-d03-action.is-active { background: var(--nm-doc-accent-soft); color: var(--nm-doc-accent-strong); }
+.nm-d03-context-panel,
+.nm-d03-file-panel { width: min(320px, 42%); padding: 1.375rem 1.125rem; box-shadow: -14px 0 30px rgb(24 32 49 / 8%); }
+.nm-d03-context-title,
+.nm-d03-context-panel p,
+.nm-d03-context-panel section > button,
+.nm-d03-file-panel > button { color: var(--nm-doc-muted); }
+.nm-d03-context-panel section > button,
+.nm-d03-file-panel > button { display: flex; align-items: center; gap: .5rem; border-radius: 7px; padding: .5rem .5625rem; }
+.nm-d03-context-panel section > button:hover,
+.nm-d03-file-panel > button:hover,
+.nm-d03-file-panel > button.is-selected { background: var(--nm-doc-accent-soft); color: var(--nm-doc-accent-strong); }
+.nm-d03-context-panel section > button svg,
+.nm-d03-context-panel section > button small svg,
+.nm-d03-file-panel > button svg { height: 14px; width: 14px; flex: none; }
+.nm-d03-context-panel section > button small { margin-left: auto; }
+.nm-composer { border-radius: var(--nm-doc-radius-lg) !important; border-color: var(--nm-doc-border) !important; box-shadow: 0 8px 24px rgb(30 42 68 / 6%) !important; }
+.dark .nm-d03-workspace { background: #101522; }
+.dark .nm-d03-header,
+.dark .nm-d03-context-panel,
+.dark .nm-d03-file-panel { background: #181f31; border-color: #303b55; }
+.dark .nm-d03-context-panel section > button:hover,
+.dark .nm-d03-file-panel > button:hover,
+.dark .nm-d03-file-panel > button.is-selected { background: #22345d; color: #9fb7ff; }
+@media (max-width: 700px) {
+  .nm-d03-header { padding-inline: .625rem; }
+  .nm-d03-context-panel, .nm-d03-file-panel { width: 88%; }
+}

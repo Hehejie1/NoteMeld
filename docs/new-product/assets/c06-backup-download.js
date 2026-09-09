@@ -1,0 +1,6 @@
+(()=>{
+  if(document.body.dataset.page!=='C06'||!sessionStorage.getItem('notemeld-cloud-token'))return;
+  const token=sessionStorage.getItem('notemeld-cloud-token');
+  const request=async(path,options={})=>{const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||payload.msg||'请求失败');return payload.data};
+  document.addEventListener('click',async event=>{const button=event.target.closest('[data-backup-manager]');if(!button)return;event.preventDefault();event.stopImmediatePropagation();button.disabled=true;try{const spaces=await request('/v1/workspaces'),id=spaces[0]?.id;if(!id)throw new Error('当前账号没有可备份的 Workspace');const backup=await request(`/v1/workspaces/${encodeURIComponent(id)}/backups`,{method:'POST'});const response=await fetch(`/v1/workspaces/${encodeURIComponent(id)}/backups/${encodeURIComponent(backup.backup_id)}/download`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new Error('备份下载失败');const link=document.createElement('a');link.href=URL.createObjectURL(await response.blob());link.download=`notemeld-${id}-${backup.backup_id}.zip`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000)}catch(error){alert(error.message)}finally{button.disabled=false}},true);
+})();

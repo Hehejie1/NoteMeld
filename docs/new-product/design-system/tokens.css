@@ -1,0 +1,81 @@
+/* NoteMeld Design System — shared semantic tokens for every platform reference. */
+:root {
+  --nm-color-bg: #f7f8fb;
+  --nm-color-surface: #ffffff;
+  --nm-color-surface-muted: #f1f3f8;
+  --nm-color-surface-raised: #ffffff;
+  --nm-color-text: #202533;
+  --nm-color-text-muted: #7d879a;
+  --nm-color-text-subtle: #9aa3b2;
+  --nm-color-border: #dfe4ec;
+  --nm-color-border-soft: #edf0f5;
+  --nm-color-accent: #4b7cf3;
+  --nm-color-accent-strong: #2864e8;
+  --nm-color-accent-soft: #e8efff;
+  --nm-color-success: #168a63;
+  --nm-color-success-soft: #e7f6f0;
+  --nm-color-warning: #a86608;
+  --nm-color-warning-soft: #fff2dd;
+  --nm-color-danger: #bf3d47;
+  --nm-color-danger-soft: #fbeaec;
+  --nm-color-info: #356fe8;
+
+  --nm-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", sans-serif;
+  --nm-font-size-xs: 10px;
+  --nm-font-size-sm: 12px;
+  --nm-font-size-md: 14px;
+  --nm-font-size-lg: 16px;
+  --nm-font-size-xl: 20px;
+  --nm-font-size-2xl: 28px;
+  --nm-line-tight: 1.25;
+  --nm-line-normal: 1.5;
+  --nm-line-relaxed: 1.7;
+
+  --nm-space-1: 4px;
+  --nm-space-2: 8px;
+  --nm-space-3: 12px;
+  --nm-space-4: 16px;
+  --nm-space-5: 20px;
+  --nm-space-6: 24px;
+  --nm-space-8: 32px;
+  --nm-space-10: 40px;
+
+  --nm-radius-sm: 7px;
+  --nm-radius-md: 9px;
+  --nm-radius-lg: 12px;
+  --nm-radius-xl: 14px;
+  --nm-radius-pill: 999px;
+
+  --nm-control-height-sm: 32px;
+  --nm-control-height-md: 40px;
+  --nm-control-height-lg: 44px;
+  --nm-focus-ring: 0 0 0 3px rgb(75 124 243 / 18%);
+  --nm-shadow-popover: 0 18px 50px rgb(30 42 68 / 12%);
+  --nm-motion-fast: 160ms;
+  --nm-motion-normal: 240ms;
+}
+
+/* Platforms can opt into the same semantic contract with their own surface values. */
+[data-theme="dark"],
+.theme-dark {
+  --nm-color-bg: #101522;
+  --nm-color-surface: #181f31;
+  --nm-color-surface-muted: #202a40;
+  --nm-color-surface-raised: #1c263b;
+  --nm-color-text: #f2f5fc;
+  --nm-color-text-muted: #9da9c0;
+  --nm-color-text-subtle: #78859d;
+  --nm-color-border: #303b55;
+  --nm-color-border-soft: #27324a;
+  --nm-color-accent: #769aff;
+  --nm-color-accent-strong: #9fb7ff;
+  --nm-color-accent-soft: #22345d;
+  --nm-color-success-soft: #163b32;
+  --nm-color-warning-soft: #493719;
+  --nm-color-danger-soft: #48242a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --nm-motion-fast: 0ms; --nm-motion-normal: 0ms; }
+}

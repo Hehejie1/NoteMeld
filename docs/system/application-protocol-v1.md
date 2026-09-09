@@ -84,7 +84,7 @@ stdout 必须一行一个 JSON object，不能混入日志。Host 首先发送�
 
 Web UI/backend 通过 Host gateway 调用受控 worker，不直连应用公网服务。应用版本是不可变部署单元，Host 注入 app/instance/user/run context，并控制超时、内存、CPU、并发、请求/响应大小、存储和网络出口。长任务统一登记为 Application Run/Job，可观察、可取消、可恢复。
 
-当前 NoteMeld 已提供本地 managed-worker seam；真实云端 worker 部署属于后续 adapter，不改变本协议。
+应用 ZIP 不会因上传而直接进入 Host：上传先完成 manifest、路径和 entry 校验，形成带 hash/evidence/rollback 的 Application candidate；人工审批后，必须通过显式 activation endpoint 做 hash 再校验和原子安装/升级。真实云端 worker、跨设备 worker 和完整 capability adapter 仍需按部署目标接入，但不改变本协议。
 
 ## 5. Host Bridge 与 Capability
 
@@ -124,9 +124,9 @@ Wiki v1 adapter 实现 `wiki.read` 的 `graph` 和 `article` 方法。其他 cap
 
 ## 8. 当前实现范围
 
-已实现：外部应用包发现、按需加载、Application Host、workspace/instance/run、桌面 JSONL handshake、Web 本地 managed-worker seam、Wiki capability 和独立 Wiki 静态 UI 的 iframe/Bridge 加载。
+已实现：外部应用包发现、受桌面 session 保护的 ZIP 应用包候选登记、人工审批后的原子安装/升级、按需加载、Application Host、workspace/instance/run、桌面 JSONL handshake、Web 本地 managed-worker seam、Cloud worker、Wiki capability 和独立 Wiki 静态 UI 的 iframe/Bridge 加载。应用包上传会先完整校验 manifest、路径、runtime entry 和 ZIP 成员，再保存带 hash/evidence/rollback 的 candidate；激活时重新校验 hash，通过 staging 目录原子替换并刷新数据库 catalog。
 
-后续实现：用户应用包安装/升级、真实云端 worker、完整 Agent/Plugin/File/Artifact adapter、移动端独立 UI 和 Agent 自动生成应用。
+已实现：应用的 `plugin.invoke` capability 可通过 Host 调用已安装、启用并获授权的 `process-jsonl` 插件，并受 immutable active version、manifest capability、插件权限和单次 JSONL 进程监督约束。iOS/Android/Harmony 已具备原生 LAN-first 与 E2EE remote Relay；Harmony transport 已接入 ArkTS/CryptoFramework 并通过 HAP 编译，真实设备互操作仍需在目标设备上验收。仍需补齐：Host-port 插件 adapter、完整跨部署目标的 Agent/File/Artifact 适配和 Agent 自动生成应用；不支持的应用平台必须继续显示明确状态。
 
 ## 9. Runtime v2 additive extensions
 
@@ -141,4 +141,4 @@ Wiki v1 adapter 实现 `wiki.read` 的 `graph` 和 `article` 方法。其他 cap
 - Desktop `process-jsonl` 可声明 `runtime.command` 的 `program/args/env`；环境变量仅接受 `NOTEMELD_APP_*`，stderr 以最多 200 行 ring buffer 通过 `/runs/{run_id}/logs` 只读查询。
 - `workspace.read/write` 默认对内置应用启用，用户可通过 Application Settings 关闭；manifest 申请的 network/agent/plugin 权限默认关闭。
 
-Host 错误码固定区分：未声明为 `capability_denied`，未授予所需权限为 `permission_denied`，已授权但当前 adapter 未实现为 `capability_unavailable`。v2 仍不开放第三方安装控制面、真实云 worker、移动端和完整 Agent/Plugin/Artifact adapter。
+Host 错误码固定区分：未声明为 `capability_denied`，未授予所需权限为 `permission_denied`，已授权但当前 adapter 未实现为 `capability_unavailable`。v2 仍不开放第三方安装控制面；Host-port 插件和完整 Agent/File/Artifact adapter 仍按扩展边界逐项接入，Harmony transport 需保留真实设备互操作验收门槛。

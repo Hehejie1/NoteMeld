@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PYTHON_BIN="${NOTEMELD_CLOUD_PYTHON_BIN:-${ROOT_DIR}/.venv/bin/python}"
+if [[ ! -x "${PYTHON_BIN}" ]]; then
+  PYTHON_BIN="${NOTEMELD_CLOUD_PYTHON_BIN:-$(command -v python3)}"
+fi
+
+CLOUD_HOST="${NOTEMELD_CLOUD_HOST:-127.0.0.1}"
+CLOUD_PORT="${NOTEMELD_CLOUD_PORT:-8583}"
+CLOUD_DATA_DIR="${NOTEMELD_CLOUD_DATA_DIR:-${ROOT_DIR}/cloud/data}"
+CLOUD_LOG_DIR="${NOTEMELD_CLOUD_LOG_DIR:-${ROOT_DIR}/cloud/logs}"
+
+mkdir -p "${CLOUD_DATA_DIR}" "${CLOUD_LOG_DIR}"
+export NOTEMELD_CLOUD_DATA_DIR="${CLOUD_DATA_DIR}"
+export NOTEMELD_CLOUD_ADMIN_USERNAME="${NOTEMELD_CLOUD_ADMIN_USERNAME:-hehejie}"
+export NOTEMELD_CLOUD_ADMIN_PASSWORD="${NOTEMELD_CLOUD_ADMIN_PASSWORD:-123wang123}"
+export NOTEMELD_CLOUD_ADMIN_EMAIL="${NOTEMELD_CLOUD_ADMIN_EMAIL:-hehejie@notemeld.local}"
+export NOTEMELD_CLOUD_OTP_DEV_MODE="${NOTEMELD_CLOUD_OTP_DEV_MODE:-1}"
+export NOTEMELD_CLOUD_DEV_OTP_CODE="${NOTEMELD_CLOUD_DEV_OTP_CODE:-888888}"
+export NOTEMELD_CLOUD_SECRET_KEY="${NOTEMELD_CLOUD_SECRET_KEY:-notemeld-local-secret-key-change-me}"
+export NOTEMELD_CLOUD_CORS_ORIGINS="${NOTEMELD_CLOUD_CORS_ORIGINS:-http://127.0.0.1:3015,http://localhost:3015}"
+
+cd "${ROOT_DIR}"
+exec env PYTHONPATH="${ROOT_DIR}${PYTHONPATH:+:${PYTHONPATH}}" \
+  "${PYTHON_BIN}" -m uvicorn cloud.main:app \
+  --host "${CLOUD_HOST}" --port "${CLOUD_PORT}" "$@" \
+  >>"${CLOUD_LOG_DIR}/cloud.log" 2>&1

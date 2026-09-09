@@ -1,6 +1,6 @@
 # API Inventory
 
-更新时间：2026-08-30
+更新时间：2026-09-08
 
 本文记录当前接口事实。新增、删除、重命名接口或修改返回结构前，必须更新本文和相关调用方/契约测试。
 
@@ -42,7 +42,7 @@ negotiate behavior instead of hard-coding deployment policy.
 | GET | `/v1/devices` | 查询当前用户设备 | bearer token |
 | POST | `/v1/devices/{device_id}/revoke` | 撤销当前用户设备 | bearer token |
 | POST | `/v1/pairings/start` | 创建 5 分钟有效的一次性配对码 | bearer token |
-| POST | `/v1/pairings/confirm` | 使用配对码注册设备 | bearer token |
+| POST | `/v1/pairings/confirm` | 使用一次性配对码注册设备，并在成功响应中一次性返回当前账号启用模型配置（含 API Key） | bearer token |
 | POST | `/v1/grants` | 创建设备间远程控制授权 | bearer token |
 | POST | `/v1/lan/authorize` | 为 LAN direct 握手返回最长 60 秒的 controller 公钥、Grant、scope、workspace 与 authority epoch 断言 | 绑定宿主的 device token（`grant.read`） |
 | POST | `/v1/sessions` | 创建 cloud-native/device-remote session | bearer token |
@@ -53,6 +53,8 @@ negotiate behavior instead of hard-coding deployment policy.
 | POST | `/v1/sessions/{session_id}/archive` | 收纳当前用户会话 | bearer token |
 | DELETE | `/v1/sessions/{session_id}` | 硬删除当前用户云端会话 | bearer token |
 | WebSocket | `/v1/relay/connect/{session_id}` | 在线实时 relay；不提供离线历史 | bearer token 或浏览器 `Sec-WebSocket-Protocol` bearer |
+| POST | `/v1/admin/invitations` | 管理员创建邀请；开发模式返回一次性 token，生产模式通过 SMTP 发送邀请链接且不回传 token | admin token |
+| POST | `/v1/invitations/{invite_token}/accept` | 受邀者设置显示名称和密码，消费一次性邀请并创建账号 | 无（token 位于路径） |
 
 本地 `/v1/lan/connect/{session_id}` 不接收 cloud bearer。控制端先发送
 `notemeld.lan.v1` hello，宿主返回一次性 challenge，控制端用已注册的
@@ -103,12 +105,14 @@ loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标�
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 |
 | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/applications` | 无 | 应用摘要列表 | 应用列表 | 本地 | 应用不存在/清单损坏返回错误 |
+| POST | `/api/applications/packages` | multipart `package`，可选 `replace=true`（仅兼容保留） | 校验后进入 Application candidate 审批队列，返回 package SHA-256 | Application Settings | 本地 | ZIP 超限/manifest、路径、entry 或候选保存失败返回明确错误 |
+| POST | `/api/applications/candidates/{candidate_id}/activate` | path candidate id | 对已批准 candidate 做 hash 再校验并原子安装/升级 | Runtime / Application Settings | 本地 | 未审批、hash 变化、候选包缺失或安装失败返回明确错误 |
 | GET | `/api/applications/{app_id}` | path: app_id | manifest 摘要、启用状态和运行状态 | Application Host | 本地 | 不存在 404 |
 | POST | `/api/applications/{app_id}/enable`、`/disable` | path: app_id | 更新后的应用摘要 | 应用设置/Host | 本地 | 不存在 404；禁用应用启动返回 409 |
 | POST/GET | `/api/applications/{app_id}/instances` | title、可选 instance_id | 应用实例及逻辑 workspace 引用 | Application Host | 本地 | 越权/冲突返回错误 |
 | POST/GET | `/api/applications/{app_id}/instances/{instance_id}/runs`、`/api/applications/runs/{run_id}` | run payload / run_id | `run_id`、runtime kind、Run status | Application Host | 本地 | 幂等 payload 冲突、运行策略拒绝、找不到 run |
 | POST | `/api/applications/runs/{run_id}/invoke` | method、input | 应用 runtime result | Application UI/SDK | 本地 | Run 非活动、transport/协议错误 |
-| POST | `/api/applications/runs/{run_id}/capability` | capability、method、input | capability result | Application UI/SDK | 本地 | Run 非活动；未声明 capability 403；不支持 method 501 |
+| POST | `/api/applications/runs/{run_id}/capability` | capability、method、input | capability result | Application UI/SDK | 本地 | Run 非活动；未声明 capability 403；不支持 method 501；`plugin.invoke` 由 Host 复核插件安装、启用、版本、capability、权限后通过 process-jsonl 监督调用 |
 | GET/PUT | `/api/applications/{app_id}/permissions` | grants: permission → boolean | effective permission state | Application Settings | 本地 | 未申请 permission 403；非法值 400 |
 | PUT | `/api/applications/settings/external-read-roots` | `roots: string[]` | 授权外部读取根目录 | Application Settings | 本地 | 非绝对路径/路径穿越 400 |
 | GET | `/api/applications/jobs/{job_id}`、`/events` | `after_sequence?` | Job 状态/有序事件 | Application UI/SDK | 本地 | job 不存在 404 |
@@ -116,6 +120,16 @@ loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标�
 | GET | `/api/applications/artifacts/{artifact_id}/download` | artifact_id | JSON attachment | Application UI/SDK | 本地 | artifact 不存在 404 |
 | POST | `/api/applications/runs/{run_id}/cancel` | path: run_id | 取消后的 Run | Application Host | 本地 | 已终态运行保持终态 |
 | GET/PUT | `/api/applications/settings/workspace` | PUT: 绝对 root | 默认 workspace ref、root、configured | Settings | 本地 | 非绝对路径或越权路径 400 |
+
+桌面 Host lifecycle 由本地 session token 保护；Cloud access token 只在 bootstrap 请求中经过 loopback API 传入，Host 私钥由 OS credential store 加载，不写入文件或环境变量。
+
+| POST | `/api/cloud-sync/host/bootstrap` | Cloud `base_url`、短期 token、desktop device id、可选 LAN endpoints | 注册 Cloud device 并启动本地 Host runtime | 桌面 Cloud 页面 | 本地 | 无 session token、OS secure store 不可用或 Cloud 注册失败 |
+| POST | `/api/cloud-sync/host/stop` | 无 | 停止并释放 Host runtime | 桌面生命周期/设置 | 本地 | 已停止保持幂等 |
+| POST | `/api/cloud-sync/host/relay/{session_id}/start`、`/stop` | session id | 启停加密 Relay Host websocket；可先转发 signed handshake frame 再进入加密命令阶段 | 远程会话 Host | 本地 | Host 身份/握手/cipher 不可用时拒绝；不发送明文 |
+
+bootstrap 后的正常移动端路径不要求桌面前台点击 Relay：Host runtime 每五秒按
+当前设备 Grant 与活动 `device_remote` session 自动对账；上述显式 endpoint 保留给
+诊断和人工恢复使用。
 
 ## Chat / Conversation 接口
 
@@ -182,6 +196,7 @@ loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标�
 | POST | `/api/conversations/{cid}/learning-canvases/{canvas_id}/units/{node_id}/start` | path | `unit + canvas` | 学习卡/Agent | 本地 | 节点不存在 code=404 | 只能产生 exposed，不得直接 mastered |
 | POST | `/api/conversations/{cid}/learning-canvases/{canvas_id}/units/{node_id}/evidence` | `kind/answer/rubric_result/provider_id/model_name` | `evidence + canvas` | Agent | 本地+已有 LLM 评测结果 | 无效证据 code=409/400 | 非空答案和完整 rubric；状态由后端计算 |
 | GET | `/api/conversations/{cid}/learning-canvases/{canvas_id}/reviews/due` | path | 已到期复习项 | 学习卡/Agent | 本地 | 不存在 code=404 | 未到期 review 不得进入 mastered |
+| GET | `/api/learning-canvases` | query: `limit=1..100` | 最近持久化学习空间列表 | APP02 学习应用 | 本地 | 非法 limit 422；损坏文件跳过且不伪造详情 | 以工作区 canvas 文件为权威，按文件更新时间倒序；详情接口仍严格报错 |
 
 ## Whiteboard / 语义白板接口
 
@@ -192,7 +207,7 @@ loopback 网段，拒绝 unspecified、multicast、公开和仅被标准库标�
 - `GET /api/candidates/{candidate_id}`：读取完整 candidate 和下一步提示。
 - `POST /api/candidates/{candidate_id}/validate`：静态边界与证据门禁；缺 evidence/test/rollback、越权、SDK 路径/制品/公共契约触碰时 fail closed。
 - `POST /api/candidates/{candidate_id}/approve`、`POST /api/candidates/{candidate_id}/decline`：显式人工审批/拒绝入口。
-- `POST /api/candidates/{candidate_id}/decision`：人工审批/拒绝，只记录追加式决策（审批主体由受保护桌面 API 固定为 `desktop-user`）；不 patch/激活 Application，plugin 仍必须回到 N03 标准包流程。
+- `POST /api/candidates/{candidate_id}/decision`：人工审批/拒绝，只记录追加式决策（审批主体由受保护桌面 API 固定为 `desktop-user`）；Application 仍需调用独立 activation endpoint，plugin 必须回到 N03 标准包流程。
 
 ## Agent v1 接口（增量迁移）
 
@@ -260,6 +275,7 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 | GET | `/api/usage/records` | query | usage 记录 | 用量页 | 本地 | 空列表 | 分页/过滤兼容 |
 | GET | `/api/usage/task_summary` | query | 任务汇总 | 用量页 | 本地 | 空统计 | task_id 聚合 |
 | GET | `/api/usage/task_calls/{task_id}` | path | 任务调用 | 用量页/任务详情 | 本地 | 空列表 | task_id 不能改语义 |
+| GET | `/api/monitoring/snapshot` | query: `days=1..31`, optional `provider_id` | 固定时间窗口的用量、任务、部署、MCP、转写和插件健康快照 | APP03 监控应用 | 本地 | 非法窗口 422；组件不可用时返回 degraded/unavailable，不伪造 healthy | 后端统一计算窗口和健康口径；provider 筛选沿用 usage DAO；接口只读，不触发安装、更新或授权副作用 |
 | GET/POST/PUT/DELETE | `/api/note_styles*` | JSON/multipart/path | 样式和提取任务 | StylesPage | 本地+LLM | 失败写 task/error | 内置样式不可随意删 |
 
 ## Imported Notes 接口
@@ -267,6 +283,7 @@ Wiki 抽取/增强沿用既有任务状态与重试接口，不改变 response s
 | 方法 | 路径 | 请求参数 | 返回结构 | 调用方 | 类型 | 错误语义 | 兼容性约束 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/notes/import` | Markdown/title 等 | 导入结果 | MCP/导入入口 | 本地 | 写入失败 | 导入后触发 Wiki 抽取 |
+| GET | `/api/notes/library` | query: `q`, `offset`, `limit=1..100`, `wiki_status`, `status` | 笔记摘要分页和总数 | APP01 笔记应用 | 本地 | 非法分页 422；空列表正常返回 | 只读 `note_documents` 权威表，不返回正文；按更新时间倒序 |
 | GET | `/api/notes/search` | query: title/query | 搜索结果 | MCP | 本地 | 空列表 | 标题搜索兼容 |
 | GET | `/api/notes/read` | query: title/task_id | 笔记内容 | MCP | 本地 | 不存在 404 | 禁止路径穿越 |
 
@@ -393,8 +410,11 @@ the default configuration.
 | DELETE | `/v1/workspaces/{workspace_id}/files/{path}` | delete one file after traversal and symlink checks |
 | GET | `/v1/workspaces/{workspace_id}/files?prefix=&limit=` | bounded list of safe logical file paths and size/mtime metadata |
 | POST/GET | `/v1/workspaces/{workspace_id}/backups?limit=` | create/list local-disk ZIP backups (list is bounded by caller and server configuration) |
+| GET | `/v1/workspaces/{workspace_id}/backups/{backup_id}/download` | download an owned ZIP backup image as an attachment; it contains no server absolute path |
 | DELETE | `/v1/workspaces/{workspace_id}/backups/{backup_id}` | delete one owned backup archive |
 | POST | `/v1/workspaces/{workspace_id}/backups/restore` | safely restore a backup as an atomic per-file overlay |
+| GET | `/v1/cloud/dashboard` | aggregate Cloud sessions, Workspace storage, daily commands, running count and total model tokens for C02 |
+| GET | `/v1/cloud/usage?days=` | bounded daily model usage series for C02 charts |
 | GET | `/v1/grants` | list remote-control grants |
 | POST | `/v1/grants/{grant_id}/revoke` | revoke a grant |
 | DELETE | `/v1/grants/{grant_id}` | canonical grant revoke path (legacy POST revoke remains supported) |
@@ -435,8 +455,11 @@ an omitted public key preserves the existing key); the same ID owned by another
 account remains a conflict. Re-registering with a changed public key revokes
 all tokens bound to that device and clears its recent proof, matching explicit
 key rotation semantics.
-Relay `command` frames additionally require the Grant's `message.send` scope;
-`receipt` and `event` frames are allowed only on an existing bidirectional Grant.
+Relay `command` and `handshake` frames additionally require the Grant's
+`message.send` scope; `receipt` and `event` frames are allowed only on an
+existing bidirectional Grant. A handshake frame carries a signed opaque
+`notemeld.e2ee.handshake.v1` envelope; Cloud routes it but never derives or
+stores the resulting session key.
 When a Grant contains `workspace_refs`, the current session workspace must be
 listed; an empty list retains the account-level default behavior.
 The versioned frame schema carries `nonce`, `frame_type`, sequence and opaque
@@ -561,3 +584,19 @@ not access Conversation, Agent Event or SQLite internals.
 | `knowledge:semantic_search` | K3 实体/概念/关系检索 | `query`, `article_ids?`, `node_types?`, `relation_types?`, `hops?`, `top_k?` |
 
 除 K0 精确读取外，查询均返回 `knowledge_result.v1` envelope：`schema_version`、`capability_id`、`total`、`results`、`warnings`。每个 result 必须包含 `article_id`；K1 追加 chunk/location，K3 追加 term/relation/evidence provenance。`article_ids` 缺省为全库，显式 `[]` 返回 `invalid_arguments`，不能静默放宽为全库。
+
+## Mobile Workspace Projection
+
+桌面 Host 是 Workspace 与用户记忆的权威持久化端；桌面 UI、iOS、Android
+和 Harmony 只通过以下 API 读取/写入，不在客户端复制另一份业务数据库：
+
+| method | path | 作用 |
+| --- | --- | --- |
+| GET | `/api/mobile/projection?workspace_id=default` | 返回工作区目录、策略、revision 和记忆列表 |
+| PUT | `/api/mobile/workspace?workspace_id=default` | 按 revision 乐观并发更新工作区投影，冲突返回业务 code 409 |
+| POST | `/api/mobile/memories` | 创建用户记忆，支持 `workspace_id/content/source` |
+| DELETE | `/api/mobile/memories/{memory_id}` | 删除用户记忆 |
+
+这些状态落在 `workspace_projections` 与 `workspace_memories` 表中，由启动时的
+`Base.metadata.create_all` 创建；本地桌面 Host 当前沿用 localhost 会话边界，
+远程访问仍必须经过 Cloud/LAN 的设备授权和 Workspace scope。

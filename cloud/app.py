@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import base64
 import binascii
-import heapq
 from contextlib import asynccontextmanager, contextmanager
 import json
 import os
@@ -16,11 +15,13 @@ import fnmatch
 import ipaddress
 import re
 import weakref
+from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -29,10 +30,13 @@ from .db import CloudDB
 from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace, workspace_mutation_lock
+from .backup_storage import BackupStorage, create_backup_storage
 from .relay import InMemoryRelayBroker, RedisRelayBroker
+from .mailer import MailDeliveryError, send_invitation as deliver_invitation, send_verification_code as deliver_verification_code
 
 
 TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
+ORGANIZATION_PREFERENCE_KEYS = frozenset({"default_workspace", "default_model", "high_risk_approval"})
 DEVICE_TOKEN_SCOPES = TOKEN_SCOPES - {"*", "auth.token", "admin"}
 GRANT_SCOPES = frozenset({"message.send", "context.select", "model.select", "tool.invoke", "event.receive", "workspace.read", "workspace.write", "dangerous.approve", "approval.remote.resolve", "session.permission.manage", "session.full_access", "full_access"})
 LAN_ENDPOINT_NETWORKS = (
@@ -56,6 +60,76 @@ class LoginRequest(BaseModel):
     username: str | None = Field(default=None, max_length=256)
     account_id: str | None = Field(default=None, max_length=128)
     password: str = Field(max_length=4096)
+
+
+class EmailPasswordLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=4096)
+
+
+class VerificationCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    purpose: str = Field(default="login", pattern="^(login|access_request|password_reset)$")
+
+
+class EmailCodeLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
+
+
+class PasswordReset(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
+    password: str = Field(min_length=8, max_length=256)
+
+
+class AccessRequestCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    display_name: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=8, max_length=256)
+    confirm_password: str = Field(min_length=8, max_length=256)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class AccessRequestReview(BaseModel):
+    status: str = Field(pattern="^(approved|rejected)$")
+
+
+class InvitationCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    display_name: str = Field(min_length=1, max_length=128)
+
+
+class InvitationAccept(BaseModel):
+    display_name: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=8, max_length=256)
+
+
+class PreferencesUpdate(BaseModel):
+    notifications_enabled: bool | None = None
+    high_risk_approval: bool | None = None
+    default_workspace: str | None = Field(default=None, max_length=128)
+    default_model: str | None = Field(default=None, max_length=128)
+    theme: str | None = Field(default=None, pattern="^(light|dark)$")
+    language: str | None = Field(default=None, pattern="^(zh-CN|en-US)$")
+
+
+class OrganizationPreferencesUpdate(BaseModel):
+    default_workspace: str | None = Field(default=None, max_length=128)
+    default_model: str | None = Field(default=None, max_length=128)
+    high_risk_approval: bool | None = None
+
+
+class OrganizationMemoryCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content: str = Field(min_length=1, max_length=20_000)
+    source: str = Field(default="admin", min_length=1, max_length=100)
+
+
+class UserProfileUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    avatar: str | None = Field(default=None, min_length=1, max_length=4)
+    password: str | None = Field(default=None, min_length=8, max_length=256)
 
 
 class PersonalTokenCreate(BaseModel):
@@ -111,6 +185,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
     password: str | None = Field(default=None, min_length=12, max_length=256)
     disabled: bool | None = None
 
@@ -135,6 +210,14 @@ class DeviceHeartbeat(BaseModel):
     @classmethod
     def validate_lan_endpoints(cls, value: list[str] | None) -> list[str] | None:
         return None if value is None else _validate_lan_endpoints(value)
+
+
+class DevicePermissionsUpdate(BaseModel):
+    workspace_read: bool = True
+    remote_execute: bool = False
+    session_read: bool = True
+    artifact_download: bool = True
+    approval_required: bool = True
 
 
 class DeviceKeyRotate(BaseModel):
@@ -249,6 +332,9 @@ class SessionImport(BaseModel):
 class CommandCreate(BaseModel):
     request_id: str = Field(min_length=1, max_length=128)
     input: str = Field(min_length=1, max_length=100_000)
+    attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=16)
+    model_id: str | None = Field(default=None, max_length=128)
+    authorization_mode: str = Field(default="default", pattern="^(default|full)$")
 
 
 class CommandRecover(BaseModel):
@@ -285,7 +371,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     db.init()
     _recover_running_commands(db)
     settings.workspaces_dir.mkdir(parents=True, exist_ok=True)
+    backup_storage: BackupStorage = create_backup_storage(settings)
     _bootstrap_admin(db, settings)
+    if settings.startup_backup_image:
+        _restore_startup_backup(db, settings)
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.worker_shutdown.clear()
@@ -303,6 +392,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             close()
 
     app = FastAPI(title="NoteMeld Cloud", version="0.1.0", lifespan=lifespan)
+    cloud_web_root = Path(__file__).resolve().parent.parent / "docs" / "new-product"
+    if cloud_web_root.is_dir():
+        app.mount("/cloud", StaticFiles(directory=cloud_web_root, html=True), name="cloud-web")
+
+        @app.get("/", include_in_schema=False)
+        def cloud_home() -> RedirectResponse:
+            return RedirectResponse("/cloud/pages/cloud/c01.html")
+
     @app.middleware("http")
     async def request_size_guard(request: Request, call_next):
         raw_length = request.headers.get("content-length")
@@ -360,7 +457,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
+        # The documentation portal embeds the static product pages in a
+        # same-origin iframe. Keep all API and operational responses denied
+        # while allowing only that explicitly mounted documentation surface.
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN" if request.url.path.startswith("/cloud/") else "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("Cache-Control", "no-store")
         if request.url.scheme == "https":
@@ -416,6 +516,35 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "features": {"cloud_agent": True, "session_queue": True, "command_recovery": True, "approval_gated_mutations": True, "model_registry": True, "device_tokens": True},
         }}
 
+    @app.get("/v1/cloud/dashboard")
+    def cloud_dashboard(current=Depends(_auth_dependency(db))):
+        """Return the Cloud control-plane summary used by the C02 dashboard."""
+        user_id = current["id"]
+        with db.connect() as cx:
+            sessions = cx.execute("SELECT id,title,status,workspace_id,updated_at FROM sessions WHERE user_id=? ORDER BY updated_at DESC", (user_id,)).fetchall()
+            approvals = cx.execute("SELECT COUNT(*) FROM approvals WHERE user_id=? AND status='pending'", (user_id,)).fetchone()[0]
+            events = cx.execute("SELECT s.title,e.event_type,e.created_at FROM events e JOIN sessions s ON s.id=e.session_id WHERE s.user_id=? ORDER BY e.created_at DESC LIMIT 8", (user_id,)).fetchall()
+            devices = cx.execute("SELECT COUNT(*) FROM devices WHERE user_id=? AND revoked_at IS NULL", (user_id,)).fetchone()[0]
+            usage = cx.execute("SELECT COALESCE(SUM(total_tokens),0) FROM model_usage_records WHERE user_id=?", (user_id,)).fetchone()[0]
+            daily = cx.execute("SELECT COUNT(*) FROM commands WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?) AND created_at>=?", (user_id, int(time.time()) - 86400)).fetchone()[0]
+            workspace_rows = cx.execute("SELECT id,display_name FROM workspaces WHERE user_id=? ORDER BY updated_at DESC", (user_id,)).fetchall()
+        counts = {status: sum(1 for row in sessions if row["status"] == status) for status in {"running", "pending", "failed", "completed"}}
+        workspaces: dict[str, dict[str, Any]] = {row["id"]: {"sessions": 0, "display_name": row["display_name"]} for row in workspace_rows}
+        for row in sessions:
+            workspace = row["workspace_id"]
+            entry = workspaces.setdefault(workspace, {"sessions": 0, "display_name": workspace})
+            entry["sessions"] += 1
+        storage = sum(Workspace(settings.workspaces_dir / user_id / name).stats()["bytes_used"] for name in workspaces)
+        return {"code": 0, "msg": "success", "data": {"session_count": len(sessions), "running_count": counts["running"], "pending_approval_count": approvals, "failed_count": counts["failed"], "device_count": devices, "storage_total": storage, "daily_agent_conversations": daily, "total_tokens": usage, "recent_activity": [dict(row) for row in events], "workspaces": [{"id": name, **summary} for name, summary in workspaces.items()]}}
+
+    @app.get("/v1/cloud/usage")
+    def cloud_usage(days: int = 7, current=Depends(_auth_dependency(db))):
+        days = max(1, min(days, 31))
+        since = int(time.time()) - days * 86400
+        with db.connect() as cx:
+            rows = cx.execute("SELECT date(created_at,'unixepoch') AS date, COUNT(*) AS conversations, COALESCE(SUM(total_tokens),0) AS total_tokens FROM model_usage_records WHERE user_id=? AND created_at>=? GROUP BY date ORDER BY date", (current["id"], since)).fetchall()
+        return {"code": 0, "msg": "success", "data": {"days": [dict(row) for row in rows], "total_tokens": sum(int(row["total_tokens"]) for row in rows)}}
+
     @app.post("/v1/auth/login")
     def login(payload: LoginRequest, request: Request):
         source = request.client.host if request.client else "unknown"
@@ -447,6 +576,170 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _audit(db, user["id"], "auth.login", user["id"], {"role": user["role"]})
         return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "user_id": user["id"], "role": user["role"], "audience": "cloud-api", "scopes": ["*"], "expires_at": expires_at}}
 
+    @app.post("/v1/auth/login/password")
+    def login_by_email(payload: EmailPasswordLogin, request: Request):
+        email = _normalize_email(payload.email)
+        source = request.client.host if request.client else "unknown"
+        account_key = _login_key("email", source, email)
+        source_key = _login_key("source", source)
+        now = int(time.time())
+        if _login_rate_limited(db, account_key, now) or _login_rate_limited(db, source_key, now):
+            raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
+        user = _user_by_email(db, email)
+        password_hash = user["password_hash"] if user else _DUMMY_PASSWORD_HASH
+        if not user or user["disabled"] or not verify_password(payload.password, password_hash):
+            failures = _record_login_failure(db, account_key, now)
+            _record_login_failure(db, source_key, now)
+            if failures > 5:
+                raise HTTPException(429, "too many login attempts", headers={"Retry-After": "60"})
+            raise HTTPException(401, "invalid credentials")
+        _clear_login_failures(db, account_key)
+        _clear_login_failures(db, source_key)
+        return _login_result(db, settings, user, email_verified=False)
+
+    @app.post("/v1/auth/code/send")
+    def send_verification_code(payload: VerificationCodeRequest, request: Request):
+        email = _normalize_email(payload.email)
+        now = int(time.time())
+        source = request.client.host if request.client else "unknown"
+        if _login_rate_limited(db, _login_key("otp", email), now, max_failures=3) or _login_rate_limited(db, _login_key("otp-source", source), now, max_failures=10):
+            raise HTTPException(429, "too many verification code requests", headers={"Retry-After": "60"})
+        code = settings.dev_otp_code if settings.otp_dev_mode else f"{secrets.randbelow(1_000_000):06d}"
+        code_hash = _verification_digest(email, payload.purpose, code)
+        with db.connect() as cx:
+            cx.execute("UPDATE verification_codes SET used_at=? WHERE email=? AND purpose=? AND used_at IS NULL", (now, email, payload.purpose))
+            cx.execute("INSERT INTO verification_codes(id,email,purpose,code_hash,expires_at,created_at,request_ip) VALUES(?,?,?,?,?,?,?)", (str(uuid.uuid4()), email, payload.purpose, code_hash, now + 600, now, source))
+        response = {"email": email, "purpose": payload.purpose, "expires_in_seconds": 600, "delivery": "development"}
+        if settings.otp_dev_mode:
+            response["dev_code"] = code
+        else:
+            try:
+                deliver_verification_code(host=settings.smtp_host or "", port=settings.smtp_port, username=settings.smtp_username, password=settings.smtp_password, sender=settings.smtp_sender or "", recipient=email, code=code, purpose=payload.purpose, starttls=settings.smtp_starttls)
+            except MailDeliveryError as exc:
+                with db.connect() as cx:
+                    cx.execute("UPDATE verification_codes SET used_at=? WHERE email=? AND purpose=? AND used_at IS NULL", (now, email, payload.purpose))
+                raise HTTPException(503, "verification email delivery failed") from exc
+            response["delivery"] = "smtp"
+        return {"code": 0, "msg": "success", "data": response}
+
+    @app.post("/v1/auth/login/code")
+    def login_by_code(payload: EmailCodeLogin):
+        email = _normalize_email(payload.email)
+        now = int(time.time())
+        digest = _verification_digest(email, "login", payload.code)
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM verification_codes WHERE email=? AND purpose='login' AND used_at IS NULL ORDER BY created_at DESC LIMIT 1", (email,)).fetchone()
+            if not row or row["expires_at"] <= now or row["attempts"] >= 5:
+                raise HTTPException(401, "invalid or expired verification code")
+            if not secrets.compare_digest(row["code_hash"], digest):
+                cx.execute("UPDATE verification_codes SET attempts=attempts+1 WHERE id=?", (row["id"],))
+                raise HTTPException(401, "invalid or expired verification code")
+            cx.execute("UPDATE verification_codes SET used_at=? WHERE id=?", (now, row["id"]))
+            user = cx.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        if not user or user["disabled"]:
+            raise HTTPException(404, "account not found; request access first")
+        return _login_result(db, settings, user, email_verified=True)
+
+    @app.post("/v1/auth/password/reset")
+    def reset_password(payload: PasswordReset):
+        email = _normalize_email(payload.email)
+        now = int(time.time())
+        digest = _verification_digest(email, "password_reset", payload.code)
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM verification_codes WHERE email=? AND purpose='password_reset' AND used_at IS NULL ORDER BY created_at DESC LIMIT 1", (email,)).fetchone()
+            if not row or row["expires_at"] <= now or row["attempts"] >= 5:
+                raise HTTPException(401, "invalid or expired verification code")
+            if not secrets.compare_digest(row["code_hash"], digest):
+                cx.execute("UPDATE verification_codes SET attempts=attempts+1 WHERE id=?", (row["id"],))
+                raise HTTPException(401, "invalid or expired verification code")
+            user = cx.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+            if not user:
+                raise HTTPException(404, "account not found")
+            cx.execute("UPDATE verification_codes SET used_at=? WHERE id=?", (now, row["id"]))
+            cx.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(payload.password), user["id"]))
+            cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (now, user["id"]))
+        _audit(db, user["id"], "auth.password.reset", user["id"], {})
+        return {"code": 0, "msg": "success", "data": {"email": email, "password_reset": True}}
+
+    @app.post("/v1/access-requests")
+    def create_access_request(payload: AccessRequestCreate):
+        email = _normalize_email(payload.email)
+        if payload.password != payload.confirm_password:
+            raise HTTPException(422, "password confirmation does not match")
+        with db.connect() as cx:
+            if cx.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+                raise HTTPException(409, "account already exists")
+            pending = cx.execute("SELECT 1 FROM access_requests WHERE email=? AND status='pending'", (email,)).fetchone()
+            if pending:
+                raise HTTPException(409, "an access request is already pending")
+            request_id = str(uuid.uuid4())
+            cx.execute("INSERT INTO access_requests(id,email,display_name,reason,password_hash,status,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)", (request_id, email, payload.display_name.strip(), payload.reason.strip(), hash_password(payload.password), "pending", int(time.time()), int(time.time()) + 7 * 86400))
+        return {"code": 0, "msg": "success", "data": {"id": request_id, "email": email, "status": "pending"}}
+
+    @app.post("/v1/admin/invitations")
+    def create_invitation(payload: InvitationCreate, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        email = _normalize_email(payload.email)
+        with db.connect() as cx:
+            if cx.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+                raise HTTPException(409, "account already exists")
+            raw_token = secrets.token_urlsafe(32)
+            invitation_id = str(uuid.uuid4())
+            now = int(time.time())
+            cx.execute("INSERT INTO invitations(id,email,display_name,role,token_hash,status,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?)", (invitation_id, email, payload.display_name.strip(), "user", hashlib.sha256(raw_token.encode()).hexdigest(), "pending", current["id"], now, now + 7 * 86400))
+        if settings.otp_dev_mode:
+            _audit(db, current["id"], "invitation.create", invitation_id, {"email": email, "delivery": "development"})
+            return {"code": 0, "msg": "success", "data": {"id": invitation_id, "email": email, "status": "pending", "invite_token": raw_token, "expires_at": now + 7 * 86400, "delivery": "development"}}
+        invite_url = f"{settings.invite_base_url}/invite/{raw_token}"
+        try:
+            deliver_invitation(host=settings.smtp_host or "", port=settings.smtp_port, username=settings.smtp_username, password=settings.smtp_password, sender=settings.smtp_sender or "", recipient=email, invite_url=invite_url, starttls=settings.smtp_starttls)
+        except MailDeliveryError as exc:
+            with db.connect() as cx:
+                cx.execute("UPDATE invitations SET status='revoked' WHERE id=? AND status='pending'", (invitation_id,))
+            _audit(db, current["id"], "invitation.delivery_failed", invitation_id, {"email": email})
+            raise HTTPException(503, "invitation email delivery failed") from exc
+        _audit(db, current["id"], "invitation.create", invitation_id, {"email": email, "delivery": "smtp"})
+        return {"code": 0, "msg": "success", "data": {"id": invitation_id, "email": email, "status": "pending", "expires_at": now + 7 * 86400, "delivery": "smtp"}}
+
+    @app.get("/v1/admin/invitations")
+    def list_invitations(status: str | None = None, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        if status is not None and status not in {"pending", "accepted", "expired", "revoked"}:
+            raise HTTPException(400, "invalid invitation status")
+        now = int(time.time())
+        with db.connect() as cx:
+            query = "SELECT id,email,display_name,role,status,created_at,expires_at,accepted_at FROM invitations"
+            params: tuple[object, ...] = ()
+            if status:
+                query += " WHERE status=?"
+                params = (status,)
+            rows = cx.execute(query + " ORDER BY created_at DESC", params).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            if item["status"] == "pending" and item["expires_at"] <= now:
+                item["status"] = "expired"
+            result.append(item)
+        return {"code": 0, "msg": "success", "data": result}
+
+    @app.post("/v1/invitations/{invite_token}/accept")
+    def accept_invitation(invite_token: str, payload: InvitationAccept):
+        digest = hashlib.sha256(invite_token.encode()).hexdigest()
+        now = int(time.time())
+        with db.connect() as cx:
+            invitation = cx.execute("SELECT * FROM invitations WHERE token_hash=? AND status='pending'", (digest,)).fetchone()
+            if not invitation or invitation["expires_at"] <= now:
+                raise HTTPException(404, "invitation is invalid or expired")
+            if cx.execute("SELECT 1 FROM users WHERE email=?", (invitation["email"],)).fetchone():
+                raise HTTPException(409, "account already exists")
+            user_id = str(uuid.uuid4())
+            base = re.sub(r"[^A-Za-z0-9_-]+", "", invitation["email"].split("@", 1)[0]) or "user"
+            username, suffix = base, 1
+            while cx.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                suffix += 1
+                username = f"{base}{suffix}"
+            cx.execute("INSERT INTO users(id,username,email,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)", (user_id, username, invitation["email"], payload.display_name.strip() or invitation["display_name"], hash_password(payload.password), "user", now))
+            cx.execute("UPDATE invitations SET status='accepted',accepted_at=? WHERE id=?", (now, invitation["id"]))
+        return {"code": 0, "msg": "success", "data": {"user_id": user_id, "username": username, "email": invitation["email"]}}
+
     @app.post("/v1/auth/revoke")
     def revoke_token(authorization: Annotated[str | None, Header()] = None):
         parsed = parse_token((authorization or "").removeprefix("Bearer ").removeprefix("bearer ").strip())
@@ -461,7 +754,106 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/auth/me")
     def auth_me(current=Depends(_auth_dependency(db))):
-        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "role": current["role"], "audience": current["audience"], "device_id": current["device_id"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
+        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "email": current["email"], "display_name": current["display_name"], "avatar": current["avatar"], "role": current["role"], "audience": current["audience"], "device_id": current["device_id"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
+
+    @app.put("/v1/auth/me")
+    def update_auth_me(payload: UserProfileUpdate, current=Depends(_auth_dependency(db))):
+        changes = {key: value for key, value in payload.model_dump().items() if value is not None}
+        if not changes:
+            raise HTTPException(400, "no changes supplied")
+        if "password" in changes:
+            changes["password_hash"] = hash_password(str(changes.pop("password")))
+        assignments = ", ".join(f"{key}=?" for key in changes)
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            cx.execute(f"UPDATE users SET {assignments} WHERE id=?", (*changes.values(), current["id"]))
+            if "password_hash" in changes:
+                cx.execute("UPDATE tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (now, current["id"]))
+                cx.execute("COMMIT")
+                _audit(db, current["id"], "auth.profile.password.update", current["id"], {})
+                return {"code": 0, "msg": "success", "data": {"password_changed": True}}
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "auth.profile.update", current["id"], {"fields": sorted(changes)})
+        return {"code": 0, "msg": "success", "data": {"display_name": changes.get("display_name", current["display_name"]), "avatar": changes.get("avatar", current["avatar"])}}
+
+    @app.get("/v1/preferences")
+    def get_preferences(current=Depends(_auth_dependency(db))):
+        with db.connect() as cx:
+            user_row = cx.execute("SELECT preferences_json FROM user_preferences WHERE user_id=?", (current["id"],)).fetchone()
+            organization = cx.execute("SELECT om.organization_id,op.preferences_json FROM organization_members om LEFT JOIN organization_preferences op ON op.organization_id=om.organization_id WHERE om.user_id=? ORDER BY om.created_at LIMIT 1", (current["id"],)).fetchone()
+        user_preferences = json.loads(user_row["preferences_json"]) if user_row else {}
+        organization_preferences = json.loads(organization["preferences_json"]) if organization and organization["preferences_json"] else {}
+        effective = {**user_preferences, **organization_preferences}
+        return {"code": 0, "msg": "success", "data": {**effective, "scopes": {"user": sorted(set(user_preferences) - ORGANIZATION_PREFERENCE_KEYS), "organization": sorted(set(organization_preferences) & ORGANIZATION_PREFERENCE_KEYS), "organization_id": organization["organization_id"] if organization else None}}}
+
+    @app.put("/v1/preferences")
+    def update_preferences(payload: PreferencesUpdate, current=Depends(_auth_dependency(db))):
+        changes = {key: value for key, value in payload.model_dump().items() if value is not None}
+        now = int(time.time())
+        with db.connect() as cx:
+            existing = cx.execute("SELECT preferences_json FROM user_preferences WHERE user_id=?", (current["id"],)).fetchone()
+            preferences = json.loads(existing["preferences_json"]) if existing else {}
+            preferences.update(changes)
+            cx.execute("INSERT INTO user_preferences(user_id,preferences_json,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at", (current["id"], json.dumps(preferences, ensure_ascii=False), now))
+        _audit(db, current["id"], "preferences.update", current["id"], {"keys": sorted(changes)})
+        return {"code": 0, "msg": "success", "data": preferences}
+
+    @app.get("/v1/admin/organization/preferences")
+    def get_organization_preferences(current=Depends(_auth_dependency(db, "admin", "admin"))):
+        with db.connect() as cx:
+            row = cx.execute("SELECT o.id,o.name,op.preferences_json FROM organizations o LEFT JOIN organization_preferences op ON op.organization_id=o.id JOIN organization_members om ON om.organization_id=o.id WHERE om.user_id=? ORDER BY om.created_at LIMIT 1", (current["id"],)).fetchone()
+        if not row:
+            raise HTTPException(404, "organization not found")
+        return {"code": 0, "msg": "success", "data": {"organization_id": row["id"], "name": row["name"], "preferences": json.loads(row["preferences_json"]) if row["preferences_json"] else {}}}
+
+    @app.put("/v1/admin/organization/preferences")
+    def update_organization_preferences(payload: OrganizationPreferencesUpdate, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        changes = {key: value for key, value in payload.model_dump().items() if value is not None}
+        now = int(time.time())
+        with db.connect() as cx:
+            organization = cx.execute("SELECT organization_id FROM organization_members WHERE user_id=? ORDER BY created_at LIMIT 1", (current["id"],)).fetchone()
+            if not organization:
+                raise HTTPException(404, "organization not found")
+            existing = cx.execute("SELECT preferences_json FROM organization_preferences WHERE organization_id=?", (organization["organization_id"],)).fetchone()
+            preferences = json.loads(existing["preferences_json"]) if existing else {}
+            preferences.update(changes)
+            cx.execute("INSERT INTO organization_preferences(organization_id,preferences_json,updated_at) VALUES(?,?,?) ON CONFLICT(organization_id) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at", (organization["organization_id"], json.dumps(preferences, ensure_ascii=False), now))
+        _audit(db, current["id"], "organization.preferences.update", organization["organization_id"], {"keys": sorted(changes)})
+        return {"code": 0, "msg": "success", "data": {"organization_id": organization["organization_id"], "preferences": preferences}}
+
+    @app.get("/v1/admin/organization/memories")
+    def get_organization_memories(current=Depends(_auth_dependency(db, "admin", "admin"))):
+        with db.connect() as cx:
+            organization = cx.execute("SELECT organization_id FROM organization_members WHERE user_id=? ORDER BY created_at LIMIT 1", (current["id"],)).fetchone()
+            if not organization:
+                raise HTTPException(404, "organization not found")
+            rows = cx.execute("SELECT id,organization_id,content,source,created_at,updated_at FROM organization_memories WHERE organization_id=? ORDER BY updated_at DESC,id", (organization["organization_id"],)).fetchall()
+        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+
+    @app.post("/v1/admin/organization/memories")
+    def create_organization_memory(payload: OrganizationMemoryCreate, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        memory_id = f"orgmem_{uuid.uuid4().hex}"
+        now = int(time.time())
+        with db.connect() as cx:
+            organization = cx.execute("SELECT organization_id FROM organization_members WHERE user_id=? ORDER BY created_at LIMIT 1", (current["id"],)).fetchone()
+            if not organization:
+                raise HTTPException(404, "organization not found")
+            cx.execute("INSERT INTO organization_memories(id,organization_id,content,source,created_at,updated_at) VALUES(?,?,?,?,?,?)", (memory_id, organization["organization_id"], payload.content.strip(), payload.source.strip(), now, now))
+        _audit(db, current["id"], "organization.memory.create", memory_id, {"organization_id": organization["organization_id"], "source": payload.source.strip()})
+        return {"code": 0, "msg": "success", "data": {"id": memory_id, "organization_id": organization["organization_id"], "content": payload.content.strip(), "source": payload.source.strip(), "created_at": now, "updated_at": now}}
+
+    @app.delete("/v1/admin/organization/memories/{memory_id}")
+    def delete_organization_memory(memory_id: str, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        with db.connect() as cx:
+            organization = cx.execute("SELECT organization_id FROM organization_members WHERE user_id=? ORDER BY created_at LIMIT 1", (current["id"],)).fetchone()
+            if not organization:
+                raise HTTPException(404, "organization not found")
+            result = cx.execute("DELETE FROM organization_memories WHERE id=? AND organization_id=?", (memory_id, organization["organization_id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "organization memory not found")
+        _audit(db, current["id"], "organization.memory.delete", memory_id, {"organization_id": organization["organization_id"]})
+        return {"code": 0, "msg": "success", "data": {"deleted": True, "id": memory_id}}
 
     @app.post("/v1/auth/rotate")
     def rotate_token(authorization: Annotated[str | None, Header()] = None):
@@ -510,14 +902,58 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/admin/users")
     def list_users(current=Depends(_auth_dependency(db, "admin", "admin"))):
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,username,role,disabled,created_at FROM users ORDER BY created_at").fetchall()
+            rows = cx.execute("SELECT id,username,email,display_name,role,disabled,created_at FROM users ORDER BY created_at").fetchall()
         return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+
+    @app.get("/v1/admin/access-requests")
+    def list_access_requests(status: str | None = None, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        if status is not None and status not in {"pending", "approved", "rejected", "expired"}:
+            raise HTTPException(400, "invalid request status")
+        with db.connect() as cx:
+            if status:
+                rows = cx.execute("SELECT id,email,display_name,reason,status,reviewed_by,reviewed_at,created_at,expires_at FROM access_requests WHERE status=? ORDER BY created_at DESC", (status,)).fetchall()
+            else:
+                rows = cx.execute("SELECT id,email,display_name,reason,status,reviewed_by,reviewed_at,created_at,expires_at FROM access_requests ORDER BY created_at DESC").fetchall()
+        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+
+    @app.post("/v1/admin/access-requests/{request_id}/review")
+    def review_access_request(request_id: str, payload: AccessRequestReview, current=Depends(_auth_dependency(db, "admin", "admin"))):
+        now = int(time.time())
+        with db.connect() as cx:
+            request_row = cx.execute("SELECT * FROM access_requests WHERE id=?", (request_id,)).fetchone()
+            if not request_row:
+                raise HTTPException(404, "access request not found")
+            if request_row["status"] != "pending":
+                raise HTTPException(409, "access request has already been reviewed")
+            if payload.status == "rejected":
+                cx.execute("UPDATE access_requests SET status='rejected',reviewed_by=?,reviewed_at=? WHERE id=?", (current["id"], now, request_id))
+                result = {"id": request_id, "status": "rejected"}
+            else:
+                base = re.sub(r"[^A-Za-z0-9_-]+", "", request_row["email"].split("@", 1)[0]) or "user"
+                username = base
+                suffix = 1
+                while cx.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                    suffix += 1
+                    username = f"{base}{suffix}"
+                user_id = str(uuid.uuid4())
+                cx.execute("INSERT INTO users(id,username,email,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)", (user_id, username, request_row["email"], request_row["display_name"], request_row["password_hash"], "user", now))
+                cx.execute("UPDATE access_requests SET status='approved',reviewed_by=?,reviewed_at=? WHERE id=?", (current["id"], now, request_id))
+                result = {"id": request_id, "status": "approved", "user_id": user_id, "username": username}
+        _audit(db, current["id"], f"admin.access_request.{payload.status}", request_id, result)
+        return {"code": 0, "msg": "success", "data": result}
 
     @app.get("/v1/admin/audits")
     def list_audits(limit: int = 100, current=Depends(_auth_dependency(db, "admin", "admin"))):
         limit = max(1, min(limit, 500))
         with db.connect() as cx:
             rows = cx.execute("SELECT id,actor_user_id,action,resource_id,metadata_json,created_at FROM audits ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "metadata": json.loads(row["metadata_json"])} for row in rows]}
+
+    @app.get("/v1/audits")
+    def list_my_audits(limit: int = 20, current=Depends(_auth_dependency(db))):
+        limit = max(1, min(limit, 100))
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,action,resource_id,metadata_json,created_at FROM audits WHERE actor_user_id=? ORDER BY created_at DESC LIMIT ?", (current["id"], limit)).fetchall()
         return {"code": 0, "msg": "success", "data": [{**dict(row), "metadata": json.loads(row["metadata_json"])} for row in rows]}
 
     @app.post("/v1/admin/users")
@@ -540,6 +976,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         changes: dict[str, object] = {}
         if payload.username is not None:
             changes["username"] = payload.username
+        if payload.display_name is not None:
+            changes["display_name"] = payload.display_name
         if payload.password is not None:
             changes["password_hash"] = hash_password(payload.password)
         if payload.disabled is not None:
@@ -699,6 +1137,30 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             result.append(item)
         return {"code": 0, "msg": "success", "data": result}
 
+    @app.get("/v1/devices/{device_id}/permissions")
+    def get_device_permissions(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.read"))):
+        _require_bound_device(current, device_id)
+        with db.connect() as cx:
+            row = cx.execute("SELECT connectivity_json FROM devices WHERE id=? AND user_id=?", (device_id, current["id"])).fetchone()
+        if not row:
+            raise HTTPException(404, "device not found")
+        connectivity = json.loads(row["connectivity_json"] or "{}")
+        return {"code": 0, "msg": "success", "data": connectivity.get("permissions", {"workspace_read": True, "remote_execute": False, "session_read": True, "artifact_download": True, "approval_required": True})}
+
+    @app.put("/v1/devices/{device_id}/permissions")
+    def update_device_permissions(device_id: str, payload: DevicePermissionsUpdate, current=Depends(_auth_dependency(db, required_scope="device.write"))):
+        _require_bound_device(current, device_id)
+        with db.connect() as cx:
+            row = cx.execute("SELECT connectivity_json FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL", (device_id, current["id"])).fetchone()
+            if not row:
+                raise HTTPException(404, "active device not found")
+            connectivity = json.loads(row["connectivity_json"] or "{}")
+            permissions = payload.model_dump()
+            connectivity["permissions"] = permissions
+            cx.execute("UPDATE devices SET connectivity_json=? WHERE id=? AND user_id=?", (json.dumps(connectivity, separators=(",", ":")), device_id, current["id"]))
+        _audit(db, current["id"], "device.permissions.update", device_id, {"permissions": permissions})
+        return {"code": 0, "msg": "success", "data": permissions}
+
     @app.post("/v1/devices/{device_id}/revoke")
     @app.delete("/v1/devices/{device_id}")
     def revoke_device(device_id: str, current=Depends(_auth_dependency(db, required_scope="device.write"))):
@@ -816,6 +1278,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(422, "public_key must be URL-safe base64 Ed25519 key")
         digest = hashlib.sha256(payload.code.encode()).hexdigest()
         now = int(time.time())
+        model_bundle: list[dict[str, Any]] = []
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
             pairing = cx.execute("SELECT * FROM pairings WHERE code_hash=? AND status='pending' AND expires_at>? AND user_id=?", (digest, now, current["id"])).fetchone()
@@ -835,8 +1298,22 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             else:
                 cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,last_seen_at,created_at) VALUES(?,?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now, now))
             cx.execute("UPDATE pairings SET status='confirmed',device_id=? WHERE id=?", (payload.device_id, pairing["id"]))
+            models = cx.execute("SELECT id,name,provider,model,base_url,api_key_ciphertext,enabled,is_default FROM models WHERE user_id=? AND enabled=1 ORDER BY is_default DESC,created_at", (current["id"],)).fetchall()
+            for model in models:
+                api_key = None
+                if model["api_key_ciphertext"]:
+                    if not app.state.settings.secret_key:
+                        cx.execute("ROLLBACK")
+                        raise HTTPException(503, "secret encryption is unavailable")
+                    try:
+                        api_key = decrypt_secret(model["api_key_ciphertext"], app.state.settings.secret_key)
+                    except Exception as exc:
+                        cx.execute("ROLLBACK")
+                        raise HTTPException(503, "provider credential cannot be decrypted") from exc
+                model_bundle.append({"id": model["id"], "name": model["name"], "provider": model["provider"], "model": model["model"], "base_url": model["base_url"], "api_key": api_key, "is_default": bool(model["is_default"])})
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True}}
+        _audit(db, current["id"], "device.pairing.confirm", payload.device_id, {"model_count": len(model_bundle), "credentials_sent": any(item["api_key"] for item in model_bundle)})
+        return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True, "models": model_bundle}}
 
     @app.post("/v1/grants")
     def create_grant(payload: GrantCreate, current=Depends(_auth_dependency(db, required_scope="grant.write", required_audience="cloud-api"))):
@@ -995,17 +1472,30 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def create_session(payload: SessionCreate, current=Depends(_auth_dependency(db, required_scope="session.write"))):
         session_id = str(uuid.uuid4())
         now = int(time.time())
-        if payload.model_id:
+        resolved_workspace_id = payload.workspace_id
+        resolved_model_id = payload.model_id
+        if not resolved_model_id or not payload.workspace_id:
             with db.connect() as cx:
-                model = cx.execute("SELECT id FROM models WHERE id=? AND user_id=? AND enabled=1", (payload.model_id, current["id"])).fetchone()
+                user_preferences_row = cx.execute("SELECT preferences_json FROM user_preferences WHERE user_id=?", (current["id"],)).fetchone()
+                organization_row = cx.execute("SELECT op.preferences_json FROM organization_members om JOIN organization_preferences op ON op.organization_id=om.organization_id WHERE om.user_id=? ORDER BY om.created_at LIMIT 1", (current["id"],)).fetchone()
+            user_preferences = json.loads(user_preferences_row["preferences_json"]) if user_preferences_row else {}
+            organization_preferences = json.loads(organization_row["preferences_json"]) if organization_row else {}
+            effective_preferences = {**user_preferences, **organization_preferences}
+            resolved_workspace_id = effective_preferences.get("default_workspace") or resolved_workspace_id
+            resolved_model_id = resolved_model_id or effective_preferences.get("default_model")
+        if resolved_model_id:
+            with db.connect() as cx:
+                model = cx.execute("SELECT id FROM models WHERE id=? AND user_id=? AND enabled=1", (resolved_model_id, current["id"])).fetchone()
             if not model:
-                raise HTTPException(404, "enabled model not found")
-        Workspace(settings.workspaces_dir / current["id"] / payload.workspace_id)
+                if payload.model_id:
+                    raise HTTPException(404, "enabled model not found")
+                resolved_model_id = None
+        Workspace(settings.workspaces_dir / current["id"] / resolved_workspace_id)
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
-            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,model_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, payload.workspace_id, "idle", payload.model_id, now, now))
+            cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,model_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (session_id, current["id"], payload.kind, payload.title, resolved_workspace_id, "idle", resolved_model_id, now, now))
             cx.execute("COMMIT")
-        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": payload.workspace_id, "model_id": payload.model_id}}
+        return {"code": 0, "msg": "success", "data": {"id": session_id, "kind": payload.kind, "workspace_id": resolved_workspace_id, "model_id": resolved_model_id}}
 
     @app.post("/v1/cloud/sessions/import")
     def import_session(payload: SessionImport, current=Depends(_auth_dependency(db, required_scope="session.write"))):
@@ -1093,9 +1583,9 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             with db.connect() as cx:
                 cx.execute("BEGIN IMMEDIATE")
                 cx.execute("INSERT INTO sessions(id,user_id,kind,title,workspace_id,status,copied_from,model_id,created_at,updated_at,next_sequence,next_event_sequence,authority_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (new_id, current["id"], source["kind"], f"Copy of {source['title']}", workspace_id, "idle", session_id, source["model_id"], now, now, source["next_sequence"], source["next_event_sequence"], 1))
-                command_rows = cx.execute("SELECT request_id,payload_hash,sequence,input_text,status,created_at FROM commands WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
+                command_rows = cx.execute("SELECT request_id,payload_hash,sequence,input_text,attachments_json,options_json,status,created_at FROM commands WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
                 for row in command_rows:
-                    cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["request_id"], row["payload_hash"], row["sequence"], row["input_text"], row["status"], row["created_at"]))
+                    cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,attachments_json,options_json,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["request_id"], row["payload_hash"], row["sequence"], row["input_text"], row["attachments_json"], row["options_json"], row["status"], row["created_at"]))
                 rows = cx.execute("SELECT sequence,event_type,payload_json,created_at FROM events WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall()
                 for row in rows:
                     cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), new_id, row["sequence"], row["event_type"], row["payload_json"], row["created_at"]))
@@ -1144,9 +1634,22 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(409, "lease owner mismatch or lease is not held")
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "released": True}}
 
+    @app.get("/v1/workspaces")
+    def list_workspaces(current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
+        root = settings.workspaces_dir / current["id"]
+        root.mkdir(parents=True, exist_ok=True)
+        result = []
+        for child in sorted(root.iterdir()):
+            if child.is_dir() and not child.is_symlink() and re.fullmatch(r"[A-Za-z0-9_-]+", child.name):
+                workspace = Workspace(child)
+                _ensure_workspace_metadata(db, current["id"], child.name)
+                result.append({"id": child.name, **workspace.stats()})
+        return {"code": 0, "msg": "success", "data": result}
+
     @app.get("/v1/workspaces/{workspace_id}/stats")
     def workspace_stats(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
+        _ensure_workspace_metadata(db, current["id"], workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         return {"code": 0, "msg": "success", "data": {"workspace_id": workspace_id, **workspace.stats()}}
 
@@ -1154,6 +1657,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def workspace_capacity(workspace_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         """Expose quota and volume capacity so clients can render warnings."""
         _validate_workspace_id(workspace_id)
+        _ensure_workspace_metadata(db, current["id"], workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         stats = workspace.stats()
         capacity = workspace.capacity()
@@ -1231,61 +1735,59 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _validate_workspace_id(workspace_id)
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         backup_id = f"{int(time.time())}-{secrets.token_urlsafe(8)}"
-        destination = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
         with _workspace_lock(app, current["id"], workspace_id):
-            size = workspace.create_backup(destination)
-        _audit(db, current["id"], "workspace.backup.create", backup_id, {"workspace_id": workspace_id, "bytes": size})
-        return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": size, "created_at": int(time.time())}}
+            record = backup_storage.create(workspace, user_id=current["id"], workspace_id=workspace_id, backup_id=backup_id)
+        _ensure_workspace_metadata(db, current["id"], workspace_id)
+        with db.connect() as cx:
+            cx.execute("INSERT OR REPLACE INTO workspace_backups(user_id,workspace_id,id,archive_path,bytes,created_at) VALUES(?,?,?,?,?,?)", (current["id"], workspace_id, backup_id, record.location, record.bytes, record.created_at))
+        _audit(db, current["id"], "workspace.backup.create", backup_id, {"workspace_id": workspace_id, "bytes": record.bytes, "storage": settings.backup_storage_backend})
+        return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "bytes": record.bytes, "created_at": record.created_at, "storage": settings.backup_storage_backend}}
 
     @app.get("/v1/workspaces/{workspace_id}/backups")
     def list_backups(workspace_id: str, limit: int = 100, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
         _validate_workspace_id(workspace_id)
         limit = max(1, min(limit, settings.max_backup_list_items))
-        directory = settings.data_dir / "backups" / current["id"] / workspace_id
-        items = []
-        def backup_candidates():
-            if not directory.is_dir():
-                return
-            try:
-                entries = directory.iterdir()
-            except OSError:
-                return
-            for path in entries:
-                if path.suffix != ".zip":
-                    continue
-                try:
-                    stat = path.stat()
-                except OSError:
-                    continue
-                yield (stat.st_mtime, (path, stat))
+        records = backup_storage.list(user_id=current["id"], workspace_id=workspace_id, limit=limit)
+        _ensure_workspace_metadata(db, current["id"], workspace_id)
+        with db.connect() as cx:
+            for record in records:
+                cx.execute("INSERT OR REPLACE INTO workspace_backups(user_id,workspace_id,id,archive_path,bytes,created_at) VALUES(?,?,?,?,?,?)", (current["id"], workspace_id, record.backup_id, record.location, record.bytes, record.created_at))
+        return {"code": 0, "msg": "success", "data": [{"backup_id": record.backup_id, "bytes": record.bytes, "created_at": record.created_at, "storage": settings.backup_storage_backend} for record in records]}
 
-        paths = heapq.nlargest(limit, backup_candidates(), key=lambda item: item[0])
-        for _, (path, stat) in paths[: settings.max_backup_list_items + 1]:
-            items.append({"backup_id": path.stem, "bytes": stat.st_size, "created_at": int(stat.st_mtime)})
-        return {"code": 0, "msg": "success", "data": items}
+    @app.get("/v1/workspaces/{workspace_id}/backups/{backup_id}/download")
+    def download_backup(workspace_id: str, backup_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.read"))):
+        _validate_workspace_id(workspace_id)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", backup_id):
+            raise HTTPException(422, "invalid backup id")
+        try:
+            content = backup_storage.read(user_id=current["id"], workspace_id=workspace_id, backup_id=backup_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "backup not found") from exc
+        _audit(db, current["id"], "workspace.backup.download", backup_id, {"workspace_id": workspace_id, "bytes": len(content)})
+        return Response(content=content, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="notemeld-{workspace_id}-{backup_id}.zip"'})
 
     @app.delete("/v1/workspaces/{workspace_id}/backups/{backup_id}")
     def delete_backup(workspace_id: str, backup_id: str, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", backup_id):
             raise HTTPException(422, "invalid backup id")
-        archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{backup_id}.zip"
         with _workspace_lock(app, current["id"], workspace_id):
             try:
-                archive.unlink()
+                backup_storage.delete(user_id=current["id"], workspace_id=workspace_id, backup_id=backup_id)
             except FileNotFoundError as exc:
                 raise HTTPException(404, "backup not found") from exc
+        with db.connect() as cx:
+            cx.execute("DELETE FROM workspace_backups WHERE user_id=? AND workspace_id=? AND id=?", (current["id"], workspace_id, backup_id))
         _audit(db, current["id"], "workspace.backup.delete", backup_id, {"workspace_id": workspace_id})
         return {"code": 0, "msg": "success", "data": {"backup_id": backup_id, "workspace_id": workspace_id, "deleted": True}}
 
     @app.post("/v1/workspaces/{workspace_id}/backups/restore")
     def restore_workspace(workspace_id: str, payload: WorkspaceRestore, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
         _validate_workspace_id(workspace_id)
-        archive = settings.data_dir / "backups" / current["id"] / workspace_id / f"{payload.backup_id}.zip"
         workspace = Workspace(settings.workspaces_dir / current["id"] / workspace_id)
         with _workspace_lock(app, current["id"], workspace_id):
             try:
-                restored = workspace.restore_backup(archive, settings.max_workspace_bytes, settings.max_workspace_files)
+                restored = backup_storage.restore(workspace, user_id=current["id"], workspace_id=workspace_id, backup_id=payload.backup_id, max_bytes=settings.max_workspace_bytes, max_files=settings.max_workspace_files)
             except Exception as exc:
                 raise HTTPException(400, str(exc)) from exc
         _audit(db, current["id"], "workspace.backup.restore", payload.backup_id, {"workspace_id": workspace_id, **restored})
@@ -1442,8 +1944,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _owned_session(db, session_id, current["id"])
         limit = max(1, min(limit, 500))
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,session_id,request_id,sequence,status,lease_owner,lease_expires_at,attempt_count,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
-        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
+            rows = cx.execute("SELECT id,session_id,request_id,sequence,input_text,attachments_json,options_json,status,lease_owner,lease_expires_at,attempt_count,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
+        return {"code": 0, "msg": "success", "data": [{**dict(row), "attachments": json.loads(row["attachments_json"] or "[]"), **json.loads(row["options_json"] or "{}")} for row in rows]}
 
     @app.post("/v1/sessions/{session_id}/commands/{command_id}/recover")
     @app.post("/v1/cloud/sessions/{session_id}/commands/{command_id}/recover")
@@ -1487,6 +1989,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         if not access:
             raise HTTPException(401, "invalid share token")
         return snapshot(session_id, limit=limit, current={"id": access["user_id"]})
+
+    @app.get("/v1/shared/{session_id}/commands")
+    def shared_commands(session_id: str, after: int = 0, limit: int = 100, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
+        if after < 0:
+            raise HTTPException(422, "after must be non-negative")
+        access = _authenticate_share_token(db, share_token, session_id)
+        if not access:
+            raise HTTPException(401, "invalid share token")
+        _owned_session(db, session_id, access["user_id"])
+        limit = max(1, min(limit, 500))
+        with db.connect() as cx:
+            rows = cx.execute("SELECT id,session_id,sequence,input_text,status,created_at FROM commands WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", (session_id, after, limit)).fetchall()
+        return {"code": 0, "msg": "success", "data": [dict(row) for row in rows]}
 
     @app.get("/v1/shared/{session_id}/events")
     def shared_events(session_id: str, after: int = 0, limit: int = 500, share_token: Annotated[str | None, Header(alias="X-Share-Token")] = None):
@@ -1558,7 +2073,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                         raise ValueError("invalid relay envelope")
                     sequence = envelope.get("sequence")
                     frame_type = envelope.get("frame_type", "command")
-                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not _valid_nonce(envelope.get("nonce")) or frame_type not in {"command", "receipt", "event"} or not isinstance(sequence, int) or sequence < 1:
+                    if envelope.get("protocol_version") != "notemeld.sync.v1" or envelope.get("session_id") != session_id or envelope.get("sender_device_id") != device_id or not envelope.get("recipient_device_id") or not envelope.get("ciphertext") or not envelope.get("frame_id") or not _valid_nonce(envelope.get("nonce")) or frame_type not in {"command", "receipt", "event", "handshake"} or not isinstance(sequence, int) or sequence < 1:
                         raise ValueError("invalid relay envelope")
                     with db.connect() as cx:
                         session_row = cx.execute("SELECT authority_epoch,workspace_id FROM sessions WHERE id=?", (session_id,)).fetchone()
@@ -1567,7 +2082,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                         epoch = session_row["authority_epoch"]
                     if envelope.get("authority_epoch") != epoch:
                         raise ValueError("stale authority epoch")
-                    required_scope = {"command": "message.send", "event": "event.receive", "receipt": None}[frame_type]
+                    required_scope = {"command": "message.send", "event": "event.receive", "receipt": None, "handshake": "message.send"}[frame_type]
                     if not _grant_allows(db, session_id, current["id"], device_id, envelope["recipient_device_id"], required_scope, session_row["workspace_id"]):
                         raise ValueError("relay grant missing")
                     if not _accept_relay_sequence(db, session_id, device_id, sequence):
@@ -1598,13 +2113,36 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     return app
 
 
+def _restore_startup_backup(db: CloudDB, settings: CloudSettings) -> None:
+    image = settings.startup_backup_image
+    if image is None:
+        return
+    if not image.is_file() or image.suffix.lower() != ".zip":
+        raise ValueError("NOTEMELD_CLOUD_STARTUP_BACKUP_IMAGE must point to a ZIP backup image")
+    with db.connect() as cx:
+        admin = cx.execute("SELECT id FROM users WHERE username=?", (settings.admin_username,)).fetchone()
+    if not admin:
+        raise RuntimeError("bootstrap admin is unavailable for startup backup restore")
+    workspace_id = settings.startup_backup_workspace
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", workspace_id):
+        raise ValueError("NOTEMELD_CLOUD_STARTUP_BACKUP_WORKSPACE is invalid")
+    workspace = Workspace(settings.workspaces_dir / admin["id"] / workspace_id)
+    workspace.restore_backup(image, settings.max_workspace_bytes, settings.max_workspace_files)
+    _ensure_workspace_metadata(db, admin["id"], workspace_id)
+
+
 def _bootstrap_admin(db: CloudDB, settings: CloudSettings) -> None:
     if not settings.admin_password:
         raise RuntimeError("NOTEMELD_CLOUD_ADMIN_PASSWORD must be set")
     with db.connect() as cx:
         existing = cx.execute("SELECT id FROM users WHERE role='admin' LIMIT 1").fetchone()
         if not existing:
-            cx.execute("INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)", (str(uuid.uuid4()), settings.admin_username, hash_password(settings.admin_password), "admin", int(time.time())))
+            admin_id = str(uuid.uuid4())
+            now = int(time.time())
+            cx.execute("INSERT INTO users(id,username,email,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)", (admin_id, settings.admin_username, settings.admin_email, settings.admin_username, hash_password(settings.admin_password), "admin", now))
+            cx.execute("INSERT OR IGNORE INTO organization_members(organization_id,user_id,role,created_at) VALUES('default',?,?,?)", (admin_id, "owner", now))
+        else:
+            cx.execute("INSERT OR IGNORE INTO organization_members(organization_id,user_id,role,created_at) SELECT 'default',id,CASE WHEN role='admin' THEN 'owner' ELSE 'member' END,? FROM users", (int(time.time()),))
 
 
 def _user_by_username(db: CloudDB, username: str):
@@ -1618,6 +2156,37 @@ def _user_by_account_id(db: CloudDB, account_id: str | None):
         return None
     with db.connect() as cx:
         return cx.execute("SELECT * FROM users WHERE id=?", (account_id,)).fetchone()
+
+
+def _normalize_email(value: str) -> str:
+    email = value.strip().lower()
+    if len(email) > 320 or re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) is None:
+        raise HTTPException(422, "valid email is required")
+    return email
+
+
+def _user_by_email(db: CloudDB, email: str):
+    with db.connect() as cx:
+        return cx.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+
+
+def _verification_digest(email: str, purpose: str, code: str) -> str:
+    return hashlib.sha256(f"notemeld:verification:{purpose}:{email}:{code}".encode()).hexdigest()
+
+
+def _login_result(db: CloudDB, settings: CloudSettings, user: Any, email_verified: bool) -> dict:
+    raw, digest = issue_token()
+    now = int(time.time())
+    token_id = raw[4:].split(".", 1)[0]
+    expires_at = token_expiry(settings.token_ttl_seconds)
+    with db.connect() as cx:
+        cx.execute("INSERT INTO tokens(id,user_id,digest,expires_at,audience,scopes_json,created_at) VALUES(?,?,?,?,?,?,?)", (token_id, user["id"], digest, expires_at, "cloud-api", '["*"]', now))
+        if email_verified:
+            cx.execute("UPDATE users SET email_verified_at=?,last_login_at=? WHERE id=?", (now, now, user["id"]))
+        else:
+            cx.execute("UPDATE users SET last_login_at=? WHERE id=?", (now, user["id"]))
+    _audit(db, user["id"], "auth.login", user["id"], {"role": user["role"], "method": "email_code" if email_verified else "email_password"})
+    return {"code": 0, "msg": "success", "data": {"token": raw, "jti": token_id, "user_id": user["id"], "role": user["role"], "audience": "cloud-api", "scopes": ["*"], "expires_at": expires_at}}
 
 
 def _auth_dependency(db: CloudDB, required_role: str | None = None, required_scope: str | None = None, required_audience: str | None = None):
@@ -1761,6 +2330,16 @@ def _validate_workspace_id(workspace_id: str) -> None:
         raise HTTPException(400, "invalid workspace id")
 
 
+def _ensure_workspace_metadata(db: CloudDB, user_id: str, workspace_id: str) -> None:
+    now = int(time.time())
+    with db.connect() as cx:
+        cx.execute(
+            "INSERT INTO workspaces(user_id,id,display_name,created_at,updated_at) VALUES(?,?,?,?,?) "
+            "ON CONFLICT(user_id,id) DO UPDATE SET updated_at=excluded.updated_at",
+            (user_id, workspace_id, workspace_id, now, now),
+        )
+
+
 def _reject_sensitive_fields(value: Any, path: str = "snapshot") -> None:
     forbidden_names = {"secret", "secrets", "api_key", "token", "cookie", "cookies", "password", "credential", "credentials", "authorization", "private_key", "environment", "env"}
     forbidden_suffixes = ("_secret", "_api_key", "_access_token", "_refresh_token", "_password", "_cookie", "_private_key")
@@ -1852,6 +2431,11 @@ def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, statu
         event_sequence = cx.execute("SELECT next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
         cx.execute("UPDATE commands SET status=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND session_id=? AND lease_owner=?", (status, command_id, session_id, lease_owner))
         cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, event_type, json.dumps(payload, separators=(",", ":")), now))
+        usage = payload.get("usage") or {}
+        if status == "completed" and usage.get("total_tokens") is not None:
+            session = cx.execute("SELECT user_id,model_id FROM sessions WHERE id=?", (session_id,)).fetchone()
+            if session:
+                cx.execute("INSERT INTO model_usage_records(id,user_id,session_id,command_id,model_id,provider,model,prompt_tokens,completion_tokens,total_tokens,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), session["user_id"], session_id, command_id, session["model_id"], None, str(payload.get("model") or "unknown"), int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), int(usage.get("total_tokens", 0)), now))
         cx.execute("UPDATE sessions SET next_event_sequence=?,status='idle',updated_at=? WHERE id=?", (event_sequence + 1, now, session_id))
         cx.execute("COMMIT")
 
@@ -1917,13 +2501,14 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
             try:
                 session = _owned_session(db, session_id, user_id)
                 messages = _cloud_history(db, session_id, exclude_command_id=command_id)
-                tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id)
+                options = json.loads(command["options_json"] or "{}")
+                tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id, authorization_mode=options.get("authorization_mode", "default"), app=app)
                 runner = _runner_for_session(app, db, session)
                 result = runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
             except Exception:
                 _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}}, worker_id)
             else:
-                _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model}, worker_id)
+                _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model, "usage": result.usage or {}}, worker_id)
             finally:
                 heartbeat_stop.set()
                 heartbeat.join(timeout=1)
@@ -1958,7 +2543,7 @@ def _stop_queued_workers(app: FastAPI, timeout_seconds: float = 5.0) -> None:
 def _claim_next_cloud_command(db: CloudDB, session_id: str, worker_id: str, lease_seconds: int):
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
-        row = cx.execute("SELECT id,input_text,sequence FROM commands WHERE session_id=? AND status='queued' ORDER BY sequence LIMIT 1", (session_id,)).fetchone()
+        row = cx.execute("SELECT id,input_text,options_json,sequence FROM commands WHERE session_id=? AND status='queued' ORDER BY sequence LIMIT 1", (session_id,)).fetchone()
         if not row:
             cx.execute("COMMIT")
             return None
@@ -1990,7 +2575,40 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
     session = _owned_session(db, session_id, user_id)
     if session["kind"] == "device_remote":
         raise HTTPException(409, "device_remote commands must be delivered through the host relay")
-    digest = hashlib.sha256(payload.input.encode()).hexdigest()
+    if payload.model_id:
+        with db.connect() as cx:
+            if not cx.execute("SELECT 1 FROM models WHERE id=? AND user_id=? AND enabled=1", (payload.model_id, user_id)).fetchone():
+                raise HTTPException(404, "enabled model not found")
+    attachments = [{"name": str(item.get("name", ""))[:255], "size": int(item.get("size", 0)), "type": str(item.get("type", ""))[:128], "content_base64": item.get("content_base64")} for item in payload.attachments]
+    if any(item["size"] < 0 or not item["name"] for item in attachments):
+        raise HTTPException(422, "attachments must include a valid name and non-negative size")
+    stored_attachments: list[dict[str, Any]] = []
+    if any(item.get("content_base64") for item in attachments):
+        workspace = Workspace(app.state.settings.workspaces_dir / user_id / session["workspace_id"])
+        total_bytes = 0
+        with workspace_mutation_lock(workspace.root):
+            for index, item in enumerate(attachments):
+                encoded = item.pop("content_base64", None)
+                if not encoded:
+                    stored_attachments.append(item)
+                    continue
+                try:
+                    content = base64.b64decode(encoded, validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise HTTPException(422, "attachment content is not valid base64") from exc
+                if len(content) != item["size"] or len(content) > 10 * 1024 * 1024:
+                    raise HTTPException(413, "attachment size is invalid or exceeds 10 MiB")
+                total_bytes += len(content)
+                if total_bytes > 20 * 1024 * 1024:
+                    raise HTTPException(413, "attachments exceed the 20 MiB command limit")
+                safe_name = Path(item["name"]).name
+                logical_path = f"attachments/{uuid.uuid4().hex[:12]}-{safe_name}"
+                workspace.write_bytes(logical_path, content)
+                stored_attachments.append({**item, "path": logical_path})
+    else:
+        stored_attachments = [{key: value for key, value in item.items() if key != "content_base64"} for item in attachments]
+    options = {"model_id": payload.model_id, "authorization_mode": payload.authorization_mode}
+    digest = hashlib.sha256(json.dumps({"input": payload.input, "attachments": stored_attachments, "options": options}, sort_keys=True).encode()).hexdigest()
     now = int(time.time())
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
@@ -2011,7 +2629,7 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
         sequence, event_sequence = cx.execute("SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()
         command_id = str(uuid.uuid4())
         cx.execute("UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='queued',updated_at=? WHERE id=?", (sequence + 1, event_sequence + 1, now, session_id))
-        cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, "queued", now))
+        cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,attachments_json,options_json,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (command_id, session_id, payload.request_id, digest, sequence, payload.input, json.dumps(stored_attachments, ensure_ascii=False), json.dumps(options), "queued", now))
         queued_event = {"command_id": command_id, "command_sequence": sequence, "status": "queued"}
         cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, "command.queued", json.dumps(queued_event), now))
         cx.execute("COMMIT")
@@ -2163,7 +2781,7 @@ def _validate_lan_endpoints(value: list[str]) -> list[str]:
     return result
 
 
-def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None) -> tuple[list[dict[str, Any]], Any]:
+def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None, authorization_mode: str = "default", app: FastAPI | None = None) -> tuple[list[dict[str, Any]], Any]:
     workspace = Workspace(settings.workspaces_dir / user_id / str(session["workspace_id"]))
     tools = [
         {
@@ -2210,6 +2828,13 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
                 return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace path"}}
             if name == "workspace.write" and not isinstance(arguments.get("content"), str):
                 return {"ok": False, "error": {"code": "invalid_arguments", "message": "content must be text"}}
+            if authorization_mode == "full" and app is not None:
+                try:
+                    result = _execute_approved_tool(app=app, settings=settings, session=session, user_id=user_id, tool_name=name, arguments=arguments)
+                    _audit(db, user_id, "tool.auto_approved", command_id, {"tool_name": name, "authorization_mode": "full"})
+                    return result
+                except Exception as exc:
+                    return {"ok": False, "error": {"code": "tool_failed", "message": str(exc)}}
             if db is None or command_id is None:
                 return {"ok": False, "error": {"code": "approval_unavailable", "message": "dangerous tool approval is unavailable"}}
             arguments_json = json.dumps(arguments, sort_keys=True, separators=(",", ":"))

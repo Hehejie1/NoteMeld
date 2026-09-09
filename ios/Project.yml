@@ -1,0 +1,18 @@
+name: NoteMeldMobile
+options:
+  bundleIdPrefix: com.notemeld
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  NoteMeldMobile:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/NoteMeldMobile
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.notemeld.mobile
+      SWIFT_VERSION: "5.0"
+      INFOPLIST_KEY_CFBundleDisplayName: NoteMeld
+      INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+      GENERATE_INFOPLIST_FILE: true

@@ -14,14 +14,15 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 
 ## 主要模块
 
-- 前端：`frontend/`，React 19 + Vite + TypeScript + React Router + Zustand + Tailwind。负责工作台 UI、任务提交、进度轮询、Markdown/Wiki 展示、设置页面和桌面运行时门禁。
-- 后端：`backend/`，FastAPI + SQLite + 本地文件系统。负责采集、下载、转写、LLM 总结、笔记保存、Wiki、向量索引、迁移和 MCP。
+- 桌面前端：`desktop/frontend/`，React 19 + Vite + TypeScript + React Router + Zustand + Tailwind。负责工作台 UI、任务提交、进度轮询、Markdown/Wiki 展示、设置页面和桌面运行时门禁。
+- 桌面业务后端：`desktop/backend/`，FastAPI + SQLite + 本地文件系统，由 Tauri 原生 Rust 宿主管理为本地 sidecar。负责采集、下载、转写、LLM 总结、笔记保存、Wiki、向量索引、迁移和 MCP。
+- 云端：`cloud/`，独立 FastAPI 控制平面；`cloud/frontend` 是指向 `desktop/frontend` 的单一源码入口，避免维护两份网页实现。
 - 桌面端：`desktop/src-tauri/`，Tauri v2。负责启动 Python backend sidecar、注入运行时配置、控制窗口展示、桌面文件能力和自动更新。
-- 打包层：`packaging/` + `.trae/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
-- 测试层：`backend/tests/` 和 `frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
+- 打包层：`scripts/packaging/` + `.agents/skills/notemeld-dmg-packaging/`。负责 PyInstaller 后端 sidecar、前端静态资源、Tauri bundle、ffmpeg runtime、DMG/MSI 发布。
+- 测试层：`desktop/backend/tests/` 和 `desktop/frontend/tests/`。以契约测试为主，覆盖运行时、MCP、上传、Wiki、迁移、桌面启动、打包规则等。
 - Agent runtime：`backend/app/agent_host/` 通过独立仓库 `notemeld-agent-sdk` 的 Python binding 加载 Rust native runtime；Web、Tauri 和 CLI 都只调用 `/api/agent/v1`，Router 再通过无内存状态的 `AgentHostEntry` 进入同一 Host 生命周期。Turn 由后台 executor 执行，事件和终态继续写入 NoteMeld 的 `agent_turns` / `agent_events` / conversation 存储。产品能力通过 `agent_host/capabilities.py` 和 `NoteMeldToolDriver` 适配到 SDK；SDK 在每轮模型请求前通过 `tool.describe` 获取有界能力描述，模型→工具→模型链路由 Rust runtime 调度；取消先进入 `cancelling`，最终 `cancelled` 只能由 native Turn 终态完成。危险或未知工具由 SDK 发出 `approval.required` 并暂停原 Turn；Web/CLI 的 approval resolve 通过同一个 native runtime 控制面原子唤醒，Host 只投影 `waiting_approval/running` 与事件。
 - I04 集成将 plugin/candidate router 和各自 migration registry 统一挂入同一个 FastAPI/SQLite bootstrap；设置导航同时提供插件运行、Agent 任务诊断和 candidate 审批入口。candidate 只允许人工验证/审批/拒绝，plugin candidate 审批后仍必须回到 N03 installer 的校验、权限和 active-pointer 流程。
-- Application Host：`backend/app/applications/` 是独立于 Agent/Plugin 的应用域。`applications/*/manifest.json` 是内建应用包的目录边界，Host 启动时只扫描、校验并生成 catalog，不执行应用 UI/backend；应用 API 统一挂载在 `/api/applications`，通过 `ResponseWrapper` 和 session token 保护。桌面协议由 Host 监督私有 stdin/stdout process-JSONL，应用不得监听公开端口，Host 负责启动、超时、退出、取消和回收；Web 协议固定为 Host gateway 管理的 `managed-worker` invocation seam，外部云 worker 部署和用户应用包安装仍不属于第一版。Runtime v2 追加实例隔离 app data、workspace 文件权限、外部读取根目录、用户 permission grants 以及持久化 Job/Event 查询。
+- Application Host：`backend/app/applications/` 是独立于 Agent/Plugin 的应用域。`applications/*/manifest.json` 是内建应用包的目录边界，Host 启动时只扫描、校验并生成 catalog，不执行应用 UI/backend；应用 API 统一挂载在 `/api/applications`，通过 `ResponseWrapper` 和 session token 保护。桌面协议由 Host 监督私有 stdin/stdout process-JSONL，应用不得监听公开端口，Host 负责启动、超时、退出、取消和回收；应用的 `plugin.invoke` 通过同一 Host 边界调用已启用的 process-JSONL 插件，不能直接加载插件源码。Web 协议固定为 Host gateway 管理的 `managed-worker` invocation seam，外部云 worker 部署和用户应用包安装仍不属于第一版。Runtime v2 追加实例隔离 app data、workspace 文件权限、外部读取根目录、用户 permission grants 以及持久化 Job/Event 查询。
 - Wiki application：Wiki 由独立 `notemeld-applications/apps/wiki/` 应用包提供，Host 只读取 manifest 元数据，用户进入 `/applications/:appId` 后才通过隔离 iframe 加载其静态 UI。应用通过 Application Bridge 使用 `wiki.read` capability 读取既有 Wiki store 的 graph/article。旧 `/wiki` 前端 route 和导航已移除；Wiki pipeline、`note_results/wiki`、Note authority 和旧 Wiki API 仍是数据事实源。默认 application workspace 可在 `/settings/applications` 配置。
 - Cloud backend slice：`cloud/` 是与本地 `backend/` 物理分开的 FastAPI 控制平面。当前实现提供 bootstrap admin、普通用户登录/CRUD、设备注册、cloud-native session、幂等 command/event snapshot、本地会话 full-share 导入和不落盘的 WebSocket relay。relay 默认使用单进程内存 broker；配置 `NOTEMELD_CLOUD_RELAY_BACKEND=redis` 时使用 Redis Pub/Sub 在多 worker 间传递瞬时帧，并仅以短 TTL 标记在线状态，不持久化业务 payload。导入使用显式非敏感字段 allowlist，校验来源设备、幂等键、文件 logical path/数量/大小/hash，并通过 staging 后一次发布新的独立 cloud-native session；Skill、插件、Application 包和密钥字段不进入协议。登录 token 默认带 `*` scope；用户创建的 PAT 只保存摘要，并按 auth/device/grant/session/share/workspace 作用域执行最小权限校验，rotation 不会把 PAT 提升为 wildcard。设备可通过一次性 challenge + Ed25519 proof 证明私钥持有；最近完成 proof 的设备可领取短期、有限 scope 的 `device-api` bearer，token rotation 保留设备绑定，撤销设备会原子撤销该设备的 grant 和全部设备 token。生产可要求 proof 才能建立 relay。云 native command 通过可替换的 `CloudAgentRunner` 执行：配置 OpenAI-compatible endpoint 时进行真实 `/chat/completions` 调用（瞬态 408/429/5xx 有界退避重试），未配置时仅提供明确的 deterministic smoke-test runner；同一 session 的 command 先写入 SQLite 队列，再由单进程 worker 按序领取和执行，重启后 queued 自动恢复，running 标记为 `needs_attention`。同一用户的活动命令受配额限制。Provider tool-calling 注入绑定当前云 workspace 的 `workspace.list`/`workspace.read`，写入和删除会创建可审计 approval，批准后才执行。云 workspace 默认位于 `NOTEMELD_CLOUD_DATA_DIR/workspaces/`；device-remote relay 不保存消息，也不在云端伪造执行结果。
 - Cloud SQLite 默认启用 WAL、FULL synchronous 和针对 session/command/event/token/device 的查询索引，以支持多 worker 并发访问，同时保留崩溃恢复语义。
@@ -35,7 +36,12 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - LAN-first 不把 cloud bearer 发到明文局域网：云端 `/v1/lan/authorize` 只允许绑定宿主的 device token 查询最长 60 秒的 Grant 断言；本地 `/v1/lan/connect/{session_id}` 经 `LanPeerAuthenticator` 完成 peer-IP 绑定的一次性 Ed25519 challenge，随后 `LanDirectService` 只接受 assertion 绑定的 E2EE command frame。`EncryptedRemoteHostHandler` 使用 AES-GCM 验证 canonical AAD 后调用 `RemoteHostAuthority`，只有 durable enqueue 成功才返回最小 `received` receipt。LAN 地址 allowlist 是显式 RFC1918/link-local/loopback/IPv6 ULA 网段，不使用标准库过宽的 `is_private`。平台启动仍需从 Keychain/Keystore 等安全存储装载 host device token、身份私钥和 session cipher，并显式安装 `LanDirectService`；未安装时端点 fail-closed。
 - `CloudSyncHostRuntime` 默认每 5 秒刷新 LAN Grant 断言；云端撤销、authority epoch 变化或刷新网络失败都会在下一次命令 admission 前拒绝，刷新间隔可由平台构造参数调整（1–60 秒）。
 - `CloudSyncHostRuntime` 是本地 Host 的依赖注入组装入口：接收已由平台安全存储构造的 `CloudClient`、durable mailbox 路径和 session cipher resolver，按 session 创建 `RemoteHostAuthority` 并通过 `install_lan_direct_service()` 挂载本地 FastAPI。它不读取环境变量中的长期 token/私钥，不创建第二套 Agent loop；平台仍负责在桌面启动生命周期中显式安装并在退出时关闭。
+- `backend/app/cloud_sync/agent_consumer.py` 是 remote Host 的 mailbox-to-Agent adapter：`CloudSyncHostRuntime.install()` 启动它，按 session 领取 durable command，创建同一 Agent Store 中的 canonical Turn，并交给既有 `NativeAgentExecutor`；terminal event 才会 complete/fail mailbox。consumer 不持有模型状态、不实现 Agent loop，平台可注入事件 sink 将已持久化的 Agent event 投影回加密远端连接。
 - `HandshakeEnvelope` 是跨端 E2EE 握手契约：每端用注册的 Ed25519 身份签名 X25519 临时公钥，双方校验互相指向同一 session 后，以按 device id 规范排序的 transcript 派生相同 AES-256-GCM 会话密钥。平台适配层仍负责私钥安全存储、重连和后续密钥轮换。
+- `backend/app/cloud_sync/e2ee_handshake.py` 提供 LAN Host 的实际握手 adapter：先用 LAN proof 得到的 controller public key 验证控制端 offer，再返回 Host offer 并派生 `SessionCipher`；Web 控制端在未预置 session key 的 LAN 连接上执行同一握手。Relay fallback 也可通过 `frame_type=handshake` 转发 signed envelope，握手验证和 key derivation 仍只在两端完成。
+- `backend/app/cloud_sync/relay_host.py` 提供 Cloud Relay 的 Host websocket adapter：它在 Relay 上先处理 signed handshake frame，随后要求本地安装 session cipher，只接收目标为本 Host 的 command frame，并通过同一 cipher 回发加密 receipt；Relay 不解密、不建立云端离线队列。
+- `CloudSyncHostRuntime` 在 bootstrap 后按当前 Host 的 Grant 与活动 `device_remote` session 自动对账 Relay 生命周期；Cloud 短暂离线只延迟本轮对账，不影响本地 Agent/LAN service。
+- `backend/app/cloud_sync/secure_identity.py` 是桌面 Host 的平台身份边界：macOS 使用 Keychain、Linux 仅在存在 `secret-tool` 时使用 Secret Service；不支持的平台 fail-closed，不回退到普通文件或环境变量。受 `X-NoteMeld-Session` 保护的 `/api/cloud-sync/host/bootstrap` 会加载该身份、注册 Cloud device、安装 LAN Host runtime；`/api/cloud-sync/host/relay/{session_id}/start|stop` 管理 Relay Host websocket，退出时由 FastAPI lifespan 和 runtime 双重回收。
 - `backend/app/cloud_sync/queue.py` 同时提供进程内 `SessionMailbox` 和 SQLite-backed `DurableSessionMailbox`；remote Host 使用后者保存 queued/admitted command，不替代 Agent SDK 的 canonical 状态机。Durable mailbox 通过事务门禁保证每 session 最多一个 admitted Turn；重新构造时把遗留 admitted 标为 `needs_attention`，在显式 resume/abandon 前拒绝新 command。独立 authority 表提供单调 epoch fencing，轮换时 active Turn 进入人工恢复、queued command 原子重绑新 epoch。云端 `cloud/app.py` 对 cloud-native command 使用 SQLite queued/running 状态和每 session worker；进程重启后 queued 自动继续，running 标记 `needs_attention`。
 - 云端 workspace 除 `/stats` 外提供只读 `/capacity`，返回 workspace 配额占用和所在文件系统的 total/used/free 字节及可配置告警阈值，供桌面/移动端展示容量风险；写入仍由配额校验拒绝超限请求。
 - Host 在结果已投影到 Agent 会话历史后可调用 `DurableSessionMailbox.compact()` 清理旧的 completed/failed/abandoned 投递记录；queued、admitted 和 needs_attention 永远不会被压缩，避免 mailbox 无限增长又不丢失待恢复任务。
@@ -61,16 +67,16 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 
 ## 后端入口
 
-- 源码/服务入口：`backend/main.py`。负责加载 `.env`、创建 FastAPI app、初始化 DB、注册事件、挂载静态目录并启动 Uvicorn。
-- 桌面 sidecar 入口：`backend/desktop_entry.py`，复用 `main.app`。
-- app 工厂：`backend/app/__init__.py`。大部分 router 挂载到 `/api`，MCP router 直接挂根路径，实际 endpoint 为 `/mcp`。
+- 源码/服务入口：`desktop/backend/main.py`。负责加载 `.env`、创建 FastAPI app、初始化 DB、注册事件、挂载静态目录并启动 Uvicorn。
+- 桌面 sidecar 入口：`desktop/backend/desktop_entry.py`，复用 `main.app`。
+- app 工厂：`desktop/backend/app/__init__.py`。大部分 router 挂载到 `/api`，MCP router 直接挂根路径，实际 endpoint 为 `/mcp`。
 - CORS 默认允许 `127.0.0.1:<frontend_port>`、`localhost:<frontend_port>`、`http://tauri.localhost`、`tauri://localhost`，可用 `NOTEMELD_CORS_ORIGINS` 扩展。
 
 ## 数据存储
 
-默认数据根目录固定为项目（或安装应用）下的 `vector_db`。桌面模式由 Tauri 注入应用数据目录下的 `vector_db`；`NOTEMELD_DATA_DIR` 只用于运行模式注入数据根，不再允许各子目录单独改写。
+默认数据根目录固定为桌面项目自己的 `desktop/data`（安装应用时为应用数据目录下的 `data`）；日志根目录固定为 `desktop/logs`（安装应用时为应用日志目录）。`NOTEMELD_DATA_DIR`、`NOTEMELD_LOG_DIR` 只用于运行模式注入根目录，不再允许各子目录单独改写。云端数据默认位于 `cloud/data`，部署环境可用 `NOTEMELD_CLOUD_DATA_DIR` 指向持久卷。
 
-统一路径定义在 `backend/app/utils/storage_paths.py`：
+统一路径定义在 `desktop/backend/app/utils/storage_paths.py`：
 
 - `notemeld.db`：SQLite 主数据库。
 - `note_results/`：任务结果、Markdown、状态文件、Wiki、转写、sidecar JSON。
@@ -81,7 +87,7 @@ NoteMeld 是本地优先的个人知识编译器。核心范式是：AI 编译�
 - `chroma/`：Chroma 向量库。
 - `tmp/`：后端运行时临时文件；NoteMeld 业务临时文件不得写入项目根目录或系统临时目录。
 
-所有日志统一写入项目（或安装应用）下的 `logs/`，由 `NOTEMELD_LOG_DIR` 注入桌面/CLI 的日志根。`NOTE_OUTPUT_DIR`、`VECTOR_DB_DIR`、`STATIC_DIR`、`OUT_DIR`、`UPLOAD_DIR`、`DATA_DIR` 等旧子目录变量不再生效。
+桌面/CLI 日志写入 `desktop/logs/`，由 `NOTEMELD_LOG_DIR` 注入；打包日志写入 `desktop/logs/packaging/`。云端服务使用部署平台日志，不与桌面数据目录共享。`NOTE_OUTPUT_DIR`、`VECTOR_DB_DIR`、`STATIC_DIR`、`OUT_DIR`、`UPLOAD_DIR`、`DATA_DIR` 等旧子目录变量不再生效。
 
 SQLite 模型位于 `backend/app/db/models/`，主要包含 provider、model、usage、conversation、note document、note style、template extraction task、video task 等。
 
@@ -234,6 +240,16 @@ opaque NoteId；正文仍只存在 `note_documents`。来源、关系、operatio
 
 源码启动和已安装 CLI 启动都会调用同一个 `AgentSdkRuntime.load()` 校验 SDK/schema/ABI metadata 和 native artifact；未安装时必须通过 `NOTEMELD_AGENT_SDK_WHEEL` 提供带 native library 的 wheel，安装后再次校验，不兼容则阻止 Agent Host 启动。缺包、缺 native、架构不可加载和版本漂移均使用固定分类错误，不回显 wheel 路径、Provider payload 或凭证。`scripts/notemeld-agent.py` 是 `/api/agent/v1` 的薄客户端，不包含 Agent loop，支持一次性和交互式会话、会话恢复、模型切换与 JSON/JSONL 输出。
 
+## 脚本布局与本地启动
+
+- `scripts/start.sh`：本地总启动入口，启动云端服务、桌面 FastAPI backend 和桌面 Vite 网页。
+- `scripts/cloud/start.sh`：仅启动 Cloud FastAPI，默认 `8583`，数据和日志分别位于 `cloud/data/`、`cloud/logs/`。
+- `scripts/desktop/start.sh`：桌面源码启动适配器；具体 backend/frontend ready gate 仍由兼容入口 `run_notemeld.sh` 执行，默认 backend `8483`、网页 `3015`。
+- `scripts/desktop/packaging/`：桌面端 PyInstaller、Tauri 和发布脚本。
+- `scripts/desktop/run_core_regression.sh`：桌面核心回归入口。
+
+本地开发执行 `bash scripts/start.sh`，网页地址为 `http://127.0.0.1:3015`；桌面 Agent 设置和对话请求通过 `http://127.0.0.1:8483/api`，Cloud 页面通过 `http://127.0.0.1:8583`。停止时按 `Ctrl+C`。
+
 当前 Host 已提供基础只读知识能力适配：`wiki:search`、`note:search`、`note:read`。`NoteMeldToolDriver` 只通过请求级 `NoteMeldCapabilityRegistry` 调用现有 Wiki/Note 产品服务，不维护 Agent 状态机，也不直接调度下一轮模型。工具描述由 Host 在 Turn 开始时有界解析，并附着到每轮模型请求；模型返回 tool call 后，Rust SDK 的 `execute_tool_round` 是唯一调度者。产品成功或可恢复失败统一转换为 `{call_id, output}` ToolResult；`output` 使用 `{ok:true,result}` 或 `{ok:false,error}`，SDK 把它写入带同一 call id 的 canonical tool message 后继续下一轮模型。未知工具、非法参数、权限、业务失败和未预期执行异常分别使用 `unknown_tool`、`invalid_arguments`、`permission_denied`、`business_error`、`tool_execution_error`，公开结果和日志不包含参数、Provider payload 或异常原文。共享进程级 SDK Host 仍按 native turn token 路由 callback，不新增 Session 状态缓存。approval resolve 只透传独立 SDK 的 native control ABI，并把 unknown、duplicate、terminal 与 invalid decision 映射为稳定 HTTP 错误；只有 native manager 接受决策后才返回成功。
 
 Agent v1 事件可通过 SSE 以 `sequence` 游标重放，前端 reducer 和兼容调用层都基于同一事件信封工作。Host descriptor 以原子方式写入数据根目录的 `run/agent-runtime.json`，供 Host 生命周期诊断复用。
@@ -263,7 +279,7 @@ pnpm dev
 纯静态产品演示（不启动后端、不读取 SQLite 或业务文件）：
 
 ```bash
-bash scripts/preview_static_demo.sh
+bash scripts/desktop/preview_static_demo.sh
 # 可选：--port 4175 --no-open
 ```
 
@@ -282,7 +298,7 @@ pnpm tauri:dev
 核心回归：
 
 ```bash
-scripts/run_core_regression.sh
+scripts/desktop/run_core_regression.sh
 ```
 
 ## 线上部署方式

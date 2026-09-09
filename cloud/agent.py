@@ -16,6 +16,7 @@ class CloudAgentError(RuntimeError):
 class AgentResult:
     content: str
     model: str
+    usage: dict[str, int] | None = None
 
 
 class CloudAgentRunner(Protocol):
@@ -116,7 +117,9 @@ class OpenAICompatibleAgentRunner:
                     raise ValueError("empty provider response")
                 if len(content) > 100_000:
                     raise ValueError("provider response exceeds limit")
-                return AgentResult(content=content, model=self.model)
+                usage = body.get("usage") if isinstance(body.get("usage"), dict) else None
+                normalized_usage = {key: int(value) for key, value in (usage or {}).items() if key in {"prompt_tokens", "completion_tokens", "total_tokens"} and isinstance(value, int)}
+                return AgentResult(content=content, model=self.model, usage=normalized_usage)
             raise ValueError("provider tool loop exceeded limit")
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
             raise CloudAgentError("cloud agent provider request failed") from exc

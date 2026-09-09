@@ -4,7 +4,7 @@
 
 ## 当前事实
 
-当前 Application Protocol v1 已完成内置应用发现、实例/Run 生命周期、桌面 JSONL transport、iframe Bridge 和 `wiki.read.graph/article`。`workspace.file.*`、`app.data.*` 等名称已进入 manifest 白名单，但没有 adapter；声明的 permissions 也没有运行时授权判断。应用 `/invoke` 后端入口存在，UI Bridge 尚未暴露。依据：`backend/app/applications/{manifest,service,runtime}.py`、`frontend/src/app-host/ApplicationHost.tsx`、`backend/tests/test_applications.py`。
+当前 Application Protocol v1 已完成内置应用发现、实例/Run 生命周期、桌面 JSONL transport、iframe Bridge、`wiki.read.graph/article`、实例隔离的 `app.data.*`、workspace 文件 CRUD、外部授权目录读取、artifact、Agent 和 `plugin.invoke` adapter。声明的 permissions 在调用前通过 Host effective grant 校验，sync/async Job 及有序事件也已落地。依据：`backend/app/applications/{manifest,service,runtime}.py`、`frontend/src/app-host/ApplicationHost.tsx`、`backend/tests/test_applications.py`。
 
 ## 本次目标
 
@@ -19,8 +19,8 @@
 ## 明确不做
 
 - 不开放第三方应用上传、安装、升级、回滚或签名控制面。
-- 不实现真实云端 worker、移动端 UI、`plugin.invoke` 和自动生成应用。
-- 不把 Artifact 接入 Note/导出链路；本次只保留后续扩展边界。
+- Cloud worker、移动端 UI 和 `plugin.invoke` 已有独立实现；本变更不把它们改造成第二套 Application runtime。
+- Artifact 已能在应用实例内创建和读取，但尚未接入 Note/导出链路；跨域消费仍是后续扩展边界。
 - 不允许应用访问任意外部绝对路径；外部读取必须落在 Host 授权根目录内。
 
 ## 权限策略
@@ -47,13 +47,13 @@ Async 调用立即返回 `{mode, job_id, status}`；Job 事件使用单调 `sequ
 
 ## 验收
 
-- [ ] 未声明 capability 返回 403 `capability_denied`。
-- [ ] 已声明但未授权 permission 返回 403 `permission_denied`。
-- [ ] 已声明且授权但 adapter 未实现返回 501 `capability_unavailable`。
-- [ ] 两个实例无法读取对方 app data 或 workspace 文件。
-- [ ] 外部文件不在授权根目录时返回 403。
-- [ ] async 调用可查询 Job 终态和 accepted/started/completed 或 failed 事件。
-- [ ] 现有 Wiki 应用和 v1 contract tests 保持通过。
+- [x] 未声明 capability 返回 403 `capability_denied`。
+- [x] 已声明但未授权 permission 返回 403 `permission_denied`。
+- [x] 已声明且授权但 adapter 未实现返回 501 `capability_unavailable`。
+- [x] 两个实例无法读取对方 app data 或 workspace 文件。
+- [x] 外部文件不在授权根目录时返回 403。
+- [x] async 调用可查询 Job 终态和 accepted/started/completed 或 failed 事件。
+- [x] 现有 Wiki 应用和 v1 contract tests 保持通过。
 
 ## 风险与回滚
 

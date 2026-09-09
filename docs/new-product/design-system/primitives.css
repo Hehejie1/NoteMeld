@@ -1,0 +1,105 @@
+/* NoteMeld Design System — HTML reference primitives. */
+.nm-surface {
+  background: var(--nm-color-surface);
+  border: 1px solid var(--nm-color-border);
+  border-radius: var(--nm-radius-lg);
+  color: var(--nm-color-text);
+}
+
+.nm-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nm-space-2);
+  min-height: var(--nm-control-height-md);
+  padding: 0 var(--nm-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--nm-radius-md);
+  font: 700 var(--nm-font-size-sm) / 1 var(--nm-font-sans);
+  cursor: pointer;
+  transition: background-color var(--nm-motion-fast), border-color var(--nm-motion-fast),
+    color var(--nm-motion-fast), transform var(--nm-motion-fast), box-shadow var(--nm-motion-fast);
+}
+.nm-button:focus-visible,
+.nm-icon-button:focus-visible,
+.nm-field:focus-within,
+.nm-tab:focus-visible {
+  outline: 2px solid var(--nm-color-accent);
+  outline-offset: 2px;
+  box-shadow: var(--nm-focus-ring);
+}
+.nm-button:active { transform: translateY(1px); }
+.nm-button[disabled] { cursor: not-allowed; opacity: .55; }
+.nm-button[data-variant="primary"] { background: var(--nm-color-accent); color: #fff; border-color: var(--nm-color-accent); }
+.nm-button[data-variant="primary"]:hover { background: var(--nm-color-accent-strong); border-color: var(--nm-color-accent-strong); }
+.nm-button[data-variant="secondary"] { background: var(--nm-color-surface); color: var(--nm-color-text); border-color: var(--nm-color-border); }
+.nm-button[data-variant="secondary"]:hover { background: var(--nm-color-accent-soft); border-color: var(--nm-color-accent); }
+.nm-button[data-variant="ghost"] { background: transparent; color: var(--nm-color-text-muted); }
+.nm-button[data-variant="ghost"]:hover { background: var(--nm-color-surface-muted); color: var(--nm-color-text); }
+.nm-button[data-variant="dashed"] { background: var(--nm-color-surface); color: var(--nm-color-text); border-style: dashed; border-color: var(--nm-color-border); }
+.nm-button[data-variant="dashed"]:hover { color: var(--nm-color-accent-strong); border-color: var(--nm-color-accent); }
+.nm-button[data-variant="link"] { padding-inline: 2px; border-color: transparent; background: transparent; color: var(--nm-color-accent-strong); }
+.nm-button[data-variant="link"]:hover { color: var(--nm-color-accent); background: transparent; }
+.nm-button[data-variant="danger"] { background: var(--nm-color-danger); color: #fff; border-color: var(--nm-color-danger); }
+.nm-button[data-variant="danger"]:hover { filter: brightness(.92); }
+.nm-button[data-size="sm"] { min-height: var(--nm-control-height-sm); padding-inline: var(--nm-space-3); }
+.nm-button[data-size="lg"] { min-height: var(--nm-control-height-lg); }
+
+.nm-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: var(--nm-control-height-md);
+  height: var(--nm-control-height-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--nm-radius-md);
+  background: transparent;
+  color: var(--nm-color-text-muted);
+  cursor: pointer;
+}
+.nm-icon-button:hover { background: var(--nm-color-surface-muted); color: var(--nm-color-text); }
+
+.nm-field {
+  display: flex;
+  align-items: center;
+  gap: var(--nm-space-2);
+  min-height: var(--nm-control-height-md);
+  padding: 0 var(--nm-space-3);
+  border: 1px solid var(--nm-color-border);
+  border-radius: var(--nm-radius-md);
+  background: var(--nm-color-surface);
+  color: var(--nm-color-text);
+}
+.nm-field input,
+.nm-field textarea,
+.nm-field select { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+.nm-field textarea { padding-block: var(--nm-space-3); resize: vertical; }
+.nm-field:focus-within { border-color: var(--nm-color-accent); }
+
+.nm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nm-space-1);
+  width: max-content;
+  min-height: 24px;
+  padding: 0 var(--nm-space-2);
+  border-radius: var(--nm-radius-pill);
+  font: 800 var(--nm-font-size-xs) / 1 var(--nm-font-sans);
+}
+.nm-badge[data-status="running"], .nm-badge[data-status="success"] { background: var(--nm-color-success-soft); color: var(--nm-color-success); }
+.nm-badge[data-status="waiting"], .nm-badge[data-status="warning"] { background: var(--nm-color-warning-soft); color: var(--nm-color-warning); }
+.nm-badge[data-status="failed"], .nm-badge[data-status="danger"] { background: var(--nm-color-danger-soft); color: var(--nm-color-danger); }
+.nm-badge[data-status="idle"], .nm-badge[data-status="info"] { background: var(--nm-color-accent-soft); color: var(--nm-color-info); }
+.nm-badge[data-status="completed"] { background: var(--nm-color-surface-muted); color: var(--nm-color-text-muted); }
+
+.nm-state { display: grid; justify-items: center; gap: var(--nm-space-2); padding: var(--nm-space-10) var(--nm-space-5); color: var(--nm-color-text-muted); text-align: center; }
+.nm-state strong { color: var(--nm-color-text); font-size: var(--nm-font-size-md); }
+.nm-state p { max-width: 36ch; margin: 0; font-size: var(--nm-font-size-sm); line-height: var(--nm-line-relaxed); }
+.nm-state[data-state="error"] strong { color: var(--nm-color-danger); }
+
+.nm-divider { height: 1px; border: 0; background: var(--nm-color-border-soft); }
+.nm-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nm-button, .nm-icon-button { transition: none; }
+}

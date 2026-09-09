@@ -55,7 +55,10 @@ completed。
 已经接收。宿主平台层必须先用 envelope AAD 完成 AEAD 解密，再把明文 command
 交给 `RemoteHostAuthority`（或原生等价实现）；只有授权校验和 durable enqueue
 成功后才能构造 `status=received` receipt。receipt 只含 frame/request/session/
-queue sequence，不包含 input 或工具参数。
+queue sequence，不包含 input 或工具参数。`CloudSyncHostRuntime.install()` 同时启动
+`RemoteAgentMailboxConsumer`：它按 session 领取 durable command，创建 canonical Agent
+Turn 并调用现有 `NativeAgentExecutor`；只有 terminal event 才会 complete/fail mailbox。
+consumer 只负责 mailbox lease、终态回写和事件投影，不复制 Agent loop。
 
 ## 本地队列与恢复
 
@@ -85,3 +88,21 @@ workspace 同级目录、仅用于协调，不属于用户 workspace 内容。
 `SessionCipher` 后，通过 `attach_cloud_sync_runtime()` 注册到 backend；backend
 lifespan 负责 install/close。没有平台安全存储依赖时，LAN Host 端点保持关闭，
 不得从环境变量读取长期 token 或私钥。
+
+桌面运行时也可通过受 `X-NoteMeld-Session` 保护的本地
+`/api/cloud-sync/host/bootstrap` 完成这次组装：请求只携带 Cloud access token，
+后端从 OS credential store 加载 Host signing identity，并在内存中创建
+`CloudClient`。`/api/cloud-sync/host/relay/{session_id}/start|stop` 只负责 Relay
+连接生命周期；session cipher 仍必须由平台先注入，bootstrap 不会降低 E2EE 要求。
+bootstrap 成功后，runtime 会周期性读取当前 Host 的有效 Grant 与活动
+`device_remote` sessions，自动启停对应 Relay；Cloud 暂时不可用时只跳过本轮，
+不关闭本地 Agent/LAN 服务，恢复后继续对账。
+
+远程会话的 AES-GCM `SessionCipher` 由平台密钥协商/安全存储层构造后，必须显式
+注入 `CloudSyncHostRuntime.install_session_cipher(session_id,
+controller_device_id, cipher)`。runtime 只保存 cipher 实例以维护序列与重放游标，
+不会暴露或持久化会话密钥；会话撤销、重协商或 Host 关闭时应移除对应实例。
+LAN 连接可以在 proof 之后发送 `notemeld.e2ee.handshake.v1` signed X25519
+offer；Host 必须用 cloud assertion 中的 controller public key 验证，再返回自己的
+signed offer。Relay 连接也支持以 `frame_type=handshake` 转发该 signed envelope；
+Relay 只路由 opaque frame，握手验证和 session key 派生仍在两端完成。

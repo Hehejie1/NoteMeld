@@ -1,0 +1,121 @@
+/* NoteMeld desktop visual layer
+   Design direction: neutral workbench surfaces, one blue accent, restrained motion.
+   This is a static prototype, so the tokens are intentionally local and dependency-free. */
+:root {
+  --nm-accent: #4b7cf3;
+  --nm-accent-strong: #2864e8;
+  --nm-accent-soft: #e8efff;
+  --nm-bg: #f7f8fb;
+  --nm-surface: #ffffff;
+  --nm-surface-muted: #f1f3f8;
+  --nm-border: #dfe4ec;
+  --nm-border-soft: #edf0f5;
+  --nm-text: #202533;
+  --nm-muted: #7d879a;
+  --nm-success: #20a971;
+  --nm-radius: 10px;
+  --nm-shadow: 0 10px 30px rgba(35, 48, 75, .06);
+}
+
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, a, input, textarea, select { transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.lucide { width: 16px; height: 16px; stroke-width: 2; flex: 0 0 auto; vertical-align: middle; }
+.sidebar-actions .lucide, .agent-header-actions .lucide { width: 16px; height: 16px; }
+.quick-link .lucide { width: 15px; height: 15px; }
+.composer-footer .lucide { width: 15px; height: 15px; }
+.add-button, .permission-button, .model-button, .voice-button, .send-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.send-button .lucide { width: 17px; height: 17px; }
+.chevron { font-size: 11px; line-height: 1; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--nm-accent);
+  outline-offset: 2px;
+}
+
+.desktop-sidebar, .context-panel, .settings-header, .capability-topbar { box-shadow: 1px 0 0 rgba(255,255,255,.7); }
+.sidebar-head { min-height: 64px; }
+.sidebar-actions button:hover, .agent-header-actions button:hover { background: var(--nm-accent-soft); color: var(--nm-accent-strong); }
+.quick-link { min-height: 34px; }
+.session { margin: 2px 0; }
+.session.active { box-shadow: inset 2px 0 0 var(--nm-accent); }
+.connection i { box-shadow: 0 0 0 3px rgba(32,169,113,.12); }
+
+.agent-header-actions button:hover, .market-item button:hover, .connector-card footer button:hover,
+.application-card > button:hover, .settings-card button:hover, .select-like:hover, .refresh-button:hover {
+  border-color: #afc1f4;
+  box-shadow: 0 3px 10px rgba(75,124,243,.10);
+  transform: translateY(-1px);
+}
+.primary-add:hover, .send-button:hover, .primary:hover { background: var(--nm-accent-strong) !important; transform: translateY(-1px); }
+button:active, .quick-link:active, .session:active { transform: scale(.98); }
+
+.new-conversation-body, .conversation, .capability-view, .settings-view { animation: nm-enter .28s ease both; }
+.capability-view.active, .settings-view.active { animation-name: nm-view-enter; }
+@keyframes nm-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nm-view-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+.new-conversation-mark { box-shadow: 0 8px 22px rgba(75,124,243,.14); }
+.starter-grid button { min-height: 72px; text-align: left; }
+.starter-grid button:hover { border-color: #afc1f4; background: var(--nm-accent-soft); color: var(--nm-accent-strong); transform: translateY(-2px); }
+.composer-panel { box-shadow: var(--nm-shadow); }
+.composer-panel textarea::placeholder { color: #9aa3b2; }
+.workspace-picker:hover, .permission-button:hover, .model-button:hover, .voice-button:hover { color: var(--nm-accent-strong); }
+.send-button { display: inline-grid; place-items: center; line-height: 1; }
+
+/* Compact controls: the header exposes icon-only actions. Keep the add action to one plus icon. */
+.agent-header-actions button { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.agent-header-actions button:hover { background: transparent !important; color: var(--nm-accent-strong); box-shadow: none !important; transform: none; }
+.send-button::after, .add-button::after { content: none !important; display: none !important; }
+.add-button { font-size: 0 !important; min-width: 24px; padding-inline: 0; }
+.add-button > span { display: none; }
+.add-button .lucide { width: 18px; height: 18px; }
+
+/* Workspace context is a separate control above the composer, sized by its content. */
+.new-composer .workspace-picker { position: absolute; left: 0; bottom: calc(100% + 5px); width: max-content; max-width: 100%; padding: 5px 2px; }
+.new-composer .workspace-picker b { margin-left: 6px; }
+.new-composer .workspace-picker strong, .new-composer .workspace-picker small { white-space: nowrap; }
+
+.capability-tabs button, .scope-tabs button, .settings-nav button { position: relative; }
+.capability-tabs button.active::after, .scope-tabs button.active::after, .settings-nav button.active::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px; background: currentColor;
+}
+.capability-search:focus-within { border-color: #afc1f4; box-shadow: 0 0 0 3px rgba(75,124,243,.11); }
+.market-item, .skill-item, .connector-card, .application-card, .model-row, .archive-row { transition: background-color .16s ease, border-color .16s ease, transform .16s ease; }
+.market-item:hover, .skill-item:hover, .model-row:hover, .archive-row:hover { background: rgba(232,239,255,.42); }
+.connector-card:hover, .application-card:hover { border-color: #afc1f4; transform: translateY(-2px); box-shadow: var(--nm-shadow); }
+.installed-strip { scrollbar-width: thin; }
+
+.theme-dark {
+  --nm-bg: #101522;
+  --nm-surface: #181f31;
+  --nm-surface-muted: #202a40;
+  --nm-border: #303b55;
+  --nm-border-soft: #27324a;
+  --nm-text: #f2f5fc;
+  --nm-muted: #9da9c0;
+  --nm-accent-soft: #22345d;
+  --nm-shadow: 0 12px 34px rgba(0,0,0,.18);
+}
+.theme-dark .market-item:hover, .theme-dark .skill-item:hover, .theme-dark .model-row:hover, .theme-dark .archive-row:hover { background: rgba(34,52,93,.55); }
+
+/* Keep the empty-state hierarchy legible in both themes. */
+.theme-dark .new-conversation-body h1 { color: var(--nm-text); }
+.theme-dark .new-conversation-body p { color: var(--nm-muted); }
+.theme-dark .starter-grid button { background: var(--nm-surface); border-color: var(--nm-border); color: #c2cbe0; }
+.theme-dark .starter-grid button:hover { background: var(--nm-accent-soft); color: var(--nm-accent-strong); border-color: var(--nm-accent); }
+body.theme-dark .new-conversation-body h1 { color: #f2f5fc !important; }
+body.theme-dark .new-conversation-body p { color: #9da9c0 !important; }
+.send-button.sent { background: var(--nm-success) !important; }
+
+@media (max-width: 700px) {
+  .catalog { width: 220px; padding: 14px 10px; }
+  .catalog-brand { margin-bottom: 14px; }
+  .preview { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

@@ -276,7 +276,7 @@ fn build_runtime_bootstrap(payload: &FrontendRuntimePayload) -> Result<String, S
 }
 
 fn resolve_dev_backend_command(repo_root: &Path) -> Option<(PathBuf, Vec<String>, PathBuf)> {
-    let script = repo_root.join("backend/desktop_entry.py");
+    let script = repo_root.join("desktop/backend/desktop_entry.py");
     let python_candidates = [
         repo_root.join(".venv/bin/python3"),
         repo_root.join(".venv/bin/python"),
@@ -287,7 +287,7 @@ fn resolve_dev_backend_command(repo_root: &Path) -> Option<(PathBuf, Vec<String>
             return Some((
                 python,
                 vec![script.to_string_lossy().into_owned()],
-                repo_root.join("backend"),
+                repo_root.join("desktop/backend"),
             ));
         }
     }
@@ -425,7 +425,7 @@ fn spawn_backend_sidecar(
         .ok_or_else(|| "failed to locate desktop backend command".to_string())?;
 
     let (app_data_root, log_dir) = resolve_desktop_paths(app)?;
-    let data_dir = app_data_root.join("vector_db");
+    let data_dir = app_data_root.join("data");
     ensure_dir(&data_dir)?;
 
     let mut command = Command::new(program);
@@ -484,6 +484,7 @@ pub fn run() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let port = ensure_fixed_backend_port_available().map_err(std::io::Error::other)?;
             let runtime_payload = build_runtime_payload(port, generate_session_token())
@@ -537,7 +538,8 @@ mod tests {
     #[cfg(unix)]
     use super::{
         desktop_backend_port, ensure_executable_permissions, ensure_fixed_backend_port_available,
-        optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable, validate_cloud_base_url,
+        normalize_cloud_base_url, optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable,
+        validate_cloud_base_url,
     };
     #[cfg(unix)]
     use std::{

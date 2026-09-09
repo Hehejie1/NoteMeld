@@ -27,7 +27,7 @@ from typing import Any
 
 # 确保能导入 backend 模块
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # tests/agent/ → tests/ → 项目根
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.insert(0, str(PROJECT_ROOT / "desktop" / "backend"))
 
 from app.services.wiki_search import WikiSearch
 
@@ -288,7 +288,7 @@ def main():
     parser.add_argument(
         "--wiki-dir",
         type=str,
-        default=str(PROJECT_ROOT / "vector_db" / "note_results" / "wiki"),
+    default=str(PROJECT_ROOT / "desktop" / "data" / "note_results" / "wiki"),
         help="Wiki 数据目录路径",
     )
     parser.add_argument(

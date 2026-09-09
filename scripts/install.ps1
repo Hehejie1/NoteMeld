@@ -7,10 +7,8 @@ $RepoBranch = if ($env:NOTEMELD_REPO_BRANCH) { $env:NOTEMELD_REPO_BRANCH } else 
 
 $InstallRoot = if ($env:NOTEMELD_HOME) { $env:NOTEMELD_HOME } else { Join-Path $env:USERPROFILE ".notemeld" }
 $AppDir = Join-Path $InstallRoot "app"
-$DataDir = Join-Path $InstallRoot "data"
-$LogDir = Join-Path $InstallRoot "logs"
-$ModelDir = Join-Path $InstallRoot "models"
-$ConfigDir = Join-Path $InstallRoot "config"
+$DataDir = Join-Path $AppDir "desktop\data"
+$LogDir = Join-Path $AppDir "desktop\logs"
 $BinDir = if ($env:NOTEMELD_BIN_DIR) { $env:NOTEMELD_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\NoteMeld\bin" }
 
 $script:PythonCommand = ""
@@ -620,7 +618,7 @@ function Ensure-Path {
 }
 
 function Install-Repo {
-  New-Item -ItemType Directory -Force -Path $InstallRoot, $DataDir, $LogDir, $ModelDir, $ConfigDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $InstallRoot, $DataDir, $LogDir | Out-Null
 
   if (Test-Path (Join-Path $AppDir ".git")) {
     Log "Updating existing NoteMeld repository"
@@ -651,7 +649,7 @@ function Install-Backend {
 
     $venvPython = Join-Path $AppDir ".venv\Scripts\python.exe"
     Invoke-CheckedCommand $venvPython @("-m", "pip", "install", "--upgrade", "pip") "Failed to upgrade pip"
-    Invoke-CheckedCommand $venvPython @("-m", "pip", "install", "-r", "backend\requirements.txt") "Failed to install backend requirements"
+    Invoke-CheckedCommand $venvPython @("-m", "pip", "install", "-r", "desktop\backend\requirements.txt") "Failed to install backend requirements"
   } finally {
     Pop-Location
   }
@@ -659,7 +657,7 @@ function Install-Backend {
 
 function Install-Frontend {
   Log "Installing frontend dependencies"
-  Push-Location (Join-Path $AppDir "frontend")
+  Push-Location (Join-Path $AppDir "desktop\frontend")
   try {
     Invoke-CheckedCommand $script:CorepackCommand @("pnpm", "approve-builds", "esbuild", "core-js") "Failed to approve required pnpm build scripts"
     Invoke-CheckedCommand $script:CorepackCommand @("pnpm", "install", "--registry", "https://registry.npmjs.org") "Failed to install frontend dependencies"
@@ -689,13 +687,13 @@ function Install-Cli {
 @echo off
 set "NM_HOME=%NOTEMELD_HOME%"
 if "%NM_HOME%"=="" set "NM_HOME=%USERPROFILE%\.notemeld"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%NM_HOME%\app\scripts\notemeld.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%NM_HOME%\app\scripts\desktop\notemeld.ps1" %*
 "@ | Set-Content -Path $cmdPath -Encoding ASCII
 
   @"
 `$ErrorActionPreference = "Stop"
 `$HomeRoot = if (`$env:NOTEMELD_HOME) { `$env:NOTEMELD_HOME } else { Join-Path `$env:USERPROFILE ".notemeld" }
-& (Join-Path `$HomeRoot "app\scripts\notemeld.ps1") @args
+& (Join-Path `$HomeRoot "app\scripts\desktop\notemeld.ps1") @args
 "@ | Set-Content -Path $ps1Path -Encoding ASCII
 
   Log "Installed CLI at $cmdPath"
