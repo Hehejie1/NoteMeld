@@ -327,6 +327,8 @@
 
   第二次 Release 运行已证明三平台可越过 Application 资源校验；Apple Silicon 生成了完整 updater bundle。Windows 随后暴露 PowerShell 会剥离 workflow 内联 JSON 的引号，Tauri 收到非法 `{bundle:{...}}` 配置。已改用仓库内 `desktop/src-tauri/tauri.release.conf.json`，避免 runner shell 差异；发布 Secret 同步校正为与仓库公钥匹配的无密码 updater key，待第三次 Release 运行验证。
 
+  第三次 Release 运行进一步证明 Windows 已读取正确的无密码 updater key；实际失败点是 Tauri 默认 `beforeBuildCommand` 使用 Unix `VITE_BASE_PATH=./`，Windows cmd 将其视为未知命令。已在 Windows 专用配置改为 `set VITE_BASE_PATH=./`，待第四次 Release 运行验证。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
