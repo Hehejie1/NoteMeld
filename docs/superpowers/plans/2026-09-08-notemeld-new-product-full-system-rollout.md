@@ -347,6 +347,8 @@
 
   运行级 Mobile CI 首次补强暴露并修复两处真实发布问题：iOS 生成的 `Info.plist` 缺少 `CFBundleVersion`，已在 Xcode 工程和生成配置中固定 `CURRENT_PROJECT_VERSION=1`、`MARKETING_VERSION=1.0`；Android AVD 已成功启动并安装 APK，但原 smoke 脚本过早依赖 `pidof`，现改为显式 `am start -W`、清空并检查 fatal log、检查前台 Activity。修复后本机 iOS Simulator 安装/启动、Android AVD 安装/启动均通过，待 PR CI 重新验证。
 
+  运行级 Mobile CI 最终验证完成：PR #11（`b053999`）已合并；GitHub Actions run `34395610413` 的 Android API 34 emulator、iOS Simulator 和 native source contracts 三个 job 全部成功。Android smoke 脚本进一步改为启动后检查前台 Activity，并以单行 fatal-log 判定避免 action 对多行 shell 条件的错误拆分；移动端模拟器运行门禁已纳入主分支。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
