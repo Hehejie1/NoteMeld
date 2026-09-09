@@ -329,6 +329,8 @@
 
   第三次 Release 运行进一步证明 Windows 已读取正确的无密码 updater key；实际失败点是 Tauri 默认 `beforeBuildCommand` 使用 Unix `VITE_BASE_PATH=./`，Windows cmd 将其视为未知命令。已在 Windows 专用配置改为 `set VITE_BASE_PATH=./`，待第四次 Release 运行验证。
 
+  第四次 Release 运行已完成三平台编译、签名和制品上传；最终 manifest 门禁发现 Windows 仅有 `.msi`/`.msi.sig`，缺少 updater 需要的 `.msi.zip`。Tauri 当前配置值 `true` 生成了 v2 兼容签名形式，现改为官方 `v1Compatible`，使 MSI updater zip 与现有 `latest.json` 平台规则一致，待第五次 Release 运行验证公开资产。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
