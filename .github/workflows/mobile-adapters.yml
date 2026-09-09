@@ -34,6 +34,21 @@ jobs:
       - name: Assemble Android debug adapter
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug
+      - name: Install and launch Android adapter in API 34 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am force-stop com.notemeld.mobile
+            adb shell monkey -p com.notemeld.mobile 1
+            sleep 2
+            adb shell pidof com.notemeld.mobile
+            adb logcat -d -t 400 | grep -Evi 'FATAL EXCEPTION|AndroidRuntime.*(crash|fatal)' || true
 
   ios:
     name: iOS adapter build
@@ -51,6 +66,31 @@ jobs:
           -derivedDataPath ios/build/ci
           CODE_SIGNING_ALLOWED=NO
           build
+      - name: Install and launch iOS Simulator adapter
+        shell: bash
+        run: |
+          device_id="$(python3 - <<'PY'
+          import json, subprocess
+          devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
+          for runtimes in devices.values():
+              for device in runtimes:
+                  if device.get('isAvailable') and device.get('name') == 'iPhone 15':
+                      print(device['udid'])
+                      raise SystemExit
+          for runtimes in devices.values():
+              for device in runtimes:
+                  if device.get('isAvailable'):
+                      print(device['udid'])
+                      raise SystemExit
+          raise SystemExit('no available iOS Simulator')
+          PY
+          )"
+          xcrun simctl boot "$device_id" 2>/dev/null || true
+          xcrun simctl bootstatus "$device_id" -b
+          app_path="$(find ios/build/ci -type d -name 'NoteMeldMobile.app' -print -quit)"
+          test -n "$app_path"
+          xcrun simctl install "$device_id" "$app_path"
+          xcrun simctl launch "$device_id" com.notemeld.mobile
 
   source-contracts:
     name: Native source contracts
