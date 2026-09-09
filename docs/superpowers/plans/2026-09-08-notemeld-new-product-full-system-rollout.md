@@ -325,6 +325,8 @@
 
   正式 `v0.0.4` Release 首次触发后，三平台均在 Tauri 构建前的资源校验失败：桌面配置引用仓库外的 `../../../packages/notemeld-applications/apps`，GitHub checkout 不包含工作区兄弟仓库。已将当前可发布的 Wiki Application bundle 纳入 `desktop/src-tauri/resources/applications/wiki`，并让默认/macOS/Windows Tauri 配置统一从仓库内资源打包；这同时消除了发布机依赖未 checkout 的外部工作区。首次运行不创建 Release，旧 `v0.0.4` 标签原先指向 2026-07-28 旧提交，已校正为当前 `main` 合并提交后重新触发发布验证。
 
+  第二次 Release 运行已证明三平台可越过 Application 资源校验；Apple Silicon 生成了完整 updater bundle。Windows 随后暴露 PowerShell 会剥离 workflow 内联 JSON 的引号，Tauri 收到非法 `{bundle:{...}}` 配置。已改用仓库内 `desktop/src-tauri/tauri.release.conf.json`，避免 runner shell 差异；发布 Secret 同步校正为与仓库公钥匹配的无密码 updater key，待第三次 Release 运行验证。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。

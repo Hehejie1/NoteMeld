@@ -69,7 +69,7 @@ jobs:
 
       - name: Build desktop app with signed updater artifact
         working-directory: desktop
-        run: pnpm tauri build --target aarch64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        run: pnpm tauri build --target aarch64-apple-darwin --config src-tauri/tauri.release.conf.json
 
       - name: Collect artifacts
         run: |
@@ -165,7 +165,7 @@ jobs:
 
       - name: Build desktop app (x86_64) with signed updater artifact
         working-directory: desktop
-        run: arch -x86_64 pnpm tauri build --target x86_64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        run: arch -x86_64 pnpm tauri build --target x86_64-apple-darwin --config src-tauri/tauri.release.conf.json
 
       - name: Collect artifacts
         run: |
@@ -269,7 +269,7 @@ jobs:
 
       - name: Build desktop app with signed updater artifact
         working-directory: desktop
-        run: pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        run: pnpm tauri build --config src-tauri/tauri.release.conf.json
 
       - name: Collect artifacts
         run: |
