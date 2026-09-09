@@ -143,7 +143,9 @@ public final class RemoteRelayTransport: NSObject, URLSessionWebSocketDelegate {
         let shared = try ephemeral.sharedSecretFromKeyAgreement(with: Curve25519.KeyAgreement.PublicKey(rawRepresentation: peerPublic))
         let first = controllerID < host.id ? (controllerID, publicKey, host.id, peerPublic) : (host.id, peerPublic, controllerID, publicKey)
         let transcript = Self.handshakeTranscript(sessionID: sessionID, first: first.0, firstPublic: first.1, second: first.2, secondPublic: first.3)
-        key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: Data(), sharedInfo: transcript, outputByteCount: 32)
+        // Match RFC 5869's absent-salt behavior used by the desktop and Android
+        // implementations: an all-zero hash-length salt, not an empty key.
+        key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: Data(repeating: 0, count: 32), sharedInfo: transcript, outputByteCount: 32)
         sequence = 1
     }
 

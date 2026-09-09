@@ -102,7 +102,9 @@ export class HarmonyRemoteCrypto {
 
   static async hkdf(shared: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
     let kdf = cryptoFramework.createKdf('HKDF');
-    let spec: cryptoFramework.HKDFSpec = { algName: 'HKDF', key: shared, salt: new Uint8Array(0), info, keySize: 32 };
+    // Match RFC 5869's absent-salt behavior used by the desktop and native
+    // clients: use a 32-byte all-zero salt rather than an empty key.
+    let spec: cryptoFramework.HKDFSpec = { algName: 'HKDF', key: shared, salt: new Uint8Array(32), info, keySize: 32 };
     let result = await kdf.generateSecret(spec);
     return result.data;
   }

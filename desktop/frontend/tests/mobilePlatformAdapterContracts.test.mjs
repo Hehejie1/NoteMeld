@@ -159,3 +159,12 @@ test('native remote transports authenticate, bind nonce into AAD and decrypt rec
   assert.match(harmony, /HarmonyRemoteCrypto\.decrypt\(this\.sessionKey, HarmonyRemoteTransport\.decode\(nonce\), HarmonyRemoteTransport\.decode\(ciphertext\)/)
   assert.match(harmony, /frame_type.*receipt[\s\S]*decryptFrame/)
 })
+
+test('native remote transports use the same RFC 5869 absent-salt convention', async () => {
+  const android = await readFile(path.join(root, 'android/src/main/kotlin/com/notemeld/mobile/AndroidRemoteRelay.kt'), 'utf8')
+  const ios = await readFile(path.join(root, 'ios/Sources/NoteMeldMobile/RemoteRelayTransport.swift'), 'utf8')
+  const harmony = await readFile(path.join(root, 'harmony/entry/src/main/ets/services/HarmonyRemoteCrypto.ets'), 'utf8')
+  assert.match(android, /SecretKeySpec\(ByteArray\(32\), "HmacSHA256"\)/)
+  assert.match(ios, /salt:\s*Data\(repeating:\s*0,\s*count:\s*32\)/)
+  assert.match(harmony, /salt:\s*new Uint8Array\(32\)/)
+})
