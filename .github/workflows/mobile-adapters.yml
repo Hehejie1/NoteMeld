@@ -45,10 +45,15 @@ jobs:
           script: |
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             adb shell am force-stop com.notemeld.mobile
-            adb shell monkey -p com.notemeld.mobile 1
-            sleep 2
-            adb shell pidof com.notemeld.mobile
-            adb logcat -d -t 400 | grep -Evi 'FATAL EXCEPTION|AndroidRuntime.*(crash|fatal)' || true
+            adb logcat -c
+            adb shell am start -W -n com.notemeld.mobile/.MainActivity
+            sleep 5
+            adb logcat -d -t 800 > android-runtime.log
+            if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime.*(crash|fatal)' android-runtime.log; then
+              cat android-runtime.log
+              exit 1
+            fi
+            adb shell dumpsys activity activities | grep -q 'com.notemeld.mobile/.MainActivity'
 
   ios:
     name: iOS adapter build
