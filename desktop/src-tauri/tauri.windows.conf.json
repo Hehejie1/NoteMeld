@@ -1,4 +1,7 @@
 {
+  "build": {
+    "beforeBuildCommand": "cd frontend && set VITE_BASE_PATH=./ && corepack pnpm build"
+  },
   "bundle": {
     "resources": {
       "bin/backend/notemeld-backend.exe": "bin/backend/notemeld-backend.exe",
