@@ -343,6 +343,8 @@
 
   跨平台 E2EE 复核发现 HKDF 缺少显式统一约束：桌面实现和 Android 已按 RFC 5869 的 absent-salt 语义使用 32 字节零盐，iOS/Harmony 原先以空盐表达该语义，容易被平台实现差异放大。现已将 iOS `CryptoKit` 和 Harmony `CryptoFramework` 明确改为 32 字节零盐，并新增移动三端源码契约；Swift `CryptoKit` 固定向量与桌面 Python `HKDF(salt=None)` 输出一致，Android Debug 与 iOS Simulator Debug 重新构建通过。该修复在实体设备互操作前消除了一个跨端密钥不一致风险。
 
+  HKDF 修复推送后的 GitHub Actions Mobile adapters run `34391714625` 已完成：Android adapter build、iOS Simulator build、native source contracts 三个 job 全部成功；其中新增三端 HKDF 契约也在 CI 的 Node 测试中通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
