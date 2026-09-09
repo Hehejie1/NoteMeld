@@ -331,6 +331,10 @@
 
   第四次 Release 运行已完成三平台编译、签名和制品上传；最终 manifest 门禁发现 Windows 仅有 `.msi`/`.msi.sig`，缺少 updater 需要的 `.msi.zip`。Tauri 当前配置值 `true` 生成了 v2 兼容签名形式，现改为官方 `v1Compatible`，使 MSI updater zip 与现有 `latest.json` 平台规则一致，待第五次 Release 运行验证公开资产。
 
+  第五次 Release 运行完成：macOS Apple Silicon、macOS Intel、Windows 三个平台均构建并签名通过；Windows 已生成 `NoteMeld_0.0.4_x64_en-US.msi.zip` 与 `.sig`。GitHub Release `v0.0.4` 已公开，独立回读 `latest.json` 得到版本 `0.0.4`，三个平台签名字段均存在，三个 updater URL 的 HEAD 均返回 HTTP 200。桌面发布/更新链路达到可公开下载和更新清单校验标准。
+
+  最终未宣称的门禁仍限定为真实移动设备间 LAN/Relay 互操作：Android AVD、iOS Simulator、Harmony QEMU 安装/启动和移动源码契约均已验证，但没有实体 Android/iOS/Harmony 设备矩阵与实际网络环境，因此 `M01.home`、`M02.session` 保持 partial，避免将模拟器证据冒充真实设备验收。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
