@@ -166,6 +166,15 @@ test('mobile agent submission requires an explicit permission grant', async () =
   assert.match(harmony, /\.enabled\(this\.state\.connection !== ConnectionState\.Offline && this\.state\.permissionGranted/)
 })
 
+test('native mobile memory writes are disabled while offline', async () => {
+  const android = await readFile(path.join(root, surfaces.android), 'utf8')
+  const ios = await readFile(path.join(root, surfaces.ios), 'utf8')
+  const harmony = await readFile(path.join(root, surfaces.harmony), 'utf8')
+  assert.match(android, /OutlinedTextField\(s\.memoryDraft[\s\S]*enabled = s\.connection != ConnectionState\.OFFLINE/)
+  assert.match(ios, /添加我的记忆[\s\S]*state\.connection == \.offline/)
+  assert.match(harmony, /Button\('添加我的记忆'\)\.enabled\(this\.state\.connection !== ConnectionState\.Offline/)
+})
+
 test('native remote transports authenticate, bind nonce into AAD and decrypt receipts/events', async () => {
   const android = await readFile(path.join(root, 'android/src/main/kotlin/com/notemeld/mobile/AndroidRemoteRelay.kt'), 'utf8')
   const ios = await readFile(path.join(root, 'ios/Sources/NoteMeldMobile/RemoteRelayTransport.swift'), 'utf8')

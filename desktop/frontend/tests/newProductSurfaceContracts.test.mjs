@@ -14,6 +14,8 @@ assert.match(mobile, /readOnly=\{!online \|\| !backendReady\}/, '移动端离线
 assert.match(mobile, /离线只读/, '移动端必须向用户明确展示离线只读状态')
 assert.match(mobile, /!permission\) return/, '移动端发送必须要求用户明确授予权限')
 assert.match(mobile, /disabled=\{sending \|\| readOnly \|\| !permission\}/, '移动端发送按钮必须受权限门禁')
+assert.match(mobile, /!content \|\| !online \|\| !backendReady/, '移动端记忆写入必须受在线和后端 ready 门禁')
+assert.match(mobile, /恢复连接后才能保存新记忆/, '移动端记忆库必须明确展示离线只读状态')
 const cloud = await readFile(path.join(root, 'src/pages/CloudPage/index.tsx'), 'utf8')
 const cloudSessionPanel = await readFile(path.join(root, 'src/components/CloudSessionPanel/CloudSessionPanel.tsx'), 'utf8')
 const capabilities = await readFile(path.join(root, 'src/pages/CapabilityCenter/index.tsx'), 'utf8')

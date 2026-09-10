@@ -290,7 +290,7 @@ public struct MobileSurface: View {
     }
 
     private var memory: some View {
-        List { Section("我的记忆") { ForEach(state.memories, id: \.self) { Text($0) } }; Section { TextField("告诉 NoteMeld 要记住或忘记什么…", text: Binding(get: { state.memoryDraft }, set: { dispatch(.setMemoryDraft($0)) })); Button(savingMemory ? "保存中…" : "添加我的记忆") { Task { await saveMemory() } }.disabled(savingMemory || state.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }; Button("复制记忆") { UIPasteboard.general.string = state.memories.joined(separator: "\n") } }
+        List { Section("我的记忆") { ForEach(state.memories, id: \.self) { Text($0) } }; Section { TextField("告诉 NoteMeld 要记住什么…", text: Binding(get: { state.memoryDraft }, set: { dispatch(.setMemoryDraft($0)) })).disabled(state.connection == .offline); Button(savingMemory ? "保存中…" : "添加我的记忆") { Task { await saveMemory() } }.disabled(savingMemory || state.connection == .offline || state.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }; Button("复制记忆") { UIPasteboard.general.string = state.memories.joined(separator: "\n") } }
     }
 
     private func saveMemory() async {
