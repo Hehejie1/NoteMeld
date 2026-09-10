@@ -10,6 +10,7 @@ const conversation = await fs.readFile(new URL('../src/services/conversation.ts'
 test('Notes application reads the bounded real note library and exposes empty/loading/error states', () => {
   assert.match(app, /useBackendInitContext/)
   assert.match(app, /if \(!backendReady\)/)
+  assert.match(app, /if \(!file \|\| !backendReady\) return/)
   assert.match(app, /listNoteLibrary\(\{ q: query, offset, limit: PAGE_SIZE, signal: controller\.signal \}\)/)
   assert.match(app, /正在读取笔记库/)
   assert.match(app, /还没有符合条件的笔记/)
@@ -35,4 +36,6 @@ test('Notes application never claims Wiki completion while a task is still runni
   assert.match(app, /取消 Wiki/)
   assert.match(app, /重建 Wiki/)
   assert.match(app, /wikiStatus: status/)
+  assert.match(app, /if \(!backendReady \|\| tab !== 'wiki'/)
+  assert.match(app, /if \(!backendReady\) return\n    setOpening\(true\); setWikiBusyTask\(taskId\)/)
 })

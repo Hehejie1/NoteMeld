@@ -377,6 +377,8 @@
 
   iOS 真机通道恢复：重新执行 `xcodebuild -prepareDeviceSupport -platform iOS -osVersion 26.6 -modelCode iPhone14,7` 后，设备状态变为 `ddiServicesAvailable=true`、`tunnelState=connected`；使用真实 iPhone destination 的 `CODE_SIGNING_ALLOWED=NO` 编译已 `BUILD SUCCEEDED`。随后通过 `devicectl device install app` 验证设备端安装链路，明确失败原因为 unsigned app `No code signature found`；开启 `-allowProvisioningUpdates` 后 Xcode 明确失败于 `requires a development team`。因此当前剩余是 Apple Developer team/provisioning，不再是 DDI 或代码编译问题。
 
+  APP01 入口门禁补齐：笔记应用的列表刷新、Markdown 导入、Wiki 图谱读取、状态轮询、笔记/文章打开、Wiki 重建和取消均在 `backendReady` 之前直接返回，避免 sidecar 启动窗口产生请求竞态。NotesApp 契约、TypeScript contract compile、目标 lint 和 Vite production build 均通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。

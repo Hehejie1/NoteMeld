@@ -32,6 +32,7 @@ export default function NotesApp() {
   const libraryRequest = useRef<AbortController | null>(null)
 
   const load = useCallback(async () => {
+    if (!backendReady) return
     libraryRequest.current?.abort()
     const controller = new AbortController()
     libraryRequest.current = controller
@@ -47,7 +48,7 @@ export default function NotesApp() {
     } finally {
       setLoading(false)
     }
-  }, [offset, query])
+  }, [backendReady, offset, query])
 
   useEffect(() => {
     if (!backendReady) {
@@ -59,14 +60,14 @@ export default function NotesApp() {
   }, [backendReady, load])
 
   useEffect(() => {
-    if (tab !== 'wiki' || wiki) return
+    if (!backendReady || tab !== 'wiki' || wiki) return
     setWikiLoading(true)
     void getWikiGraph().then(setWiki).catch(() => setError('Wiki 图谱读取失败。')).finally(() => setWikiLoading(false))
-  }, [tab, wiki])
+  }, [backendReady, tab, wiki])
 
   useEffect(() => {
     const active = items.filter(item => ['pending', 'running'].includes(item.wikiStatus || '')).map(item => item.taskId)
-    if (!active.length) return
+    if (!backendReady || !active.length) return
     const timer = window.setInterval(() => {
       void Promise.all(active.map(async taskId => ({ taskId, status: await getWikiExtractionStatus(taskId) }))).then(rows => {
         setItems(current => current.map(item => {
@@ -77,10 +78,10 @@ export default function NotesApp() {
       }).catch(() => undefined)
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [items])
+  }, [backendReady, items])
 
   const importMarkdown = async (file: File | undefined) => {
-    if (!file) return
+    if (!file || !backendReady) return
     setImporting(true); setError('')
     try {
       const content = await file.text()
@@ -90,7 +91,7 @@ export default function NotesApp() {
   }
 
   const openNote = async (title: string) => {
-    if (!title) return
+    if (!title || !backendReady) return
     setOpening(true); setError('')
     try { setSelectedNote(await readNoteByTitle(title)) } catch { setError('笔记详情读取失败。') } finally { setOpening(false) }
   }
@@ -101,11 +102,13 @@ export default function NotesApp() {
   }
 
   const rebuildWiki = async (taskId: string) => {
+    if (!backendReady) return
     setOpening(true); setWikiBusyTask(taskId); setError('')
     try { await retryWikiExtraction(taskId); await load() } catch { setError('Wiki 重建任务提交失败。') } finally { setOpening(false); setWikiBusyTask(null) }
   }
 
   const cancelWiki = async (taskId: string) => {
+    if (!backendReady) return
     setWikiBusyTask(taskId); setError('')
     try { await cancelWikiExtraction(taskId); setItems(current => current.map(item => item.taskId === taskId ? { ...item, wikiStatus: 'canceled' } : item)) } catch { setError('Wiki 任务取消失败。') } finally { setWikiBusyTask(null) }
   }
