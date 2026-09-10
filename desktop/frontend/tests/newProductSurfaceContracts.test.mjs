@@ -12,6 +12,8 @@ assert.match(mobile, /if \(backendReady\) refreshProjection\(\)/, '移动端记�
 assert.match(mobile, /window\.addEventListener\('offline'/, '移动端必须监听离线状态')
 assert.match(mobile, /readOnly=\{!online \|\| !backendReady\}/, '移动端离线或后端未就绪时必须进入只读态')
 assert.match(mobile, /离线只读/, '移动端必须向用户明确展示离线只读状态')
+assert.match(mobile, /!permission\) return/, '移动端发送必须要求用户明确授予权限')
+assert.match(mobile, /disabled=\{sending \|\| readOnly \|\| !permission\}/, '移动端发送按钮必须受权限门禁')
 const cloud = await readFile(path.join(root, 'src/pages/CloudPage/index.tsx'), 'utf8')
 const cloudSessionPanel = await readFile(path.join(root, 'src/components/CloudSessionPanel/CloudSessionPanel.tsx'), 'utf8')
 const capabilities = await readFile(path.join(root, 'src/pages/CapabilityCenter/index.tsx'), 'utf8')

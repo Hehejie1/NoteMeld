@@ -152,9 +152,18 @@ test('native mobile surfaces enforce offline read-only controls', async () => {
   const ios = await readFile(path.join(root, surfaces.ios), 'utf8')
   const harmony = await readFile(path.join(root, surfaces.harmony), 'utf8')
   assert.match(android, /enabled = s\.connection != ConnectionState\.OFFLINE[\s\S]*添加文件/)
-  assert.match(ios, /Button\("添加文件"\)[\s\S]*disabled\(state\.connection == \.offline\)/)
-  assert.match(harmony, /Button\('添加文件'\)\.enabled\(this\.state\.connection !== ConnectionState\.Offline\)/)
+  assert.match(ios, /Button\("添加文件"\)[\s\S]*disabled\(state\.connection == \.offline \|\| !state\.permissionGranted\)/)
+  assert.match(harmony, /Button\('添加文件'\)\.enabled\(this\.state\.connection !== ConnectionState\.Offline && this\.state\.permissionGranted\)/)
   assert.match(harmony, /permissionButton\(\)[\s\S]*if \(this\.state\.connection !== ConnectionState\.Offline\)/)
+})
+
+test('mobile agent submission requires an explicit permission grant', async () => {
+  const android = await readFile(path.join(root, surfaces.android), 'utf8')
+  const ios = await readFile(path.join(root, surfaces.ios), 'utf8')
+  const harmony = await readFile(path.join(root, surfaces.harmony), 'utf8')
+  assert.match(android, /Button\(enabled = s\.connection != ConnectionState\.OFFLINE && s\.permissionGranted/)
+  assert.match(ios, /guard !input\.isEmpty, state\.permissionGranted else \{ return \}/)
+  assert.match(harmony, /\.enabled\(this\.state\.connection !== ConnectionState\.Offline && this\.state\.permissionGranted/)
 })
 
 test('native remote transports authenticate, bind nonce into AAD and decrypt receipts/events', async () => {

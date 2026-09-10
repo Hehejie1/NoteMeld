@@ -363,6 +363,8 @@
 
   原生移动端离线约束同步补齐：Android、iOS、Harmony 的会话页在 `offline` 状态下禁用输入、附件、模型、权限和会话操作，仅保留历史产物查看；三端均显示“离线模式：仅可查看已同步内容”。移动协议/界面契约 `15 passed`，Android Debug、iOS Simulator Debug、Harmony HAP 均重新构建成功。
 
+  移动 Agent 权限门禁补齐：移动 Web 与 Android/iOS/Harmony 的发送入口现在都要求用户先明确授予本次文件与工具权限；未授权时拒绝提交，并在原生端同步禁用附件、模型和会话操作。相关移动契约 `24 passed`，TypeScript contract compile、Android Debug、iOS Simulator Debug、Harmony HAP 均通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
