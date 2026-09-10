@@ -383,6 +383,8 @@
 
   移动 reducer 记忆写入再收口：Android、iOS、Harmony 的 `AddMemory/addMemory` 状态 action 现在也在 offline 状态直接拒绝，补齐了从非 UI 入口绕过离线只读限制的路径。移动 reducer 契约 `29 passed`；Android Debug 与 iOS Simulator Debug 构建成功。Harmony 本轮未重跑，因当前环境没有 `ohpm` 命令；此前同一改动集的 HAP 构建已成功，且源码契约覆盖该规则。
 
+  APP01 后端异常路径证据补齐：新增 `/api/notes/import` 业务校验回归，非法 `import_mode` 真实返回 HTTP 200 包装体中的 `code=400` 和可展示错误消息；结合 Wiki 重建服务已有的取消当前代次、继续最新请求测试，定向后端回归为 `5 passed`。浏览器文件选择器注入仍受当前自动化能力限制，未将其伪报为通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。

@@ -31,3 +31,19 @@ def test_note_library_rejects_unbounded_page_size():
     app.include_router(imported_notes.router, prefix="/api")
     response = TestClient(app).get("/api/notes/library?limit=0")
     assert response.status_code == 422
+
+
+def test_note_import_exposes_business_validation_failure():
+    app = FastAPI()
+    app.include_router(imported_notes.router, prefix="/api")
+    service = imported_notes.ConversationImportService.__new__(imported_notes.ConversationImportService)
+    with patch.object(imported_notes, "ConversationImportService", return_value=service):
+        with patch.object(service, "import_markdown", side_effect=ValueError("unsupported import_mode")):
+            response = TestClient(app).post(
+                "/api/notes/import",
+                json={"import_mode": "invalid", "content": "# broken"},
+            )
+
+    assert response.status_code == 200
+    assert response.json()["code"] == 400
+    assert response.json()["msg"] == "unsupported import_mode"
