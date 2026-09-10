@@ -5,6 +5,7 @@ import { ArrowLeft, Check, ChevronRight, Copy, FilePlus2, HardDrive, Menu, Mic, 
 import { toast } from 'react-hot-toast'
 import { createAgentSession, startAgentTurn, streamAgentEvents } from '@/services/agent'
 import { createMobileMemory, getMobileProjection } from '@/services/mobileProjection'
+import { useBackendInitContext } from '@/contexts/BackendInitContext'
 import { useTaskStore } from '@/store/taskStore'
 
 type Screen = 'home' | 'session' | 'settings' | 'memory' | 'font-size' | 'storage'
@@ -17,6 +18,7 @@ type FontProps = { onBack: () => void; value: number; setValue: (value: number) 
 type StorageProps = { onBack: () => void; storage: { cache: number; cloud: number; local: number; products: number }; total: number; onClear: (key: keyof StorageProps['storage']) => void; onClearAll: () => void }
 
 export default function MobilePage() {
+  const { backendReady } = useBackendInitContext()
   const location = useLocation()
   const navigate = useNavigate()
   const screenPart = location.pathname.replace(/^\/mobile\/?/, '').split('/')[0] || 'home'
@@ -42,9 +44,9 @@ export default function MobilePage() {
   const tasks = useTaskStore(state => state.tasks)
   const loadConversations = useTaskStore(state => state.loadConversations)
   const currentTask = tasks[0]
-  useEffect(() => { void loadConversations() }, [loadConversations])
+  useEffect(() => { if (backendReady) void loadConversations() }, [backendReady, loadConversations])
   const refreshProjection = () => { void getMobileProjection().then(projection => setMemory(projection.memories.map(item => [item.source || '用户记忆', item.content] as MemoryItem))).catch(() => toast.error('记忆库读取失败，请确认本地服务已连接')) }
-  useEffect(() => { refreshProjection() }, [])
+  useEffect(() => { if (backendReady) refreshProjection() }, [backendReady])
   const refreshStorage = () => {
     const sizes = { cache: 0, cloud: 0, local: 0, products: 0 }
     for (let index = 0; index < localStorage.length; index += 1) {
