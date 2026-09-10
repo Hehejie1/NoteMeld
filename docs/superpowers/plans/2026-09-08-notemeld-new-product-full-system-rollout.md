@@ -375,6 +375,8 @@
 
   iOS 真机通道复核：iPhone 14（`088AEFE8-8E1D-5FDF-887D-5F8A9EC6F71F`）当前显示 `available (paired)` 且 Developer Mode enabled，但 `devicectl device info details` 返回 `ddiServicesAvailable=false`、`tunnelState=unavailable`；Xcode 真实设备目标编译等待设备通道超时。该证据说明当前阻塞在设备连接/DDI 通道，尚未进入 provisioning 或安装验收，不将其误报为真机通过。
 
+  iOS 真机通道恢复：重新执行 `xcodebuild -prepareDeviceSupport -platform iOS -osVersion 26.6 -modelCode iPhone14,7` 后，设备状态变为 `ddiServicesAvailable=true`、`tunnelState=connected`；使用真实 iPhone destination 的 `CODE_SIGNING_ALLOWED=NO` 编译已 `BUILD SUCCEEDED`。随后通过 `devicectl device install app` 验证设备端安装链路，明确失败原因为 unsigned app `No code signature found`；开启 `-allowProvisioningUpdates` 后 Xcode 明确失败于 `requires a development team`。因此当前剩余是 Apple Developer team/provisioning，不再是 DDI 或代码编译问题。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
