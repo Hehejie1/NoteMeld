@@ -8,6 +8,8 @@ const wiki = await fs.readFile(new URL('../src/services/wiki.ts', import.meta.ur
 const conversation = await fs.readFile(new URL('../src/services/conversation.ts', import.meta.url), 'utf8')
 
 test('Notes application reads the bounded real note library and exposes empty/loading/error states', () => {
+  assert.match(app, /useBackendInitContext/)
+  assert.match(app, /if \(!backendReady\)/)
   assert.match(app, /listNoteLibrary\(\{ q: query, offset, limit: PAGE_SIZE, signal: controller\.signal \}\)/)
   assert.match(app, /正在读取笔记库/)
   assert.match(app, /还没有符合条件的笔记/)

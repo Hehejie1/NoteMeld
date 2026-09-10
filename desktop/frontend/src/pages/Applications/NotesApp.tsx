@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { useBackendInitContext } from '@/contexts/BackendInitContext'
 import { listNoteLibrary, readNoteByTitle, type NoteLibraryItem, type NoteReadResult } from '@/services/note'
 import { importConversationMarkdown } from '@/services/conversation'
 import { cancelWikiExtraction, getWikiArticleDetail, getWikiExtractionStatus, getWikiGraph, retryWikiExtraction, type WikiArticleDetail, type WikiGraph } from '@/services/wiki'
@@ -13,6 +14,7 @@ type NotesTab = 'library' | 'styles' | 'wiki'
 const PAGE_SIZE = 50
 
 export default function NotesApp() {
+  const { backendReady } = useBackendInitContext()
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<NoteLibraryItem[]>([])
   const [total, setTotal] = useState(0)
@@ -47,7 +49,14 @@ export default function NotesApp() {
     }
   }, [offset, query])
 
-  useEffect(() => { void load(); return () => libraryRequest.current?.abort() }, [load])
+  useEffect(() => {
+    if (!backendReady) {
+      setLoading(true)
+      return
+    }
+    void load()
+    return () => libraryRequest.current?.abort()
+  }, [backendReady, load])
 
   useEffect(() => {
     if (tab !== 'wiki' || wiki) return
