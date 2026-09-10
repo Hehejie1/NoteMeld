@@ -93,8 +93,8 @@ export function reduceMobileSurface(state: MobileSurfaceState, action: MobileSur
     case 'setFollowSystemFont': state.followSystemFont = action.value as boolean; break
     case 'setNotifications': state.notificationsEnabled = action.value as boolean; break
     case 'setMemoryDraft': state.memoryDraft = action.value as string; break
-    case 'setInputText': state.inputText = action.value as string; break
-    case 'addMessage': state.messages.push(action.value as MobileMessage); break
+    case 'setInputText': if (state.connection !== ConnectionState.Offline) state.inputText = action.value as string; break
+    case 'addMessage': if (state.connection !== ConnectionState.Offline) state.messages.push(action.value as MobileMessage); break
     case 'addAttachment': state.attachments.push(action.value as string); break
     case 'setCloudURL': state.cloudURL = action.value as string; break
     case 'setCloudUsername': state.cloudUsername = action.value as string; break

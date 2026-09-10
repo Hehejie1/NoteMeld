@@ -369,6 +369,8 @@
 
   移动异步写入再校验补齐：iOS 的保存记忆/删除会话、Harmony 的保存记忆/删除会话和 Android 的删除菜单在实际执行入口再次检查离线与权限状态，避免网络状态切换或旧菜单状态绕过页面禁用条件。移动契约 `18 passed`，TypeScript contract compile、Android Debug、iOS Simulator Debug、Harmony HAP 均通过。
 
+  移动状态机 fail-closed 补齐：Android、iOS、Harmony 的 reducer 在 offline 状态拒绝新的输入和消息追加，避免异步事件或陈旧 UI 状态绕过离线只读约束。移动契约 `19 passed`，TypeScript contract compile、Android Debug、iOS Simulator Debug、Harmony HAP 均通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。

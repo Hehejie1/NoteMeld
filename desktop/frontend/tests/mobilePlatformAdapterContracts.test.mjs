@@ -184,6 +184,18 @@ test('native destructive actions re-check offline and permission state', async (
   assert.match(harmony, /if \(this\.state\.connection === ConnectionState\.Offline \|\| !this\.state\.permissionGranted\) return/)
 })
 
+test('native reducers reject new input and messages while offline', async () => {
+  const androidState = await readFile(path.join(root, files.android), 'utf8')
+  const iosState = await readFile(path.join(root, files.ios), 'utf8')
+  const harmonyState = await readFile(path.join(root, files.harmony), 'utf8')
+  assert.match(androidState, /SetInputText -> if \(state\.connection == ConnectionState\.OFFLINE\) state/)
+  assert.match(androidState, /AddMessage -> if \(state\.connection == ConnectionState\.OFFLINE\) state/)
+  assert.match(iosState, /setInputText\(value\): if next\.connection != \.offline/)
+  assert.match(iosState, /addMessage\(value\): if next\.connection != \.offline/)
+  assert.match(harmonyState, /setInputText'.*if \(state\.connection !== ConnectionState\.Offline\)/)
+  assert.match(harmonyState, /addMessage'.*if \(state\.connection !== ConnectionState\.Offline\)/)
+})
+
 test('native remote transports authenticate, bind nonce into AAD and decrypt receipts/events', async () => {
   const android = await readFile(path.join(root, 'android/src/main/kotlin/com/notemeld/mobile/AndroidRemoteRelay.kt'), 'utf8')
   const ios = await readFile(path.join(root, 'ios/Sources/NoteMeldMobile/RemoteRelayTransport.swift'), 'utf8')

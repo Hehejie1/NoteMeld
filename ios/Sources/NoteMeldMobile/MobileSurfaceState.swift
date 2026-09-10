@@ -143,8 +143,8 @@ public func reduceMobileSurface(_ state: MobileSurfaceState, _ action: MobileSur
     case let .setTasks(value): next.tasks = value
     case let .openTask(id, title): next.activeTaskID = id; next.activeTaskTitle = title; next.screen = .session; next.drawerOpen = false
     case let .setMemories(value): next.memories = value
-    case let .setInputText(value): next.inputText = value
-    case let .addMessage(value): next.messages.append(value)
+    case let .setInputText(value): if next.connection != .offline { next.inputText = value }
+    case let .addMessage(value): if next.connection != .offline { next.messages.append(value) }
     case let .setCloudURL(value): next.cloudURL = value
     case let .setCloudUsername(value): next.cloudUsername = value
     case let .setCloudPassword(value): next.cloudPassword = value
