@@ -389,6 +389,8 @@
 
   Android 真机在线/离线/恢复复验：启动隔离真实桌面后端后，真机通过 `adb reverse` 实际请求 `/api/conversations`、`/api/mobile/projection` 和 `/api/mobile/sync-cursor` 并收到 200；停止后端并唤醒设备，真实截图显示“离线模式：仅可查看已同步内容”，输入/写入入口不可用；重新启动后端，真机重新回到无离线提示的在线首页，进程持续存活且无 Android 崩溃日志。该证据完成 Android 单机断网恢复闭环，但不替代 iOS/Harmony 和跨设备 Relay 矩阵。
 
+  iOS 签名条件复核：本机钥匙串已发现有效的 `Apple Development: worldgsplat@gmail.com` 证书（Team ID `5NNS7VW6K9`），但使用该 Team override 和 `CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates` 仍被 Xcode 拒绝，原因明确为未登录 Xcode Account 且不存在匹配 `com.notemeld.mobile` 的 Development provisioning profile。证书存在不等于真机可安装，当前 iOS 真机门禁仍保持未完成。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
