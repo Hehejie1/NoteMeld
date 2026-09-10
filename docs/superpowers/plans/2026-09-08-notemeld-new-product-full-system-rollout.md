@@ -373,6 +373,8 @@
 
   跨仓库最终增量回归：前端完整契约套件 `124 passed`；产品文档校验 `40 features, 40 bindings`；`git diff --check` 通过。Android、iOS、Harmony 子仓库仅保留既有用户本地文件 `harmony/local.properties` 与 `ios/NoteMeldMobile-unsigned.ipa`，未产生新的未跟踪源码或生成物变更。
 
+  iOS 真机通道复核：iPhone 14（`088AEFE8-8E1D-5FDF-887D-5F8A9EC6F71F`）当前显示 `available (paired)` 且 Developer Mode enabled，但 `devicectl device info details` 返回 `ddiServicesAvailable=false`、`tunnelState=unavailable`；Xcode 真实设备目标编译等待设备通道超时。该证据说明当前阻塞在设备连接/DDI 通道，尚未进入 provisioning 或安装验收，不将其误报为真机通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
