@@ -359,6 +359,8 @@
 
   首屏就绪竞态继续收口：桌面 APP01 笔记应用和移动 Web `MobilePage` 现在都在 `backendReady` 后才加载真实会话/投影，避免 sidecar 启动窗口把暂时不可用误报为业务读取失败；移动端新增 ready-gate 契约。前端完整契约测试 `119 passed`、TypeScript contract compile、Vite production build 和目标 lint 均通过；发布修复后的桌面后端完整回归 `966 passed, 1 skipped, 13 subtests passed`。
 
+  移动 Web 离线约束补齐：`MobilePage` 监听浏览器 online/offline 事件；离线或后端未就绪时进入明确的“离线只读”状态，隐藏消息提交、附件和语音/模型/授权操作，并拒绝发送请求。新增契约后前端全量测试仍为 `119 passed`，生产构建通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
