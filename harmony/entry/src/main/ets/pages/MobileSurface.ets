@@ -119,6 +119,7 @@ struct MobileSurface {
   }
 
   private async deleteConversation(): Promise<void> {
+    if (this.state.connection === ConnectionState.Offline || !this.state.permissionGranted) return;
     if (this.state.activeTaskId.length === 0) { this.state.sheet = ''; return }
     let request = http.createHttp()
     try {
@@ -256,6 +257,7 @@ struct MobileSurface {
   }
 
   private async saveMemory(): Promise<void> {
+    if (this.state.connection === ConnectionState.Offline) return;
     let content = this.state.memoryDraft.trim();
     if (content.length === 0) return;
     let request = http.createHttp();

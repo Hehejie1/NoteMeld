@@ -175,6 +175,15 @@ test('native mobile memory writes are disabled while offline', async () => {
   assert.match(harmony, /Button\('添加我的记忆'\)\.enabled\(this\.state\.connection !== ConnectionState\.Offline/)
 })
 
+test('native destructive actions re-check offline and permission state', async () => {
+  const android = await readFile(path.join(root, surfaces.android), 'utf8')
+  const ios = await readFile(path.join(root, surfaces.ios), 'utf8')
+  const harmony = await readFile(path.join(root, surfaces.harmony), 'utf8')
+  assert.match(android, /TextButton\(enabled = s\.connection != ConnectionState\.OFFLINE && s\.permissionGranted[\s\S]*删除对话/)
+  assert.match(ios, /guard state\.connection != \.offline, let id = state\.activeTaskID/)
+  assert.match(harmony, /if \(this\.state\.connection === ConnectionState\.Offline \|\| !this\.state\.permissionGranted\) return/)
+})
+
 test('native remote transports authenticate, bind nonce into AAD and decrypt receipts/events', async () => {
   const android = await readFile(path.join(root, 'android/src/main/kotlin/com/notemeld/mobile/AndroidRemoteRelay.kt'), 'utf8')
   const ios = await readFile(path.join(root, 'ios/Sources/NoteMeldMobile/RemoteRelayTransport.swift'), 'utf8')

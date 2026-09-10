@@ -295,7 +295,7 @@ public struct MobileSurface: View {
 
     private func saveMemory() async {
         let content = state.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else { return }
+        guard !content.isEmpty, state.connection != .offline else { return }
         savingMemory = true
         defer { savingMemory = false }
         do {
@@ -313,7 +313,7 @@ public struct MobileSurface: View {
     @ViewBuilder private var sheet: some View { if state.sheet == "model" { List { ForEach(["Auto", "Hy4 preview", "Hy3", "GLM-5.3", "Kimi-K3"], id: \.self) { model in Button(model) { dispatch(.selectModel(model)) } } }.presentationDetents([.medium]) } else if state.sheet == "theme" { List { ForEach([("system", "跟随系统"), ("light", "浅色"), ("dark", "深色")], id: \.0) { value, label in Button(label) { dispatch(.setTheme(value)) } } }.presentationDetents([.medium]) } else if state.sheet == "products" { List { Text("当前会话暂无可下载产物").foregroundStyle(.secondary) } } else if state.sheet == "actions" { List { Button("全部产物") { dispatch(.openSheet("products")) }; Button("删除对话", role: .destructive) { Task { await deleteConversation() } }.disabled(state.activeTaskID == nil) }.presentationDetents([.medium]) } else { List { ForEach(["跟随系统", "简体中文", "繁體中文", "English"], id: \.self) { language in Button(language) { dispatch(.setLanguage(language)) } } }.presentationDetents([.medium]) } }
 
     private func deleteConversation() async {
-        guard let id = state.activeTaskID, let url = URL(string: "http://127.0.0.1:8483/api/conversations/\(id)") else { return }
+        guard state.connection != .offline, let id = state.activeTaskID, let url = URL(string: "http://127.0.0.1:8483/api/conversations/\(id)") else { return }
         var request = URLRequest(url: url); request.httpMethod = "DELETE"
         do {
             let (_, response) = try await URLSession.shared.data(for: request)

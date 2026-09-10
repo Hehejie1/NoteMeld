@@ -367,6 +367,8 @@
 
   移动记忆写入门禁补齐：移动 Web、Android、iOS、Harmony 在离线或后端不可用时仅展示已同步记忆，隐藏或禁用新增记忆的编辑/保存入口；恢复连接后才允许写入真实 Workspace projection。移动契约 `25 passed`，TypeScript contract compile、Android Debug、iOS Simulator Debug、Harmony HAP 均通过。
 
+  移动异步写入再校验补齐：iOS 的保存记忆/删除会话、Harmony 的保存记忆/删除会话和 Android 的删除菜单在实际执行入口再次检查离线与权限状态，避免网络状态切换或旧菜单状态绕过页面禁用条件。移动契约 `18 passed`，TypeScript contract compile、Android Debug、iOS Simulator Debug、Harmony HAP 均通过。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
