@@ -147,6 +147,16 @@ test('mobile adapters recover from offline to ready after a successful refresh',
   assert.match(harmony, /this\.state\.tasks = rows\.map[\s\S]*ConnectionState\.Ready/)
 })
 
+test('native mobile surfaces enforce offline read-only controls', async () => {
+  const android = await readFile(path.join(root, surfaces.android), 'utf8')
+  const ios = await readFile(path.join(root, surfaces.ios), 'utf8')
+  const harmony = await readFile(path.join(root, surfaces.harmony), 'utf8')
+  assert.match(android, /enabled = s\.connection != ConnectionState\.OFFLINE[\s\S]*添加文件/)
+  assert.match(ios, /Button\("添加文件"\)[\s\S]*disabled\(state\.connection == \.offline\)/)
+  assert.match(harmony, /Button\('添加文件'\)\.enabled\(this\.state\.connection !== ConnectionState\.Offline\)/)
+  assert.match(harmony, /permissionButton\(\)[\s\S]*if \(this\.state\.connection !== ConnectionState\.Offline\)/)
+})
+
 test('native remote transports authenticate, bind nonce into AAD and decrypt receipts/events', async () => {
   const android = await readFile(path.join(root, 'android/src/main/kotlin/com/notemeld/mobile/AndroidRemoteRelay.kt'), 'utf8')
   const ios = await readFile(path.join(root, 'ios/Sources/NoteMeldMobile/RemoteRelayTransport.swift'), 'utf8')

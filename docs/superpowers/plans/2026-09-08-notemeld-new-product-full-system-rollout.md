@@ -361,6 +361,8 @@
 
   移动 Web 离线约束补齐：`MobilePage` 监听浏览器 online/offline 事件；离线或后端未就绪时进入明确的“离线只读”状态，隐藏消息提交、附件和语音/模型/授权操作，并拒绝发送请求。新增契约后前端全量测试仍为 `119 passed`，生产构建通过。
 
+  原生移动端离线约束同步补齐：Android、iOS、Harmony 的会话页在 `offline` 状态下禁用输入、附件、模型、权限和会话操作，仅保留历史产物查看；三端均显示“离线模式：仅可查看已同步内容”。移动协议/界面契约 `15 passed`，Android Debug、iOS Simulator Debug、Harmony HAP 均重新构建成功。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
