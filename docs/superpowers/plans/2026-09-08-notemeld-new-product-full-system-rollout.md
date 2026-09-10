@@ -223,6 +223,8 @@
 
   APP01 增量验收：笔记应用现在轮询真实 Wiki job 状态，运行中的 Wiki 任务可取消，失败/取消任务可重建；前端 contract 检查和生产构建通过。笔记库已补齐基于真实 `total/offset/limit` 的 50 条分页和长标题悬浮完整标题；导入失败、图谱空状态与任务取消仍需在浏览器纵向场景中继续验收。
 
+  APP01 浏览器场景复验：隔离 SQLite 实例导入 51 条真实笔记后，页面显示 `51 篇`、第 1/2 页，下一页可读取第 2 页；超长标题保留完整 `title` 提示；无 Wiki 节点时显示空状态；窄桌面 `1100x780`、深色模式和搜索框后的 Tab 焦点顺序均可见且正常。非法导入模式由真实后端返回业务错误（`code=400`），前端导入服务保留错误分支；浏览器文件选择器上传失败场景仍未单独验收，因此 Task 4 Step 4 保持未完成。
+
   可访问性增量验收：系统运行应用的分类导航现在使用 `tablist/tab/tabpanel` 语义并暴露 `aria-selected`、焦点顺序和面板关系；Workspace 名称、目录引用、记忆输入均有显式关联 label；笔记与 Wiki 详情弹窗具备标题关联和有意义的关闭标签。新增 `runtimeAccessibilityContracts.test.mjs` 与 Notes 合同测试共 `6 passed`，TypeScript contract compile 和 Vite 生产构建继续通过。
 
   移动 Web 适配页追加验收：移除静态记忆 seed 和固定存储数字，改为读取 `/api/mobile/projection`、通过 `/api/mobile/memories` 写入记忆，并按浏览器 `localStorage` 实际内容计算和清理存储；新增契约测试覆盖真实投影与本地清理。相关新产品文件 lint 通过，生产 Vite 构建重新通过（`13169 modules transformed`）。
