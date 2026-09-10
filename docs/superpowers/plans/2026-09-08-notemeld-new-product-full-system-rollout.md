@@ -335,6 +335,8 @@
 
   最终未宣称的门禁仍限定为真实移动设备间 LAN/Relay 互操作：Android AVD、iOS Simulator、Harmony QEMU 安装/启动和移动源码契约均已验证，但没有实体 Android/iOS/Harmony 设备矩阵与实际网络环境，因此 `M01.home`、`M02.session` 保持 partial，避免将模拟器证据冒充真实设备验收。
 
+  后续真机准备复核发现一台已配对的 iPhone 14（iOS 26.6）。Xcode 26.5 原先报告缺少 Developer Disk Image，已通过 `xcodebuild -prepareDeviceSupport -platform iOS -osVersion 26.6 -modelCode iPhone14,7` 从已连接设备完成复制和提取，设备状态恢复为 `available (paired)`；真机构建随后明确收敛到 Apple Developer 账号未登录和 `com.notemeld.mobile` provisioning profile 缺失，未伪造签名或把该次准备误报为应用安装通过。
+
   最终 Cloud 容器级审计补齐：从当前仓库构建 `cloud/Dockerfile`，以隔离 compose project 启动真实 FastAPI 容器和 SQLite volume；`/ready` 返回 database/workspace 均为 `ok`。执行 `scripts/cloud/smoke_mobile_cloud.py` 完成登录、设备注册/heartbeat、会话创建、命令提交与完成、事件类型读取和 snapshot cursor，脱敏结果包含 `command_status=completed`、事件 `command.queued`/`turn.completed` 和 `snapshot_seq=2`。测试容器与临时 volume 已清理，源码工作区仅保留原有两个本地未跟踪移动制品文件。
 
   Cloud 生产 fail-closed 容器审计补充：用同一构建镜像设置 `NOTEMELD_CLOUD_ENV=production`、开发 OTP 和短 secret 启动，容器以 exit code 1 拒绝启动并明确报 `production requires SMTP-backed OTP delivery`；证明生产模式不会因缺少真实基础设施而静默回退到开发 runner。
