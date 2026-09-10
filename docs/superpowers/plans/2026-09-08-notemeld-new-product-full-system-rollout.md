@@ -385,6 +385,8 @@
 
   APP01 后端异常路径证据补齐：新增 `/api/notes/import` 业务校验回归，非法 `import_mode` 真实返回 HTTP 200 包装体中的 `code=400` 和可展示错误消息；结合 Wiki 重建服务已有的取消当前代次、继续最新请求测试，定向后端回归为 `5 passed`。浏览器文件选择器注入仍受当前自动化能力限制，未将其伪报为通过。
 
+  Android 实体设备复验：USB 真机 `24115RA8EC` 重新以 ADB `device` 状态连接；当前 Debug APK 安装返回 `Success`，`MainActivity` 通过 `am start -W` 返回 `Status: ok` 并进入 `topResumedActivity`，进程 `com.notemeld.mobile` 存活，清空后的启动日志未出现 `FATAL EXCEPTION` 或 `AndroidRuntime`。同时通过 `adb reverse tcp:8483 tcp:8483` 验证宿主后端 `/api/sys_check` 返回 200；本次仍未将单机启动证据扩大为三端 LAN/Relay 互操作完成。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
