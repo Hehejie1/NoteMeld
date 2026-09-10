@@ -379,6 +379,8 @@
 
   APP01 入口门禁补齐：笔记应用的列表刷新、Markdown 导入、Wiki 图谱读取、状态轮询、笔记/文章打开、Wiki 重建和取消均在 `backendReady` 之前直接返回，避免 sidecar 启动窗口产生请求竞态。NotesApp 契约、TypeScript contract compile、目标 lint 和 Vite production build 均通过。
 
+  APP01 后端契约复核：笔记库 API 与 Wiki 重建服务针对真实查询、重建取消和重试路径的回归测试 `4 passed`；前端 NotesApp/new-product 契约 `11 passed`。当前分支领先其远端跟踪分支 15 个提交，工作树仅保留既有用户本地文件。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
