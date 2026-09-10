@@ -357,6 +357,8 @@
 
   运行级 Mobile CI 最终验证完成：PR #11（`b053999`）已合并；GitHub Actions run `34395610413` 的 Android API 34 emulator、iOS Simulator 和 native source contracts 三个 job 全部成功。Android smoke 脚本进一步改为启动后检查前台 Activity，并以单行 fatal-log 判定避免 action 对多行 shell 条件的错误拆分；移动端模拟器运行门禁已纳入主分支。
 
+  首屏就绪竞态继续收口：桌面 APP01 笔记应用和移动 Web `MobilePage` 现在都在 `backendReady` 后才加载真实会话/投影，避免 sidecar 启动窗口把暂时不可用误报为业务读取失败；移动端新增 ready-gate 契约。前端完整契约测试 `119 passed`、TypeScript contract compile、Vite production build 和目标 lint 均通过；发布修复后的桌面后端完整回归 `966 passed, 1 skipped, 13 subtests passed`。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
