@@ -103,7 +103,7 @@ export function reduceMobileSurface(state: MobileSurfaceState, action: MobileSur
     case 'setRemoteDevices': state.remoteDevices = action.devices ?? []; break
     case 'selectModel': state.selectedModel = action.value as string; state.sheet = ''; break
     case 'setLanguage': state.language = action.value as string; state.sheet = ''; break
-    case 'addMemory': if (state.memoryDraft.trim().length > 0) { state.memories.push(state.memoryDraft.trim()); state.memoryDraft = '' } break
+    case 'addMemory': if (state.connection !== ConnectionState.Offline && state.memoryDraft.trim().length > 0) { state.memories.push(state.memoryDraft.trim()); state.memoryDraft = '' } break
     case 'setMemories': state.memories = action.value as string[]; break
     case 'clearStorage': if (action.id === null) state.storage = []; else state.storage = state.storage.filter((item: StorageItem) => item.id !== action.id); break
   }

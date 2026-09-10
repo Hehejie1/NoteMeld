@@ -381,6 +381,8 @@
 
   APP01 后端契约复核：笔记库 API 与 Wiki 重建服务针对真实查询、重建取消和重试路径的回归测试 `4 passed`；前端 NotesApp/new-product 契约 `11 passed`。当前分支领先其远端跟踪分支 15 个提交，工作树仅保留既有用户本地文件。
 
+  移动 reducer 记忆写入再收口：Android、iOS、Harmony 的 `AddMemory/addMemory` 状态 action 现在也在 offline 状态直接拒绝，补齐了从非 UI 入口绕过离线只读限制的路径。移动 reducer 契约 `29 passed`；Android Debug 与 iOS Simulator Debug 构建成功。Harmony 本轮未重跑，因当前环境没有 `ohpm` 命令；此前同一改动集的 HAP 构建已成功，且源码契约覆盖该规则。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。

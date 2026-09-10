@@ -196,6 +196,15 @@ test('native reducers reject new input and messages while offline', async () => 
   assert.match(harmonyState, /addMessage'.*if \(state\.connection !== ConnectionState\.Offline\)/)
 })
 
+test('native reducers reject memory writes while offline', async () => {
+  const androidState = await readFile(path.join(root, files.android), 'utf8')
+  const iosState = await readFile(path.join(root, files.ios), 'utf8')
+  const harmonyState = await readFile(path.join(root, files.harmony), 'utf8')
+  assert.match(androidState, /AddMemory -> if \(state\.connection == ConnectionState\.OFFLINE \|\| state\.memoryDraft\.isBlank\(\)\)/)
+  assert.match(iosState, /addMemory: if next\.connection != \.offline && !next\.memoryDraft/)
+  assert.match(harmonyState, /'addMemory'.*state\.connection !== ConnectionState\.Offline/)
+})
+
 test('native remote transports authenticate, bind nonce into AAD and decrypt receipts/events', async () => {
   const android = await readFile(path.join(root, 'android/src/main/kotlin/com/notemeld/mobile/AndroidRemoteRelay.kt'), 'utf8')
   const ios = await readFile(path.join(root, 'ios/Sources/NoteMeldMobile/RemoteRelayTransport.swift'), 'utf8')

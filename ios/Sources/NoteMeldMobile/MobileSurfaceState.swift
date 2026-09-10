@@ -151,7 +151,7 @@ public func reduceMobileSurface(_ state: MobileSurfaceState, _ action: MobileSur
     case let .setCloudStatus(value): next.cloudStatus = value
     case let .setRemoteDevices(value): next.remoteDevices = value; next.selectedRemoteDeviceID = value.first(where: { $0.online })?.id ?? value.first?.id
     case let .selectRemoteDevice(value): next.selectedRemoteDeviceID = value
-    case .addMemory: if !next.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { next.memories.append(next.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines)); next.memoryDraft = "" }
+    case .addMemory: if next.connection != .offline && !next.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { next.memories.append(next.memoryDraft.trimmingCharacters(in: .whitespacesAndNewlines)); next.memoryDraft = "" }
     case let .clearStorage(id): if let id { next.storage.removeAll { $0.id == id } } else { next.storage.removeAll() }
     }
     return next

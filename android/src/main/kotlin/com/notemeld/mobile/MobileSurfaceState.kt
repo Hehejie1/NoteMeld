@@ -105,7 +105,7 @@ fun reduceMobileSurface(state: MobileSurfaceState, action: MobileSurfaceAction):
     MobileSurfaceAction.DeleteConversation -> state.copy(showActionMenu = false, screen = MobileScreen.HOME)
     is MobileSurfaceAction.ShowToast -> state.copy(toast = action.value)
     is MobileSurfaceAction.SetWorkTab -> state.copy(selectedWorkTab = action.value)
-    MobileSurfaceAction.AddMemory -> if (state.memoryDraft.isBlank()) state else state.copy(
+    MobileSurfaceAction.AddMemory -> if (state.connection == ConnectionState.OFFLINE || state.memoryDraft.isBlank()) state else state.copy(
         memories = state.memories + state.memoryDraft.trim(), memoryDraft = ""
     )
     is MobileSurfaceAction.SetMemories -> state.copy(memories = action.value)
