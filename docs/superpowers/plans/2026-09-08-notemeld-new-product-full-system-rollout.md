@@ -391,6 +391,8 @@
 
   iOS 签名条件复核：本机钥匙串已发现有效的 `Apple Development: worldgsplat@gmail.com` 证书（Team ID `5NNS7VW6K9`），但使用该 Team override 和 `CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates` 仍被 Xcode 拒绝，原因明确为未登录 Xcode Account 且不存在匹配 `com.notemeld.mobile` 的 Development provisioning profile。证书存在不等于真机可安装，当前 iOS 真机门禁仍保持未完成。
 
+  最终可执行回归刷新：前端完整契约套件 `125 passed, 0 failed`；APP01 笔记库/导入异常/Wiki 重建定向后端回归 `5 passed`；`validate_product_docs.py` 校验 `40 features, 40 bindings`；`git diff --check` 通过。当前仍未把 iOS 签名、Harmony 实体设备和跨设备 LAN/Relay 互操作误标为完成。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
