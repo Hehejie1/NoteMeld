@@ -1,5 +1,6 @@
 package com.notemeld.mobile
 
+import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -7,7 +8,18 @@ import java.net.URL
 
 /** Small host adapter: native UI reads local NoteMeld conversations, never fabricates task cards. */
 object MobileApi {
-    fun recordProjectionCursor(deviceId: String, baseUrl: String = "http://10.0.2.2:8483"): Boolean {
+    /**
+     * The emulator exposes the host through 10.0.2.2. A physical device uses
+     * loopback so a USB `adb reverse tcp:8483 tcp:8483` or an explicit LAN
+     * endpoint can be used without pretending that the device is an emulator.
+     */
+    fun defaultBaseUrl(): String = if (
+        Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+        Build.HARDWARE.contains("goldfish", ignoreCase = true) ||
+        Build.HARDWARE.contains("ranchu", ignoreCase = true)
+    ) "http://10.0.2.2:8483" else "http://127.0.0.1:8483"
+
+    fun recordProjectionCursor(deviceId: String, baseUrl: String = defaultBaseUrl()): Boolean {
         if (deviceId.isBlank()) return false
         val projection = URL("$baseUrl/api/mobile/projection?workspace_id=default").openConnection() as HttpURLConnection
         return try {
@@ -31,7 +43,7 @@ object MobileApi {
         } catch (_: Exception) { false } finally { projection.disconnect() }
     }
 
-    fun deleteConversation(id: String, baseUrl: String = "http://10.0.2.2:8483"): Boolean {
+    fun deleteConversation(id: String, baseUrl: String = defaultBaseUrl()): Boolean {
         if (id.isBlank()) return false
         val connection = URL("$baseUrl/api/conversations/${java.net.URLEncoder.encode(id, "UTF-8")}").openConnection() as HttpURLConnection
         return try {
@@ -42,7 +54,7 @@ object MobileApi {
         } catch (_: Exception) { false } finally { connection.disconnect() }
     }
 
-    fun createMemory(content: String, baseUrl: String = "http://10.0.2.2:8483"): Boolean {
+    fun createMemory(content: String, baseUrl: String = defaultBaseUrl()): Boolean {
         if (content.isBlank()) return false
         val connection = URL("$baseUrl/api/mobile/memories").openConnection() as HttpURLConnection
         return try {
@@ -57,7 +69,7 @@ object MobileApi {
         } catch (_: Exception) { false } finally { connection.disconnect() }
     }
 
-    fun loadProjection(baseUrl: String = "http://10.0.2.2:8483"): List<String> {
+    fun loadProjection(baseUrl: String = defaultBaseUrl()): List<String> {
         val connection = URL("$baseUrl/api/mobile/projection?workspace_id=default").openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 4000
@@ -71,7 +83,7 @@ object MobileApi {
         } finally { connection.disconnect() }
     }
 
-    fun loadTasks(baseUrl: String = "http://10.0.2.2:8483"): List<MobileTask> {
+    fun loadTasks(baseUrl: String = defaultBaseUrl()): List<MobileTask> {
         val connection = URL("$baseUrl/api/conversations?limit=20").openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 4000
@@ -90,7 +102,7 @@ object MobileApi {
         } finally { connection.disconnect() }
     }
 
-    fun streamAgent(input: String, onMessage: (String, Boolean) -> Unit, baseUrl: String = "http://10.0.2.2:8483") {
+    fun streamAgent(input: String, onMessage: (String, Boolean) -> Unit, baseUrl: String = defaultBaseUrl()) {
         val session = postJson("$baseUrl/api/agent/v1/sessions", "{\"title\":\"NoteMeld Mobile\"}")
         val sessionId = JSONObject(session).getJSONObject("data").getString("id")
         val turn = postJson("$baseUrl/api/agent/v1/sessions/$sessionId/turns", "{\"input\":${JSONObject.quote(input)}}")
