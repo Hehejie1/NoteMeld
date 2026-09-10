@@ -371,6 +371,8 @@
 
   移动状态机 fail-closed 补齐：Android、iOS、Harmony 的 reducer 在 offline 状态拒绝新的输入和消息追加，避免异步事件或陈旧 UI 状态绕过离线只读约束。移动契约 `19 passed`，TypeScript contract compile、Android Debug、iOS Simulator Debug、Harmony HAP 均通过。
 
+  跨仓库最终增量回归：前端完整契约套件 `124 passed`；产品文档校验 `40 features, 40 bindings`；`git diff --check` 通过。Android、iOS、Harmony 子仓库仅保留既有用户本地文件 `harmony/local.properties` 与 `ios/NoteMeldMobile-unsigned.ipa`，未产生新的未跟踪源码或生成物变更。
+
 ## 完成定义
 
 - `new-product` 中所有 D/APP/C/M 页面均有真实 service/API/数据/权限/测试映射。
