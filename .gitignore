@@ -127,8 +127,8 @@ MANIFEST
 # PyInstaller (keep packaging spec)
 *.manifest
 *.spec
-!packaging/backend/pyinstaller/
-!packaging/backend/pyinstaller/backend.spec
+!scripts/packaging/backend/pyinstaller/
+!scripts/packaging/backend/pyinstaller/backend.spec
 
 # Installer logs
 pip-log.txt
@@ -246,6 +246,8 @@ ffmpg*/
 # --- Logs ---
 logs/
 *.log
+desktop/logs/
+cloud/logs/
 
 # Runtime data
 pids
@@ -275,6 +277,10 @@ frontend/tmp-*.png
 # Local dev
 .NoteMeld-dev/*
 
+# --- Per-project runtime data ---
+desktop/data/
+cloud/data/
+
 # --- Docs ---
 # 忽略 docs 下其他内容，保留长期系统文档和本需求的可交付闭环文档
 /docs/*
@@ -282,6 +288,8 @@ frontend/tmp-*.png
 !/docs/images/
 !/docs/architecture/
 !/docs/requirements/
+!/docs/new-product/
+!/docs/new-product/**
 !/docs/superpowers/
 !/docs/superpowers/plans/
 !/docs/superpowers/specs/

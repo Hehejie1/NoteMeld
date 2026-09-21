@@ -3,16 +3,24 @@ name: Release Desktop App
 on:
   push:
     tags:
-      - "v*"
+      - "v*-rc*"
+      - "v*-alpha*"
+      - "v*-beta*"
   workflow_dispatch:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-macos:
     name: Build macOS (Apple Silicon)
-    runs-on: macos-latest
+    # macos-15 is the supported GitHub-hosted arm64 runner.
+    runs-on: macos-15
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      VITE_NOTEMELD_BUILD_COMMIT: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -42,31 +50,72 @@ jobs:
         run: brew install ffmpeg
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: desktop/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Install desktop dependencies
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
+      - name: Download pinned official plugin release
+        env:
+          PLUGIN_ARCHIVE_URL: ${{ vars.NOTEMELD_PLUGINS_ARCHIVE_URL }}
+          PLUGIN_ARCHIVE_SHA256: ${{ vars.NOTEMELD_PLUGINS_ARCHIVE_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${PLUGIN_ARCHIVE_URL:-}" || { echo "NOTEMELD_PLUGINS_ARCHIVE_URL is required" >&2; exit 2; }
+          test -n "${PLUGIN_ARCHIVE_SHA256:-}" || { echo "NOTEMELD_PLUGINS_ARCHIVE_SHA256 is required" >&2; exit 2; }
+          [[ "$PLUGIN_ARCHIVE_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid plugins archive SHA-256" >&2; exit 2; }
+          archive="$RUNNER_TEMP/notemeld-plugins.zip"
+          extract_root="$RUNNER_TEMP/notemeld-plugins-extract"
+          curl --fail --location --retry 3 --output "$archive" "$PLUGIN_ARCHIVE_URL"
+          echo "$PLUGIN_ARCHIVE_SHA256  $archive" | shasum -a 256 -c -
+          rm -rf "$extract_root"
+          mkdir -p "$extract_root"
+          unzip -q "$archive" -d "$extract_root"
+          plugin_dir="$(find "$extract_root" -type d -path '*/plugins/official-link-note' -print -quit)"
+          test -n "$plugin_dir" || { echo "official-link-note plugin is missing from archive" >&2; exit 2; }
+          test -f "$plugin_dir/release-fixture/official-link-note-1.0.0.zip" || { echo "official-link-note release fixture is missing" >&2; exit 2; }
+          repo_root="${plugin_dir%/plugins/official-link-note}"
+          echo "NOTEMELD_PLUGINS_DIR=$repo_root" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate (arm64 release)
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.NOTEMELD_MACOS_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.NOTEMELD_MACOS_CERTIFICATE_PASSWORD }}
+
       - name: Install Python dependencies
-        working-directory: backend
+        working-directory: desktop/backend
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt
 
+      - name: Download pinned Agent SDK wheel (arm64)
+        env:
+          SDK_WHEEL_URL: ${{ vars.NOTEMELD_AGENT_SDK_ARM64_WHEEL_URL }}
+          SDK_WHEEL_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_ARM64_WHEEL_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${SDK_WHEEL_URL:-}" || { echo "NOTEMELD_AGENT_SDK_ARM64_WHEEL_URL is required" >&2; exit 2; }
+          test -n "${SDK_WHEEL_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_ARM64_WHEEL_SHA256 is required" >&2; exit 2; }
+          [[ "$SDK_WHEEL_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid arm64 SDK wheel SHA-256" >&2; exit 2; }
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/notemeld_agent_sdk_arm64.whl" "$SDK_WHEEL_URL"
+          echo "$SDK_WHEEL_SHA256  $RUNNER_TEMP/notemeld_agent_sdk_arm64.whl" | shasum -a 256 -c -
+
       - name: Build backend sidecar
         run: |
           NOTEMELD_SKIP_PORTABILITY_CHECK=1 \
-          NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3 \
+          NOTEMELD_PYTHON_BIN=desktop/backend/.venv/bin/python3 \
           NOTEMELD_TARGET_ARCH=arm64 \
+          NOTEMELD_AGENT_SDK_WHEEL="$RUNNER_TEMP/notemeld_agent_sdk_arm64.whl" \
           FFMPEG_BIN_PATH=$(dirname "$(which ffmpeg)") \
-          ./packaging/scripts/build-backend-macos.sh
+          ./scripts/desktop/packaging/scripts/build-backend-macos.sh
 
-      - name: Build desktop app
+      - name: Build desktop app with signed updater artifact
         working-directory: desktop
-        run: pnpm tauri build --target aarch64-apple-darwin
+        run: pnpm tauri build --target aarch64-apple-darwin --config src-tauri/tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       - name: Collect artifacts
         run: |
@@ -75,7 +124,11 @@ jobs:
           if [ -d "$BUNDLE_DIR/dmg" ]; then
             cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
           fi
-          cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
+          find "$BUNDLE_DIR" -type f -name "*.dmg" -exec cp {} dist/ \;
+          for artifact in $(find "$BUNDLE_DIR" -type f -name "*.app.tar.gz"); do
+            cp "$artifact" "dist/NoteMeld_${GITHUB_REF_NAME#v}_aarch64.app.tar.gz"
+            cp "$artifact.sig" "dist/NoteMeld_${GITHUB_REF_NAME#v}_aarch64.app.tar.gz.sig"
+          done
           ls -la dist/
 
       - name: Upload artifacts
@@ -86,7 +139,12 @@ jobs:
 
   build-macos-intel:
     name: Build macOS (Intel)
-    runs-on: macos-latest
+    # macos-15-intel is the supported GitHub-hosted Intel runner.
+    runs-on: macos-15-intel
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      VITE_NOTEMELD_BUILD_COMMIT: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -126,36 +184,107 @@ jobs:
           ls -la /tmp/ffmpeg-x86/
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: desktop/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Install desktop dependencies
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
+      - name: Download pinned official plugin release
+        env:
+          PLUGIN_ARCHIVE_URL: ${{ vars.NOTEMELD_PLUGINS_ARCHIVE_URL }}
+          PLUGIN_ARCHIVE_SHA256: ${{ vars.NOTEMELD_PLUGINS_ARCHIVE_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${PLUGIN_ARCHIVE_URL:-}" || { echo "NOTEMELD_PLUGINS_ARCHIVE_URL is required" >&2; exit 2; }
+          test -n "${PLUGIN_ARCHIVE_SHA256:-}" || { echo "NOTEMELD_PLUGINS_ARCHIVE_SHA256 is required" >&2; exit 2; }
+          [[ "$PLUGIN_ARCHIVE_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid plugins archive SHA-256" >&2; exit 2; }
+          archive="$RUNNER_TEMP/notemeld-plugins.zip"
+          extract_root="$RUNNER_TEMP/notemeld-plugins-extract"
+          curl --fail --location --retry 3 --output "$archive" "$PLUGIN_ARCHIVE_URL"
+          echo "$PLUGIN_ARCHIVE_SHA256  $archive" | shasum -a 256 -c -
+          rm -rf "$extract_root"
+          mkdir -p "$extract_root"
+          unzip -q "$archive" -d "$extract_root"
+          plugin_dir="$(find "$extract_root" -type d -path '*/plugins/official-link-note' -print -quit)"
+          test -n "$plugin_dir" || { echo "official-link-note plugin is missing from archive" >&2; exit 2; }
+          test -f "$plugin_dir/release-fixture/official-link-note-1.0.0.zip" || { echo "official-link-note release fixture is missing" >&2; exit 2; }
+          repo_root="${plugin_dir%/plugins/official-link-note}"
+          echo "NOTEMELD_PLUGINS_DIR=$repo_root" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate (Intel release)
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.NOTEMELD_MACOS_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.NOTEMELD_MACOS_CERTIFICATE_PASSWORD }}
+
       - name: Install Python dependencies (x86_64)
-        working-directory: backend
+        working-directory: desktop/backend
         run: |
           arch -x86_64 python3 -m venv .venv
           arch -x86_64 .venv/bin/python -m pip install --upgrade pip
           arch -x86_64 .venv/bin/python -m pip install -r requirements.txt
 
+      - name: Download pinned Agent SDK wheel (x86_64)
+        env:
+          SDK_WHEEL_URL: ${{ vars.NOTEMELD_AGENT_SDK_X86_64_WHEEL_URL }}
+          SDK_WHEEL_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_X86_64_WHEEL_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${SDK_WHEEL_URL:-}" || { echo "NOTEMELD_AGENT_SDK_X86_64_WHEEL_URL is required" >&2; exit 2; }
+          test -n "${SDK_WHEEL_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_X86_64_WHEEL_SHA256 is required" >&2; exit 2; }
+          [[ "$SDK_WHEEL_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid x86_64 SDK wheel SHA-256" >&2; exit 2; }
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/notemeld_agent_sdk_x86_64.whl" "$SDK_WHEEL_URL"
+          echo "$SDK_WHEEL_SHA256  $RUNNER_TEMP/notemeld_agent_sdk_x86_64.whl" | shasum -a 256 -c -
+
       - name: Build backend sidecar (x86_64)
         run: |
           arch -x86_64 bash -c '
-            export NOTEMELD_SKIP_PORTABILITY_CHECK=1
-            export NOTEMELD_PYTHON_BIN=backend/.venv/bin/python3
+            export NOTEMELD_PYTHON_BIN=desktop/backend/.venv/bin/python3
             export NOTEMELD_TARGET_ARCH=x86_64
+            export NOTEMELD_AGENT_SDK_WHEEL="$RUNNER_TEMP/notemeld_agent_sdk_x86_64.whl"
             export FFMPEG_BIN_PATH=/tmp/ffmpeg-x86
             export ARCHFLAGS="-arch x86_64"
             export CFLAGS="-arch x86_64"
             export LDFLAGS="-arch x86_64"
-            ./packaging/scripts/build-backend-macos.sh
+            ./scripts/desktop/packaging/scripts/build-backend-macos.sh
           '
 
-      - name: Build desktop app (x86_64)
+      - name: Build desktop app (x86_64) with signed updater artifact
         working-directory: desktop
-        run: arch -x86_64 pnpm tauri build --target x86_64-apple-darwin
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.NOTEMELD_CODESIGN_IDENTITY }}
+          NOTEMELD_REQUIRE_NOTARIZATION: "1"
+          NOTEMELD_REQUIRE_INTEL_X64: "1"
+        run: |
+          test -n "${APPLE_SIGNING_IDENTITY:-}" || { echo "NOTEMELD_CODESIGN_IDENTITY is required" >&2; exit 2; }
+          arch -x86_64 pnpm tauri build --target x86_64-apple-darwin --config src-tauri/tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          app_bin="$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos/NoteMeld.app/Contents/MacOS -type f -perm -111 -print -quit)"
+          test -n "$app_bin" || { echo "Intel macOS app binary is missing" >&2; exit 2; }
+          test "$(lipo -archs "$app_bin")" = "x86_64" || { echo "Intel macOS app binary is not x86_64-only" >&2; exit 2; }
+
+      - name: Notarize and Gatekeeper-check Intel candidate
+        env:
+          NOTEMELD_CODESIGN_IDENTITY: ${{ secrets.NOTEMELD_CODESIGN_IDENTITY }}
+          NOTEMELD_NOTARY_APPLE_ID: ${{ secrets.NOTEMELD_NOTARY_APPLE_ID }}
+          NOTEMELD_NOTARY_TEAM_ID: ${{ secrets.NOTEMELD_NOTARY_TEAM_ID }}
+          NOTEMELD_NOTARY_PASSWORD: ${{ secrets.NOTEMELD_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${NOTEMELD_CODESIGN_IDENTITY:-}" || { echo "Developer ID identity is required" >&2; exit 2; }
+          test -n "${NOTEMELD_NOTARY_APPLE_ID:-}" || { echo "notary Apple ID is required" >&2; exit 2; }
+          test -n "${NOTEMELD_NOTARY_TEAM_ID:-}" || { echo "notary Team ID is required" >&2; exit 2; }
+          test -n "${NOTEMELD_NOTARY_PASSWORD:-}" || { echo "notary app-specific password is required" >&2; exit 2; }
+          APP="$(find desktop/src-tauri/target/x86_64-apple-darwin/release/bundle -type d -name 'NoteMeld.app' -print -quit)"
+          DMG="$(find desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -type f -name '*.dmg' -print -quit)"
+          test -d "$APP" && test -f "$DMG"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -F "$NOTEMELD_CODESIGN_IDENTITY"
+          xcrun notarytool submit "$DMG" --apple-id "$NOTEMELD_NOTARY_APPLE_ID" --team-id "$NOTEMELD_NOTARY_TEAM_ID" --password "$NOTEMELD_NOTARY_PASSWORD" --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl -a -vv --type open "$DMG"
 
       - name: Collect artifacts
         run: |
@@ -164,7 +293,11 @@ jobs:
           if [ -d "$BUNDLE_DIR/dmg" ]; then
             cp "$BUNDLE_DIR/dmg"/*.dmg dist/ 2>/dev/null || true
           fi
-          cp "$BUNDLE_DIR"/*.app.tar.gz dist/ 2>/dev/null || true
+          find "$BUNDLE_DIR" -type f -name "*.dmg" -exec cp {} dist/ \;
+          for artifact in $(find "$BUNDLE_DIR" -type f -name "*.app.tar.gz"); do
+            cp "$artifact" "dist/NoteMeld_${GITHUB_REF_NAME#v}_x64.app.tar.gz"
+            cp "$artifact.sig" "dist/NoteMeld_${GITHUB_REF_NAME#v}_x64.app.tar.gz.sig"
+          done
           ls -la dist/
 
       - name: Upload artifacts
@@ -176,6 +309,10 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      VITE_NOTEMELD_BUILD_COMMIT: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -215,7 +352,7 @@ jobs:
           Test-Path (Join-Path $ffmpegBin "ffprobe.exe")
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: desktop/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Install desktop dependencies
@@ -223,16 +360,44 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
-        working-directory: backend
+        working-directory: desktop/backend
         run: |
           python -m venv .venv
           .venv\Scripts\python -m pip install --upgrade pip
           .venv\Scripts\python -m pip install -r requirements.txt
 
+      - name: Download pinned official plugin release
+        shell: pwsh
+        env:
+          PLUGIN_ARCHIVE_URL: ${{ vars.NOTEMELD_PLUGINS_ARCHIVE_URL }}
+          PLUGIN_ARCHIVE_SHA256: ${{ vars.NOTEMELD_PLUGINS_ARCHIVE_SHA256 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PLUGIN_ARCHIVE_URL)) { throw "NOTEMELD_PLUGINS_ARCHIVE_URL is required" }
+          if ([string]::IsNullOrWhiteSpace($env:PLUGIN_ARCHIVE_SHA256)) { throw "NOTEMELD_PLUGINS_ARCHIVE_SHA256 is required" }
+          if ($env:PLUGIN_ARCHIVE_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw "invalid plugins archive SHA-256" }
+          $archive = Join-Path $env:RUNNER_TEMP "notemeld-plugins.zip"
+          $extractRoot = Join-Path $env:RUNNER_TEMP "notemeld-plugins-extract"
+          Invoke-WebRequest -Uri $env:PLUGIN_ARCHIVE_URL -OutFile $archive -UseBasicParsing
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ne $env:PLUGIN_ARCHIVE_SHA256.ToUpperInvariant()) { throw "plugins archive SHA-256 mismatch" }
+          if (Test-Path $extractRoot) { Remove-Item $extractRoot -Recurse -Force }
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $pluginDir = Get-ChildItem -Path $extractRoot -Directory -Recurse | Where-Object { $_.FullName -match '[\\/]plugins[\\/]official-link-note$' } | Select-Object -First 1
+          if (-not $pluginDir) { throw "official-link-note plugin is missing from archive" }
+          $fixture = Join-Path $pluginDir.FullName "release-fixture\official-link-note-1.0.0.zip"
+          if (-not (Test-Path $fixture)) { throw "official-link-note release fixture is missing" }
+          $repoRoot = Split-Path (Split-Path $pluginDir.FullName -Parent) -Parent
+          "NOTEMELD_PLUGINS_DIR=$repoRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify Windows Credential Manager Host identity
+        shell: pwsh
+        env:
+          PYTHONPATH: desktop\backend
+        run: desktop\backend\.venv\Scripts\python scripts\release\verify_windows_secure_identity.py
+
       - name: Build backend sidecar
         shell: pwsh
         env:
-          NOTEMELD_PYTHON_BIN: backend\.venv\Scripts\python.exe
+          NOTEMELD_PYTHON_BIN: desktop\backend\.venv\Scripts\python.exe
         run: |
           $ffmpegExe = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
           if ($ffmpegExe) {
@@ -248,11 +413,62 @@ jobs:
               Write-Host "WARNING: ffmpeg not found"
             }
           }
-          powershell -ExecutionPolicy Bypass -File .\packaging\scripts\build-backend-windows.ps1
+          powershell -ExecutionPolicy Bypass -File .\scripts\desktop\packaging\scripts\build-backend-windows.ps1
 
-      - name: Build desktop app
+      - name: Import Windows Authenticode certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "Windows Authenticode certificate secrets are required"
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP "notemeld-windows-signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password | Select-Object -First 1
+          Remove-Item $pfxPath -Force
+          if (-not $certificate -or [string]::IsNullOrWhiteSpace($certificate.Thumbprint)) {
+            throw "Windows Authenticode certificate import failed"
+          }
+          "WINDOWS_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build desktop app with Authenticode and updater signatures
         working-directory: desktop
-        run: pnpm tauri build
+        shell: pwsh
+        run: |
+          if ($env:VITE_NOTEMELD_BUILD_COMMIT -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "VITE_NOTEMELD_BUILD_COMMIT must be the full release commit"
+          }
+          $version = "${{ github.ref_name }}".TrimStart("v") -replace '-(rc|alpha|beta)([.-].*)$', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') {
+            $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          }
+          $config = @{
+            version = $version
+            bundle = @{
+              createUpdaterArtifacts = $true
+              windows = @{
+                certificateThumbprint = $env:WINDOWS_CERTIFICATE_THUMBPRINT
+                digestAlgorithm = "sha256"
+                timestampUrl = "http://timestamp.digicert.com"
+              }
+            }
+          } | ConvertTo-Json -Depth 5 -Compress
+          pnpm tauri build --config src-tauri/tauri.release.conf.json --config $config
+
+      - name: Verify Windows Authenticode signatures
+        shell: pwsh
+        run: |
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signTool) { throw "signtool.exe was not found" }
+          $targets = Get-ChildItem "desktop\src-tauri\target\release\bundle" -Recurse -File | Where-Object { $_.Extension -in ".msi", ".exe" }
+          if (-not $targets) { throw "no Windows installer artifacts were produced" }
+          foreach ($target in $targets) {
+            & $signTool.FullName verify /pa /all /v $target.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Authenticode verification failed for $($target.Name)" }
+          }
 
       - name: Collect artifacts
         run: |
@@ -261,7 +477,7 @@ jobs:
           if (Test-Path "$bundleDir\msi") {
             Get-ChildItem -Path "$bundleDir\msi" -Filter "*.msi" -Recurse | Copy-Item -Destination dist\
           }
-          Get-ChildItem -Path $bundleDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Get-ChildItem -Path $bundleDir -File -Recurse | Where-Object { $_.Name -match '\.(msi|msi\.zip|msi\.zip\.sig|exe|exe\.sig)$' } | Copy-Item -Destination dist\
           Write-Host "Collected artifacts:"
           Get-ChildItem -Path dist\ | Format-Table Name, Length
 
@@ -271,9 +487,181 @@ jobs:
           name: windows-x86_64
           path: dist/*
 
+  build-android:
+    name: Build signed Android RC
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize Android signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_KEYSTORE_BASE64:-}" || { echo "ANDROID_KEYSTORE_BASE64 is required" >&2; exit 2; }
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          Path(os.environ["RUNNER_TEMP"], "notemeld-android-release.jks").write_bytes(
+              base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"], validate=True)
+          )
+
+      - name: Download pinned Agent SDK AAR
+        env:
+          SDK_AAR_URL: ${{ vars.NOTEMELD_AGENT_SDK_AAR_URL }}
+          SDK_AAR_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_AAR_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${SDK_AAR_URL:-}" || { echo "NOTEMELD_AGENT_SDK_AAR_URL is required" >&2; exit 2; }
+          test -n "${SDK_AAR_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_AAR_SHA256 is required" >&2; exit 2; }
+          [[ "$SDK_AAR_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid SDK AAR SHA-256" >&2; exit 2; }
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/notemeld-agent-sdk.aar" "$SDK_AAR_URL"
+          echo "$SDK_AAR_SHA256  $RUNNER_TEMP/notemeld-agent-sdk.aar" | sha256sum -c -
+
+      - name: Build signed Android release APK
+        working-directory: android
+        env:
+          NOTEMELD_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/notemeld-android-release.jks
+          NOTEMELD_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          NOTEMELD_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          NOTEMELD_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          NOTEMELD_AGENT_SDK_AAR: ${{ runner.temp }}/notemeld-agent-sdk.aar
+          NOTEMELD_AGENT_SDK_AAR_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_AAR_SHA256 }}
+          NOTEMELD_ANDROID_VERSION_CODE: ${{ github.run_number }}
+          NOTEMELD_ANDROID_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for name in NOTEMELD_ANDROID_KEYSTORE_PASSWORD NOTEMELD_ANDROID_KEY_ALIAS NOTEMELD_ANDROID_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "$name is required" >&2; exit 2; }
+          done
+          [[ "$NOTEMELD_ANDROID_BUILD_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "NOTEMELD_ANDROID_BUILD_COMMIT must be the full release commit" >&2; exit 2; }
+          tag_version="${GITHUB_REF_NAME#v}"
+          version="${tag_version%%-*}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            version="1.0"
+          fi
+          export NOTEMELD_ANDROID_VERSION_NAME="$version"
+          ./gradlew --no-daemon test :app:assembleRelease
+
+      - name: Verify and collect signed Android APK
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          mkdir -p dist
+          tag_version="${GITHUB_REF_NAME#v}"
+          version="${tag_version%%-*}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then version="1.0"; fi
+          cp "$apk" "dist/NoteMeld_${version}_android.apk"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: dist/*.apk
+
+  build-cloud:
+    name: Publish Cloud RC image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/cloud" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download pinned Linux Agent SDK artifacts
+        env:
+          SDK_WHEEL_URL: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_WHEEL_URL }}
+          SDK_WHEEL_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_WHEEL_SHA256 }}
+          SDK_LIBRARY_URL: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_LIBRARY_URL }}
+          SDK_LIBRARY_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_LIBRARY_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${SDK_WHEEL_URL:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_WHEEL_URL is required" >&2; exit 2; }
+          test -n "${SDK_WHEEL_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_WHEEL_SHA256 is required" >&2; exit 2; }
+          test -n "${SDK_LIBRARY_URL:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_LIBRARY_URL is required" >&2; exit 2; }
+          test -n "${SDK_LIBRARY_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_LIBRARY_SHA256 is required" >&2; exit 2; }
+          [[ "$SDK_WHEEL_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid Linux SDK wheel SHA-256" >&2; exit 2; }
+          [[ "$SDK_LIBRARY_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid Linux SDK library SHA-256" >&2; exit 2; }
+          mkdir -p cloud/.sdk-build
+          curl --fail --location --retry 3 --output cloud/.sdk-build/notemeld-agent-sdk.whl "$SDK_WHEEL_URL"
+          curl --fail --location --retry 3 --output cloud/.sdk-build/libnotemeld_agent.so "$SDK_LIBRARY_URL"
+          echo "$SDK_WHEEL_SHA256  cloud/.sdk-build/notemeld-agent-sdk.whl" | sha256sum -c -
+          echo "$SDK_LIBRARY_SHA256  cloud/.sdk-build/libnotemeld_agent.so" | sha256sum -c -
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish Cloud image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cloud/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ github.sha }}
+          build-args: |
+            NOTEMELD_BUILD_COMMIT=${{ github.sha }}
+            NOTEMELD_AGENT_SDK_WHEEL=cloud/.sdk-build/notemeld-agent-sdk.whl
+            NOTEMELD_AGENT_SDK_LIBRARY=cloud/.sdk-build/libnotemeld_agent.so
+
+      - name: Record Cloud image identity
+        env:
+          CLOUD_IMAGE: ${{ steps.image.outputs.name }}
+          CLOUD_DIGEST: ${{ steps.build.outputs.digest }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p dist
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path("dist/cloud-image.json").write_text(json.dumps({
+              "image": os.environ["CLOUD_IMAGE"],
+              "digest": os.environ["CLOUD_DIGEST"],
+              "commit": os.environ["COMMIT_SHA"],
+          }, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload Cloud image identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-image
+          path: dist/cloud-image.json
+
   release:
     name: Create Release
-    needs: [build-macos, build-macos-intel, build-windows]
+    needs: [build-macos, build-macos-intel, build-windows, build-android, build-cloud]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -288,10 +676,35 @@ jobs:
 
       - name: Prepare release files
         run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          version="${tag_version%%-*}"
           mkdir -p release
           cp artifacts/macos-aarch64/* release/ 2>/dev/null || true
           cp artifacts/macos-x86_64/* release/ 2>/dev/null || true
           cp artifacts/windows-x86_64/* release/ 2>/dev/null || true
+          cp artifacts/android-release/* release/
+          cp artifacts/cloud-image/cloud-image.json release/
+          python3 scripts/desktop/packaging/scripts/generate-latest-json.py \
+            release "$version" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("release/latest.json").read_text(encoding="utf-8"))
+          required = {"darwin-aarch64", "darwin-x86_64", "windows-x86_64"}
+          missing = sorted(required - set(manifest.get("platforms", {})))
+          if missing:
+              raise SystemExit(f"release manifest is missing required platforms: {', '.join(missing)}")
+          print("validated updater platforms:", ", ".join(sorted(manifest["platforms"])))
+          PY
+          echo "building prerelease candidate; live ledger approval is intentionally false"
+          python3 scripts/release/generate_first_batch_rc_manifest.py \
+            --version "$version" \
+            --commit "${GITHUB_SHA}" \
+            --artifact-dir release \
+            --cloud-metadata release/cloud-image.json \
+            --output release/first-batch-rc.json
           ls -la release/
 
       - name: Create GitHub Release
@@ -302,5 +715,68 @@ jobs:
             release/*.msi
             release/*.exe
             release/*.app.tar.gz
+            release/*.app.tar.gz.sig
+            release/*.msi.zip
+            release/*.msi.zip.sig
+            release/*.apk
+            release/cloud-image.json
+            release/first-batch-rc.json
+            release/latest.json
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+
+      - name: Verify public updater manifest and signed assets
+        env:
+          RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "${RELEASE_BASE_URL}/latest.json" -o /tmp/notemeld-latest.json
+          python3 - /tmp/notemeld-latest.json <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from urllib.request import Request, urlopen
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              manifest = json.load(stream)
+          required = {"darwin-aarch64", "darwin-x86_64", "windows-x86_64"}
+          platforms = manifest.get("platforms", {})
+          missing = sorted(required - set(platforms))
+          if missing:
+              raise SystemExit(f"public updater manifest is missing: {', '.join(missing)}")
+          for platform, entry in platforms.items():
+              for key in ("url", "signature"):
+                  if not entry.get(key):
+                      raise SystemExit(f"{platform} updater entry has no {key}")
+              request = Request(entry["url"], method="HEAD", headers={"User-Agent": "NoteMeld-release-check"})
+              with urlopen(request, timeout=20) as response:
+                  if response.status < 200 or response.status >= 400:
+                      raise SystemExit(f"{platform} updater asset returned HTTP {response.status}")
+
+          release_base_url = os.environ["RELEASE_BASE_URL"].rstrip("/")
+          with urlopen(Request(f"{release_base_url}/first-batch-rc.json", headers={"User-Agent": "NoteMeld-release-check"}), timeout=20) as response:
+              first_batch = json.load(response)
+          if first_batch.get("schema_version") != "notemeld.first-batch-rc.v1" or first_batch.get("commit") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("public first-batch manifest identity does not match this workflow")
+          records = list(first_batch.get("artifacts", {}).get("windows_x86_64", []))
+          records += list(first_batch.get("artifacts", {}).get("windows_updater_signatures", []))
+          android = first_batch.get("artifacts", {}).get("android")
+          if isinstance(android, dict):
+              records.append(android)
+          if not records:
+              raise SystemExit("public first-batch manifest contains no downloadable artifacts")
+          for record in records:
+              digest = hashlib.sha256()
+              size = 0
+              request = Request(f"{release_base_url}/{record['name']}", headers={"User-Agent": "NoteMeld-release-check"})
+              with urlopen(request, timeout=60) as response:
+                  while chunk := response.read(1024 * 1024):
+                      digest.update(chunk)
+                      size += len(chunk)
+              if digest.hexdigest() != record.get("sha256") or size != record.get("bytes"):
+                  raise SystemExit(f"public artifact hash mismatch: {record['name']}")
+          print("public updater manifest and assets verified")
+          print("public first-batch artifact hashes verified")
+          PY

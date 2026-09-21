@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NoteMeld 云端登录</title>
+  <link rel="stylesheet" href="../../assets/cloud.css"><link rel="stylesheet" href="../../assets/c01-live.css">
+</head>
+<body class="cloud-page cloud-login-page" data-page="C01">
+  <main class="cloud-login-shell">
+    <header class="cloud-brandbar">
+      <a class="cloud-brand" href="#" aria-label="NoteMeld 云端首页"><span class="brand-symbol"><img src="../../assets/logo.png" alt="NoteMeld"></span><span><strong>NoteMeld</strong><small>云端</small></span></a>
+      <button class="icon-button" type="button" data-theme-toggle aria-label="切换浅色或深色模式"><i data-icon="sun"></i></button>
+    </header>
+    <section class="login-layout">
+      <div class="login-intro">
+        <span class="section-kicker">NoteMeld Cloud</span>
+        <h1>让 Agent 在云端持续工作</h1>
+        <p>关闭浏览器后任务仍可继续运行。你可以回来查看会话状态、审批操作和 Agent 生成的产物。</p>
+        <ul class="login-benefits">
+          <li><i data-icon="cloud-cog"></i><span><strong>持续运行</strong><small>云端 Agent 不依赖本地设备保持在线</small></span></li>
+          <li><i data-icon="folder-kanban"></i><span><strong>Workspace 上下文</strong><small>统一管理项目文件、会话上下文和产物</small></span></li>
+          <li><i data-icon="shield-check"></i><span><strong>权限自动识别</strong><small>登录后按账号权限显示用户或管理员菜单</small></span></li>
+        </ul>
+      </div>
+      <section class="auth-card" aria-labelledby="login-title">
+        <div class="auth-heading"><span class="auth-mark"><i data-icon="cloud"></i></span><div><h2 id="login-title">登录 NoteMeld 云端</h2><p>使用你的组织账号继续</p></div></div>
+        <div class="auth-mode-tabs" role="tablist" aria-label="登录方式"><button class="active" type="button" data-login-mode="password" role="tab" aria-selected="true">密码登录</button><button type="button" data-login-mode="code" role="tab" aria-selected="false">验证码登录</button></div>
+        <form class="auth-form" data-login-form novalidate>
+          <label for="account">邮箱</label>
+          <div class="field"><i data-icon="mail"></i><input id="account" name="account" type="email" autocomplete="email" placeholder="name@example.com" required></div>
+          <label for="password">密码</label>
+          <div class="field"><i data-icon="lock-keyhole"></i><input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入密码" required><button type="button" data-password-toggle aria-label="显示密码"><i data-icon="eye"></i></button></div>
+          <div class="field code-field" hidden><i data-icon="shield-check"></i><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="输入 6 位验证码"><button type="button" class="code-send-button" data-send-code>获取验证码</button></div>
+          <div class="auth-options"><label class="check-row"><input type="checkbox" name="remember" checked><span>记住登录状态</span></label><a href="#" data-password-reset>忘记密码？</a></div>
+          <p class="form-message" data-form-message role="alert" aria-live="polite"></p>
+          <button class="primary-button login-button" type="submit"><span>登录</span><i data-icon="arrow-right"></i></button>
+        </form>
+        <div class="auth-divider"><span>还没有云端权限？</span></div>
+        <button class="secondary-button" type="button" data-open-access>申请访问</button>
+        <p class="security-note"><i data-icon="shield"></i>登录会话受加密保护，过期后需要重新验证身份。</p>
+      </section>
+    </section>
+    <footer class="cloud-login-footer"><span>© 2026 NoteMeld</span><span>隐私 · 服务条款 · 安全</span></footer>
+  </main>
+  <div class="modal-backdrop" data-access-modal hidden>
+    <section class="create-dialog access-dialog" role="dialog" aria-modal="true" aria-labelledby="access-title">
+      <header><div><span class="section-kicker">Access request</span><h2 id="access-title">申请访问 NoteMeld 云端</h2><p>提交后由管理员在人员管理中审核，不会自动创建账号。</p></div><button class="icon-button" type="button" data-close-access aria-label="关闭"><i data-icon="x"></i></button></header>
+      <form data-access-form>
+        <div class="form-grid"><label>姓名或称呼<input name="name" autocomplete="name" placeholder="请输入姓名或称呼" required></label><label>邮箱<input name="email" type="email" autocomplete="email" placeholder="name@company.com" required></label></div>
+        <div class="form-grid"><label>设置登录密码<input name="password" type="password" autocomplete="new-password" minlength="8" placeholder="至少 8 位" required></label><label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入密码" required></label></div>
+        <label>申请说明 <small class="optional-label">选填，最多 100 字</small><textarea name="reason" rows="4" maxlength="100" placeholder="简要说明使用场景（最多 100 字）"></textarea><small class="field-hint" data-reason-count>0 / 100</small></label>
+        <p class="form-message" data-access-message role="alert" aria-live="polite"></p>
+        <p class="access-privacy"><i data-icon="shield-check"></i>密码加密传输，服务端只保存密码哈希；管理员无法查看原始密码。</p>
+        <div class="dialog-actions"><button class="secondary-button" type="button" data-close-access>取消</button><button class="primary-button" type="submit">提交申请</button></div>
+      </form>
+      <div class="access-success" data-access-success hidden role="status"><span class="success-symbol"><i data-icon="circle-check"></i></span><h3>申请已提交</h3><p>申请已提交。审核结果将发送至你的邮箱。</p><button class="primary-button" type="button" data-close-access>完成</button></div>
+    </section>
+  </div>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/cloud.js"></script><script src="../../assets/c01-live.js"></script><script src="../../assets/c01-invite-live.js"></script><script src="../../assets/c01-reset-live.js"></script><script>document.querySelector('[data-access-form] textarea')?.addEventListener('input',event=>{document.querySelector('[data-reason-count]')?.replaceChildren(`${event.target.value.length} / 100`)});</script>
+</body>
+</html>

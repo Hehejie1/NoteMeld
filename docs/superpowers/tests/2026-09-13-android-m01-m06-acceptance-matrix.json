@@ -1,0 +1,463 @@
+{
+  "schema": "notemeld.android-acceptance-matrix.v1",
+  "source": {
+    "page_map": "docs/new-product/PAGE-MAP.md",
+    "feature_registry": "docs/new-product/config/feature-registry.json",
+    "spec": "docs/superpowers/specs/2026-09-13-cloud-macos-x64-android-agent-release.md"
+  },
+  "scope": ["M01.home", "M02.session", "M03.settings", "M04.memory", "M05.font", "M06.storage"],
+  "status_vocabulary": ["PASS", "FAIL", "BLOCKED"],
+  "evidence_contract": {
+    "required": [
+      "screen",
+      "navigation",
+      "compose_component",
+      "repository_api_runtime",
+      "local_data",
+      "cloud_data",
+      "permissions",
+      "states",
+      "unit_instrumentation_tests",
+      "computer_use_ui_automator",
+      "screenshots",
+      "status"
+    ],
+    "screenshot_layout": "artifacts/acceptance/<rc>/visual/android/<page>/<case>/{reference,actual,diff}.png"
+  },
+  "verification_runs": [
+    {
+      "run_id": "local-avd-api34-2026-09-15",
+      "scope": "supplementary emulator evidence; not a physical-device release gate",
+      "device": "Pixel_3a_API_34_extension_level_7_x86_64 (AVD) - 14",
+      "result": "PASS",
+      "checks": [
+        "9 Android instrumentation tests",
+        "debug APK install and cold launch",
+        "M01-M06 navigation and system-back behavior",
+        "portrait/landscape rotation",
+        "no adb reverse",
+        "no fatal AndroidRuntime logcat entry"
+      ],
+      "artifact": "artifacts/acceptance/local-avd/visual/android/M01/home/actual-after-boot.png",
+      "apk_sha256": "f9362272701d2fe4765c51a855b1fe06b4dc0daa18951a462bfcee4de917c820",
+      "status_note": "Supplementary evidence only; entity-device, real Provider, Cloud, LAN/Relay and E2E gates remain BLOCKED"
+    },
+    {
+      "run_id": "sdk-artifact-pin-2026-09-15",
+      "scope": "Android canonical Agent SDK artifact integrity",
+      "artifact": "android/sdk-artifact-pin.json",
+      "result": "PASS",
+      "checks": [
+        "AAR SHA-256 matches the pinned digest",
+        "SDK/schema/binding metadata matches the pin",
+        "Canonical native and JNI libraries exist for all four Android ABIs",
+        "A tampered AAR is rejected before compilation"
+      ],
+      "aar_sha256": "e4f8acd6a2217b8fce683c26de2823b4407ebb8b5d9fa58c804c6142cc7fc2c0",
+      "tampered_build": "FAIL_CLOSED",
+      "status_note": "Integrity gate passes for the pinned debug artifact; production artifact provenance remains outside the test-only scope"
+    },
+    {
+      "run_id": "cloud-contract-tests-2026-09-15",
+      "scope": "Cloud config sync and remote service contract tests",
+      "result": "BLOCKED",
+      "checks": [
+        "Cloud test dependency installation attempted from cloud/requirements.txt",
+        "FastAPI/httpx dependencies unavailable in the configured environment"
+      ],
+      "status_note": "The pip process was terminated after hanging without installing dependencies; no Cloud test result is claimed"
+    },
+    {
+      "run_id": "physical-usb-api34-2026-09-15",
+      "scope": "Physical Android device instrumentation",
+      "device": "24115RA8EC (API 34, arm64-v8a)",
+      "result": "BLOCKED",
+      "checks": [
+        "Device was initially visible to adb and Gradle",
+        "Debug app APK installed successfully",
+        "Instrumentation APK install lost the USB transport",
+        "Subsequent adb query reported device not found"
+      ],
+      "status_note": "Physical-device execution is not claimed; reconnect a stable authorized USB device before using this gate"
+    },
+    {
+      "run_id": "android-release-verifier-2026-09-15",
+      "scope": "Android A-01 release evidence verifier",
+      "result": "PASS",
+      "applies_to_test_scope": false,
+      "checks": [
+        "Verifier rejected debug APK evidence without release signer metadata",
+        "Debug certificate is explicitly Android Debug and cannot satisfy release signing",
+        "Physical device was unavailable for installed-package verification"
+      ],
+      "status_note": "Release-only check is intentionally out of scope for this test request; debug APK signing is sufficient for test execution"
+    },
+    {
+      "run_id": "cloud-contract-tests-rerun-2026-09-15",
+      "scope": "Cloud config sync and remote service contract tests",
+      "result": "PASS",
+      "checks": [
+        "Config sync revision, idempotency, conflict and delete tombstone",
+        "Relay lifecycle and revoked-grant handling",
+        "Secure identity and Cloud runtime",
+        "Cloud sync bootstrap and Cloud client contracts"
+      ],
+      "test_command": "PYTHONPATH=desktop/backend .venv/bin/python -m pytest -q desktop/backend/tests/test_cloud_config_sync.py desktop/backend/tests/test_cloud_relay_lifecycle.py desktop/backend/tests/test_cloud_secure_identity.py desktop/backend/tests/test_cloud_runtime.py desktop/backend/tests/test_cloud_sync_bootstrap.py desktop/backend/tests/test_cloud_client.py",
+      "tests_passed": 41,
+      "warnings": 2,
+      "status_note": "Service-side contract evidence only; real Android-to-Cloud account and Host E2E remain BLOCKED"
+    },
+    {
+      "run_id": "android-release-variant-test-build-2026-09-15",
+      "scope": "Unsigned Android release variant for functional testing",
+      "result": "PASS",
+      "checks": [
+        "assembleRelease succeeds without release signing variables",
+        "Unsigned APK contains canonical SDK native/JNI payloads",
+        "Package manifest resolves NoteMeld launcher icon resources"
+      ],
+      "artifact": "android/app/build/outputs/apk/release/app-release-unsigned.apk",
+      "apk_sha256": "7aa8ead53278b9254a0d33e54dc41880b6396107b4d9186f2eb0364b10cc326c",
+      "status_note": "Test artifact only; no production signing claim"
+    },
+    {
+      "run_id": "android-state-unit-tests-2026-09-15",
+      "scope": "Android reducer/state invariants for M02-M06",
+      "result": "PASS",
+      "test_command": "NOTEMELD_AGENT_SDK_AAR=<pinned-aar> ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug",
+      "checks": [
+        "Memory add/delete and memory-id alignment",
+        "Offline memory write rejection and agent input fail-closed behavior",
+        "Font size, system-font toggle and reset state",
+        "Storage clear remains at the persistence boundary"
+      ],
+      "status_note": "State-level evidence only; full UI interaction and live service behavior remain separately classified"
+    },
+    {
+      "run_id": "android-avd-api34-direct-instrumentation-2026-09-15",
+      "scope": "Fresh direct instrumentation rerun on an independent API 34 AVD",
+      "device": "Pixel_3a_API_34_extension_level_7_x86_64 (emulator-5556)",
+      "result": "PASS",
+      "checks": [
+        "9 app instrumentation tests",
+        "4 ui-core instrumentation tests",
+        "Debug APK and test APK installed successfully",
+        "M01-M06 navigation, rotation, theme and system-back checks completed"
+      ],
+      "test_commands": [
+        "adb -s emulator-5556 shell am instrument -w -r com.notemeld.mobile.test/androidx.test.runner.AndroidJUnitRunner",
+        "adb -s emulator-5556 shell am instrument -w -r com.notemeld.ui.test/androidx.test.runner.AndroidJUnitRunner"
+      ],
+      "artifacts": [
+        "/tmp/notemeld-avd-direct-test.log",
+        "/tmp/notemeld-avd-ui-core-direct-test.log"
+      ],
+      "status_note": "Fresh supplementary emulator evidence; physical-device, real Cloud account, macOS Host, LAN/Relay and end-to-end gates remain BLOCKED"
+    },
+    {
+      "run_id": "cloud-local-mobile-smoke-2026-09-15",
+      "scope": "Local development Cloud mobile vertical smoke",
+      "device": "mobile-smoke script client",
+      "result": "PASS",
+      "checks": [
+        "Cloud readiness endpoint",
+        "Admin login and device registration",
+        "Cloud-native session creation",
+        "Command submission and completed terminal state",
+        "Event cursor and snapshot sequence retrieval"
+      ],
+      "test_command": "scripts/cloud/smoke_mobile_cloud.py --base-url http://127.0.0.1:18584",
+      "result_summary": {
+        "command_status": "completed",
+        "event_types": ["command.queued", "turn.completed"],
+        "snapshot_seq": 2
+      },
+      "status_note": "Real local HTTP vertical smoke with the development deterministic runner; not a production provider, Android-device, macOS Host or LAN/Relay PASS"
+    },
+    {
+      "run_id": "physical-usb-install-launch-2026-09-16",
+      "scope": "Physical Android debug test installation and cold launch",
+      "device": "24115RA8EC (Android 14, arm64-v8a)",
+      "result": "PASS",
+      "checks": [
+        "USB adb device authorized and visible",
+        "Debug APK push-install completed successfully",
+        "NoteMeld launcher activity started",
+        "Installed package reports targetSdk 35"
+      ],
+      "artifact": "android/app/build/outputs/apk/debug/app-debug.apk",
+      "apk_sha256": "ab04616cec84df1e06364755fc87158317d698db6dd967203cd25cdf0dd65f9b",
+      "status_note": "Debug install/cold-launch evidence only; physical instrumentation and release-signature gates remain separately classified"
+    },
+    {
+      "run_id": "physical-usb-ui-redesign-preview-2026-09-16",
+      "scope": "Physical Android visual preview of the redesigned mobile shell",
+      "device": "24115RA8EC (Android 14, arm64-v8a)",
+      "result": "PASS",
+      "checks": [
+        "Home renders the NoteMeld work surface without a right-side settings action",
+        "Bottom composer expands on focus into input plus tools, permission, model and send controls",
+        "Home no longer shows the standalone Agent file/tool permission prompt",
+        "Home send transitions into M02 and records the submitted user message",
+        "Menu opens a full-height left drawer",
+        "Drawer exposes local, Cloud and remote work tabs",
+        "Drawer exposes the new-task action",
+        "Settings action is located at the drawer bottom",
+        "Settings screen uses grouped cards and segmented theme control",
+        "Drawer exposes close action and uses the platform swipe/scrim behavior",
+        "Physical swipe from the drawer toward the left closes the drawer"
+      ],
+      "screenshots": [
+        "/tmp/notemeld-home-v2.png",
+        "/tmp/notemeld-composer-expanded-hidden-keyboard-v2.png",
+        "/tmp/notemeld-drawer-v3.png",
+        "/tmp/notemeld-settings-v3.png"
+      ],
+      "artifact": "android/app/build/outputs/apk/debug/app-debug.apk",
+      "apk_sha256": "eff20d51d60fefc1be86d831e02f3b4df3739bbb7c6435cef66ff24275111098",
+      "status_note": "Latest debug APK was installed and manually inspected on the physical device for the collapsed/expanded composer, compact shared work-mode segmented control, new-task action and settings header with back navigation. Automated instrumentation remains blocked by INSTALL_FAILED_USER_RESTRICTED"
+    },
+    {
+      "run_id": "android-avd-api34-latest-reconnect-2026-09-16",
+      "scope": "Latest APK device verification retry",
+      "device": "Pixel_3a_API_34_extension_level_7_x86_64 (emulator-5554)",
+      "result": "BLOCKED",
+      "checks": [
+        "AVD launch was requested without wiping data",
+        "ADB exposed the emulator as offline transport",
+        "Emulator was terminated after the offline state remained terminal"
+      ],
+      "artifact": "android/app/build/outputs/apk/debug/app-debug.apk",
+      "apk_sha256": "ab04616cec84df1e06364755fc87158317d698db6dd967203cd25cdf0dd65f9b",
+      "status_note": "Latest APK is built, but no device-level result is claimed from this retry; a stable authorized physical device or healthy AVD transport is required"
+    },
+    {
+      "run_id": "android-avd-api34-m01-m06-final-2026-09-19",
+      "scope": "Final M01-M06 emulator build, interaction and visual verification",
+      "device": "Pixel_3a_API_34_extension_level_7_x86_64 (emulator-5554) - Android 14",
+      "result": "PASS",
+      "checks": [
+        "Unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest",
+        "9/9 app instrumentation tests through production navigation",
+        "M01/M02 visual capture after new-product alignment",
+        "Shared top toast and bottom-sheet components",
+        "Default/full Agent permission selection sheet",
+        "System back, rotation, theme, memory clipboard, font and storage interactions"
+      ],
+      "screenshots": [
+        "/tmp/notemeld-final-m01.png",
+        "/tmp/notemeld-final-m02.png"
+      ],
+      "artifact": "android/app/build/outputs/apk/debug/app-debug.apk",
+      "apk_sha256": "c6fb3b0ff3ecd4a112002e05d910d6d6879462bdbfaf80f4d664d879eed27a8d",
+      "status_note": "Emulator acceptance passes. Latest physical-device installation/instrumentation remains BLOCKED because adb serial 3b929e09 disconnected; production Cloud/Remote/provider and signed-RC gates remain BLOCKED."
+    }
+  ],
+  "items": [
+    {
+      "id": "M01.home.location",
+      "page": "M01",
+      "screen": "Agent 首页",
+      "navigation": "首页 → 本机/Cloud/远程工作入口",
+      "compose_component": "MobileSurface / location selector",
+      "repository_api_runtime": "EmbeddedLocalAgent; CloudApi; AndroidRemoteRelay; MobileApi projection",
+      "local_data": "MobileLocalStore session/task projection and sync cursor",
+      "cloud_data": "Cloud workspace/session/device/grant projection",
+      "permissions": "Cloud auth and remote Grant; local mode has no Cloud dependency",
+      "states": ["ready", "offline", "syncing", "error"],
+      "unit_instrumentation_tests": ["MobileSurfaceStateTest", "MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Open location control and verify each mode plus offline fail-closed behavior",
+      "screenshots": "M01/home,offline",
+      "status": "BLOCKED",
+      "blocker": "No authorized Android emulator or physical device is connected for live UI/runtime evidence"
+    },
+    {
+      "id": "M01.home.session-summary",
+      "page": "M01",
+      "screen": "Agent 首页",
+      "navigation": "首页 → 会话抽屉 → 任务摘要 → 会话详情",
+      "compose_component": "MobileSurface / task drawer",
+      "repository_api_runtime": "MobileLocalStore.loadTasks; MobileApi.loadTasks",
+      "local_data": "Bounded local task projection",
+      "cloud_data": "Authorized session metadata only",
+      "permissions": "Offline permits read-only cached projection",
+      "states": ["ready", "empty", "offline", "error"],
+      "unit_instrumentation_tests": ["MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Open drawer, select existing task, return with system back",
+      "screenshots": "M01/task-drawer",
+      "status": "BLOCKED",
+      "blocker": "Live device evidence unavailable"
+    },
+    {
+      "id": "M01.home.composer",
+      "page": "M01",
+      "screen": "Agent 首页",
+      "navigation": "首页 → Agent 输入 → M02 会话",
+      "compose_component": "MobileSurface / mobile composer",
+      "repository_api_runtime": "EmbeddedLocalAgent or CloudApi/AndroidRemoteRelay",
+      "local_data": "Pending local turn and ordered event cursor",
+      "cloud_data": "Cloud command/session projection when not local",
+      "permissions": "Input disabled for offline Cloud/Remote modes",
+      "states": ["idle", "sending", "running", "failed", "offline_readonly"],
+      "unit_instrumentation_tests": ["MobileSurfaceStateTest"],
+      "computer_use_ui_automator": "Send a unique challenge and verify visible progress and one terminal result",
+      "screenshots": "M01/composer-running,offline",
+      "status": "BLOCKED",
+      "blocker": "Requires real model/provider and connected Android runtime environment"
+    },
+    {
+      "id": "M02.session.messages",
+      "page": "M02",
+      "screen": "会话详情",
+      "navigation": "M01 → 会话详情 → 消息滚动",
+      "compose_component": "SessionScreen / chat scroll",
+      "repository_api_runtime": "EmbeddedLocalAgent event callback; MobileApi session projection",
+      "local_data": "Bounded message history and event cursor",
+      "cloud_data": "Authorized session event/message projection",
+      "permissions": "Session scope and device Grant",
+      "states": ["loading", "idle", "running", "completed", "failed", "offline_readonly"],
+      "unit_instrumentation_tests": ["MobileSurfaceStateTest", "MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Verify user/assistant messages, ordered deltas, terminal state and restoration",
+      "screenshots": "M02/session,offline,failed",
+      "status": "BLOCKED",
+      "blocker": "Requires connected Android device and live runtime evidence"
+    },
+    {
+      "id": "M02.session.controls",
+      "page": "M02",
+      "screen": "会话详情",
+      "navigation": "M02 → model/permission/actions/file controls",
+      "compose_component": "SessionScreen / model sheet, actions sheet, attachment picker",
+      "repository_api_runtime": "CloudApi.listModels/streamAgent; EmbeddedLocalAgent; ActivityResultContracts",
+      "local_data": "Staged attachment metadata and selected model",
+      "cloud_data": "Available model and session permission projection",
+      "permissions": "Model scope, workspace scope, attachment bounds",
+      "states": ["idle", "sheet_open", "selecting", "error"],
+      "unit_instrumentation_tests": ["MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Open/cancel/confirm sheets, attach bounded file, verify no duplicate submit",
+      "screenshots": "M02/model-sheet,actions-sheet,attachment",
+      "status": "BLOCKED",
+      "blocker": "Live UI automation unavailable"
+    },
+    {
+      "id": "M02.session.cancel-steer-recovery",
+      "page": "M02",
+      "screen": "会话详情",
+      "navigation": "M02 → running → cancel/steer/relaunch",
+      "compose_component": "SessionScreen / cancel and steer controls",
+      "repository_api_runtime": "Canonical SDK Runtime cancel/steer through AgentRuntime",
+      "local_data": "Pending-turn crash marker, ordered event log, recovery message",
+      "cloud_data": "Remote cursor/receipt projection when applicable",
+      "permissions": "Host approval remains host-only for dangerous remote tools",
+      "states": ["running", "waiting_approval", "cancelled", "interrupted", "needs_attention"],
+      "unit_instrumentation_tests": ["MobileSurfaceStateTest"],
+      "computer_use_ui_automator": "Cancel/steer, force-stop/relaunch, verify no unknown side effect replay",
+      "screenshots": "M02/cancelled,needs-attention",
+      "status": "BLOCKED",
+      "blocker": "Requires live Android process-recovery and runtime control evidence"
+    },
+    {
+      "id": "M02.session.remote",
+      "page": "M02",
+      "screen": "会话详情",
+      "navigation": "M01 → 远程 → Host selection → M02",
+      "compose_component": "SessionScreen / remote device selector and transport banner",
+      "repository_api_runtime": "CloudApi.streamRemoteAgent; AndroidRemoteRelay LAN-first/Relay",
+      "local_data": "Remote device projection and monotonic transport cursor",
+      "cloud_data": "Device public-key, endpoint and Grant metadata; opaque relay frame only",
+      "permissions": "Valid device identity and non-revoked Grant",
+      "states": ["ready", "lan", "relay", "offline", "remote_transport_unavailable", "revoked"],
+      "unit_instrumentation_tests": ["Cloud/relay contract tests"],
+      "computer_use_ui_automator": "Run LAN-first, force Relay fallback, revoke Grant and verify fail-closed",
+      "screenshots": "M02/lan,relay,offline,revoked",
+      "status": "BLOCKED",
+      "blocker": "No online macOS Host/Cloud environment or Android device pair is available"
+    },
+    {
+      "id": "M03.settings.navigation",
+      "page": "M03",
+      "screen": "设置首页",
+      "navigation": "M01/M02 → 设置 → M04/M05/M06",
+      "compose_component": "SettingsScreen / settings list",
+      "repository_api_runtime": "MobileLocalStore; CloudApi config sync",
+      "local_data": "Theme/language/font/notification preferences and cache metadata",
+      "cloud_data": "Non-sensitive user preference revision and tombstones",
+      "permissions": "Authenticated Cloud writes only; offline read-only",
+      "states": ["ready", "sheet_open", "saving", "saved", "error"],
+      "unit_instrumentation_tests": ["MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Navigate all settings entries and verify return/back behavior",
+      "screenshots": "M03/settings",
+      "status": "PASS",
+      "verification_run": "local-avd-api34-2026-09-15",
+      "status_note": "Settings navigation and return/back behavior are covered by MainActivitySmokeTest on the API 34 AVD"
+    },
+    {
+      "id": "M03.settings.cloud-and-security",
+      "page": "M03",
+      "screen": "设置首页",
+      "navigation": "设置 → Cloud login/logout and local Provider settings",
+      "compose_component": "SettingsScreen / Cloud form and local Provider fields",
+      "repository_api_runtime": "CloudApi.login/verifyCapabilities/syncConfig/registerDevice",
+      "local_data": "AndroidKeyStore-wrapped token/provider secret; no plaintext secret projection",
+      "cloud_data": "Account/device/config revision only",
+      "permissions": "Cloud auth, protocol/runtime negotiation, device registration",
+      "states": ["idle", "loading", "authenticated", "syncing", "error"],
+      "unit_instrumentation_tests": ["Cloud config contract tests"],
+      "computer_use_ui_automator": "Login, sync, logout, inspect UI/logs for secret redaction",
+      "screenshots": "M03/cloud-connected,cloud-error",
+      "status": "BLOCKED",
+      "blocker": "Requires real Cloud account and connected Android device"
+    },
+    {
+      "id": "M04.memory.crud",
+      "page": "M04",
+      "screen": "记忆库",
+      "navigation": "M03 → 记忆库 → add/copy/delete",
+      "compose_component": "MemoryScreen / memory list, input and actions",
+      "repository_api_runtime": "MobileLocalStore local CRUD or MobileApi real memory CRUD",
+      "local_data": "Memory projection with opaque ids for local mode",
+      "cloud_data": "Workspace memory authority and revision/source metadata",
+      "permissions": "Workspace memory scope; offline writes disabled",
+      "states": ["loading", "ready", "adding", "saved", "error"],
+      "unit_instrumentation_tests": ["MainActivitySmokeTest", "MobileSurfaceStateTest"],
+      "computer_use_ui_automator": "Add/copy/delete and verify failed write preserves input",
+      "screenshots": "M04/empty,ready,error",
+      "status": "BLOCKED",
+      "blocker": "Live device evidence unavailable"
+    },
+    {
+      "id": "M05.font.preview-save",
+      "page": "M05",
+      "screen": "字体大小",
+      "navigation": "M03 → 字体 → slider/system/default/save",
+      "compose_component": "FontScreen / Slider, Switch, preview and actions",
+      "repository_api_runtime": "MobileLocalStore preference persistence; Cloud config sync when authenticated",
+      "local_data": "fontSize and followSystemFont",
+      "cloud_data": "Optional user preference revision",
+      "permissions": "Local preference always; Cloud sync only after auth",
+      "states": ["previewing", "dirty", "saved", "error"],
+      "unit_instrumentation_tests": ["MobileSurfaceStateTest", "MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Set 1.3 font scale, toggle system font, rotate and confirm persistence",
+      "screenshots": "M05/default,large,system",
+      "status": "BLOCKED",
+      "blocker": "Requires connected Android device for system font/rotation evidence"
+    },
+    {
+      "id": "M06.storage.clear",
+      "page": "M06",
+      "screen": "存储空间",
+      "navigation": "M03 → 存储 → item/all clear → confirmation",
+      "compose_component": "StorageScreen / category list, AlertDialog and progress",
+      "repository_api_runtime": "MobileLocalStore.storage/clear",
+      "local_data": "Cache, Cloud cache, local files and artifact roots; identity/pending data protected",
+      "cloud_data": "Only rebuildable sync metadata is eligible for local cache clearing",
+      "permissions": "Local destructive action requires explicit confirmation",
+      "states": ["ready", "clearing", "completed", "error"],
+      "unit_instrumentation_tests": ["MainActivitySmokeTest"],
+      "computer_use_ui_automator": "Preview item/all clear, cancel, confirm and verify protected data remains",
+      "screenshots": "M06/ready,confirm,completed,error",
+      "status": "BLOCKED",
+      "blocker": "Live device evidence unavailable"
+    }
+  ]
+}

@@ -65,7 +65,7 @@ install_repo() {
     git -C "$APP_DIR" fetch origin "$REPO_BRANCH"
     git -C "$APP_DIR" checkout "$REPO_BRANCH"
     git -C "$APP_DIR" pull --ff-only origin "$REPO_BRANCH"
-    mkdir -p "$APP_DIR/vector_db" "$APP_DIR/logs"
+    mkdir -p "$APP_DIR/desktop/data" "$APP_DIR/desktop/logs"
     return 0
   fi
 
@@ -76,7 +76,7 @@ install_repo() {
   log "Cloning NoteMeld from ${REPO_URL}"
   git clone --branch "$REPO_BRANCH" "$REPO_URL" "$APP_DIR"
 
-  mkdir -p "$APP_DIR/vector_db" "$APP_DIR/logs"
+  mkdir -p "$APP_DIR/desktop/data" "$APP_DIR/desktop/logs"
 }
 
 install_backend() {
@@ -89,13 +89,13 @@ install_backend() {
   fi
 
   .venv/bin/python -m pip install --upgrade pip
-  .venv/bin/python -m pip install -r backend/requirements.txt
+  .venv/bin/python -m pip install -r desktop/backend/requirements.txt
 }
 
 install_frontend() {
   log "Installing frontend dependencies"
 
-  cd "$APP_DIR/frontend"
+  cd "$APP_DIR/desktop/frontend"
   corepack enable
   corepack pnpm install --registry https://registry.npmjs.org
 }
@@ -117,7 +117,7 @@ install_cli() {
 set -euo pipefail
 
 export NOTEMELD_HOME="${NOTEMELD_HOME:-$HOME/.notemeld}"
-exec "$NOTEMELD_HOME/app/scripts/notemeld" "$@"
+exec "$NOTEMELD_HOME/app/scripts/desktop/notemeld" "$@"
 EOF
 
   chmod +x "$CLI_PATH"

@@ -1,0 +1,9 @@
+// C07 is an administrator-only lifecycle and audit view. Data is read from Cloud APIs.
+(()=>{
+  if(document.body.dataset.page!=='C07'||!sessionStorage.getItem('notemeld-cloud-token'))return;
+  const token=sessionStorage.getItem('notemeld-cloud-token');
+  const api=async path=>{const response=await fetch(path,{headers:{Authorization:`Bearer ${token}`}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||payload.msg||'请求失败');return payload.data};
+  const escape=value=>String(value??'').replace(/[&<>\"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[char]));
+  const render=async()=>{try{const [users,audits]=await Promise.all([api('/v1/admin/users'),api('/v1/admin/audits?limit=100')]);const metrics=document.querySelectorAll('.people-overview article strong');if(metrics[0])metrics[0].textContent=`${users.length}`;if(metrics[1])metrics[1].textContent=`${users.filter(item=>item.disabled).length}`;if(metrics[2])metrics[2].textContent=`${audits.length}`;const card=document.querySelector('.audit-grid .ops-card:nth-child(2)');if(card){card.querySelectorAll('.audit-row').forEach(row=>row.remove());const rows=audits.length?audits.map(item=>`<div class="audit-row"><i data-icon="scroll-text"></i><span><strong>${escape(item.action)}</strong><small>${escape(item.resource_id||'—')}</small></span><time>${new Date(item.created_at*1000).toLocaleString()}</time></div>`).join(''):'<p class="empty-cloud-state">暂无审计记录。</p>';card.insertAdjacentHTML('beforeend',rows)}window.lucide?.createIcons({attrs:{'stroke-width':2,'aria-hidden':'true'}})}catch(error){const main=document.querySelector('.cloud-main');if(main&&!main.querySelector('[data-c07-error]')){const message=document.createElement('p');message.dataset.c07Error='';message.className='form-message';message.textContent=error.message;main.prepend(message)}}};
+  render();
+})();

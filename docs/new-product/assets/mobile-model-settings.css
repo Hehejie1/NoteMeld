@@ -1,0 +1,172 @@
+/* M07 自有 token：不依赖 design-system/tokens.css，主题取值兼容 dark/深色 两种写法。 */
+:root{--mobile-surface-muted:#f1f3f8;--mobile-accent-soft:#e8efff;--mobile-success:#168a63;--mobile-focus-ring:0 0 0 3px rgb(57 117 237 / 18%)}
+.model-settings-screen{display:flex;flex-direction:column;overflow:hidden;padding-bottom:22px}
+.model-settings-header{grid-template-columns:76px 1fr 76px;flex:none}
+.model-settings-header>strong{text-align:center;font-size:17px}
+.model-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.model-header-actions .icon-only{width:34px;height:34px;border-radius:10px;color:var(--mobile-muted)}
+.model-header-actions .icon-only:hover{background:var(--mobile-surface-muted);color:var(--mobile-ink)}
+.model-header-actions .icon-only:last-child{color:var(--mobile-accent)}
+.model-list-note{flex:none;margin:14px 2px 19px;color:var(--mobile-muted);font-size:10px}
+.model-list-scroll{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:0 2px 12px}
+.model-source-group{margin-bottom:21px}
+.model-source-heading{display:flex;align-items:center;justify-content:space-between;margin:0 3px 9px}
+.model-source-heading h2{margin:0;font-size:13px;font-weight:800}
+.model-source-heading span{color:var(--mobile-muted);font-size:10px}
+.model-card{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;gap:10px;align-items:center;min-height:76px;margin-bottom:8px;padding:11px;border:1px solid var(--mobile-line);border-radius:16px;background:var(--mobile-panel);box-shadow:0 9px 24px #23334d08}
+.model-card-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--mobile-accent-soft);color:var(--mobile-accent)}
+.model-card-mark svg{width:17px;height:17px}
+.model-card-body{display:grid;gap:5px;min-width:0}
+.model-card-body strong{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.model-card-body small{overflow:hidden;color:var(--mobile-muted);font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.model-card>button{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:9px;background:transparent;color:var(--mobile-muted)}
+.model-card>button:hover{background:var(--mobile-surface-muted);color:var(--mobile-ink)}
+.model-card>button svg{width:17px;height:17px}
+.model-empty{padding:40px 18px;border:1px dashed var(--mobile-line);border-radius:16px;color:var(--mobile-muted);text-align:center;font-size:12px}
+.model-config-sheet{max-height:82%}
+.provider-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding-bottom:8px}
+.provider-options button{display:flex;align-items:center;gap:8px;min-width:0;min-height:43px;padding:0 10px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-surface-muted);color:var(--mobile-ink);text-align:left}
+.provider-options button.wide{grid-column:1/-1}
+.provider-options button>svg:first-child{width:16px;height:16px;color:var(--mobile-accent)}
+.provider-options button>svg:last-child{width:13px;height:13px;margin-left:auto;color:var(--mobile-muted)}
+.provider-options span{overflow:hidden;font-size:11px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.model-config-sheet form{display:grid;gap:11px;padding-bottom:8px}
+.model-config-sheet form>label{display:grid;gap:6px;color:var(--mobile-ink);font-size:11px;font-weight:700}
+.field-hint{float:right;color:var(--mobile-muted);font-size:9px;font-weight:400}
+.model-config-sheet form input:not([type=checkbox]){width:100%;height:39px;padding:0 11px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-panel);color:var(--mobile-ink);font-size:11px;outline:0}
+.model-config-sheet form input:focus-visible{border-color:var(--mobile-accent);box-shadow:var(--mobile-focus-ring)}
+.model-field-head{display:flex;align-items:center;justify-content:space-between;margin-top:2px;font-size:11px;font-weight:700;color:var(--mobile-ink)}
+.model-field-head button,.model-inline-action{min-height:30px;padding:0 9px;border:1px solid var(--mobile-line);border-radius:8px;background:var(--mobile-accent-soft);color:var(--mobile-accent);font-size:10px;font-weight:700}
+.model-field-head button:disabled{opacity:.5}
+.model-fetch-status{margin:-5px 0 0;color:var(--mobile-muted);font-size:9px;line-height:1.5}
+.model-fetch-status strong{font-weight:800}
+.model-options{display:grid;gap:5px;max-height:138px;overflow:auto}
+.model-option{display:flex;align-items:center;gap:7px;padding:8px 9px;border:1px solid var(--mobile-line);border-radius:8px;background:var(--mobile-panel);color:var(--mobile-ink);font-size:10px}
+.model-option input{accent-color:var(--mobile-accent)}
+.model-inline-action{display:flex;align-items:center;justify-content:center;gap:4px;width:max-content;margin-top:-5px}
+.model-inline-action svg{width:13px;height:13px}
+.model-form-error{margin:0;color:var(--mobile-danger);font-size:10px}
+.model-form-error[hidden]{display:none}
+.model-test{display:flex;align-items:center;justify-content:center;gap:7px;min-height:40px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-surface-muted);color:var(--mobile-accent);font-size:11px;font-weight:700}
+.model-test[hidden],.model-test-status[hidden]{display:none}
+.model-test:disabled{opacity:.55;cursor:wait}
+.model-test svg{width:15px;height:15px}
+.model-test-status{margin:-5px 0 0;color:var(--mobile-muted);font-size:10px;line-height:1.5}
+.model-test-status[data-result="ok"]{color:var(--mobile-success)}
+.model-test-status[data-result="error"]{color:var(--mobile-danger)}
+.model-save{height:42px;border:0;border-radius:10px;background:var(--mobile-accent);color:#fff;font-size:12px;font-weight:800}
+.model-actions-sheet{max-height:36%}
+.model-actions-sheet>button{display:flex;align-items:center;gap:10px;width:100%;height:49px;padding:0 8px;border:0;border-bottom:1px solid var(--mobile-line);background:transparent;color:var(--mobile-ink);text-align:left;font-size:12px}
+.model-actions-sheet>button svg{width:17px;height:17px}
+.model-actions-sheet>button svg:last-child{width:14px;height:14px;margin-left:auto;color:var(--mobile-muted)}
+.model-actions-sheet>button.danger{color:var(--mobile-danger)}
+.model-delete-modal .modal-icon{background:var(--mobile-danger-soft, #fbeaec);color:var(--mobile-danger)}
+.model-delete-modal .modal-actions .danger{background:var(--mobile-danger);color:#fff}
+.model-scan-sheet{max-height:60%}
+.scan-view{display:grid;justify-items:center;gap:12px;min-height:170px;padding:26px 14px;border:1px dashed var(--mobile-line);border-radius:14px;background:var(--mobile-surface-muted);text-align:center}
+.scan-view>svg{width:38px;height:38px;color:var(--mobile-accent)}
+.scan-view p{margin:0;color:var(--mobile-muted);font-size:11px;line-height:1.6}
+.scan-view video{width:100%;max-height:210px;border-radius:10px}
+.scan-view video[hidden]{display:none}
+/* 协议下拉 */
+.model-config-sheet form select{width:100%;height:39px;padding:0 9px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-panel);color:var(--mobile-ink);font-size:11px;outline:0;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mobile-muted) 50%),linear-gradient(135deg,var(--mobile-muted) 50%,transparent 50%);background-position:calc(100% - 15px) 17px,calc(100% - 10px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.model-config-sheet form select:focus-visible{border-color:var(--mobile-accent);box-shadow:var(--mobile-focus-ring)}
+.model-url-note{margin:0;color:var(--mobile-accent);font-size:9px;line-height:1.5}
+.model-url-note[hidden]{display:none}
+
+/* 密钥显隐切换 */
+.model-key-toggle{display:inline-flex;align-items:center;gap:3px;margin:-4px 0;padding:3px 7px;border:1px solid var(--mobile-line);border-radius:7px;background:var(--mobile-surface-muted);color:var(--mobile-accent);font-size:9px;font-weight:700}
+.model-key-toggle svg{width:11px;height:11px}
+
+/* 多模型选项：名称 + 每模型独立上下文 */
+.model-option>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-context-cell{display:inline-flex;align-items:center;gap:5px;margin-left:auto;padding-left:7px;border-left:1px solid var(--mobile-line)}
+.model-context-cell[hidden]{display:none}
+.model-context-cell em{color:var(--mobile-muted);font-size:9px;font-style:normal;white-space:nowrap}
+.model-config-sheet form .model-context-cell input[type="number"]{width:84px;height:30px;padding:0 6px;border-radius:7px;font-size:10px;text-align:right}
+
+/* 不支持的厂商（如 AWS Bedrock v1） */
+.provider-options button.is-unsupported{opacity:.42}
+.provider-options button.is-unsupported:disabled{cursor:not-allowed}
+
+/* 厂商选择底部导入入口 */
+.model-import-entry{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:42px;margin-top:9px;border:1px dashed var(--mobile-line);border-radius:10px;background:transparent;color:var(--mobile-accent);font-size:11px;font-weight:700}
+.model-import-entry svg{width:15px;height:15px}
+
+/* 分享 sheet */
+.model-share-sheet{max-height:82%}
+.share-qr{display:grid;justify-items:center;gap:8px;padding:6px 0 2px}
+.share-qr .qr-placeholder{display:grid;place-items:center;width:150px;height:150px;border:1px solid var(--mobile-line);border-radius:12px;background:var(--mobile-surface-muted)}
+.share-qr .qr-placeholder svg{width:88px;height:88px;color:var(--mobile-accent)}
+.share-uri-label{display:grid;gap:6px;color:var(--mobile-ink);font-size:11px;font-weight:700}
+.share-uri-label input{width:100%;height:39px;padding:0 11px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-surface-muted);color:var(--mobile-muted);font-size:10px;outline:0}
+
+/* 导入 sheet */
+.model-import-sheet{max-height:72%}
+.model-import-sheet textarea{width:100%;padding:10px 11px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-panel);color:var(--mobile-ink);font-size:10px;line-height:1.6;outline:0;resize:none}
+.model-import-sheet textarea:focus-visible{border-color:var(--mobile-accent);box-shadow:var(--mobile-focus-ring)}
+.model-import-sheet .model-fetch-status{min-height:14px}
+
+/* 暗色主题：兼容移动端自身 data-theme="深色" 与跨端共享的 data-theme="dark"。
+   mobile.css 的暗色 token 只挂在中文选择器，且 .mobile-sheet/.mobile-modal 硬编码白底，这里在 M07 范围内补齐。 */
+body[data-theme="dark"],body[data-theme="深色"]{--mobile-ink:#edf2fb;--mobile-muted:#95a1b5;--mobile-line:#2a3850;--mobile-panel:#151f31;--mobile-surface-muted:#202a40;--mobile-accent-soft:#22345d;--mobile-success:#45c094;--mobile-focus-ring:0 0 0 3px rgb(118 154 255 / 24%);background:#0f1725}
+body[data-theme="dark"].mobile-preview,body[data-theme="深色"].mobile-preview,body[data-theme="dark"] .mobile-screen,body[data-theme="深色"] .mobile-screen{background:#0f1725}
+body[data-theme="dark"] .mobile-sheet,body[data-theme="深色"] .mobile-sheet{background:var(--mobile-panel);box-shadow:0 -14px 38px #060d1a66}
+body[data-theme="dark"] .sheet-handle,body[data-theme="深色"] .sheet-handle{background:var(--mobile-line)}
+body[data-theme="dark"] .sheet-close,body[data-theme="深色"] .sheet-close{background:var(--mobile-surface-muted);color:var(--mobile-muted)}
+body[data-theme="dark"] .mobile-sheet,body[data-theme="深色"] .mobile-sheet,body[data-theme="dark"] .model-delete-modal .modal-card,body[data-theme="深色"] .model-delete-modal .modal-card{color:var(--mobile-ink)}
+body[data-theme="dark"] .model-delete-modal .modal-card,body[data-theme="深色"] .model-delete-modal .modal-card{border-color:var(--mobile-line);background:var(--mobile-panel)}
+body[data-theme="dark"] .model-delete-modal .modal-card p,body[data-theme="深色"] .model-delete-modal .modal-card p{color:var(--mobile-muted)}
+body[data-theme="dark"] .model-delete-modal .modal-actions button,body[data-theme="深色"] .model-delete-modal .modal-actions button{background:var(--mobile-surface-muted);color:var(--mobile-muted)}
+@media(max-width:600px){.model-settings-screen{padding-bottom:calc(18px + env(safe-area-inset-bottom))}}
+
+/* ===== 添加/编辑模型：独立全屏页面 ===== */
+.model-add-page{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+.model-add-scroll{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;padding:6px 2px calc(20px + env(safe-area-inset-bottom));display:grid;gap:12px;align-content:start}
+.model-field{display:grid;gap:6px;color:var(--mobile-ink);font-size:11px;font-weight:700}
+.model-field input{width:100%;height:42px;padding:0 12px;border:1px solid var(--mobile-line);border-radius:11px;background:var(--mobile-panel);color:var(--mobile-ink);font-size:12px;outline:0}
+.model-field input:focus-visible{border-color:var(--mobile-accent);box-shadow:var(--mobile-focus-ring)}
+.model-field input[readonly]{background:var(--mobile-surface-muted);color:var(--mobile-muted);cursor:default}
+
+/* 服务商 select 字段（整块按钮） */
+.model-select-field{display:flex;align-items:center;gap:10px;width:100%;height:46px;padding:0 12px;border:1px solid var(--mobile-line);border-radius:11px;background:var(--mobile-panel);color:var(--mobile-ink);text-align:left;outline:0}
+.model-select-field:focus-visible{border-color:var(--mobile-accent);box-shadow:var(--mobile-focus-ring)}
+.model-select-field span{flex:1;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-select-field svg{width:16px;height:16px;color:var(--mobile-muted)}
+
+.model-readonly-note{margin:0;color:var(--mobile-muted);font-size:9px;line-height:1.5}
+.model-proto-line{margin:0;color:var(--mobile-muted);font-size:10px}
+
+/* 拉取 / 测试 按钮行 */
+.model-button-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.model-button-row button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;border:1px solid var(--mobile-line);border-radius:11px;background:var(--mobile-surface-muted);color:var(--mobile-accent);font-size:12px;font-weight:700}
+.model-button-row button:disabled{opacity:.55}
+.model-button-row svg{width:16px;height:16px}
+
+/* 模型多选：紧凑复选列表 */
+.model-multi-select{display:grid;gap:6px;max-height:240px;overflow-y:auto;padding:2px;border:1px solid var(--mobile-line);border-radius:12px;background:var(--mobile-panel)}
+.model-multi-select .model-option{display:flex;align-items:center;gap:9px;margin:0;padding:10px 12px;border:0;border-radius:0;background:transparent;color:var(--mobile-ink);font-size:12px;border-bottom:1px solid var(--mobile-line)}
+.model-multi-select .model-option:last-child{border-bottom:0}
+.model-multi-select .model-option.is-checked{background:var(--mobile-accent-soft)}
+.model-multi-select .model-option input{width:17px;height:17px;accent-color:var(--mobile-accent);margin:0}
+.model-multi-select .model-option-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-options-empty{margin:0;padding:16px;color:var(--mobile-muted);font-size:11px;text-align:center}
+
+/* 底部保存按钮 */
+.model-save-bottom{height:48px;border:0;border-radius:12px;background:var(--mobile-accent);color:#fff;font-size:14px;font-weight:800}
+
+/* ===== 厂商选择底部弹窗：固定高度、上下滚动 ===== */
+.vendor-pick-sheet{max-height:78%}
+.vendor-pick-list{display:grid;gap:7px;max-height:52vh;overflow-y:auto;overscroll-behavior:contain;padding:2px 2px 8px;scrollbar-width:thin}
+.vendor-pick-list button{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;padding:0 12px;border:1px solid var(--mobile-line);border-radius:12px;background:var(--mobile-surface-muted);color:var(--mobile-ink);text-align:left}
+.vendor-pick-list button.is-unsupported{opacity:.42}
+.vendor-pick-list button.is-unsupported:disabled{cursor:not-allowed}
+.vendor-pick-list button>svg:first-child{width:18px;height:18px;color:var(--mobile-accent);flex:none}
+.vendor-pick-name{display:block;font-size:12px;font-weight:700}
+.vendor-pick-url{display:block;margin-top:2px;color:var(--mobile-muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vendor-pick-list button>span{min-width:0;flex:1}
+.vendor-pick-list button>svg:last-child{width:15px;height:15px;color:var(--mobile-muted);flex:none}
+
+body[data-theme="dark"] .model-multi-select,
+body[data-theme="深色"] .model-multi-select{background:var(--mobile-panel)}
+

@@ -87,6 +87,7 @@ class RedisRelayBroker:
         self._pending: dict[str, asyncio.Future[bool]] = {}
         self._lock = threading.RLock()
         self._listener_task: asyncio.Task[None] | None = None
+        self._listener_ready: asyncio.Event | None = None
         self._closed = False
 
     def _channel(self, session_id: str) -> str:
@@ -106,7 +107,19 @@ class RedisRelayBroker:
                     previous.exception()
                 except BaseException:
                     pass
-            self._listener_task = asyncio.create_task(self._listen())
+            ready = asyncio.Event()
+            self._listener_ready = ready
+            self._listener_task = asyncio.create_task(self._listen(ready))
+        ready = self._listener_ready
+        task = self._listener_task
+        if ready is None or task is None:
+            raise RuntimeError("relay listener was not initialized")
+        try:
+            await asyncio.wait_for(asyncio.shield(ready.wait()), timeout=5.0)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError("relay listener did not become ready") from exc
+        if task.done():
+            task.result()
 
     async def register(self, session_id: str, device_id: str, peer: Any) -> Any | None:
         await self._ensure_listener()
@@ -170,9 +183,14 @@ class RedisRelayBroker:
         finally:
             self._pending.pop(delivery_id, None)
 
-    async def _listen(self) -> None:
+    async def _listen(self, ready: asyncio.Event) -> None:
         pubsub = self._redis.pubsub()
-        await pubsub.psubscribe(f"{self._prefix}:channel:*")
+        try:
+            await pubsub.psubscribe(f"{self._prefix}:channel:*")
+            ready.set()
+        except BaseException:
+            ready.set()
+            raise
         next_refresh = time.monotonic()
         try:
             while not self._closed:

@@ -108,7 +108,7 @@
 
 ### A2.10 打包资源路径不一致（P2，既有缺陷）
 
-问题：[tauri.macos.conf.json](file:///Users/hehejie/ai/notemeld-project/NoteMeld/desktop/src-tauri/tauri.macos.conf.json) 的资源指向 `"../../applications"`，而 [tauri.conf.json](file:///Users/hehejie/ai/notemeld-project/NoteMeld/desktop/src-tauri/tauri.conf.json) 指向 `"../../../notemeld-applications/apps"`，macOS 打包可能缺失应用包。
+历史问题：旧版 [tauri.macos.conf.json](file:///Users/hehejie/ai/notemeld-project/NoteMeld/desktop/src-tauri/tauri.macos.conf.json) 与 [tauri.conf.json](file:///Users/hehejie/ai/notemeld-project/NoteMeld/desktop/src-tauri/tauri.conf.json) 曾分别指向失效的应用资源路径，可能导致 macOS 打包缺失应用包；当前已统一指向工作区实际路径 `../../../packages/notemeld-applications/apps`，并由 Tauri release 编译验证。
 
 期望：两处统一到同一来源，并在打包测试中断言应用包存在。
 

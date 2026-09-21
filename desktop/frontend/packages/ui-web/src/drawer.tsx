@@ -1,0 +1,1 @@
+export { Dialog as Drawer, DialogClose as DrawerClose, DialogContent as DrawerContent, DialogDescription as DrawerDescription, DialogFooter as DrawerFooter, DialogHeader as DrawerHeader, DialogTitle as DrawerTitle, DialogTrigger as DrawerTrigger } from './dialog'

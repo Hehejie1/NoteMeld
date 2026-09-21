@@ -1,0 +1,12 @@
+{
+  "protocol": "notemeld.application.v1",
+  "id": "wiki",
+  "version": "1.0.0",
+  "name": "Wiki",
+  "description": "浏览由 NoteMeld 编译的来源、实体、概念和关系图谱。",
+  "ui": { "entry": "ui/index.html" },
+  "platforms": { "desktop": "supported", "web": "supported", "mobile": "unsupported" },
+  "capabilities": ["wiki.read"],
+  "permissions": [],
+  "storage": { "scope": "application-instance", "workspace": "default" }
+}

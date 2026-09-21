@@ -2,7 +2,7 @@
 
 应用包、运行时、权限和 capability 语义以 [`application-protocol-v1.md`](application-protocol-v1.md) 为准；本文件只描述数据权威和存储边界。
 
-更新时间：2026-08-27
+更新时间：2026-09-19
 
 本文记录当前数据模型和字段语义。修改数据结构、状态、缓存、统计或文件布局前必须先阅读本文，并搜索相关代码和测试。
 
@@ -10,14 +10,18 @@
 
 ### Cloud backend first slice
 
-独立 `cloud/` 服务使用 `NOTEMELD_CLOUD_DATA_DIR` 作为数据根，默认 `cloud_data/`；其 SQLite 为 `cloud.db`，workspace 为 `workspaces/<user_id>/<workspace_id>/`。云端元数据包含 users、tokens、devices、sessions、commands、events 和 audits；与本地 Note/Conversation/Agent 表隔离。`devices.connectivity_json` 只保存经校验的局域网候选端点，用于局域网优先连接，不承担授权或消息存储职责。
+独立 `cloud/` 服务使用 `NOTEMELD_CLOUD_DATA_DIR` 作为数据根，默认 `cloud/data/`；其 SQLite 为 `cloud.db`，workspace 为 `workspaces/<user_id>/<workspace_id>/`。云端元数据包含 users、organizations、organization_members、organization_preferences、tokens、devices、sessions、commands、events 和 audits；与本地 Note/Conversation/Agent 表隔离。一个 Cloud 服务端对应一个团队/组织。`devices.connectivity_json` 只保存经校验的局域网候选端点，用于局域网优先连接，不承担授权或消息存储职责。
 
-device-remote relay 只在进程内保存 WebSocket peer 集合，不保存正文、密文 payload 或未送达 command。宿主已收到的 command 由本地 Host queue 持久化；relay accepted 不等于宿主 received。
+Cloud 模型配置的目标 authority 是组织：`models` 应引用 `organization_id`，组织成员共享模型目录，运行时默认 `Auto` 按场景选择并允许会话显式覆盖。连接 Cloud 的桌面与移动端只使用该目录；每端本地 Provider 的 API Key 不进入 Cloud 目录、配置同步或扫码材料。当前 `cloud/db.py` 的 `models.user_id` 及 `/v1/models` 用户过滤仍是迁移前实现，因此组织共享状态必须标为 `partial`，迁移完成前不得跨用户返回模型或凭证。
 
-数据根目录由 `backend/app/utils/storage_paths.py` 统一决定：
+Workspace 在三端使用同一 ID 和字段语义：名称、多个本地文件夹引用、长期记忆引用、授权策略引用；文件正文继续由各端文件系统负责。生产备份归档写入 S3 兼容对象存储，`workspace_backups` 仅保存对象键（当前兼容字段名 `archive_path`）、大小和创建时间索引；开发环境可使用本地备份目录。
+
+device-remote relay 只在进程内保存 WebSocket peer 集合，不保存正文、密文 payload 或未送达 command。宿主已收到的 command 由本地 Host queue 持久化；relay accepted 不等于宿主 received。桌面端和移动端都按第三端设备处理：持续心跳更新 `devices.last_seen_at`，同组织设备读取相同在线目录；离线统一进入 `offline_readonly`，直到恢复在线并完成同步后才允许远程写操作。
+
+数据根目录由 `desktop/backend/app/utils/storage_paths.py` 统一决定：
 
 - `NOTEMELD_DATA_DIR` 已配置：使用该运行模式的数据根；其所有子目录仍由系统固定派生。
-- 未配置：默认使用项目根目录下的 `vector_db`。
+- 未配置：桌面源码默认使用 `desktop/data`；桌面打包运行使用 Tauri 注入的应用数据目录下 `data`。
 - 桌面模式：Tauri sidecar 注入 App Data、SQLite、uploads、static、models、screenshots 等路径。
 
 主要存储：
@@ -234,7 +238,7 @@ sequence、authority epoch、process lease owner 和 queued/admitted/needs_atten
 后者保存每 session 当前 fencing epoch。它们不修改现有 Conversation、
 Agent Turn/Event 或 `PRAGMA user_version`，也不是第二套 Agent 状态机。
 
-Cloud v1 stores session metadata/events, command idempotency records, and hashed scoped bearer/share-token metadata in `cloud.db`; bearer token rows persist audience, scope JSON and nullable `device_id`, while raw login, PAT, device and share-token values are returned only at issuance and are never persisted. A null `device_id` denotes an account/PAT token; a non-null value denotes a short-lived `device-api` token issued only after recent device proof. Scope JSON is enforced at the API boundary; token rotation copies the source audience/scope/expiry/device binding. Device-token issuance and the default source-token revocation use one transaction. Device revoke atomically revokes matching device tokens and grants. `session_payloads` stores the allowlisted non-file portion and file manifest of an imported local snapshot; `session_import_requests(user_id,request_id)` stores its canonical payload hash and resulting session for retry-safe idempotency. Imported file bytes are validated in an isolated staging directory and atomically renamed into `workspaces/<user_id>/<workspace_id>/`; the source local session is never modified. Workspace backups are under `backups/<user_id>/<workspace_id>`. Hard delete removes session rows and purges that workspace/backup directory only when no remaining session references the same workspace. Workspace writes use a fsync + atomic replace sequence and reject traversal/symlink access. Restore validates archive paths and size before atomically overlaying files. Relay payloads are validated as `notemeld.sync.v1` envelopes, routed to the addressed connected device, and are not written to SQLite or disk.
+Cloud v1 stores session metadata/events, command idempotency records, model usage records, and hashed scoped bearer/share-token metadata in `cloud.db`; bearer token rows persist audience, scope JSON and nullable `device_id`, while raw login, PAT, device and share-token values are returned only at issuance and are never persisted. A null `device_id` denotes an account/PAT token; a non-null value denotes a short-lived `device-api` token issued only after recent device proof. Scope JSON is enforced at the API boundary; token rotation copies the source audience/scope/expiry/device binding. Device-token issuance and the default source-token revocation use one transaction. Device revoke atomically revokes matching device tokens and grants. `session_payloads` stores the allowlisted non-file portion and file manifest of an imported local snapshot; `session_import_requests(user_id,request_id)` stores its canonical payload hash and resulting session for retry-safe idempotency. Imported file bytes are validated in an isolated staging directory and atomically renamed into `workspaces/<user_id>/<workspace_id>/`; the source local session is never modified. Workspace backups are under `backups/<user_id>/<workspace_id>` and can be downloaded as ZIP images; `NOTEMELD_CLOUD_STARTUP_BACKUP_IMAGE` plus `NOTEMELD_CLOUD_STARTUP_BACKUP_WORKSPACE` restores an explicitly selected image at server startup. Hard delete removes session rows and purges that workspace/backup directory only when no remaining session references the same workspace. Workspace writes use a fsync + atomic replace sequence and reject traversal/symlink access. Restore validates archive paths and size before atomically overlaying files. Pairing confirmation consumes the pending code once and returns the enabled model bundle, including decrypted API Keys, directly to the device; ordinary model/device listings remain redacted. Relay payloads are validated as `notemeld.sync.v1` envelopes, routed to the addressed connected device, and are not written to SQLite or disk.
 
 - NoteMeld 的主要业务数据本地持久化在 SQLite 和文件系统。
 - 远端 Provider 只负责 LLM 推理；不应假设远端保存 NoteMeld 数据。
@@ -295,3 +299,6 @@ Platform adapters should derive `device_id` with the shared
 32-character SHA-256 digest of the app/vendor installation identifier. The raw
 identifier is never sent to or persisted by Cloud; the resulting ID remains an
 identifier only and must still be paired with a device public key for control.
+## Desktop Agent Workspace（2026-09-15 增量）
+
+桌面新增 `workspaces` 注册表：`id`、`display_name`、`kind`（`local_folder`/`ssh_remote`/`wsl`）、`root_ref`、`status`、`capabilities_json` 和时间戳。local_folder 的绝对路径只留在本机数据库，不能同步到 Cloud；文件正文也不进入会话表。Conversation/AgentTurn/AgentEvent/approval 仍是全局会话 authority，通过 workspace context 引用执行目标。

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NoteMeld · 检查系统架构</title>
+  <link rel="stylesheet" href="../../assets/page.css">
+  <link rel="stylesheet" href="../../assets/d01.css">
+  <link rel="stylesheet" href="../../assets/d01-interactions.css">
+  <link rel="stylesheet" href="../../assets/d01-tuning.css">
+  <link rel="stylesheet" href="../../assets/workspace-panels.css">
+  <link rel="stylesheet" href="../../assets/d03.css">
+  <link rel="stylesheet" href="../../assets/desktop-polish.css">
+</head>
+<body data-page="D03">
+  <div class="desktop-app">
+    <aside class="desktop-sidebar">
+      <div class="sidebar-head">
+        <div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div>
+        <div class="sidebar-actions"><button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button><button aria-label="通知"><i data-icon="bell"></i></button><button aria-label="搜索"><i data-icon="search"></i></button></div>
+      </div>
+      <nav class="quick-nav" aria-label="主要功能">
+        <a class="quick-link" href="#" data-go="D01"><span><i data-icon="plus"></i></span>新对话</a>
+        <a class="quick-link" href="#" data-go="D06"><span><i data-icon="puzzle"></i></span>插件应用</a>
+        <a class="quick-link" href="#" data-go="D09"><span><i data-icon="settings-2"></i></span>设置</a>
+      </nav>
+      <section class="session-list">
+        <div class="section-label"><span>会话</span><button aria-label="筛选会话"><i data-icon="list-filter"></i></button></div>
+        <a class="session active" href="#" data-go="D03"><strong>检查系统架构</strong><small>刚刚 · 本地 Agent</small></a>
+        <a class="session" href="#" data-go="D03"><strong>整理研究报告</strong><small>昨天 · 本地 Agent</small></a>
+        <a class="session" href="#" data-go="C02"><strong>云端项目规划</strong><small>2 天前 · 云端会话</small></a>
+        <a class="session" href="#" data-go="D03"><strong>远程设备排查</strong><small>上周 · 远程设备</small></a>
+      </section>
+      <div class="sidebar-footer"><span class="connection"><i></i>本地 Agent 已连接</span><button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button></div>
+    </aside>
+
+    <main class="agent-workspace">
+      <header class="agent-header session-header">
+        <h1>检查系统架构</h1>
+        <div class="agent-header-actions">
+          <button aria-label="分享" data-tooltip="分享当前会话"><i data-icon="share-2"></i></button><button aria-label="切换置顶摘要" data-tooltip="显示或隐藏置顶摘要"><i data-icon="pin"></i></button><button aria-label="切换底部面板" data-tooltip="打开底部面板：命令行与运行日志" data-panel-toggle="bottom"><i data-icon="panel-bottom"></i></button><button aria-label="切换侧边面板" data-tooltip="打开侧边面板：选择文件并查看内容" data-panel-toggle="side"><i data-icon="panel-right"></i></button><button class="more" aria-label="更多" data-tooltip="更多会话操作"><i data-icon="more-horizontal"></i></button>
+        </div>
+      </header>
+
+      <section class="conversation">
+        <div class="message-meta">你 · 10:42</div>
+        <div class="message user-message">检查当前系统架构，整理风险和下一步工作。</div>
+        <div class="message-meta agent-meta"><span class="agent-dot">●</span> NoteMeld Agent · 分析中</div>
+        <article class="agent-message">
+          <p>我会先读取当前工作区中的架构资料，再整理结论、引用和下一步工作。</p>
+          <div class="tool-call"><span><i data-icon="file-search"></i></span><strong>读取工作区文件</strong><small>event_bus_config.yaml · 已完成</small></div>
+          <p class="muted">已发现 3 个需要确认的架构风险，正在生成结构化报告。</p>
+        </article>
+      </section>
+
+      <div class="composer-dock">
+        <button type="button" class="workspace-context"><span><i data-icon="folder-open"></i></span><strong>notemeld-project</strong><small>当前工作空间</small><b><i data-icon="chevron-down"></i></b></button>
+        <form class="composer-panel" data-composer>
+          <div class="attachment-row"><span class="attachment"><i data-icon="file-text"></i>系统架构研究报告.md <button type="button" aria-label="移除附件"><i data-icon="x"></i></button></span></div>
+          <textarea aria-label="输入任务" rows="3" maxlength="4000" placeholder="继续告诉 Agent 你要完成什么…"></textarea>
+          <div class="composer-footer">
+            <button type="button" class="add-button"><i data-icon="plus"></i><span>添加</span></button>
+            <button type="button" class="permission-button" data-popup-toggle="permission"><i data-icon="shield-check"></i><span>默认权限</span><i data-icon="chevron-down"></i></button>
+            <span class="composer-spacer"></span>
+            <button type="button" class="model-button" data-popup-toggle="model"><i data-icon="sparkles"></i><span>Auto</span><i data-icon="chevron-down"></i></button>
+            <button type="button" class="voice-button" aria-label="语音输入"><i data-icon="mic"></i></button>
+            <span class="limit">0 / 4000</span>
+            <button type="button" class="send-button" aria-label="发送"><span>发送</span><i data-icon="arrow-up"></i></button>
+          </div>
+          <div class="composer-popup permission-popup" data-popup="permission">
+            <strong>默认权限</strong><button type="button" data-popup-close>×</button>
+            <p>当前操作会在安全沙箱约束内执行，超出范围会请求你的允许。</p>
+            <label>允许完全访问 <input type="checkbox"><span class="switch-ui"></span></label>
+          </div>
+          <div class="composer-popup model-popup" data-popup="model">
+            <div class="model-mode"><span><i>✹</i><strong>Max 模式</strong></span><label><input type="checkbox" checked><span class="switch-ui"></span></label></div>
+            <button type="button" class="model-option selected"><span class="model-logo auto">A</span><span><strong>Auto</strong><small>自动选择适合当前任务的模型</small></span><b>✓</b></button>
+            <button type="button" class="model-option"><span class="model-logo hy">◉</span><span><strong>Hy4 preview</strong><small>限时免费</small></span><em>0.00x</em></button>
+            <button type="button" class="model-option"><span class="model-logo hy">◉</span><span><strong>Hy3</strong><small>限时免费</small></span><em>0.00x</em></button>
+            <button type="button" class="model-option"><span class="model-logo glm">Z</span><span><strong>GLM-5.3</strong><small>订阅优先</small></span><em>0.79x</em></button>
+            <button type="button" class="model-option"><span class="model-logo glm">Z</span><span><strong>GLM-5.3-Flash</strong><small>订阅优先</small></span><em>0.06x</em></button>
+            <button type="button" class="configure-model">✎　配置自定义模型</button>
+          </div>
+        </form>
+      </div>
+
+    <section class="workspace-panel bottom-panel" data-panel="bottom" aria-label="底部工作区面板"><span class="panel-resizer" data-resize="bottom"></span><div class="panel-bar"><strong>底部面板</strong><div class="panel-tabs"><button class="panel-tab active" type="button" data-panel-tab="terminal">⌘ 命令行</button><button class="panel-tab" type="button" data-panel-tab="logs">运行日志</button></div><button class="panel-close" type="button" data-panel-close>×</button></div><div class="panel-view terminal-view active" data-panel-view="terminal"><div><span class="terminal-prompt">➜ notemeld-project</span> <span class="terminal-command">git status --short</span></div><div>working tree clean</div><div><span class="terminal-prompt">➜</span> <span class="terminal-cursor"></span></div></div><div class="panel-view" data-panel-view="logs"><div class="log-line"><time>10:42:08</time><span class="log-level">INFO</span><span>Agent session started</span></div><div class="log-line"><time>10:42:12</time><span class="log-level">INFO</span><span>Read event_bus_config.yaml</span></div><div class="log-line warn"><time>10:42:18</time><span class="log-level">WARN</span><span>3 architecture risks require review</span></div></div></section><section class="workspace-panel side-panel" data-panel="side" aria-label="侧边文件面板"><span class="panel-resizer" data-resize="side"></span><div class="file-panel-header"><strong>选择文件</strong><button class="panel-close" type="button" data-panel-close>×</button></div><div class="file-panel-body"><div class="file-list"><button class="file-item active" type="button" data-file="event_bus_config.yaml">▧ event_bus_config.yaml</button><button class="file-item" type="button" data-file="系统架构研究报告.md">▤ 系统架构研究报告.md</button><button class="file-item" type="button" data-file="架构风险清单.html">▤ 架构风险清单.html</button></div><div class="file-preview"><strong>event_bus_config.yaml</strong><p>选择文件后，在此查看文件摘要、类型、大小和最近修改信息。</p></div></div></section>
+    </main>
+
+
+    <aside class="context-panel">
+      <div class="context-heading"><h2>置顶摘要</h2><button aria-label="关闭摘要"><i data-icon="x"></i></button></div>
+      <section class="context-section"><h3>输出内容 <button aria-label="添加输出"><i data-icon="plus"></i></button></h3><a href="#" data-go="D03"><i data-icon="file-text"></i>系统架构研究报告.md <span><i data-icon="arrow-up-right"></i></span></a><a href="#" data-go="D03"><i data-icon="file-code-2"></i>架构风险清单.html <span><i data-icon="arrow-up-right"></i></span></a></section>
+      <section class="context-section"><h3>子智能体 <span class="count">2</span></h3><div class="context-row"><i class="status running"></i><span>架构分析 Agent</span><small>运行中</small></div><div class="context-row"><i class="status success"></i><span>资料检索 Agent</span><small>已完成</small></div></section>
+      <section class="context-section"><h3>后台进程 <span class="count">1</span></h3><div class="process"><span><i data-icon="file-output"></i></span><div><strong>生成 Markdown 报告</strong><small>正在处理 · 42%</small><div class="progress"><b></b></div></div></div></section>
+      <section class="context-section"><h3>来源 <button aria-label="添加来源"><i data-icon="plus"></i></button></h3><a href="#" class="source" data-go="D03"><i data-icon="file-text"></i>2026-08-29-stitch-multiplatform-prompts.md</a><a href="#" class="source" data-go="D03"><i data-icon="file-code-2"></i>event_bus_config.yaml</a></section>
+    </aside>
+  </div>
+    <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/workspace-panels.js"></script>
+</body>
+</html>

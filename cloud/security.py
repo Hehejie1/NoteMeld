@@ -25,8 +25,8 @@ def decrypt_secret(value: str, master_key: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    if len(password) < 12:
-        raise ValueError("password must contain at least 12 characters")
+    if len(password) < 8:
+        raise ValueError("password must contain at least 8 characters")
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
     return "scrypt$16384$8$1$" + _b64(salt) + "$" + _b64(digest)

@@ -1,0 +1,93 @@
+.nm-notice-popover {
+  width: 280px;
+  max-height: min(440px, calc(100vh - 140px));
+  overflow: auto;
+}
+
+.nm-approval-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nm-approval-heading span {
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: #e8efff;
+  color: #2864e8;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.nm-approval-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nm-approval-list li {
+  border: 1px solid #e3e7ee;
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.nm-approval-list small {
+  display: block;
+  margin-top: 5px;
+  color: #8791a5;
+  font-size: 9px;
+}
+
+.nm-approval-list li > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.nm-approval-list button {
+  border: 1px solid #d7dce5;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px 8px;
+  color: #5f6b82;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.nm-approval-list button:last-child {
+  border-color: #2864e8;
+  background: #2864e8;
+  color: #fff;
+}
+
+.nm-approval-list button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.dark .nm-approval-heading span {
+  background: #22345d;
+  color: #9fb7ff;
+}
+
+.dark .nm-approval-list li {
+  border-color: #303b55;
+}
+
+.dark .nm-approval-list button {
+  border-color: #46516a;
+  background: #202a40;
+  color: #dbe3f3;
+}
+
+.dark .nm-approval-list button:last-child {
+  border-color: #769aff;
+  background: #315fbf;
+  color: #fff;
+}

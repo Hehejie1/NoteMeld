@@ -1,0 +1,8 @@
+/* C02 uses usage-oriented metrics; all values come from Cloud APIs, never fixtures. */
+(()=>{
+  if(document.body.dataset.page!=='C02'||!sessionStorage.getItem('notemeld-cloud-token'))return;
+  const token=sessionStorage.getItem('notemeld-cloud-token');
+  const request=async path=>{const response=await fetch(path,{headers:{Authorization:`Bearer ${token}`}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||payload.msg||'请求失败');return payload.data};
+  const render=async()=>{try{const data=await request('/v1/cloud/dashboard');const usage=await request('/v1/cloud/usage?days=7').catch(()=>({}));document.querySelector('[data-dashboard-storage]')?.replaceChildren(data.storage_total_label||data.storage_total||'0 B');document.querySelector('[data-dashboard-daily]')?.replaceChildren(String(data.daily_agent_conversations??data.daily_conversations??0));document.querySelector('[data-dashboard-running]')?.replaceChildren(String(data.running_count??0));document.querySelector('[data-dashboard-tokens]')?.replaceChildren(String(data.total_tokens??usage.total_tokens??0));const chart=document.querySelector('[data-usage-chart]');if(chart&&Array.isArray(usage.days)){chart.innerHTML=usage.days.map(day=>`<div class="usage-bar" title="${day.date}"><span style="height:${Math.min(100,Number(day.conversations||0)*10)}%"></span><small>${day.date.slice(5)}</small></div>`).join('')||'<p class="empty-cloud-state">暂无用量记录。</p>'}}catch(error){document.querySelector('[data-usage-chart]')?.replaceChildren(Object.assign(document.createElement('p'),{className:'empty-cloud-state',textContent:error.message}))}};
+  render();window.setInterval(render,5000);
+})();

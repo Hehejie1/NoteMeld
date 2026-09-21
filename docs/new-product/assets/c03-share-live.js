@@ -1,0 +1,11 @@
+(()=>{
+  const designTokens=document.createElement('link'); designTokens.rel='stylesheet'; designTokens.href='../../design-system/tokens.css'; document.head.append(designTokens);
+  const designPrimitives=document.createElement('link'); designPrimitives.rel='stylesheet'; designPrimitives.href='../../design-system/primitives.css'; document.head.append(designPrimitives);
+  const designScript=document.createElement('script'); designScript.src='../../design-system/primitives.js'; designScript.dataset.nmDesignSystem='true'; document.head.append(designScript);
+  const query=new URLSearchParams(location.search),sessionId=query.get('session_id'),token=location.hash.match(/token=([^&]+)/)?.[1];
+  const thread=document.querySelector('[data-share-thread]');
+  const escape=value=>String(value??'').replace(/[&<>\"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[char]));
+  const api=async path=>{const response=await fetch(path,{headers:{'X-Share-Token':decodeURIComponent(token||'')}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||'共享链接无效或已过期');return payload.data};
+  if(!sessionId||!token){thread.innerHTML='<p class="empty-cloud-state">共享链接缺少会话或令牌。</p>';return}
+  Promise.all([api('/v1/shared/'+encodeURIComponent(sessionId)+'/snapshot'),api('/v1/shared/'+encodeURIComponent(sessionId)+'/events')]).then(([snapshot,events])=>{document.querySelector('[data-share-title]').textContent=snapshot.session.title;document.querySelector('[data-share-meta]').textContent=snapshot.session.kind+' · '+snapshot.session.status+' · Workspace '+snapshot.session.workspace_id;const commands=snapshot.commands||[];thread.innerHTML=commands.length?commands.map(command=>{const event=(events||[]).find(item=>item.payload?.command_id===command.id);return '<article class="share-message"><small>用户消息</small><p>'+escape(command.input_text)+'</p>'+(event?'<div class="share-event"><small>Agent · '+escape(event.event_type)+'</small><p>'+escape(event.payload?.output||event.payload?.error?.message||'已产生事件')+'</p></div>':'<small>正在处理</small>')+'</article>'}).join(''):'<p class="empty-cloud-state">该会话暂无可共享内容。</p>'}).catch(error=>{thread.innerHTML='<p class="empty-cloud-state">'+escape(error.message)+'</p>'});
+})();

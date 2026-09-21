@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 存储空间</title><link rel="stylesheet" href="../../assets/mobile.css"></head>
+<body class="mobile-preview" data-page="M06">
+  <div class="iphone-shell"><div class="iphone-island"></div>
+    <main class="mobile-screen detail-screen storage-page">
+      <header class="mobile-header detail-header"><button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button><strong>存储空间</strong><span></span></header>
+      <section class="storage-summary" data-motion>
+        <div><span>NoteMeld 占用空间</span><strong data-storage-total>9.27 MB</strong></div>
+        <button class="danger-text" data-clear-all-storage>全部清除</button>
+        <div class="storage-meter"><span style="--portion:92%"></span></div>
+        <small>最近统计于今天 20:09</small>
+      </section>
+      <section class="storage-list" data-motion>
+        <article data-storage-item data-size="4.34"><div><span class="storage-icon blue"><i data-icon="database"></i></span><span><h2>缓存</h2><strong data-size-label>4.34 MB</strong></span><button data-clear-storage>清除</button></div><p>接口缓存、预览缓存与附件缓存。清理后不影响正常使用。</p><span class="item-progress"><i style="--portion:47%"></i></span></article>
+        <article data-storage-item data-size="4.75"><div><span class="storage-icon violet"><i data-icon="cloud"></i></span><span><h2>云端对话数据</h2><strong data-size-label>4.75 MB</strong></span><button data-clear-storage>清除</button></div><p>保存在本机的云端事件与缓存，重新打开时会从服务器同步。</p><span class="item-progress"><i style="--portion:51%"></i></span></article>
+        <article data-storage-item data-size="0.049"><div><span class="storage-icon green"><i data-icon="message-square"></i></span><span><h2>本机对话数据</h2><strong data-size-label>49 KB</strong></span><button data-clear-storage>清除</button></div><p>仅保存在本机的会话记录，清理后无法从云端恢复。</p><span class="item-progress"><i style="--portion:1%"></i></span></article>
+        <article data-storage-item data-size="0.129"><div><span class="storage-icon amber"><i data-icon="folder-down"></i></span><span><h2>下载的产物文件</h2><strong data-size-label>129 KB</strong></span><button data-clear-storage>清除</button></div><p>沙箱下载的预览与产物文件，之后预览时需要重新下载。</p><span class="item-progress"><i style="--portion:2%"></i></span></article>
+      </section>
+      <div class="toast" data-toast hidden>清理完成</div>
+    </main>
+  </div>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script><script src="../../assets/mobile.js?v=20260901-7"></script>
+</body></html>

@@ -34,12 +34,12 @@ EOF
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="${ROOT_DIR}/backend"
-FRONTEND_DIR="${ROOT_DIR}/frontend"
+BACKEND_DIR="${ROOT_DIR}/desktop/backend"
+FRONTEND_DIR="${ROOT_DIR}/desktop/frontend"
 VENV_DIR="${ROOT_DIR}/.venv"
 NOTEMELD_RUNTIME_MODE="${NOTEMELD_RUNTIME_MODE:-source-script}"
-LOG_DIR="${ROOT_DIR}/logs"
-DATA_ROOT="${ROOT_DIR}/vector_db"
+LOG_DIR="${ROOT_DIR}/desktop/logs"
+DATA_ROOT="${ROOT_DIR}/desktop/data"
 BACKEND_LOG="${LOG_DIR}/run_notemeld_backend.log"
 FRONTEND_LOG="${LOG_DIR}/run_notemeld_frontend.log"
 BACKEND_STAMP="${VENV_DIR}/.backend_deps_installed"
@@ -387,7 +387,7 @@ except AgentSdkUnavailable as error:
     raise SystemExit(1)
 '
   local sdk_error=""
-  if sdk_error="$(PYTHONPATH="${VENV_DIR}/../backend${PYTHONPATH:+:${PYTHONPATH}}" \
+  if sdk_error="$(PYTHONPATH="${VENV_DIR}/../desktop/backend${PYTHONPATH:+:${PYTHONPATH}}" \
     "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
     return 0
   fi
@@ -412,7 +412,7 @@ except AgentSdkUnavailable as error:
   "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check --no-deps \
     --force-reinstall "${NOTEMELD_AGENT_SDK_WHEEL}" >/dev/null 2>&1 \
     || fail "Agent SDK wheel installation failed."
-  if ! sdk_error="$(PYTHONPATH="${VENV_DIR}/../backend${PYTHONPATH:+:${PYTHONPATH}}" \
+  if ! sdk_error="$(PYTHONPATH="${VENV_DIR}/../desktop/backend${PYTHONPATH:+:${PYTHONPATH}}" \
     "${VENV_DIR}/bin/python" -c "$check_code" 2>&1)"; then
     fail "${sdk_error:-Installed notemeld-agent-sdk is incompatible} (expected SDK_VERSION=${EXPECTED_NOTEMELD_AGENT_SDK_VERSION} SCHEMA_VERSION=${EXPECTED_NOTEMELD_AGENT_SCHEMA_VERSION} ABI_VERSION=${EXPECTED_NOTEMELD_AGENT_ABI_VERSION})"
   fi
@@ -489,6 +489,7 @@ log "Starting frontend on ${FRONTEND_PORT}"
   cd "${FRONTEND_DIR}"
   VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_PORT}/api" \
   VITE_SCREENSHOT_BASE_URL="http://127.0.0.1:${BACKEND_PORT}/static/screenshots" \
+  VITE_CLOUD_BASE_URL="${VITE_CLOUD_BASE_URL:-http://127.0.0.1:8583}" \
   corepack pnpm dev --host 0.0.0.0 --port "${FRONTEND_PORT}"
 ) >"${FRONTEND_LOG}" 2>&1 &
 FRONTEND_PID=$!

@@ -1,5 +1,55 @@
 # Known Pitfalls
 
+## 桌面、Android 和 Cloud RC 来自不同 commit 或只有 updater 签名
+
+- 风险：旧发布流水线只生成桌面制品；`TAURI_SIGNING_PRIVATE_KEY` 只证明 updater 包签名，不能证明 Windows MSI/EXE 已通过 Authenticode。手工加入 APK/Cloud 镜像还可能来自不同 commit，导致设备协议偶发不兼容且无法回滚到同一批次。
+- 不允许：把 Tauri updater `.sig` 当 Windows 系统代码签名；发布 unsigned Android release；只记 tag 不记完整 commit/image digest；手工拼接三端制品。
+- 检查方式：正式 tag workflow 必须通过 Windows `signtool verify /pa`、Android `apksigner verify`，并由 `scripts/release/generate_first_batch_rc_manifest.py` 生成 `first-batch-rc.json`。Windows 实机先由 `verify_first_batch_clients.py desktop` 校验运行 EXE、sidecar 和 loopback canonical Agent，形成不能绑定 X-01/X-02 的 `windows_local_agent_runtime` 子证据。随后必须由 `verify_first_batch_windows_local_agent.ps1` 核对同一 EXE 的 PE x64、ProductVersion、Authenticode、哈希与内嵌 commit，再驱动安装版 UI 选模型、输入新的唯一 challenge，并从唯一 `turn.succeeded` assistant 语义节点读取回答；只有该结果同时形成 X-01/X-02。清单必须保留三端身份、SHA-256 和 `notemeld.sync.v1`；`release_approved=true` 只能来自台账中 19 个可读取、对应 check 为 PASS、且由 `bind_first_batch_evidence.py` 绑定同一版本/commit 的 JSON，禁止裸布尔开关。
+- 修复经验：Windows PFX 和 Android keystore 只从 Actions secrets 临时导入；Cloud 镜像按 commit SHA 推送 GHCR 并记录不可变 digest；清单默认 `release_approved=false`，现场 19 项全 PASS 后才允许发布决策。
+- 发布分层：`-rc`/`-alpha`/`-beta` tag 必须是 prerelease；稳定 tag 必须先通过 `verify_first_batch_ledger.py`，不能仅因为构建成功就发布正式版本。
+
+## 用开发 Cloud 回显冒充生产 Agent 验收
+
+- 风险：`/health`、开发环境 `/ready` 和 deterministic runner 都能快速返回成功；如果只看 HTTP 200 或输出中包含输入文本，会把单进程 memory Relay 和固定回显误记为真实 Provider/生产 Cloud 可用。若终态 model 直接回显本地配置，或忽略 `finish_reason=length`，上游换模和截断回答也会被伪装成成功。
+- 不允许：用 HTTP 地址、`environment=development`、memory Relay、deterministic model、多个 terminal event、本地配置回显的 model 或非 `stop` 的普通回答通过 C-01/C-02。
+- 不允许：仅凭相同 Cloud URL 认定后续现场证据属于同一部署。C-01 必须记录 `/ready` 返回的完整 build commit 与 `sha256:` 镜像摘要；C-02～C-05、X-03～X-06、A-03～A-06、E-01/E-02 必须传播并由最终台账逐项核对这两个值，Windows 组合证据也必须先核对 Cloud 与真实 Host 子证据。部署侧应使用 `image@sha256:...` 并注入实际摘要。
+- 检查方式：执行 `scripts/release/verify_first_batch_cloud.py`；它要求 HTTPS、production、OpenAI-compatible backend、Redis、设备证明、完整非敏感 readiness 配置，并要求 `/ready` 的 build commit/image digest 与候选 `cloud-image.json` 一致；随后验证 Provider 实际报告的模型与显式声明的生产模型一致、唯一 challenge/成功终态和一致 snapshot cursor。`desktop/backend/tests/test_cloud_agent.py` 还覆盖模型漂移与截断终态。
+- 修复经验：`/ready` 只公开 `environment`、`agent_backend` 和检查名称/状态，不公开 Provider、Redis、SMTP、S3 的地址或凭据；Cloud runner 从响应读取实际 model 并校验 finish reason；真实 Provider 是否可用仍以带唯一 challenge 的纵向对话证明。
+
+## 只看 E2EE 代码或空 API 投影就宣称 Cloud 无明文泄漏
+
+- 风险：端侧加密和 `commands/events=[]` 只能证明正常业务表没有保存 device-remote payload；部署平台 access log、异常日志、SQLite WAL/SHM、Redis 当前 keyspace 或错误诊断仍可能泄漏 token、密文 envelope，甚至误打印端侧传入的业务内容。
+- 不允许：用静态代码搜索、Cloud capability 声明或单元测试替代目标 RC 动态审计；把“Cloud 没有 command row”扩大为日志、Redis 和会话密钥全部安全。
+- 检查方式：`test_device_remote_relay_payload_and_tokens_are_absent_from_cloud_storage_and_application_logs` 必须证明 Relay 往返后只留下 cursor；`verify_first_batch_remote_agent.py` 必须在清理前确认该 session 的 Cloud command/event 投影为空。E-01 最终 PASS 还必须通过 `verify_first_batch_security_audit.py` 对同一 production RC 的有界平台日志、Cloud DB/WAL/SHM 和 Redis keyspace 执行动态扫描；审计器要求 session 仍存在且有双向 cursor，防止拿旧快照或无关 DB 冒充。
+- 修复经验：Relay 只解析路由 envelope 并瞬时 Pub/Sub 转发，不记录 frame body；日志只记录非敏感状态/ID。动态审计证据必须记录扫描范围和 hash，不复制发现的 secret 原文。
+
+## 桌面控制端与 Host 复用设备 ID 或公钥
+
+- 风险：桌面 Web UI 的控制端密钥和 sidecar 的 OS Host 密钥登记到同一 device id，会触发公钥轮换、撤销既有 device token 并清除 recent proof；若 Host id 尚未解析就启动 bootstrap，还可能把控制端 id 短暂注册成 Host，导致生产 Relay proof 随机失败。
+- 不允许：用 `openDeviceKeyMaterial()` 得到的控制端公钥注册 Tauri Host id；把控制端 device id 作为 Host id 的初始占位；Host 只注册不完成 challenge 就长期持有账户 token。
+- 检查方式：运行 `frontend/tests/cloudSessionPanelContracts.test.mjs` 和 `backend/tests/test_cloud_sync_bootstrap.py`；确认控制端使用 `desktop-controller-*` 身份，Host bootstrap 等待 `get_desktop_device_id()`，并由 OS Ed25519 私钥完成 proof 后换取绑定 Host 的有限 scope token。
+- 修复经验：控制端负责选择 Host、创建 Grant 和端到端握手；Host 身份只由 sidecar/OS secure store 管理。两者可以属于同一账号，但必须是两个独立设备与密钥生命周期。
+
+## Windows x64 可以安装，但 Host identity 永远不可用
+
+- 风险：只实现 macOS Keychain/Linux Secret Service，并把 Windows 当“不支持平台”，会让 `/api/cloud-sync/host/bootstrap` 在 Windows 安装包中必然 fail-closed；桌面 UI 和 Agent 本机对话可能正常，LAN/Relay Host 却永远无法注册。
+- 不允许：用普通文件、注册表明文、环境变量或 device id 派生 Ed25519 private key；仅靠 macOS 上 monkeypatch `platform.system()` 宣称 Windows 可用；把 updater/Authenticode 签名误当 Host 身份可用证据。
+- 检查方式：`test_cloud_secure_identity.py` 覆盖 Windows dispatch、round-trip、未知平台 fail-closed；`scripts/release/verify_windows_secure_identity.py` 必须在 Windows Release runner 上通过真实 Credential Manager 创建/重读/清理，然后才能构建 sidecar。
+- 修复经验：使用 Win32 `CredReadW/CredWriteW/CredDeleteW` 的 Unicode Generic Credential，限定当前登录用户并只保存短 Ed25519 原始密钥的 Base64；两条 credential 任一写入失败时回滚已写 private。现场 X-03 仍需用最终签名 RC 重启后证明 identity 稳定。
+
+## Android 有 E2EE 代码，但生产 Relay 仍立即拒绝
+
+- 风险：只注册 Android 公钥后直接拿账户 token 打开 Relay，没有创建 device-pair Grant、没有完成 recent device proof，也没有换取 device-bound token；开发配置可能掩盖 proof 缺失，生产 `NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF=true` 会 fail-closed。固定 `Thread.sleep(60_000)` 还会让已完成回答持续显示发送中。
+- 不允许：把“能构造加密帧”等同于“远程链路可用”；长期以账户 token 充当移动设备 bearer；把 Android 自身或桌面 controller 误列为可连接 Host；无视 terminal event 固定等待。
+- 检查方式：运行 `frontend/tests/mobilePlatformAdapterContracts.test.mjs` 与 `android/gradlew test assembleDebug`；Release workflow 必须注入完整 `NOTEMELD_ANDROID_BUILD_COMMIT`，所有 Android 现场模式都从实体包 `notemeld-build-commit:*` UI 语义核对目标 RC。A-02～A-06 还必须读取绑定后的 A-01 证据，并在每次对话/恢复验收前回拉当前安装 APK，核对 SHA-256 仍是同一签名 RC，防止 A-01 后换装同版本 debug 包。现场用 `verify_first_batch_clients.py android-remote-agent` 分别确认 LAN 和蜂窝 Relay；证据必须读取连接成功后 transport 的实际值并匹配所选 Host 哈希，不能从“存在 LAN candidate”、外部 JSON commit 或命令参数推断。
+
+## Android 本地 Agent 成功但界面没有回答
+
+- 风险：canonical Agent SSE 的流式正文使用 `payload.delta`，如果移动 adapter 只读取 terminal 常见的 `payload.content`，turn 可以成功而 UI 一直没有模型正文；后台投影刷新若用新的 `initialState` 重建整个 Compose surface，还会每 5 秒清掉当前会话；IO 回调直接写 Compose 状态会引入线程竞态。把本机 8483 投影状态当成全局网络状态，还会在纯手机场景错误禁用 Cloud/远程对话。验收脚本若只在整页搜索 challenge，会把用户自己的输入误判为回答；若用 `startsWith("turn.")` 判断终态，`turn.started` 会提前释放等待，回答后再出现 `turn.failed` 也可能被误收为成功。
+- 不允许：为 Android 制造第二套 Agent loop 或静态成功回答；只断言请求成功/进程存活；以轮询投影覆盖当前屏幕/消息；从 IO 线程直接 dispatch UI action；用本机 sidecar 离线禁用 Cloud/远程 adapter；把每个 delta 永久拆成独立气泡；在不区分 user/assistant 角色的 UI dump 中搜索 challenge；把任意 `turn.*` 或仅回到 idle 当成成功。
+- 检查方式：adapter 必须兼容 `delta/answer/content/output` 的 canonical 文本字段，并在主线程把连续 assistant delta 归并；投影刷新只合并服务端连接/记忆状态；可交互条件按本机/Cloud/远程 location 判断。`verify_first_batch_clients.py android-agent` 仅是显式标记的 `adb reverse` 开发 smoke，不能产生 Release P0 PASS；最终 Android 候选包只使用 `android-cloud-agent`/远程现场门禁，并只拼接 `notemeld-message-assistant` 语义节点，要求 UI 暴露的终态列表精确等于唯一 `notemeld-agent-terminal:turn.succeeded:1`；失败、取消、中断或重复终态全部拒绝。
+- 修复经验：移动 Surface 保留当前导航、输入和消息，只从周期刷新吸收连接/投影字段；IO transport 回调切回 Compose scope。远程发送前按 controller/desktop Host 创建或复用标准 Grant，签署 `notemeld-device-proof-v1` challenge，领取不撤销账户 token 的有限 scope device token；仅列出桌面 Host，并仅用精确的 `turn.succeeded|failed|cancelled|interrupted` 释放等待，同时保留终态类型和累计数供现场核验。
+
 ## LAN-first 直连泄露 cloud bearer 或绕过 Grant
 
 - 风险：把 cloud WebSocket URL 机械替换为 `ws://192.168.x.x` 并继续携带 bearer，会让局域网监听者获得长期凭证；只检查设备 ID 或 `ipaddress.is_private` 还会接受保留地址、旧 Grant、错误 workspace 或 stale authority epoch。
@@ -7,6 +57,21 @@
 - Web 端的连接策略同样不得把 `bearer.<token>` 子协议用于 LAN；没有实现 `LanHandshake` 时必须跳过 LAN 候选并回退 `wss` Relay。
 - 检查方式：运行 `backend/tests/test_cloud_lan_authorization.py`、`test_cloud_lan_auth.py`、`test_cloud_lan_transport.py`、`test_cloud_connection.py`，以及 `frontend/tests/relayCryptoInterop.test.mjs`。
 - 修复经验：宿主用绑定 device token 通过 HTTPS 获取 60 秒云端断言；控制端只在 LAN 上提交 Ed25519 一次性 proof 和 E2EE frame；结果/event 必须继续使用 encrypted `RemoteFrame`，明文只允许无业务内容的最小 durable receipt。
+
+## 远程危险工具等待审批，但控制端看起来只是卡住
+
+- 风险：Host canonical Agent 发出 `approval.required` 后，Windows/Android 控制端若只处理文本 delta 和 terminal event，会持续显示“等待”，用户无法判断是网络故障还是安全门禁；贸然在控制端增加普通批准按钮又会绕过 Host authority。
+- 不允许：标准远程 Grant 包含 `dangerous.approve`/`approval.remote.resolve`；控制端静默自动批准；让安装版审批 list/resolve 绕过 `X-NoteMeld-Session`；把没有 terminal event 的审批等待记为成功或超时后重放命令。
+- 检查方式：标准 Grant 只含消息、事件、上下文、模型和普通工具 scope；Windows 与 Android 都必须把 `approval.required` 显示为 Host 本机审批提示，且远程组件不调用 approval resolve API。运行 Agent 的桌面 Host 必须在应用根布局持续读取 durable `waiting_approval` Turn，不能要求用户先找到远程 session；列表只能显示会话名、风险、摘要和截止时间。
+- 修复经验：审批 authority 保留在运行 Agent 的 Host；控制端只投影加密审批事件与安全说明。Host 通知收件箱通过既有 native approval control 作出决定，处理或超时后随 Turn 状态自动消失，不建立第二套审批状态；工具参数、action digest 和 Provider payload 不进入列表 API。拒绝、超时、撤销仍必须分别形成现场门禁证据。
+- 现场门禁：拒绝/超时必须是两个不同 approval ID。远程证据要求 `approval.resolved` 分别为 `deny`/`expired`、对应 call 没有 `tool.started`，Windows UI 证据用 approval ID 哈希与之绑定；超时还必须以 `turn.failed + approval_expired` 结束。只有 `verify_first_batch_e02.py` 同时验证这两条链路和 Grant/设备撤销后才允许产生 `e_02: PASS`，子证据名不得以 `e_02` 开头，避免被通用绑定器误升格。
+
+## Windows 远程连接截图看似成功，但无法证明目标 Host 和实际 transport
+
+- 风险：设备下拉框中的 `LAN` 只表示候选存在，配置参数中的 `relay` 只表示预期；二者都不证明本次 WebView2 连接实际采用对应路径。截图也无法可靠绑定 RC、Host device id、assistant 消息与唯一终态。
+- 不允许：用候选列表、命令参数、普通截图或 Cloud Relay receipt 代替安装版 UI 的最终状态。
+- 检查方式：远程面板必须暴露稳定的 Host、连接、transport、输入、发送、assistant 和 terminal 可访问性语义；Release 构建把完整 commit 注入只读 `notemeld-build-commit:*` 可访问性标记。Windows x64-A 使用 `verify_first_batch_windows_remote.ps1`，校验精确运行 EXE 的 PE x64、Authenticode、版本和内嵌 commit，再输入已绑定同一 RC/Cloud 部署的 C-01/C-02 与 C-04/X-06 证据，分别执行 LAN 和 Relay。
+- 修复经验：UI 只在 `connectLanRemoteClient` 返回后发布实际 transport；现场工具读取选中 Host device id、连续 assistant 输出和恰好一个 `turn.succeeded`，证据只保留 Host/challenge/answer 哈希。
 - 本地 wiring 必须走 `CloudSyncHostRuntime`/`install_lan_direct_service()` 的显式依赖注入；没有平台安全存储得到的 CloudClient、私钥和 cipher resolver 时保持端点关闭，不能为了 smoke test 从环境变量读取长期凭证。
 
 ## 桌面源码可用，但发布包缺少端侧加密运行时
@@ -23,12 +88,35 @@
 - 检查方式：`backend/tests/test_cloud_remote_host.py::test_remote_host_receipts_only_after_durable_enqueue`。
 - 修复经验：relay_accepted 只表示传输接纳；平台先验证 AEAD，再经 `RemoteHostAuthority` 授权和事务入队，成功后由宿主生成最小 received receipt。
 
+## Relay 收到 command/receipt，但控制端永远等不到 Agent 终态
+
+- 风险：Host 只把 Agent event 投影到 LAN websocket，或 Relay 自动发现逻辑用 `set[dict]` 收集 device-pair Grant 并在循环内静默抛错；此外 `/host/bootstrap` 是同步 FastAPI 路由，若 `install()` 只尝试 `get_running_loop()`，discovery 根本不会启动。即使启动，若 Host 心跳只由 Cloud React 页面发送，切页约 90 秒后设备也会被判离线。锁定的 `websockets==15.0.1` 还有两套 connector API：legacy `websockets.client.connect` 使用 `extra_headers`，把 `additional_headers` 传给它会在真实联网时失败。
+- 风险：若桌面 Host bootstrap 只挂在 Cloud 页面 effect，安装版重启停留在普通工作区时不会恢复 Host，Cloud 设备虽保留注册记录却无法接受 LAN/Relay 连接。Host 恢复必须位于应用根生命周期，从加密 token store + OS identity 启动；Windows RC 需关闭并重启真实安装 EXE，核对同一 device id/公钥指纹以及 Cloud `last_seen_at` 前进，不能用临时 Credential Manager round-trip 代替。
+- 不允许：把 receipt 当最终回答；只在 `LanDirectService` 注册 event sink；把 Relay discovery/Host heartbeat 绑定到某个 React 页面；在同步 bootstrap 无 loop 时静默跳过后台 runtime；混用 legacy connector 与 asyncio connector 参数；让 discovery 的异常被重试循环长期吞掉而没有聚焦测试。
+- 检查方式：运行 `test_cloud_runtime.py::test_host_runtime_projects_agent_event_as_encrypted_event_frame`、`test_cloud_relay_host.py::test_relay_host_schedules_encrypted_agent_events_on_active_socket`、`::test_relay_host_default_connector_uses_websockets_asyncio_api` 和 `test_cloud_relay_lifecycle.py::test_sync_runtime_install_starts_relay_discovery`。最后一项必须以普通同步调用安装 runtime，并同时观察 heartbeat 与 session discovery。
+- 修复经验：同一个 canonical Agent event 加密一次后投影到当前 LAN/Relay transport；同步 bootstrap 启动由 runtime 管理的专用 asyncio 线程，异步构造仍复用当前 loop；同一循环维持 device heartbeat 与授权 session discovery，关闭时跨线程安全取消并 join。Relay Host 使用 `websockets.asyncio.client.connect(additional_headers=...)`，保存其 event loop/socket，只接受 Host→controller 的加密 event frame 进行跨线程调度；device-pair Grant 显式映射全部 active `device_remote` session。
+
+## Relay 握手成功，但第一条 receipt 被判为重放
+
+- 风险：Cloud 对 handshake 与业务帧共用每个发送设备的持久 sequence 游标；若 Host 返回 sequence 1 的 handshake 后安装一个游标仍为 0 的 `SessionCipher`，第一条 receipt 会再次使用 sequence 1，被 Cloud 以 `replayed relay envelope` 拒绝。控制端表现为已连通、command 已发送，但一直等不到 durable receipt。
+- 不允许：把 handshake 当成 sequence 之外的特殊帧；安装新 cipher 后从 0 重新计数；只验证密钥相等而不验证握手后的双向游标。
+- 检查方式：运行 `test_cloud_runtime.py::test_host_runtime_completes_relay_handshake_and_installs_cipher` 和 `test_cloud_relay_host.py::test_relay_host_decrypts_first_post_handshake_command_and_returns_sequence_two_receipt`；前者必须证明握手 sequence 已进入 cipher，后者必须证明首条 command 与加密 receipt 均使用 sequence 2。
+- 修复经验：Host 验证 signed offer 后，以入站 handshake sequence 初始化 `last_received_sequence`，以返回 handshake sequence 初始化 `last_sent_sequence`，再安装 cipher；后续 receipt/event 只能从下一序号开始。
+
+同一问题在断线重连时还有第二层：Cloud 的 replay cursor 会跨 socket 和进程持久化，端侧若重新硬编码 handshake sequence 1，握手本身就会被拒绝。Relay 注册新 socket 后必须先返回只含该发送设备 `next_sequence` 的 `relay_ready`；Web、Android 与桌面 Host 都等待并校验该值，再构造 signed handshake。`verify_first_batch_relay.py` 必须让双方完成一次交换、真实关闭 socket、重连并以精确递增的双向 cursor 完成第二次交换；任一 cursor 重置都要失败。禁止通过断开连接或重置数据库游标来“修复”重连，因为那会恢复旧密文的重放窗口。
+
 ## Durable mailbox 连续领取多个 active Turn
 
 - 风险：只把 `pop()` 做成“取第一条 queued 并改 admitted”，却不先检查 active 状态，同一 session 可并行执行多个 Turn；重启后还可能越过未知副作用继续下一条。
 - 不允许：重启时把 admitted 自动当 queued；存在 `needs_attention` 时继续接收消息；authority epoch 变化后接受旧 epoch command。
 - 检查方式：`backend/tests/test_cloud_sync_protocol.py::test_durable_mailbox_allows_only_one_admitted_turn_across_restart` 和 `::test_durable_mailbox_authority_rotation_fences_old_active_turn`。
-- 修复经验：`BEGIN IMMEDIATE` 内先查 active 再 claim；启动把遗留 admitted 标 needs_attention；resume/abandon 必须显式；独立 session authority epoch 单调 fencing。
+
+## Cloud 只在启动时检查 running lease
+
+- 风险：新 API 进程启动时若旧 worker 的 lease 尚未到期，会正确保留该命令；但旧 worker 已死亡且之后无人再次检查时，命令会永久停在 `running`。多个 API 进程若只对具体 command 做抢占，也可能各自领取同一 session 的不同 queued 命令。
+- 不允许：启动时无条件打断 active lease；只做一次启动恢复后假设 lease 一定会被 heartbeat 续期；或在同一 session 已有 `running`/`needs_attention` 时继续 claim。
+- 检查方式：`desktop/backend/tests/test_cloud_backend_slice.py::test_cloud_startup_preserves_running_command_with_active_lease`、`::test_cloud_reconciler_marks_crashed_worker_after_lease_expires`、`::test_cloud_command_claim_is_single_active_turn_per_session` 和 `::test_abandon_needs_attention_continues_next_queued_command`。
+- 修复经验：复用同一个 `BEGIN IMMEDIATE` stale-lease 仲裁，在 lifespan 中启动有界周期 reconciler；只处理无 lease/已过期行，产生唯一 `turn.needs_attention`，并唤醒长轮询等待者。Claim 事务先做 session active 门禁；abandon 后若仍有 queued 命令则显式拉起 worker。
 
 ## 设备撤销但设备 Bearer 仍有效
 
@@ -39,14 +127,19 @@
 
 应用协议唯一规范源：[`application-protocol-v1.md`](application-protocol-v1.md)。插件协议由 `notemeld-plugins/docs/system/plugin-protocol-v1.md` 维护。
 
-更新时间：2026-08-30
+- 本地 workspace 可能将独立插件仓库放在 `packages/notemeld-plugins/`；官方 `official.link-note` fixture 的发现必须同时支持已打包资源、`NOTEMELD_PLUGINS_DIR`、根目录 sibling 和 workspace `packages/` 路径。全新数据目录启动时缺失 fixture 必须明确失败，不能静默回退到旧实现。
+- PyInstaller 桌面打包同样必须拿到独立 `notemeld-plugins` 的 `official-link-note` release；`backend.spec` 在 `NOTEMELD_PLUGINS_DIR`、根目录 sibling 和 workspace `packages/` 均找不到时会在构建阶段 fail-closed，不能生成一个直到 sidecar startup 才因缺少 fixture 退出的坏制品。
+- Release workflow 通过仓库变量 `NOTEMELD_PLUGINS_ARCHIVE_URL` 与 `NOTEMELD_PLUGINS_ARCHIVE_SHA256` 下载并校验该独立仓库归档，再注入 `NOTEMELD_PLUGINS_DIR`；两个变量缺失、哈希错误或归档没有 `plugins/official-link-note/release-fixture/official-link-note-1.0.0.zip` 时，桌面构建必须停止。
+- Intel macOS release 不得设置 `NOTEMELD_SKIP_PORTABILITY_CHECK=1`；x86_64 ffmpeg/ffprobe 必须经过依赖扫描，发现 Homebrew 路径时应让构建失败，而不是把本机可运行误当成可移植制品。
+
+更新时间：2026-09-12
 
 ## Application Host 越权或假运行
 
 - 风险：应用 UI 直接调用旧产品 router/SQLite，应用 backend 自行监听公网端口，或 Host 仅把 Run 标记为 running 却绕过 manifest、workspace 和 capability 校验。
 - 防线：应用必须声明 `notemeld.application.v1` manifest；桌面使用 Host 监督的私有 process-JSONL/RPC，Web 使用 Host gateway 的 managed-worker seam；所有调用重新检查 session、app/instance、平台、权限和 capability。
 - 不允许：把宿主 session token 放入应用环境变量/UI；应用使用绝对系统路径或 `..`；Wiki 应用复制 graph/article 作为第二事实源；用旧 `/wiki` UI route 作为兼容入口。
-- 当前边界：本期已实现内建包发现、桌面 Host 监督的私有 process-JSONL、Web 本地 managed-worker seam、Wiki capability 和设置 API；用户应用包安装、真正外部 Web worker 部署、移动端 UI 和 Agent 自动生成应用仍未实现，不得在发布说明中宣称已完成。
+- 当前边界：已实现内建包发现、候选审批后的应用包安装、桌面 Host 监督的私有 process-JSONL、Web 本地 managed-worker seam、Cloud worker、Wiki capability、设置 API、应用对 process-jsonl 插件的受监督 `plugin.invoke`，以及 iOS/Android/Harmony 的原生 LAN-first/E2EE Relay。Harmony 的 ArkTS/CryptoFramework transport 已通过 HAP 编译，但尚未在真实 Harmony 设备上完成端到端互操作验证；外部 Web worker 部署、Host-port 插件、完整 Agent/File/Artifact adapter 和 Agent 自动生成应用仍未实现，不得在发布说明中宣称已完成。
 - 加载边界：应用中心只能读取 manifest catalog；不得在应用列表 import 全部应用组件或启动所有 backend。只有用户点击应用后，Host 才能动态加载对应 bundle 并创建 instance/run。
 
 ## Application workspace 配置泄露或跨实例访问
@@ -276,8 +369,8 @@
 - 发生过的问题：源码启动后根目录出现 `note_results`、`static` 等目录，下载器和临时文件也可能落到工作目录或系统临时目录，用户无法判断哪份数据是事实源。
 - 根因：`.env` 相对路径、子目录级环境变量、旧启动脚本迁移复制和下载器 `DATA_DIR` 回退同时存在。
 - 不允许重新引入的错误做法：恢复 `NOTE_OUTPUT_DIR`、`VECTOR_DB_DIR`、`STATIC_DIR`、`OUT_DIR`、`UPLOAD_DIR`、`DATA_DIR` 等子目录覆盖；启动时扫描并复制根目录旧数据；把 NoteMeld 运行时临时文件写到工作目录或系统临时目录。
-- 检查方式：检查 `storage_paths.py` 的所有子路径是否从 `data_root()` 派生；运行启动契约并确认数据只在 `vector_db/`、日志只在 `logs/`。
-- 修复经验：数据根只允许单一运行模式注入口，业务子目录固定；应用临时文件写入 `vector_db/tmp`，日志根固定为 `logs`。
+- 检查方式：检查 `storage_paths.py` 的所有子路径是否从 `data_root()` 派生；运行启动契约并确认桌面数据只在 `desktop/data/`、日志只在 `desktop/logs/`。
+- 修复经验：数据根只允许单一运行模式注入口，业务子目录固定；应用临时文件写入 `desktop/data/tmp`，日志根固定为 `desktop/logs`，云端使用独立 `cloud/data` 或部署持久卷。
 
 ## Agent 变更流程缺失
 
@@ -349,6 +442,7 @@
 - UI/CLI 不得直接写 `conversation_messages` 或 Agent Event；应通过 Host，避免重复消息和事件序列断裂。
 - 不允许通过 `NOTEMELD_AGENT_MODE=python|python-oracle|legacy` 回滚；这些模式必须 fail-closed。模型调用失败也不能静默切回旧 Agent，避免同一 Turn 执行两次。
 - 启动入口必须复用 Host loader 校验外部 wheel 的 version metadata、ABI contract、binding signatures、native exports 和 native SDK/schema version；“Python 包能 import”不等于 native artifact 兼容。缺失、架构错误或版本错误都应在启动前阻断，诊断不得回显本地 artifact 路径。
+- PyInstaller 会把 macOS native SDK dylib 的 install name 从构建目录改写为 `@rpath`，所以 frozen sidecar 中的字节 hash 与 standalone wheel 的 native hash 必然不同；loader 只能在 `sys.frozen` 路径使用单独锁定的 packaged digest，普通 wheel 仍必须校验原始 native digest，不能通过放宽校验解决启动失败。
 - 检查方式：`backend/tests/agent_host/` 的 loader、artifact、CLI、driver、Turn、broker、preference 与 API 契约测试。
 
 ## Agent Session 并发门禁只靠进程内状态或 SELECT FOR UPDATE
@@ -378,6 +472,7 @@
 - 不允许重新引入的错误做法：每轮传空 history；用固定消息条数代替统一模型窗口预算；忽略 system/current user；丢弃 assistant tool calls 或 tool result call id；把 Provider 原始异常用 `logger.exception` 写入日志；在 NoteMeld 重做 Agent loop。
 - 检查方式：`backend/tests/agent_host/test_model_driver.py` 与 `test_native_executor.py`；断言两轮 model request 都保留 system/history/current user/tool group，并重复携带 context refs、工具描述和无凭证 model descriptor，同时覆盖 delta、usage、tool call 和安全错误分类。
 - 修复经验：Rust SDK canonical messages 始终是每轮权威；Host 只附着 Turn 级不可变上下文并做 Provider envelope 转换。完整历史交给 SDK，Provider 前裁剪继续复用 `Models.stream()`，空 messages fail-closed。
+- Android LOCAL 例外：当前锁定 AAR 的 FFI host 没有暴露 durable `AgentStore`/未完成 Turn 恢复 API，`EmbeddedLocalAgent` 因此在新 Turn submit 时把 `MobileLocalStore` 的最多 200 条投影历史放入 `request.extra.history`，并把 pending Turn 的未知结果投影为 `turn.interrupted:needs_attention`；不得把这项跨进程上下文恢复写成 native Turn 中断后的自动续跑。
 
 ## 产品工具错误被当成 driver 失败而中断 SDK loop
 
@@ -393,3 +488,17 @@
 - 不允许重新引入的错误做法：把非法/负 sequence 当作有效事件；接受其他 Turn 的事件；把已完成 assistant 消息继续追加；只在正常网络关闭前提下测试 SSE。
 - 检查方式：覆盖 UTF-8 chunk 边界、最后无空行尾帧、重复/乱序 sequence、错误 `turn_id`、空 payload、重复 `message.completed` 和终态后 delta；运行 `cd frontend && pnpm test:contracts`。
 - 修复经验：SSE 使用流式 `TextDecoder` 并在 EOF flush，解析尾帧；客户端拒绝不属于当前 Turn 或没有合法 sequence 的事件；reducer 只追加正在流式的 assistant 消息，终态后不再修改消息。
+
+## Android 调试包冷启动被误记为发布候选通过
+
+- 发生过的问题/风险：实体机能安装和冷启动 debug APK，客户端聊天验证器又顺带输出运行态通过，最终可能把未签名、旧签名或与 RC 制品不一致的安装包绑定为 A-01。
+- 不允许重新引入的错误做法：仅凭认 `versionName`、包名、PID 或无 crash；以 `assembleRelease` 的本地测试证书代替生产证书；只校验磁盘上的候选 APK，不检查设备实际安装字节；让 A-02/A-03/A-04/A-05 顺带宣称 A-01；A-01 通过后换装同版本/commit 的 debug APK继续跑其余门禁。
+- 检查方式：`desktop/backend/tests/test_first_batch_client_verifier.py`；普通 `android-runtime` 只能输出 `android_runtime_smoke`，A-01 必须显式提供 signed RC APK、固定 signer SHA-256 和 `apksigner`，并从实体设备回拉唯一 APK 做签名与 SHA-256 字节一致性检查。A-02～A-06 必须读取绑定后的 A-01，并再次回拉当前 APK 核对同一 SHA-256。
+- 修复经验：运行 smoke 与发布制品证据分离；A-01 独立绑定签名 RC，Agent 各模式只证明自己的纵向结果，但必须证明仍运行 A-01 的相同字节。split APK、模拟器、签名数量/指纹不符、设备回拉字节不符均 fail-closed。
+
+## Android 把本机 Host 离线误当成整机断网，或重连时新建远程 session
+
+- 发生过的问题/风险：只用本机 `127.0.0.1:8483` 投影刷新表示全部连接状态，会在本机 Host 不可达时误禁用仍可用的 Cloud；为修复这个问题而对所有非本机模式放行，又会导致 Wi-Fi/移动数据全部断开后仍可提交。远程消息每次新建 `device_remote` session 还会让“恢复后 cursor 连续”永远无法被同一客户端证明。
+- 不允许重新引入的错误做法：用单一 `connection` 布尔量同时代表本机 Host 与设备网络；仅在请求失败后显示错误而不进入离线只读；重连时重置 session/sequence；用通用 Relay 双端测试替代 Android UI 的 cursor 证据；自动重放中断时状态未知的旧命令。
+- 检查方式：`desktop/frontend/tests/mobilePlatformAdapterContracts.test.mjs`、`desktop/backend/tests/test_first_batch_client_verifier.py` 和 `verify_first_batch_clients.py android-recovery`；确认设备网络 callback、离线只读语义节点、按 Host 持久 session、Relay `next_sequence` UI、radio 恢复及 cursor 严格增加。
+- 修复经验：本机可达性和系统网络可用性分层；Local 由 Host 状态控制，Cloud/Remote 由系统网络 callback 控制。网络恢复后只允许用户提交新命令，同一远程 session 从 Cloud 持久 cursor 继续，不自动重放未知旧副作用。

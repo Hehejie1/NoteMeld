@@ -1,0 +1,131 @@
+name: Promote First-Batch Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: Existing prerelease tag, for example v1.2.3-rc.1
+        required: true
+        type: string
+      stable_tag:
+        description: Stable tag for the same version, for example v1.2.3
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate immutable promotion identity
+        id: identity
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-(rc|alpha|beta)([.-][0-9A-Za-z.-]+)?$ ]] || { echo "invalid candidate tag" >&2; exit 2; }
+          version="${BASH_REMATCH[1]}"
+          [[ "$STABLE_TAG" == "v$version" ]] || { echo "stable tag must be v$version" >&2; exit 2; }
+          gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,tagName,targetCommitish > candidate-release.json
+          python3 - <<'PY'
+          import json
+          value = json.load(open("candidate-release.json", encoding="utf-8"))
+          if value.get("tagName") != __import__("os").environ["CANDIDATE_TAG"] or value.get("isPrerelease") is not True:
+              raise SystemExit("candidate must be an existing prerelease")
+          PY
+          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$STABLE_TAG" >/dev/null 2>&1; then
+            echo "stable tag already exists" >&2
+            exit 2
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_tag }}
+          fetch-depth: 0
+
+      - name: Download candidate bytes and bound live evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          set -euo pipefail
+          mkdir release live-evidence
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --dir release
+          test -f release/first-batch-live-evidence.zip
+          python3 - <<'PY'
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          target = Path("live-evidence").resolve()
+          with zipfile.ZipFile("release/first-batch-live-evidence.zip") as archive:
+              for item in archive.infolist():
+                  path = PurePosixPath(item.filename)
+                  mode = item.external_attr >> 16
+                  if path.is_absolute() or ".." in path.parts or stat.S_ISLNK(mode):
+                      raise SystemExit("live evidence archive contains an unsafe path")
+                  destination = (target / Path(*path.parts)).resolve()
+                  if not destination.is_relative_to(target):
+                      raise SystemExit("live evidence archive escapes its target")
+              archive.extractall(target)
+          PY
+          test -f live-evidence/ledger.md
+
+      - name: Verify same commit, same version, same candidate artifacts
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse HEAD)"
+          python3 - "$VERSION" "$commit" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          version, commit = sys.argv[1:]
+          manifest = json.loads(Path("release/first-batch-rc.json").read_text(encoding="utf-8"))
+          if manifest.get("version") != version or manifest.get("commit") != commit or manifest.get("release_approved") is not False:
+              raise SystemExit("candidate manifest identity is invalid")
+          PY
+          python3 scripts/release/verify_first_batch_ledger.py live-evidence/ledger.md \
+            --expected-version "$VERSION" \
+            --expected-commit "$commit"
+          python3 scripts/release/generate_first_batch_rc_manifest.py \
+            --version "$VERSION" \
+            --commit "$commit" \
+            --artifact-dir release \
+            --cloud-metadata release/cloud-image.json \
+            --approval-ledger live-evidence/ledger.md \
+            --output release/first-batch-approved.json
+          mv release/first-batch-approved.json release/first-batch-rc.json
+          rm release/first-batch-live-evidence.zip
+          python3 scripts/desktop/packaging/scripts/generate-latest-json.py \
+            release "$VERSION" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
+
+      - name: Create stable tag at tested commit and publish unchanged bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          set -euo pipefail
+          git tag "$STABLE_TAG" "$(git rev-parse HEAD)"
+          git push origin "refs/tags/$STABLE_TAG"
+          mapfile -d '' assets < <(find release -maxdepth 1 -type f -print0)
+          gh release create "$STABLE_TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "NoteMeld ${STABLE_TAG#v}" \
+            --notes "Promoted from $CANDIDATE_TAG after 19/19 first-batch live gates passed." \
+            --latest \
+            --verify-tag
+          gh release delete-asset "$CANDIDATE_TAG" first-batch-live-evidence.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --yes

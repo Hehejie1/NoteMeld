@@ -117,6 +117,19 @@ claude mcp add notemeld --transport http http://127.0.0.1:8483/mcp
 
 > 详细配置请参阅 <a href="https://notemeld.wiki/faq/">帮助文档</a>
 
+### MCP 工具与客户端
+
+桌面端固定使用 `http://127.0.0.1:8483/mcp`。可用工具包括
+`generate_note`、`get_task`、`get_note` 和 `list_models`；Claude Code / Cursor / Codex / OpenClaw 等 HTTP MCP 客户端均可通过该地址接入。Markdown 上传同时兼容
+`application/octet-stream` 和 `binary/octet-stream`。
+
+### 正式发布门禁
+
+DMG 发布必须使用 `--release` 构建，并完成 Developer ID 签名、notarization、
+`stapler staple` 和 Gatekeeper 验证；开发环境的本地构建不代表正式发布完成。
+
+桌面端可在设置中开启“开机自动启动 NoteMeld”；若系统策略不允许，也可以在 macOS 登录项或 Windows 启动应用中手动添加。
+
 ---
 
 ## ⚠️ 合规使用声明

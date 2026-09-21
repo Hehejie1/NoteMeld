@@ -1,6 +1,6 @@
 # Requirements Index
 
-更新时间：2026-08-29
+更新时间：2026-09-13
 
 本文是需求层入口。它不是详细需求正文，而是帮助 Agent 快速定位已有需求、状态、关联计划和实现进度。
 
@@ -21,6 +21,14 @@
 - `Superseded`：被新需求替代。
 
 ## 需求列表
+
+| P9.2 | Planned | Cloud / macOS x64 / Android Agent 上线需求与验收标准 | [`2026-09-13-cloud-macos-x64-android-agent-release.md`](2026-09-13-cloud-macos-x64-android-agent-release.md) | [Plan](../superpowers/plans/2026-09-13-cloud-macos-x64-android-agent-release.md) + [Spec](../superpowers/specs/2026-09-13-cloud-macos-x64-android-agent-release.md)；待用户明确要求后开始实现 | 三端独立 canonical Agent runtime、Cloud 配置同步、E2E 通信、new-product 全量 scoped 页面、桌面/Web 独立 UI 包和 Android 原生组件模块；56 项 P0 全 PASS 才可上线 |
+
+| P9.1 | Superseded | 首批 Cloud / Windows x64 / Android Agent 与远程连接发布目标 | [`2026-09-12-first-batch-agent-remote-release.md`](2026-09-12-first-batch-agent-remote-release.md) | [旧 Change Spec](../system/change-spec-first-batch-agent-remote-release-gate.md) + [旧 Windows 验收台账](../superpowers/tests/2026-09-12-first-batch-agent-remote-release-gate.md) | 被 P9.2 替代；历史 Windows 证据不得用于 macOS x64 新范围 |
+
+| P10 | Clarifying | NoteMeld new-product 桌面端完整系统重构（v2） | [`2026-09-06-notemeld-new-product-desktop-system-v2.md`](2026-09-06-notemeld-new-product-desktop-system-v2.md) | 待用户确认范围、优先级、生产完成口径和安全/兼容性边界 | 将 new-product 从交互原型提升为 D01/D03/D06/D09 的完整生产系统目标 |
+
+| P10.1 | Draft for Plan | NoteMeld new-product 真实系统接口矩阵（v1） | [`2026-09-08-notemeld-new-product-interface-matrix-v1.md`](2026-09-08-notemeld-new-product-interface-matrix-v1.md) | [总计划](../superpowers/plans/2026-09-08-notemeld-new-product-full-system-rollout.md)；待扩展 Cloud/移动端并确认 3 个系统缺口 | 将桌面宿主和 APP01–APP04 映射到真实 service、router、数据、权限和测试 |
 
 | P9 | Clarifying | NoteMeld 多端会话、云端 Agent 与设备协同 | [`2026-08-29-multiplatform-cloud-sync-and-device-control.md`](2026-08-29-multiplatform-cloud-sync-and-device-control.md) | [`plan`](../superpowers/plans/2026-08-29-multiplatform-sync-plan.md) + [`spec`](../superpowers/specs/2026-08-29-multiplatform-sync-spec.md) + [专家评审](../superpowers/reviews/2026-08-29-multiplatform-sync-expert-review.md) + Stitch Prompt：[`2026-08-29-stitch-multiplatform-prompts.md`](../design/2026-08-29-stitch-multiplatform-prompts.md) | 三方评审发现 P0 商用安全/稳定性门禁，完成前不进入生产实现 |
 

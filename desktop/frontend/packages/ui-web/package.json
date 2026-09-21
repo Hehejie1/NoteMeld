@@ -1,0 +1,74 @@
+{
+  "name": "@notemeld/ui-web",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "files": ["src", "dist", "test", "scripts", "tsconfig*.json"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "test:a11y": "node --test test/a11y.test.mjs",
+    "test:visual": "node --test test/visual.test.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./button": "./src/button.tsx",
+    "./input": "./src/input.tsx",
+    "./card": "./src/card.tsx",
+    "./badge": "./src/badge.tsx",
+    "./label": "./src/label.tsx",
+    "./textarea": "./src/textarea.tsx",
+    "./switch": "./src/switch.tsx",
+    "./checkbox": "./src/checkbox.tsx",
+    "./alert": "./src/alert.tsx",
+    "./tokens.css": "./src/tokens.css",
+    "./catalog": "./src/catalog.ts"
+    ,"./tabs": "./src/tabs.tsx",
+    "./select": "./src/select.tsx"
+    ,"./dialog": "./src/dialog.tsx",
+    "./tooltip": "./src/tooltip.tsx"
+    ,"./feedback": "./src/feedback.tsx",
+    "./progress": "./src/progress.tsx",
+    "./skeleton": "./src/skeleton.tsx"
+    ,"./scroll-area": "./src/scroll-area.tsx",
+    "./resizable": "./src/resizable.tsx",
+    "./toast": "./src/toast.tsx",
+    "./theme-provider": "./src/theme-provider.tsx",
+    "./icon-button": "./src/icon-button.tsx",
+    "./table": "./src/table.tsx",
+    "./list": "./src/list.tsx",
+    "./navigation": "./src/navigation.tsx",
+    "./popover": "./src/popover.tsx",
+    "./sheet": "./src/sheet.tsx",
+    "./drawer": "./src/drawer.tsx"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@notemeld/ui-contract": "workspace:0.1.0",
+    "@radix-ui/react-slot": "^1.1.4",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-checkbox": "^1.3.2",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-popover": "^1.1.14",
+    "@radix-ui/react-tooltip": "^1.2.7",
+    "@radix-ui/react-scroll-area": "^1.2.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.487.0",
+    "next-themes": "^0.4.4",
+    "react-resizable-panels": "^2.1.7",
+    "sonner": "^2.0.3",
+    "tailwind-merge": "^3.1.0"
+  }
+}

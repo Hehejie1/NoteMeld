@@ -1,0 +1,25 @@
+{
+  "schema_version": "n04-url-capability-matrix.v1",
+  "baseline": "desktop/backend/tests/fixtures/n01-url-capability-baseline.json",
+  "columns": ["platform", "kind", "subtitle_first", "download", "transcription", "screenshots", "multi_source_summary", "web_scrape", "task_state", "web_fallback", "error_classification"],
+  "before": [
+    ["youtube", "video", true, true, true, true, true, true, true, true, true],
+    ["bilibili", "video", true, true, true, true, true, true, true, true, true],
+    ["tiktok", "video", false, true, true, true, true, true, true, true, true],
+    ["kuaishou", "video", false, true, true, true, true, true, true, true, true],
+    ["douyin", "video", false, true, true, true, true, true, true, true, true],
+    ["wechat_channels", "video", false, true, true, true, true, true, true, true, true],
+    ["local", "video", false, true, true, true, true, true, true, true, true],
+    ["web_link", "web", false, false, false, false, true, true, true, true, true]
+  ],
+  "after": [
+    ["youtube", "video", true, true, true, true, true, true, true, true, true],
+    ["bilibili", "video", true, true, true, true, true, true, true, true, true],
+    ["tiktok", "video", false, true, true, true, true, true, true, true, true],
+    ["kuaishou", "video", false, true, true, true, true, true, true, true, true],
+    ["douyin", "video", false, true, true, true, true, true, true, true, true],
+    ["wechat_channels", "video", false, true, true, true, true, true, true, true, true],
+    ["local", "video", false, true, true, true, true, true, true, true, true],
+    ["web_link", "web", false, false, false, false, true, true, true, true, true]
+  ]
+}
