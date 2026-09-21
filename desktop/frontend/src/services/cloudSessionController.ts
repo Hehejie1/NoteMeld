@@ -1,4 +1,4 @@
-import CloudClient, { CloudSession } from './cloud'
+import CloudClient, { CloudSession, type CloudAttachment } from './cloud'
 
 export interface CloudSessionState {
   session: CloudSession | null
@@ -54,9 +54,9 @@ export class CloudSessionController {
     return fresh
   }
 
-  async send(input: string, requestId: string) {
+  async send(input: string, requestId: string, options: { attachments?: CloudAttachment[]; model_id?: string; authorization_mode?: 'default' | 'full' } = {}) {
     if (!this.state.session) throw new Error('session is not open')
-    return this.client.sendCommand(this.state.session.id, requestId, input)
+    return this.client.sendCommand(this.state.session.id, requestId, input, options)
   }
 
   async recover(commandId: string, mode: 'resume' | 'abandon') {

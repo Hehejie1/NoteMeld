@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import re
 import sqlite3
 from pathlib import Path
 
@@ -89,11 +91,23 @@ CREATE TABLE IF NOT EXISTS session_import_requests (
   payload_hash TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id),
   created_at INTEGER NOT NULL, PRIMARY KEY(user_id, request_id)
 );
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL, vendor_id TEXT NOT NULL DEFAULT 'custom',
+  protocol TEXT NOT NULL CHECK(protocol IN ('openai-compatible','anthropic-messages','ollama')),
+  base_url TEXT NOT NULL, auth_type TEXT NOT NULL DEFAULT 'bearer',
+  api_key_ciphertext TEXT, created_by TEXT NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  UNIQUE(organization_id, display_name)
+);
 CREATE TABLE IF NOT EXISTS models (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL,
   provider TEXT NOT NULL, model TEXT NOT NULL, base_url TEXT,
   api_key_ciphertext TEXT, enabled INTEGER NOT NULL DEFAULT 1, is_default INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  organization_id TEXT REFERENCES organizations(id), provider_id TEXT REFERENCES providers(id) ON DELETE CASCADE,
+  display_name TEXT, context_window INTEGER NOT NULL DEFAULT 128000,
+  modalities TEXT NOT NULL DEFAULT 'text', test_status TEXT NOT NULL DEFAULT 'unknown', model_id TEXT
 );
 CREATE TABLE IF NOT EXISTS model_usage_records (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -119,6 +133,33 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 );
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id TEXT PRIMARY KEY REFERENCES users(id), preferences_json TEXT NOT NULL DEFAULT '{}', updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS config_sync_state (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(user_id, workspace_id)
+);
+CREATE TABLE IF NOT EXISTS config_sync_items (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  item_key TEXT NOT NULL,
+  value_json TEXT,
+  revision INTEGER NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(user_id, workspace_id, kind, item_key)
+);
+CREATE TABLE IF NOT EXISTS config_sync_idempotency (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY(user_id, workspace_id, idempotency_key)
 );
 CREATE TABLE IF NOT EXISTS verification_codes (
   id TEXT PRIMARY KEY, email TEXT NOT NULL, purpose TEXT NOT NULL,
@@ -158,7 +199,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_updated ON sessions(user_id, update
 CREATE INDEX IF NOT EXISTS idx_audits_created ON audits(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_workspaces_user_updated ON workspaces(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_model_usage_user_created ON model_usage_records(user_id, created_at DESC);
+-- 两级目录（providers/models）的索引在 _migrate_catalog 建列后创建，避免旧库启动失败。
 CREATE INDEX IF NOT EXISTS idx_workspace_backups_workspace_created ON workspace_backups(user_id, workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_config_sync_items_revision ON config_sync_items(user_id, workspace_id, revision);
 """
 
 
@@ -251,3 +294,120 @@ class CloudDB:
             now = int(__import__("time").time())
             connection.execute("INSERT OR IGNORE INTO organizations(id,name,created_at,updated_at) VALUES('default','Default organization',?,?)", (now, now))
             connection.execute("INSERT OR IGNORE INTO organization_members(organization_id,user_id,role,created_at) SELECT 'default',id,CASE WHEN role='admin' THEN 'owner' ELSE 'member' END,? FROM users", (now,))
+
+            self._migrate_catalog(connection, now)
+
+    def _migrate_catalog(self, connection: sqlite3.Connection, now: int) -> None:
+        """两级目录（providers/models）幂等迁移与回填。"""
+        model_columns = {row[1] for row in connection.execute("PRAGMA table_info(models)").fetchall()}
+        model_additions = {
+            "organization_id": "TEXT",
+            "provider_id": "TEXT",
+            "display_name": "TEXT",
+            "context_window": "INTEGER NOT NULL DEFAULT 128000",
+            "modalities": "TEXT NOT NULL DEFAULT 'text'",
+            "test_status": "TEXT NOT NULL DEFAULT 'unknown'",
+            "model_id": "TEXT",
+        }
+        for column, declaration in model_additions.items():
+            if column not in model_columns:
+                connection.execute(f"ALTER TABLE models ADD COLUMN {column} {declaration}")
+
+        # 此时 providers 表与 models 新列已就绪，再补建 catalog 索引。
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_providers_organization ON providers(organization_id)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_models_catalog ON models(organization_id, provider_id)")
+
+        legacy_rows = connection.execute(
+            "SELECT * FROM models WHERE provider_id IS NULL ORDER BY created_at ASC, id ASC"
+        ).fetchall()
+        if not legacy_rows:
+            return
+
+        user_orgs = {
+            row[1]: row[0]
+            for row in connection.execute("SELECT organization_id,user_id FROM organization_members").fetchall()
+        }
+        # 旧 provider 字符串 → (vendor_id, protocol)；未知项一律 custom/openai-compatible
+        legacy_protocol_map = {
+            "openai": ("openai", "openai-compatible"),
+            "openai-compatible": ("custom", "openai-compatible"),
+            "deepseek": ("deepseek", "openai-compatible"),
+            "volcengine": ("volcengine-ark", "openai-compatible"),
+            "anthropic": ("anthropic", "anthropic-messages"),
+            "ollama": ("ollama", "ollama"),
+        }
+
+        # 按 (organization_id, vendor_id, protocol, base_url) 聚合旧行
+        grouped: dict[tuple, list[sqlite3.Row]] = {}
+        for row in legacy_rows:
+            org_id = user_orgs.get(row["user_id"], "default")
+            vendor_id, protocol = legacy_protocol_map.get(
+                str(row["provider"] or "").strip(), ("custom", "openai-compatible")
+            )
+            base_url = re.sub(r"/+$", "", str(row["base_url"] or "").strip())
+            grouped.setdefault((org_id, vendor_id, protocol, base_url), []).append(row)
+
+        used_names: dict[str, set[str]] = {}
+
+        for (org_id, vendor_id, protocol, base_url), rows in grouped.items():
+            # 旧行的 name 是厂商/连接名（model 才是模型名）
+            display_name = (
+                str(rows[0]["name"] or "").strip()
+                or str(rows[0]["provider"] or "Provider").strip()
+            )
+            name_set = used_names.setdefault(org_id, {
+                str(r[0])
+                for r in connection.execute(
+                    "SELECT display_name FROM providers WHERE organization_id=?", (org_id,)
+                ).fetchall()
+            })
+            if display_name in name_set:
+                suffix = base_url.rsplit("/", 1)[-1] if base_url else "custom"
+                candidate = f"{display_name} ({suffix})"
+                counter = 2
+                while candidate in name_set:
+                    candidate = f"{display_name} ({suffix} {counter})"
+                    counter += 1
+                display_name = candidate
+            name_set.add(display_name)
+
+            digest = hashlib.sha1(
+                f"{org_id}|{display_name}|{base_url}".encode("utf-8")
+            ).hexdigest()[:16]
+            provider_id = f"prov_{digest}"
+            auth_type = "none" if protocol == "ollama" else "bearer"
+            # 凭据取该组最早一条 ciphertext
+            connection.execute(
+                "INSERT OR IGNORE INTO providers"
+                "(id,organization_id,display_name,vendor_id,protocol,base_url,auth_type,"
+                "api_key_ciphertext,created_by,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (provider_id, org_id, display_name, vendor_id, protocol, base_url, auth_type,
+                 rows[0]["api_key_ciphertext"], rows[0]["user_id"], rows[0]["created_at"], now),
+            )
+            # INSERT 被 UNIQUE(organization_id,display_name) 忽略时，取回已存在的 provider id
+            resolved = connection.execute(
+                "SELECT id FROM providers WHERE organization_id=? AND display_name=?",
+                (org_id, display_name),
+            ).fetchone()
+            provider_id = resolved[0]
+            for row in rows:
+                connection.execute(
+                    "UPDATE models SET organization_id=?, provider_id=?, display_name=COALESCE(display_name,?), "
+                    "model_id=COALESCE(model_id,?), context_window=COALESCE(context_window,128000), "
+                    "modalities=COALESCE(modalities,'text'), test_status=COALESCE(test_status,'unknown'), "
+                    "updated_at=? WHERE id=? AND provider_id IS NULL",
+                    (org_id, provider_id, row["model"], row["model"], now, row["id"]),
+                )
+
+        # 每组织至多一个 is_default：保留 created_at 最早的默认行，其余清除
+        default_rows = connection.execute(
+            "SELECT id,organization_id FROM models WHERE is_default=1 AND organization_id IS NOT NULL "
+            "ORDER BY organization_id ASC, created_at ASC, id ASC"
+        ).fetchall()
+        seen_orgs: set[str] = set()
+        for row in default_rows:
+            if row[1] in seen_orgs:
+                connection.execute("UPDATE models SET is_default=0 WHERE id=?", (row[0],))
+            else:
+                seen_orgs.add(row[1])

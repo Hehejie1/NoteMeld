@@ -13,16 +13,21 @@ import time
 import uuid
 import fnmatch
 import ipaddress
+import logging
 import re
+import socket
 import weakref
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlparse
 
+import httpx
+
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import MutableHeaders
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import CloudSettings, load_settings
@@ -54,6 +59,115 @@ _DUMMY_PASSWORD_HASH = hash_password("notemeld-dummy-password")
 _MAX_HISTORY_MESSAGES = 200
 _MAX_HISTORY_MESSAGE_CHARS = 100_000
 _MAX_HISTORY_CHARS = 1_000_000
+LOGGER = logging.getLogger(__name__)
+_CONFIG_SYNC_FORBIDDEN_KEY_PARTS = ("secret", "password", "api_key", "apikey", "token", "private_key")
+
+
+def _config_sync_key_allowed(kind: str, key: str) -> bool:
+    del kind
+    lowered = key.lower()
+    return not any(part in lowered for part in _CONFIG_SYNC_FORBIDDEN_KEY_PARTS)
+
+
+class SecurityHeadersMiddleware:
+    """Add response headers without Starlette BaseHTTPMiddleware stream wrapping."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path", ""))
+        scheme = str(scope.get("scheme", ""))
+
+        async def send_with_security_headers(message: dict[str, Any]) -> None:
+            if message.get("type") == "http.response.start":
+                headers = MutableHeaders(raw=message.setdefault("headers", []))
+                headers.setdefault("X-Content-Type-Options", "nosniff")
+                headers.setdefault("X-Frame-Options", "SAMEORIGIN" if path.startswith("/cloud/") else "DENY")
+                headers.setdefault("Referrer-Policy", "no-referrer")
+                headers.setdefault("Cache-Control", "no-store")
+                if path == "/cloud" or path.startswith("/cloud/") or path.startswith("/assets/"):
+                    headers.setdefault(
+                        "Content-Security-Policy",
+                        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                        "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; "
+                        "object-src 'none'; base-uri 'self'; frame-ancestors 'self'",
+                    )
+                if scheme == "https":
+                    headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+            await send(message)
+
+        await self.app(scope, receive, send_with_security_headers)
+
+
+class RequestSizeGuardMiddleware:
+    """Enforce request limits while preserving the original ASGI receive flow."""
+
+    def __init__(self, app: Any, max_request_bytes: int) -> None:
+        self.app = app
+        self.max_request_bytes = max_request_bytes
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        raw_length = headers.get(b"content-length")
+        if raw_length is not None:
+            try:
+                content_length = int(raw_length)
+            except ValueError:
+                await self._reject(send, 400, "invalid content length")
+                return
+            if content_length < 0 or content_length > self.max_request_bytes:
+                await self._reject(send, 413, "request body too large")
+                return
+
+        # Buffer the bounded body before entering Starlette/FastAPI. Raising
+        # from a wrapped receive can be converted into a generic 400 by the
+        # request parser before this middleware sees it; replaying the
+        # validated messages keeps oversized chunked requests deterministic.
+        buffered: list[dict[str, Any]] = []
+        received = 0
+        while True:
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_request_bytes:
+                    await self._reject(send, 413, "request body too large")
+                    return
+                buffered.append(message)
+                if not message.get("more_body", False):
+                    break
+            else:
+                buffered.append(message)
+                break
+
+        async def replay_receive() -> dict[str, Any]:
+            if buffered:
+                return buffered.pop(0)
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, replay_receive, send)
+
+    @staticmethod
+    async def _reject(send: Any, status_code: int, message: str) -> None:
+        body = json.dumps({"code": status_code, "msg": message}, ensure_ascii=False).encode("utf-8")
+        await send({
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode("ascii"))],
+        })
+        await send({"type": "http.response.body", "body": body, "more_body": False})
+
+
+class RequestTooLargeError(Exception):
+    pass
 
 
 class LoginRequest(BaseModel):
@@ -88,7 +202,10 @@ class AccessRequestCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=256)
     confirm_password: str = Field(min_length=8, max_length=256)
-    reason: str = Field(min_length=1, max_length=2000)
+    # The Cloud Web form intentionally treats the application note as optional.
+    # Keep the API contract aligned with that UI instead of returning a 422 for
+    # an otherwise valid access request with no additional explanation.
+    reason: str = Field(default="", max_length=2000)
 
 
 class AccessRequestReview(BaseModel):
@@ -118,6 +235,20 @@ class OrganizationPreferencesUpdate(BaseModel):
     default_workspace: str | None = Field(default=None, max_length=128)
     default_model: str | None = Field(default=None, max_length=128)
     high_risk_approval: bool | None = None
+
+
+class ConfigSyncChange(BaseModel):
+    kind: str = Field(min_length=1, max_length=64)
+    key: str = Field(min_length=1, max_length=256)
+    operation: str = Field(pattern="^(set|delete)$")
+    value: Any = None
+
+
+class ConfigSyncChangesRequest(BaseModel):
+    workspace_id: str = Field(default="default", min_length=1, max_length=128)
+    base_revision: int = Field(ge=0)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+    changes: list[ConfigSyncChange] = Field(min_length=1, max_length=100)
 
 
 class OrganizationMemoryCreate(BaseModel):
@@ -261,6 +392,10 @@ class SessionCreate(BaseModel):
     model_id: str | None = Field(default=None, max_length=128)
 
 
+class SessionRename(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 class ModelCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=128)
@@ -272,6 +407,13 @@ class ModelCreate(BaseModel):
     is_default: bool = False
 
 
+class ModelDiscoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = Field(min_length=1, max_length=64)
+    base_url: str = Field(min_length=1, max_length=2048)
+    api_key: str | None = Field(default=None, max_length=4096)
+
+
 class ModelUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=128)
@@ -281,6 +423,74 @@ class ModelUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=4096)
     enabled: bool | None = None
     is_default: bool | None = None
+
+
+_PROTOCOL_PATTERN = "^(openai-compatible|anthropic-messages|ollama)$"
+
+
+class CatalogProviderCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str = Field(min_length=1, max_length=128)
+    vendor_id: str = Field(default="custom", min_length=1, max_length=64)
+    protocol: str = Field(pattern=_PROTOCOL_PATTERN)
+    base_url: str = Field(min_length=1, max_length=2048)
+    auth_type: str = Field(default="bearer", pattern="^(bearer|x-api-key|none)$")
+    api_key: str | None = Field(default=None, max_length=4096)
+    organization_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class CatalogProviderUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    vendor_id: str | None = Field(default=None, min_length=1, max_length=64)
+    protocol: str | None = Field(default=None, pattern=_PROTOCOL_PATTERN)
+    base_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    auth_type: str | None = Field(default=None, pattern="^(bearer|x-api-key|none)$")
+    api_key: str | None = Field(default=None, max_length=4096)
+    organization_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class CatalogModelItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_id: str = Field(min_length=1, max_length=256)
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
+    context_window: int = Field(default=128000, ge=512, le=4_000_000)
+    modalities: str = Field(default="text", min_length=1, max_length=64)
+    enabled: bool = True
+    is_default: bool = False
+
+
+class CatalogModelBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    models: list[CatalogModelItem] = Field(min_length=1, max_length=200)
+    organization_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class CatalogModelUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
+    context_window: int | None = Field(default=None, ge=512, le=4_000_000)
+    modalities: str | None = Field(default=None, min_length=1, max_length=64)
+    enabled: bool | None = None
+    is_default: bool | None = None
+    test_status: str | None = Field(default=None, pattern="^(unknown|testing|ok|failed)$")
+
+
+class CatalogDiscoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    protocol: str = Field(pattern=_PROTOCOL_PATTERN)
+    base_url: str = Field(min_length=1, max_length=2048)
+    api_key: str | None = Field(default=None, max_length=4096)
+    organization_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class CatalogTestConnectionRequest(CatalogDiscoverRequest):
+    model_id: str | None = Field(default=None, min_length=1, max_length=256)
+
+
+class CatalogDefaultRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    organization_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ApprovalResolve(BaseModel):
@@ -378,6 +588,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.worker_shutdown.clear()
+        _start_command_reconciler(application, db)
         _start_queued_workers(application, db)
         yield
         _stop_queued_workers(application)
@@ -392,42 +603,46 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             close()
 
     app = FastAPI(title="NoteMeld Cloud", version="0.1.0", lifespan=lifespan)
-    cloud_web_root = Path(__file__).resolve().parent.parent / "docs" / "new-product"
-    if cloud_web_root.is_dir():
-        app.mount("/cloud", StaticFiles(directory=cloud_web_root, html=True), name="cloud-web")
+    configured_cloud_web_root = os.getenv("NOTEMELD_CLOUD_WEB_DIST")
+    cloud_web_candidates = [
+        Path(configured_cloud_web_root).expanduser().resolve() if configured_cloud_web_root else None,
+        Path(__file__).resolve().parent.parent / "desktop" / "frontend" / "dist-cloud-web",
+    ]
+    cloud_web_root = next((candidate for candidate in cloud_web_candidates if candidate and candidate.is_dir()), None)
+    if cloud_web_root and cloud_web_root.is_dir():
+        # Serve hashed assets directly and use the production index for every
+        # Cloud deep link.  This keeps BrowserRouter routes working without
+        # falling back to the old docs/new-product prototype.
+        assets_root = cloud_web_root / "assets"
+        if assets_root.is_dir():
+            app.mount("/assets", StaticFiles(directory=assets_root), name="cloud-web-assets")
 
-        @app.get("/", include_in_schema=False)
-        def cloud_home() -> RedirectResponse:
-            return RedirectResponse("/cloud/pages/cloud/c01.html")
+        cloud_favicon = cloud_web_root / "icon.svg"
+        if not cloud_favicon.is_file():
+            cloud_favicon = next(iter(assets_root.glob("notemeld-cloud-logo-*")), cloud_favicon)
+        if cloud_favicon.is_file():
+            @app.get("/favicon.ico", include_in_schema=False)
+            def cloud_favicon_route() -> FileResponse:
+                return FileResponse(cloud_favicon, media_type="image/svg+xml")
 
-    @app.middleware("http")
-    async def request_size_guard(request: Request, call_next):
-        raw_length = request.headers.get("content-length")
-        try:
-            content_length = int(raw_length) if raw_length is not None else 0
-        except ValueError:
-            return JSONResponse(status_code=400, content={"code": 400, "msg": "invalid content length"})
-        if content_length < 0 or content_length > settings.max_request_bytes:
-            return JSONResponse(status_code=413, content={"code": 413, "msg": "request body too large"})
-        original_receive = request._receive
-        if raw_length is None:
-            body = bytearray()
-            while True:
-                message = await original_receive()
-                if message.get("type") != "http.request":
-                    break
-                body.extend(message.get("body", b""))
-                if len(body) > settings.max_request_bytes:
-                    return JSONResponse(status_code=413, content={"code": 413, "msg": "request body too large"})
-                if not message.get("more_body", False):
-                    break
-            request._body = bytes(body)
+        @app.get("/cloud", include_in_schema=False)
+        @app.get("/cloud/{path:path}", include_in_schema=False)
+        def cloud_web_fallback(path: str = "") -> FileResponse:
+            # Never revive the removed `/docs/new-product` HTML prototype (or
+            # make its former `/cloud/pages/*.html` aliases look like valid
+            # production routes).  BrowserRouter deep links remain supported
+            # for application routes, while legacy prototype paths are a hard
+            # 404.
+            normalized_path = path.strip("/")
+            if normalized_path.startswith("pages/") or normalized_path.endswith(".html"):
+                raise HTTPException(status_code=404, detail="cloud page not found")
+            return FileResponse(cloud_web_root / "index.html")
 
-            async def replay_body():
-                return {"type": "http.request", "body": request._body, "more_body": False}
+    @app.get("/", include_in_schema=False)
+    def cloud_home() -> RedirectResponse:
+        return RedirectResponse("/cloud/login")
 
-            request._receive = replay_body
-        return await call_next(request)
+    app.add_middleware(RequestSizeGuardMiddleware, max_request_bytes=settings.max_request_bytes)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Share-Token", "X-Device-Id", "X-Request-Id"])
     app.state.db = db
@@ -441,7 +656,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.user_locks_guard = threading.RLock()
     app.state.queue_workers: dict[str, threading.Thread] = {}
     app.state.queue_conditions: dict[tuple[str, str], threading.Condition] = {}
+    # Native SDK turns waiting for approval must remain addressable by the
+    # Cloud approval API. The runner owns the live native runtime; the DB owns
+    # the durable approval record.
+    app.state.native_approval_runtimes: dict[str, Any] = {}
+    app.state.native_approval_lock = threading.RLock()
     app.state.worker_shutdown = threading.Event()
+    app.state.command_reconciler: threading.Thread | None = None
 
     if settings.relay_backend == "memory":
         app.state.relay_broker = InMemoryRelayBroker()
@@ -453,19 +674,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     app.state.device_challenges: dict[str, tuple[str, str, int]] = {}
     app.state.device_proofs: dict[tuple[str, str], int] = {}
 
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):
-        response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        # The documentation portal embeds the static product pages in a
-        # same-origin iframe. Keep all API and operational responses denied
-        # while allowing only that explicitly mounted documentation surface.
-        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN" if request.url.path.startswith("/cloud/") else "DENY")
-        response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("Cache-Control", "no-store")
-        if request.url.scheme == "https":
-            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        return response
+    app.add_middleware(SecurityHeadersMiddleware)
 
     @app.get("/health")
     def health() -> dict:
@@ -474,6 +683,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/ready")
     async def readiness() -> dict:
         checks: dict[str, str] = {}
+        agent_backend = "canonical-sdk" if getattr(app.state.agent_runner, "native_library", None) else ("openai-compatible" if settings.agent_base_url else "deterministic")
         try:
             with db.connect() as cx:
                 cx.execute("SELECT 1").fetchone()
@@ -490,14 +700,41 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 checks["device_proof_crypto"] = "ok"
             except ImportError:
                 checks["device_proof_crypto"] = "error"
+        if settings.deployment_env == "production":
+            # Production readiness must describe the runtime that will execute
+            # turns, not merely the presence of a provider URL. The
+            # deterministic and Python-owned adapters remain development/test
+            # fixtures and can never make a production deployment ready.
+            provider_configured = bool(settings.agent_base_url)
+            if not provider_configured and agent_backend == "canonical-sdk":
+                try:
+                    with db.connect() as cx:
+                        default_model = cx.execute(
+                            "SELECT base_url,api_key_ciphertext FROM models WHERE enabled=1 AND is_default=1 ORDER BY created_at LIMIT 1"
+                        ).fetchone()
+                    if default_model and default_model["base_url"] and default_model["api_key_ciphertext"]:
+                        decrypt_secret(default_model["api_key_ciphertext"], settings.secret_key)
+                        provider_configured = True
+                except Exception:
+                    provider_configured = False
+            checks["agent_provider_config"] = "ok" if provider_configured and agent_backend == "canonical-sdk" else "error"
+            checks["backup_storage_config"] = "ok" if settings.backup_storage_backend == "s3" and settings.s3_bucket else "error"
+            checks["otp_delivery_config"] = "ok" if not settings.otp_dev_mode and settings.smtp_host and settings.smtp_sender else "error"
+            checks["device_proof_config"] = "ok" if settings.require_device_proof else "error"
+            checks["release_identity"] = "ok" if settings.build_commit and settings.image_digest else "error"
+        identity = {"build_commit": settings.build_commit, "image_digest": settings.image_digest}
         if any(value != "ok" for value in checks.values()):
-            raise HTTPException(503, detail={"service": "notemeld-cloud", "ready": False, "checks": checks})
-        return {"service": "notemeld-cloud", "ready": True, "checks": checks}
+            raise HTTPException(503, detail={"service": "notemeld-cloud", "ready": False, "environment": settings.deployment_env, "agent_backend": agent_backend, "checks": checks, **identity})
+        return {"service": "notemeld-cloud", "ready": True, "environment": settings.deployment_env, "agent_backend": agent_backend, "checks": checks, **identity}
 
     @app.get("/v1/capabilities")
     def capabilities(current=Depends(_auth_dependency(db))):
         return {"code": 0, "msg": "success", "data": {
             "protocol_version": "notemeld.sync.v1",
+            "protocol": {"name": "notemeld.sync", "current": 1, "min": 1, "max": 1},
+            "runtime": {"sdk_version": "0.1.0", "abi": 1, "schema": 1},
+            "service": {"version": "0.1.0", "build_commit": settings.build_commit},
+            "required_features": ["config_sync_v1", "e2ee_relay_v1", "durable_receipt_v1"],
             "canonical_session_prefix": "/v1/cloud/sessions",
             "device_proof_required": settings.require_device_proof,
             "e2ee_relay_envelope": True,
@@ -515,6 +752,75 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             "max_workspace_files": settings.max_workspace_files,
             "features": {"cloud_agent": True, "session_queue": True, "command_recovery": True, "approval_gated_mutations": True, "model_registry": True, "device_tokens": True},
         }}
+
+    @app.get("/v1/config-sync/snapshot")
+    def config_sync_snapshot(workspace_id: str = "default", after_revision: int = 0, current=Depends(_auth_dependency(db))):
+        if not workspace_id or len(workspace_id) > 128 or after_revision < 0:
+            raise HTTPException(422, "invalid config sync cursor")
+        user_id = current["id"]
+        with db.connect() as cx:
+            state = cx.execute("SELECT revision FROM config_sync_state WHERE user_id=? AND workspace_id=?", (user_id, workspace_id)).fetchone()
+            revision = int(state["revision"]) if state else 0
+            rows = cx.execute(
+                "SELECT kind,item_key,value_json,revision,deleted FROM config_sync_items WHERE user_id=? AND workspace_id=? AND revision>? ORDER BY revision,kind,item_key",
+                (user_id, workspace_id, after_revision),
+            ).fetchall()
+        items = [{"kind": row["kind"], "key": row["item_key"], "value": json.loads(row["value_json"])} for row in rows if not row["deleted"]]
+        deleted = [{"kind": row["kind"], "key": row["item_key"], "revision": row["revision"]} for row in rows if row["deleted"]]
+        return {"code": 0, "msg": "success", "data": {"revision": revision, "full": after_revision == 0, "items": items, "deleted": deleted, "next_cursor": None, "server_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}
+
+    @app.post("/v1/config-sync/changes")
+    def config_sync_changes(payload: ConfigSyncChangesRequest, current=Depends(_auth_dependency(db))):
+        user_id = current["id"]
+        if any(not _config_sync_key_allowed(change.kind, change.key) for change in payload.changes):
+            raise HTTPException(422, "sensitive configuration keys cannot be synchronized")
+        identities = [(change.kind, change.key) for change in payload.changes]
+        if len(set(identities)) != len(identities):
+            raise HTTPException(422, "duplicate configuration change")
+        try:
+            request_hash = hashlib.sha256(json.dumps(payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, "configuration value is not JSON serializable") from exc
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            existing = cx.execute("SELECT request_hash,response_json FROM config_sync_idempotency WHERE user_id=? AND workspace_id=? AND idempotency_key=?", (user_id, payload.workspace_id, payload.idempotency_key)).fetchone()
+            if existing:
+                if existing["request_hash"] != request_hash:
+                    cx.execute("ROLLBACK")
+                    raise HTTPException(409, "idempotency key was already used for another request")
+                response = json.loads(existing["response_json"])
+                cx.execute("COMMIT")
+                return response
+            state = cx.execute("SELECT revision FROM config_sync_state WHERE user_id=? AND workspace_id=?", (user_id, payload.workspace_id)).fetchone()
+            current_revision = int(state["revision"]) if state else 0
+            if payload.base_revision != current_revision:
+                cx.execute("ROLLBACK")
+                return JSONResponse(status_code=409, content={"code": "revision_conflict", "msg": "configuration revision conflict", "data": {"current_revision": current_revision}})
+            items: list[dict[str, Any]] = []
+            deleted: list[dict[str, Any]] = []
+            revision = current_revision
+            for change in payload.changes:
+                revision += 1
+                is_deleted = change.operation == "delete"
+                value_json = None if is_deleted else json.dumps(change.value, ensure_ascii=False, separators=(",", ":"))
+                cx.execute(
+                    "INSERT INTO config_sync_items(user_id,workspace_id,kind,item_key,value_json,revision,deleted,updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(user_id,workspace_id,kind,item_key) DO UPDATE SET value_json=excluded.value_json,revision=excluded.revision,deleted=excluded.deleted,updated_at=excluded.updated_at",
+                    (user_id, payload.workspace_id, change.kind, change.key, value_json, revision, int(is_deleted), now),
+                )
+                if is_deleted:
+                    deleted.append({"kind": change.kind, "key": change.key, "revision": revision})
+                else:
+                    items.append({"kind": change.kind, "key": change.key, "value": change.value, "revision": revision})
+            cx.execute(
+                "INSERT INTO config_sync_state(user_id,workspace_id,revision,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id,workspace_id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at",
+                (user_id, payload.workspace_id, revision, now),
+            )
+            response = {"code": 0, "msg": "success", "data": {"revision": revision, "items": items, "deleted": deleted}}
+            cx.execute("INSERT INTO config_sync_idempotency(user_id,workspace_id,idempotency_key,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)", (user_id, payload.workspace_id, payload.idempotency_key, request_hash, json.dumps(response, ensure_ascii=False, separators=(",", ":")), now))
+            cx.execute("COMMIT")
+            return response
 
     @app.get("/v1/cloud/dashboard")
     def cloud_dashboard(current=Depends(_auth_dependency(db))):
@@ -754,7 +1060,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/v1/auth/me")
     def auth_me(current=Depends(_auth_dependency(db))):
-        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "email": current["email"], "display_name": current["display_name"], "avatar": current["avatar"], "role": current["role"], "audience": current["audience"], "device_id": current["device_id"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"]}}
+        with db.connect() as cx:
+            membership = cx.execute(
+                "SELECT organization_id,role FROM organization_members WHERE user_id=? "
+                "ORDER BY created_at ASC LIMIT 1",
+                (current["id"],),
+            ).fetchone()
+        return {"code": 0, "msg": "success", "data": {"user_id": current["id"], "username": current["username"], "email": current["email"], "display_name": current["display_name"], "avatar": current["avatar"], "role": current["role"], "audience": current["audience"], "device_id": current["device_id"], "scopes": json.loads(current["scopes_json"]), "expires_at": current["expires_at"], "organization_id": membership["organization_id"] if membership else None, "organization_role": membership["role"] if membership else None}}
 
     @app.put("/v1/auth/me")
     def update_auth_me(payload: UserProfileUpdate, current=Depends(_auth_dependency(db))):
@@ -1031,11 +1343,53 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _audit(db, current["id"], "admin.user.delete", user_id, {})
         return {"code": 0, "msg": "success", "data": {"deleted": True}}
 
+    @app.post("/v1/models/discover")
+    def discover_models(payload: ModelDiscoveryRequest, current=Depends(_auth_dependency(db, required_scope="model.write"))):
+        del current
+        _validate_provider_discovery_target(payload.base_url)
+        if payload.provider not in {"openai-compatible", "openai", "deepseek", "volcengine"}:
+            raise HTTPException(422, "provider does not support model discovery")
+        headers = {"Accept": "application/json"}
+        if payload.api_key:
+            headers["Authorization"] = f"Bearer {payload.api_key}"
+        endpoint = f"{payload.base_url.rstrip('/')}/models"
+        try:
+            with httpx.Client(timeout=12.0, trust_env=False, follow_redirects=False) as provider_client:
+                response = provider_client.get(endpoint, headers=headers)
+                response.raise_for_status()
+                body = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(502, f"provider models request failed with HTTP {exc.response.status_code}") from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(502, "provider models request failed") from exc
+        raw_items = body.get("data", body) if isinstance(body, dict) else body
+        if not isinstance(raw_items, list):
+            raise HTTPException(502, "provider models response is invalid")
+        models: list[dict[str, str]] = []
+        for item in raw_items[:200]:
+            if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip():
+                model_id = item["id"].strip()
+                models.append({"id": model_id, "model": model_id, "name": str(item.get("name") or model_id)[:128]})
+        return {"code": 0, "msg": "success", "data": models}
+
     @app.get("/v1/models")
     def list_models(current=Depends(_auth_dependency(db, required_scope="model.read"))):
         with db.connect() as cx:
             rows = cx.execute("SELECT id,name,provider,model,base_url,enabled,is_default,created_at,updated_at,api_key_ciphertext FROM models WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
-        return {"code": 0, "msg": "success", "data": [{**{key: row[key] for key in ("id", "name", "provider", "model", "base_url", "enabled", "is_default", "created_at", "updated_at")}, "has_api_key": bool(row["api_key_ciphertext"])} for row in rows]}
+        data = []
+        for row in rows:
+            credential_status = "not_configured"
+            if row["api_key_ciphertext"]:
+                if not app.state.settings.secret_key:
+                    credential_status = "unavailable"
+                else:
+                    try:
+                        decrypt_secret(row["api_key_ciphertext"], app.state.settings.secret_key)
+                        credential_status = "configured"
+                    except Exception:
+                        credential_status = "unreadable"
+            data.append({**{key: row[key] for key in ("id", "name", "provider", "model", "base_url", "enabled", "is_default", "created_at", "updated_at")}, "has_api_key": bool(row["api_key_ciphertext"]), "credential_status": credential_status})
+        return {"code": 0, "msg": "success", "data": data}
 
     @app.post("/v1/models")
     def create_model(payload: ModelCreate, current=Depends(_auth_dependency(db, required_scope="model.write"))):
@@ -1052,12 +1406,29 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(503, "secret encryption is unavailable") from exc
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
-            if payload.is_default:
+            default_row = cx.execute(
+                "SELECT api_key_ciphertext FROM models WHERE user_id=? AND enabled=1 AND is_default=1 LIMIT 1",
+                (current["id"],),
+            ).fetchone()
+            has_default = default_row is not None
+            # A previous deployment may have used a different encryption key.
+            # Do not keep an unreadable default in front of a newly supplied
+            # provider credential; that would make every new session fail.
+            if has_default and default_row["api_key_ciphertext"] and master_key:
+                try:
+                    decrypt_secret(default_row["api_key_ciphertext"], master_key)
+                except Exception:
+                    has_default = False
+            # The Cloud Web form intentionally has no hidden default toggle:
+            # the first usable provider must become the account default so a
+            # newly configured Cloud cannot create sessions with no runner.
+            make_default = payload.is_default or not has_default
+            if make_default:
                 cx.execute("UPDATE models SET is_default=0 WHERE user_id=?", (current["id"],))
-            cx.execute("INSERT INTO models(id,user_id,name,provider,model,base_url,api_key_ciphertext,enabled,is_default,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (model_id, current["id"], payload.name, payload.provider, payload.model, payload.base_url, encrypted_key, int(payload.enabled), int(payload.is_default), now, now))
+            cx.execute("INSERT INTO models(id,user_id,name,provider,model,base_url,api_key_ciphertext,enabled,is_default,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (model_id, current["id"], payload.name, payload.provider, payload.model, payload.base_url, encrypted_key, int(payload.enabled), int(make_default), now, now))
             cx.execute("COMMIT")
         _audit(db, current["id"], "model.create", model_id, {"provider": payload.provider, "model": payload.model, "has_api_key": bool(payload.api_key)})
-        return {"code": 0, "msg": "success", "data": {"id": model_id, "name": payload.name, "provider": payload.provider, "model": payload.model, "enabled": payload.enabled, "is_default": payload.is_default, "has_api_key": bool(payload.api_key)}}
+        return {"code": 0, "msg": "success", "data": {"id": model_id, "name": payload.name, "provider": payload.provider, "model": payload.model, "enabled": payload.enabled, "is_default": make_default, "has_api_key": bool(payload.api_key)}}
 
     @app.put("/v1/models/{model_id}")
     def update_model(model_id: str, payload: ModelUpdate, current=Depends(_auth_dependency(db, required_scope="model.write"))):
@@ -1102,6 +1473,487 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         _audit(db, current["id"], "model.delete", model_id, {})
         return {"code": 0, "msg": "success", "data": {"id": model_id, "deleted": True}}
 
+    _LOCAL_URL_RE = re.compile(r"^http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(/|$)", re.IGNORECASE)
+
+    # Anthropic 无标准公开模型列表接口，用内置常用目录兜底（context_window 200k）
+    _ANTHROPIC_CATALOG_MODELS = (
+        ("claude-opus-4-1", 200000),
+        ("claude-sonnet-4-5", 200000),
+        ("claude-3-5-haiku-latest", 200000),
+    )
+
+    class _ProviderTestError(Exception):
+        """第三方协议测试/发现失败，消息可安全返回给调用者。"""
+
+    def _is_local_url(base_url: str) -> bool:
+        return bool(_LOCAL_URL_RE.match(base_url.strip()))
+
+    def _discover_remote_models(protocol: str, base_url: str, api_key: str | None) -> list[dict[str, Any]]:
+        """按协议拉取可选模型列表；仅返回 id/name/context_window，不触碰任何持久化。"""
+        try:
+            if protocol == "anthropic-messages":
+                return [
+                    {"id": model_id, "name": model_id, "context_window": context_window}
+                    for model_id, context_window in _ANTHROPIC_CATALOG_MODELS
+                ]
+            with httpx.Client(timeout=12.0, trust_env=False, follow_redirects=False) as provider_client:
+                if protocol == "ollama":
+                    response = provider_client.get(f"{base_url}/api/tags")
+                    response.raise_for_status()
+                    body = response.json()
+                    raw_items = body.get("models") if isinstance(body, dict) else None
+                    if not isinstance(raw_items, list):
+                        raise _ProviderTestError("ollama 模型列表响应无效")
+                    models = []
+                    for item in raw_items[:200]:
+                        if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip():
+                            model_id = item["name"].strip()
+                            models.append({"id": model_id, "name": str(item.get("details", {}).get("family") or model_id)[:128]})
+                    return models
+                # openai-compatible：GET /models，兼容 data[] 与裸数组
+                headers = {"Accept": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                response = provider_client.get(f"{base_url}/models", headers=headers)
+                response.raise_for_status()
+                body = response.json()
+                raw_items = body.get("data", body) if isinstance(body, dict) else body
+                if not isinstance(raw_items, list):
+                    raise _ProviderTestError("provider models 响应无效")
+                models = []
+                for item in raw_items[:200]:
+                    if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip():
+                        model_id = item["id"].strip()
+                        models.append({"id": model_id, "name": str(item.get("name") or model_id)[:128]})
+                return models
+        except _ProviderTestError:
+            raise
+        except httpx.HTTPStatusError as exc:
+            raise _ProviderTestError(f"请求失败：HTTP {exc.response.status_code}") from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _ProviderTestError("无法连接或响应无法解析") from exc
+
+    def _test_provider_connection(
+        protocol: str, base_url: str, api_key: str | None, model_id: str | None
+    ) -> None:
+        """按协议做一次最小代价连通性验证；失败统一抛 _ProviderTestError。"""
+        try:
+            with httpx.Client(timeout=12.0, trust_env=False, follow_redirects=False) as provider_client:
+                if protocol == "openai-compatible":
+                    if not api_key:
+                        raise _ProviderTestError("请先填写 API Key")
+                    if model_id:
+                        response = provider_client.post(
+                            f"{base_url}/chat/completions",
+                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                            json={"model": model_id, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                        )
+                    else:
+                        response = provider_client.get(
+                            f"{base_url}/models", headers={"Authorization": f"Bearer {api_key}"}
+                        )
+                    response.raise_for_status()
+                elif protocol == "anthropic-messages":
+                    if not api_key:
+                        raise _ProviderTestError("请先填写 API Key")
+                    if not model_id:
+                        raise _ProviderTestError("请先选择一个 Claude 模型")
+                    response = provider_client.post(
+                        f"{base_url}/v1/messages",
+                        headers={
+                            "x-api-key": api_key,
+                            "anthropic-version": "2023-06-01",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model_id,
+                            "max_tokens": 1,
+                            "messages": [{"role": "user", "content": "hi"}],
+                        },
+                    )
+                    response.raise_for_status()
+                elif protocol == "ollama":
+                    response = provider_client.get(f"{base_url}/api/tags")
+                    response.raise_for_status()
+                else:  # 防御：未知协议 fail-closed
+                    raise _ProviderTestError("不支持的协议")
+        except _ProviderTestError:
+            raise
+        except httpx.HTTPStatusError as exc:
+            raise _ProviderTestError(f"请求失败：HTTP {exc.response.status_code}") from exc
+        except httpx.HTTPError as exc:
+            raise _ProviderTestError("无法连接到服务地址") from exc
+
+    def _mask_key(value: str | None) -> str | None:
+        if not value:
+            return None
+        return value[:4] + "****" if len(value) <= 4 else value[:3] + "****"
+
+    def _serialize_provider(row: Any, secret_key: str | None) -> dict[str, Any]:
+        masked_key: str | None = None
+        if row["api_key_ciphertext"]:
+            if not secret_key:
+                masked_key = "****"
+            else:
+                try:
+                    masked_key = _mask_key(decrypt_secret(row["api_key_ciphertext"], secret_key))
+                except Exception:
+                    masked_key = "****"
+        return {
+            "id": row["id"],
+            "organization_id": row["organization_id"],
+            "display_name": row["display_name"],
+            "vendor_id": row["vendor_id"],
+            "protocol": row["protocol"],
+            "base_url": row["base_url"],
+            "auth_type": row["auth_type"],
+            "has_api_key": bool(row["api_key_ciphertext"]),
+            "api_key_masked": masked_key,
+            "created_by": row["created_by"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _serialize_catalog_model(row: Any) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "organization_id": row["organization_id"],
+            "provider_id": row["provider_id"],
+            "model_id": row["model_id"] or row["model"],
+            "display_name": row["display_name"] or row["model"],
+            "context_window": row["context_window"],
+            "modalities": row["modalities"],
+            "enabled": bool(row["enabled"]),
+            "is_default": bool(row["is_default"]),
+            "test_status": row["test_status"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    @app.get("/v1/catalog/providers")
+    def catalog_list_providers(current=Depends(_auth_dependency(db, required_scope="model.read"))):
+        org_id, _role = _resolve_org(db, current, None, write=False)
+        with db.connect() as cx:
+            rows = cx.execute(
+                "SELECT * FROM providers WHERE organization_id=? ORDER BY created_at ASC, id ASC",
+                (org_id,),
+            ).fetchall()
+            model_rows = cx.execute(
+                "SELECT * FROM models WHERE organization_id=? ORDER BY created_at ASC, id ASC",
+                (org_id,),
+            ).fetchall()
+        data = []
+        for row in rows:
+            provider = _serialize_provider(row, app.state.settings.secret_key)
+            provider["models"] = [
+                _serialize_catalog_model(m)
+                for m in model_rows
+                if m["provider_id"] == row["id"]
+            ]
+            data.append(provider)
+        return {"code": 0, "msg": "success", "data": data}
+
+    @app.post("/v1/catalog/providers")
+    def catalog_create_provider(
+        payload: CatalogProviderCreate,
+        current=Depends(_auth_dependency(db, required_scope="model.write")),
+    ):
+        org_id, _role = _resolve_org(db, current, payload.organization_id, write=True)
+        base_url = payload.base_url.rstrip("/")
+        _validate_model_base_url(base_url)
+        if not _is_local_url(base_url) and not base_url.lower().startswith("https://"):
+            raise HTTPException(422, "non-local base_url must use HTTPS")
+        provider_id = f"prov_{uuid.uuid4().hex}"
+        now = int(time.time())
+        secret_key = app.state.settings.secret_key
+        api_key = payload.api_key
+        if payload.protocol != "ollama" and not api_key:
+            raise HTTPException(422, "api_key is required for this protocol")
+        if payload.protocol == "ollama" and not _is_local_url(base_url):
+            raise HTTPException(422, "ollama provider must target the local host")
+        if api_key and not secret_key:
+            raise HTTPException(503, "NOTEMELD_CLOUD_SECRET_KEY is required for provider credentials")
+        try:
+            ciphertext = encrypt_secret(api_key, secret_key) if api_key else None
+        except RuntimeError as exc:
+            raise HTTPException(503, "secret encryption is unavailable") from exc
+        auth_type = "none" if payload.protocol == "ollama" else (
+            "x-api-key" if payload.protocol == "anthropic-messages" else "bearer"
+        )
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            duplicate = cx.execute(
+                "SELECT id FROM providers WHERE organization_id=? AND display_name=?",
+                (org_id, payload.display_name),
+            ).fetchone()
+            if duplicate:
+                cx.execute("ROLLBACK")
+                raise HTTPException(409, "provider name already exists in this organization")
+            cx.execute(
+                "INSERT INTO providers(id,organization_id,display_name,vendor_id,protocol,base_url,"
+                "auth_type,api_key_ciphertext,created_by,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (provider_id, org_id, payload.display_name, payload.vendor_id, payload.protocol,
+                 base_url, auth_type, ciphertext, current["id"], now, now),
+            )
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "catalog.provider.create", provider_id,
+                {"organization_id": org_id, "protocol": payload.protocol, "has_api_key": bool(api_key)})
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM providers WHERE id=?", (provider_id,)).fetchone()
+        return {"code": 0, "msg": "success", "data": _serialize_provider(row, secret_key)}
+
+    @app.patch("/v1/catalog/providers/{provider_id}")
+    def catalog_update_provider(
+        provider_id: str,
+        payload: CatalogProviderUpdate,
+        current=Depends(_auth_dependency(db, required_scope="model.write")),
+    ):
+        org_id, _role = _resolve_org(db, current, payload.organization_id, write=True)
+        changes = payload.model_dump(exclude_unset=True)
+        changes.pop("organization_id", None)
+        if "api_key" in changes:
+            secret_value = changes.pop("api_key")
+            if secret_value is not None and str(secret_value).strip():
+                secret_key = app.state.settings.secret_key
+                if not secret_key:
+                    raise HTTPException(503, "NOTEMELD_CLOUD_SECRET_KEY is required for provider credentials")
+                try:
+                    changes["api_key_ciphertext"] = encrypt_secret(str(secret_value).strip(), secret_key)
+                except RuntimeError as exc:
+                    raise HTTPException(503, "secret encryption is unavailable") from exc
+            elif secret_value is None:
+                pass  # 未传/留空：保留原密钥
+            else:
+                changes["api_key_ciphertext"] = None  # 显式空串：移除密钥
+        if "base_url" in changes:
+            changes["base_url"] = changes["base_url"].rstrip("/")
+            _validate_model_base_url(changes["base_url"])
+        if not changes:
+            raise HTTPException(400, "no changes supplied")
+        changes["updated_at"] = int(time.time())
+        assignments = ",".join(f"{key}=?" for key in changes)
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            exists = cx.execute(
+                "SELECT id FROM providers WHERE id=? AND organization_id=?",
+                (provider_id, org_id),
+            ).fetchone()
+            if not exists:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "provider not found")
+            if "display_name" in changes:
+                duplicate = cx.execute(
+                    "SELECT id FROM providers WHERE organization_id=? AND display_name=? AND id<>?",
+                    (org_id, changes["display_name"], provider_id),
+                ).fetchone()
+                if duplicate:
+                    cx.execute("ROLLBACK")
+                    raise HTTPException(409, "provider name already exists in this organization")
+            cx.execute(
+                f"UPDATE providers SET {assignments} WHERE id=? AND organization_id=?",
+                (*changes.values(), provider_id, org_id),
+            )
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "catalog.provider.update", provider_id,
+                {"organization_id": org_id, "fields": sorted(changes)})
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM providers WHERE id=?", (provider_id,)).fetchone()
+        return {"code": 0, "msg": "success", "data": _serialize_provider(row, app.state.settings.secret_key)}
+
+    @app.delete("/v1/catalog/providers/{provider_id}")
+    def catalog_delete_provider(
+        provider_id: str, current=Depends(_auth_dependency(db, required_scope="model.write"))
+    ):
+        org_id, _role = _resolve_org(db, current, None, write=True)
+        with db.connect() as cx:
+            result = cx.execute(
+                "DELETE FROM providers WHERE id=? AND organization_id=?",
+                (provider_id, org_id),
+            )
+        if result.rowcount != 1:
+            raise HTTPException(404, "provider not found")
+        _audit(db, current["id"], "catalog.provider.delete", provider_id, {"organization_id": org_id})
+        return {"code": 0, "msg": "success", "data": {"id": provider_id, "deleted": True}}
+
+    @app.post("/v1/catalog/providers/{provider_id}/models/batch")
+    def catalog_create_models(
+        provider_id: str,
+        payload: CatalogModelBatch,
+        current=Depends(_auth_dependency(db, required_scope="model.write")),
+    ):
+        org_id, _role = _resolve_org(db, current, payload.organization_id, write=True)
+        now = int(time.time())
+        created: list[dict[str, Any]] = []
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            provider = cx.execute(
+                "SELECT * FROM providers WHERE id=? AND organization_id=?",
+                (provider_id, org_id),
+            ).fetchone()
+            if not provider:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "provider not found")
+            existing_ids = {
+                row[0]
+                for row in cx.execute(
+                    "SELECT model_id FROM models WHERE provider_id=?", (provider_id,)
+                ).fetchall()
+            }
+            any_default = any(item.is_default for item in payload.models)
+            if any_default:
+                cx.execute("UPDATE models SET is_default=0 WHERE organization_id=?", (org_id,))
+            else:
+                org_has_default = cx.execute(
+                    "SELECT id FROM models WHERE organization_id=? AND is_default=1 LIMIT 1", (org_id,)
+                ).fetchone()
+                if not org_has_default:
+                    first = payload.models[0]
+                    # 首条模型自动成为组织默认
+                    payload.models[0] = first.model_copy(update={"is_default": True})
+            for item in payload.models:
+                if item.model_id in existing_ids:
+                    continue
+                row_id = f"mdl_{uuid.uuid4().hex}"
+                cx.execute(
+                    "INSERT INTO models(id,user_id,name,provider,model,base_url,api_key_ciphertext,"
+                    "enabled,is_default,created_at,updated_at,organization_id,provider_id,"
+                    "display_name,context_window,modalities,test_status,model_id) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (row_id, provider["created_by"], provider["display_name"], provider["protocol"],
+                     item.model_id, provider["base_url"], provider["api_key_ciphertext"],
+                     int(item.enabled), int(item.is_default), now, now, org_id, provider_id,
+                     item.display_name or item.model_id, item.context_window, item.modalities,
+                     "unknown", item.model_id),
+                )
+                existing_ids.add(item.model_id)
+                created.append({"id": row_id})
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "catalog.models.batch", provider_id,
+                {"organization_id": org_id, "model_count": len(created)})
+        with db.connect() as cx:
+            rows = cx.execute(
+                "SELECT * FROM models WHERE organization_id=? AND provider_id=? ORDER BY created_at, id",
+                (org_id, provider_id),
+            ).fetchall()
+        return {"code": 0, "msg": "success",
+                "data": [_serialize_catalog_model(row) for row in rows]}
+
+    @app.patch("/v1/catalog/models/{model_row_id}")
+    def catalog_update_model(
+        model_row_id: str,
+        payload: CatalogModelUpdate,
+        current=Depends(_auth_dependency(db, required_scope="model.write")),
+    ):
+        org_id, _role = _resolve_org(db, current, None, write=True)
+        changes = payload.model_dump(exclude_unset=True)
+        if not changes:
+            raise HTTPException(400, "no changes supplied")
+        if "enabled" in changes:
+            changes["enabled"] = int(changes["enabled"])
+        if "is_default" in changes:
+            changes["is_default"] = int(changes["is_default"])
+        changes["updated_at"] = int(time.time())
+        assignments = ",".join(f"{key}=?" for key in changes)
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            exists = cx.execute(
+                "SELECT id FROM models WHERE id=? AND organization_id=?",
+                (model_row_id, org_id),
+            ).fetchone()
+            if not exists:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "model not found")
+            if changes.get("is_default") == 1:
+                cx.execute("UPDATE models SET is_default=0 WHERE organization_id=?", (org_id,))
+            cx.execute(
+                f"UPDATE models SET {assignments} WHERE id=? AND organization_id=?",
+                (*changes.values(), model_row_id, org_id),
+            )
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "catalog.model.update", model_row_id,
+                {"organization_id": org_id, "fields": sorted(changes)})
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM models WHERE id=?", (model_row_id,)).fetchone()
+        return {"code": 0, "msg": "success", "data": _serialize_catalog_model(row)}
+
+    @app.delete("/v1/catalog/models/{model_row_id}")
+    def catalog_delete_model(
+        model_row_id: str, current=Depends(_auth_dependency(db, required_scope="model.write"))
+    ):
+        org_id, _role = _resolve_org(db, current, None, write=True)
+        with db.connect() as cx:
+            result = cx.execute(
+                "DELETE FROM models WHERE id=? AND organization_id=?",
+                (model_row_id, org_id),
+            )
+        if result.rowcount != 1:
+            raise HTTPException(404, "model not found")
+        _audit(db, current["id"], "catalog.model.delete", model_row_id, {"organization_id": org_id})
+        return {"code": 0, "msg": "success", "data": {"id": model_row_id, "deleted": True}}
+
+    @app.post("/v1/catalog/models/{model_row_id}/default")
+    def catalog_set_default_model(
+        model_row_id: str, current=Depends(_auth_dependency(db, required_scope="model.write"))
+    ):
+        org_id, _role = _resolve_org(db, current, None, write=True)
+        now = int(time.time())
+        with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            exists = cx.execute(
+                "SELECT id FROM models WHERE id=? AND organization_id=? AND enabled=1",
+                (model_row_id, org_id),
+            ).fetchone()
+            if not exists:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "model not found or disabled")
+            cx.execute("UPDATE models SET is_default=0 WHERE organization_id=?", (org_id,))
+            cx.execute("UPDATE models SET is_default=1,updated_at=? WHERE id=?", (now, model_row_id))
+            cx.execute("COMMIT")
+        _audit(db, current["id"], "catalog.model.default", model_row_id, {"organization_id": org_id})
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM models WHERE id=?", (model_row_id,)).fetchone()
+        return {"code": 0, "msg": "success", "data": _serialize_catalog_model(row)}
+
+    @app.post("/v1/catalog/discover")
+    def catalog_discover(
+        payload: CatalogDiscoverRequest,
+        current=Depends(_auth_dependency(db, required_scope="model.read")),
+    ):
+        _resolve_org(db, current, payload.organization_id, write=False)
+        base_url = payload.base_url.rstrip("/")
+        protocol = payload.protocol
+        _validate_model_base_url(base_url)
+        if protocol == "ollama":
+            if not _is_local_url(base_url):
+                raise HTTPException(422, "ollama discovery must target the local host")
+        else:
+            _validate_provider_discovery_target(base_url)
+        return {"code": 0, "msg": "success",
+                "data": _discover_remote_models(protocol, base_url, payload.api_key)}
+
+    @app.post("/v1/catalog/test-connection")
+    def catalog_test_connection(
+        payload: CatalogTestConnectionRequest,
+        current=Depends(_auth_dependency(db, required_scope="model.read")),
+    ):
+        _resolve_org(db, current, payload.organization_id, write=False)
+        base_url = payload.base_url.rstrip("/")
+        protocol = payload.protocol
+        _validate_model_base_url(base_url)
+        if protocol == "ollama":
+            if not _is_local_url(base_url):
+                raise HTTPException(422, "ollama test must target the local host")
+        else:
+            _validate_provider_discovery_target(base_url)
+        try:
+            _test_provider_connection(protocol, base_url, payload.api_key, payload.model_id)
+        except _ProviderTestError as exc:
+            return {"code": 0, "msg": "success",
+                    "data": {"ok": False, "status": "failed", "message": str(exc)}}
+        return {"code": 0, "msg": "success",
+                "data": {"ok": True, "status": "ok", "message": "连接成功"}}
+
     @app.post("/v1/devices")
     @app.post("/v1/devices/register")
     def register_device(payload: DeviceCreate, current=Depends(_auth_dependency(db, required_scope="device.write", required_audience="cloud-api"))):
@@ -1128,7 +1980,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     @app.get("/v1/devices")
     def list_devices(current=Depends(_auth_dependency(db, required_scope="device.read"))):
         with db.connect() as cx:
-            rows = cx.execute("SELECT id,public_key,platform,display_name,connectivity_json,revoked_at,last_seen_at,created_at FROM devices WHERE user_id=? ORDER BY created_at", (current["id"],)).fetchall()
+            rows = cx.execute("SELECT id,public_key,platform,display_name,connectivity_json,revoked_at,last_seen_at,created_at FROM devices WHERE user_id=? AND revoked_at IS NULL ORDER BY created_at", (current["id"],)).fetchall()
         result = []
         for row in rows:
             item = dict(row)
@@ -1298,21 +2150,30 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             else:
                 cx.execute("INSERT INTO devices(id,user_id,public_key,platform,display_name,last_seen_at,created_at) VALUES(?,?,?,?,?,?,?)", (payload.device_id, current["id"], payload.public_key, payload.platform, payload.display_name, now, now))
             cx.execute("UPDATE pairings SET status='confirmed',device_id=? WHERE id=?", (payload.device_id, pairing["id"]))
-            models = cx.execute("SELECT id,name,provider,model,base_url,api_key_ciphertext,enabled,is_default FROM models WHERE user_id=? AND enabled=1 ORDER BY is_default DESC,created_at", (current["id"],)).fetchall()
+            # 安全红线：配对仅下发模型元数据（model_id/model/provider/base_url/protocol），
+            # 绝不下发 api_key/ciphertext/credential_status；客户端选定后回传 model_id。
+            models = cx.execute(
+                "SELECT m.model_id AS catalog_model_id,m.display_name AS catalog_display,m.model AS legacy_model,"
+                "m.name AS legacy_name,m.provider AS legacy_provider,m.base_url AS legacy_base_url,"
+                "p.display_name AS provider_name,p.protocol AS protocol,p.base_url AS provider_base_url "
+                "FROM models m LEFT JOIN providers p ON p.id=m.provider_id "
+                "WHERE m.enabled=1 AND ("
+                "m.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id=?)"
+                " OR (m.organization_id IS NULL AND m.user_id=?))"
+                " ORDER BY m.is_default DESC,m.created_at ASC",
+                (current["id"], current["id"]),
+            ).fetchall()
             for model in models:
-                api_key = None
-                if model["api_key_ciphertext"]:
-                    if not app.state.settings.secret_key:
-                        cx.execute("ROLLBACK")
-                        raise HTTPException(503, "secret encryption is unavailable")
-                    try:
-                        api_key = decrypt_secret(model["api_key_ciphertext"], app.state.settings.secret_key)
-                    except Exception as exc:
-                        cx.execute("ROLLBACK")
-                        raise HTTPException(503, "provider credential cannot be decrypted") from exc
-                model_bundle.append({"id": model["id"], "name": model["name"], "provider": model["provider"], "model": model["model"], "base_url": model["base_url"], "api_key": api_key, "is_default": bool(model["is_default"])})
+                model_id = model["catalog_model_id"] or model["legacy_model"]
+                model_bundle.append({
+                    "model_id": model_id,
+                    "model": model["catalog_display"] or model["legacy_model"],
+                    "provider": model["provider_name"] or model["legacy_name"],
+                    "base_url": model["provider_base_url"] if model["provider_base_url"] is not None else model["legacy_base_url"],
+                    "protocol": model["protocol"] or "openai-compatible",
+                })
             cx.execute("COMMIT")
-        _audit(db, current["id"], "device.pairing.confirm", payload.device_id, {"model_count": len(model_bundle), "credentials_sent": any(item["api_key"] for item in model_bundle)})
+        _audit(db, current["id"], "device.pairing.confirm", payload.device_id, {"model_count": len(model_bundle), "models_metadata_sent": len(model_bundle)})
         return {"code": 0, "msg": "success", "data": {"device_id": payload.device_id, "paired": True, "models": model_bundle}}
 
     @app.post("/v1/grants")
@@ -1474,18 +2335,42 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         resolved_workspace_id = payload.workspace_id
         resolved_model_id = payload.model_id
-        if not resolved_model_id or not payload.workspace_id:
+        workspace_uses_preference = payload.workspace_id in (None, "", "default")
+        if not resolved_model_id or workspace_uses_preference:
             with db.connect() as cx:
                 user_preferences_row = cx.execute("SELECT preferences_json FROM user_preferences WHERE user_id=?", (current["id"],)).fetchone()
                 organization_row = cx.execute("SELECT op.preferences_json FROM organization_members om JOIN organization_preferences op ON op.organization_id=om.organization_id WHERE om.user_id=? ORDER BY om.created_at LIMIT 1", (current["id"],)).fetchone()
             user_preferences = json.loads(user_preferences_row["preferences_json"]) if user_preferences_row else {}
             organization_preferences = json.loads(organization_row["preferences_json"]) if organization_row else {}
             effective_preferences = {**user_preferences, **organization_preferences}
-            resolved_workspace_id = effective_preferences.get("default_workspace") or resolved_workspace_id
+            if workspace_uses_preference:
+                resolved_workspace_id = effective_preferences.get("default_workspace") or resolved_workspace_id
             resolved_model_id = resolved_model_id or effective_preferences.get("default_model")
+        if not resolved_model_id:
+            # A newly configured Cloud model is the user's runtime default even
+            # when the non-sensitive preference snapshot has not been synced
+            # yet.  Keeping this fallback server-side prevents a session from
+            # silently using the process-wide (often uncredentialed) provider.
+            with db.connect() as cx:
+                default_model = cx.execute(
+                    "SELECT m.id FROM models m "
+                    "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+                    "WHERE m.enabled=1 AND m.is_default=1 AND ("
+                    "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))"
+                    " ORDER BY m.created_at LIMIT 1",
+                    (current["id"], current["id"]),
+                ).fetchone()
+            resolved_model_id = default_model["id"] if default_model else None
         if resolved_model_id:
             with db.connect() as cx:
-                model = cx.execute("SELECT id FROM models WHERE id=? AND user_id=? AND enabled=1", (resolved_model_id, current["id"])).fetchone()
+                # 组织目录对 member 只读但可用；旧私有行仅本人可用
+                model = cx.execute(
+                    "SELECT m.id FROM models m "
+                    "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+                    "WHERE m.id=? AND m.enabled=1 AND ("
+                    "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))",
+                    (current["id"], resolved_model_id, current["id"]),
+                ).fetchone()
             if not model:
                 if payload.model_id:
                     raise HTTPException(404, "enabled model not found")
@@ -1834,6 +2719,18 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(404, "archived session not found")
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "archived": False}}
 
+    @app.patch("/v1/sessions/{session_id}")
+    @app.patch("/v1/cloud/sessions/{session_id}")
+    def rename_session(session_id: str, payload: SessionRename, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        _owned_session(db, session_id, current["id"])
+        title = payload.title.strip()
+        now = int(time.time())
+        with db.connect() as cx:
+            result = cx.execute("UPDATE sessions SET title=?, updated_at=? WHERE id=? AND user_id=?", (title, now, session_id, current["id"]))
+        if result.rowcount != 1:
+            raise HTTPException(404, "session not found")
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "title": title}}
+
     @app.delete("/v1/sessions/{session_id}")
     @app.delete("/v1/cloud/sessions/{session_id}")
     def delete_session(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
@@ -1889,14 +2786,14 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         now = int(time.time())
         with db.connect() as cx:
             cx.execute("BEGIN IMMEDIATE")
-            row = cx.execute("SELECT status FROM approvals WHERE id=? AND session_id=? AND user_id=?", (approval_id, session_id, current["id"])).fetchone()
+            row = cx.execute("SELECT status,requested_by FROM approvals WHERE id=? AND session_id=? AND user_id=?", (approval_id, session_id, current["id"])).fetchone()
             if not row:
                 cx.execute("ROLLBACK")
                 raise HTTPException(404, "approval not found")
             if row["status"] != "pending":
                 cx.execute("COMMIT")
                 return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": row["status"], "idempotent": True}}
-            approval = cx.execute("SELECT tool_name,arguments_json FROM approvals WHERE id=?", (approval_id,)).fetchone()
+            approval = cx.execute("SELECT tool_name,arguments_json,requested_by FROM approvals WHERE id=?", (approval_id,)).fetchone()
             if approval is None:
                 cx.execute("ROLLBACK")
                 raise HTTPException(404, "approval not found")
@@ -1905,7 +2802,22 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 cx.execute("UPDATE approvals SET status='expired',resolved_by=?,resolution_note='approval expired',resolved_at=? WHERE id=? AND status='pending'", (current["id"], now, approval_id))
                 cx.execute("COMMIT")
                 return {"code": 0, "msg": "success", "data": {"approval_id": approval_id, "status": "expired", "idempotent": True}}
-            if payload.status == "approved":
+            if approval["requested_by"] == "cloud-agent-native":
+                with app.state.native_approval_lock:
+                    native_runner = app.state.native_approval_runtimes.get(approval_id)
+                LOGGER.info("canonical approval resolve lookup: found=%s", native_runner is not None)
+                if native_runner is None:
+                    cx.execute("ROLLBACK")
+                    raise HTTPException(409, "approval runtime unavailable")
+                decision = "approve" if payload.status == "approved" else "deny"
+                try:
+                    native_runner.resolve_approval(approval_id, decision)
+                except Exception as exc:
+                    cx.execute("ROLLBACK")
+                    LOGGER.error("canonical approval resolve failed: type=%s code=%s", type(exc).__name__, getattr(exc, "code", None))
+                    _audit(db, current["id"], "approval.resolve_failed", approval_id, {"session_id": session_id, "requested_by": "cloud-agent-native"})
+                    raise HTTPException(409, "approval could not be resolved") from exc
+            elif payload.status == "approved":
                 try:
                     _execute_approved_tool(app=app, settings=app.state.settings, session=session, user_id=current["id"], tool_name=approval["tool_name"], arguments=json.loads(approval["arguments_json"]))
                 except Exception as exc:
@@ -1966,9 +2878,10 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             event_sequence = cx.execute("SELECT next_event_sequence FROM sessions WHERE id=?", (session_id,)).fetchone()[0]
             cx.execute("UPDATE commands SET status=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='needs_attention'", (new_status, command_id))
             cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), session_id, event_sequence, event_type, json.dumps({"command_id": command_id, "command_sequence": row["sequence"], "status": new_status, "recovered_by": current["id"]}, separators=(",", ":")), now))
-            cx.execute("UPDATE sessions SET next_event_sequence=?,status=? WHERE id=?", (event_sequence + 1, "queued" if payload.mode == "resume" else "idle", session_id))
+            has_queued = cx.execute("SELECT 1 FROM commands WHERE session_id=? AND status='queued' LIMIT 1", (session_id,)).fetchone() is not None
+            cx.execute("UPDATE sessions SET next_event_sequence=?,status=? WHERE id=?", (event_sequence + 1, "queued" if has_queued else "idle", session_id))
             cx.execute("COMMIT")
-        if payload.mode == "resume":
+        if has_queued:
             _ensure_session_worker(app, db, session_id, current["id"])
         _audit(db, current["id"], f"command.{payload.mode}", command_id, {"session_id": session_id})
         return {"code": 0, "msg": "success", "data": {"command_id": command_id, "status": new_status, "mode": payload.mode}}
@@ -2054,6 +2967,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         previous = await _maybe_await(app.state.relay_broker.register(session_id, device_id, websocket))
         if previous is not None and previous is not websocket:
             await previous.close(code=4009, reason="replaced by a newer connection")
+        await websocket.send_json({"type": "relay_ready", "next_sequence": _relay_next_sequence(db, session_id, device_id)})
         frame_times: list[int] = []
         try:
             while True:
@@ -2202,6 +3116,34 @@ def _auth_dependency(db: CloudDB, required_role: str | None = None, required_sco
         if required_scope and "*" not in scopes and required_scope not in scopes:
             raise HTTPException(403, "token scope denied")
         return row
+    return dependency
+
+
+def _resolve_org(db: CloudDB, current: Any, requested_org_id: str | None, *, write: bool) -> tuple[str, str]:
+    """解析调用者所属组织并校验目录权限；返回 (organization_id, role)。"""
+    with db.connect() as cx:
+        memberships = cx.execute(
+            "SELECT organization_id,role FROM organization_members WHERE user_id=?",
+            (current["id"],),
+        ).fetchall()
+    if not memberships:
+        raise HTTPException(403, "organization membership required")
+    if requested_org_id:
+        match = next((row for row in memberships if row["organization_id"] == requested_org_id), None)
+        if not match:
+            raise HTTPException(403, "organization access denied")
+        org_id, role = match["organization_id"], match["role"]
+    else:
+        org_id, role = memberships[0]["organization_id"], memberships[0]["role"]
+    if write and role not in ("owner", "admin"):
+        raise HTTPException(403, "only organization owner or admin can write the model catalog")
+    return org_id, role
+
+
+def _catalog_auth(db: CloudDB, *, write: bool, required_scope: str | None = None):
+    """组织目录鉴权依赖：member 只读，owner/admin 可写。"""
+    def dependency(payload_org_id: str | None, current=Depends(_auth_dependency(db, required_scope=required_scope))):
+        return _resolve_org(db, current, payload_org_id, write=write)
     return dependency
 
 
@@ -2399,7 +3341,7 @@ def _non_shareable_path(parts: list[str]) -> bool:
     return False
 
 
-def _recover_running_commands(db: CloudDB) -> None:
+def _recover_running_commands(db: CloudDB) -> list[tuple[str, str]]:
     """Fail closed only for commands whose execution lease is stale.
 
     A second API process may start while another process is still executing a
@@ -2407,16 +3349,19 @@ def _recover_running_commands(db: CloudDB) -> None:
     interrupt that live execution, so active leases remain untouched.
     """
     now = int(time.time())
+    recovered: list[tuple[str, str]] = []
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
-        rows = cx.execute("SELECT c.id,c.session_id,c.sequence,s.next_event_sequence FROM commands c JOIN sessions s ON s.id=c.session_id WHERE c.status='running' AND (c.lease_expires_at IS NULL OR c.lease_expires_at<=?)", (now,)).fetchall()
+        rows = cx.execute("SELECT c.id,c.session_id,c.sequence FROM commands c WHERE c.status='running' AND (c.lease_expires_at IS NULL OR c.lease_expires_at<=?)", (now,)).fetchall()
         for row in rows:
-            event_sequence = int(row["next_event_sequence"])
+            event_sequence = int(cx.execute("SELECT next_event_sequence FROM sessions WHERE id=?", (row["session_id"],)).fetchone()[0])
             payload = {"command_id": row["id"], "command_sequence": row["sequence"], "status": "needs_attention", "error": {"code": "process_restarted", "message": "Agent execution requires operator recovery"}}
             cx.execute("UPDATE commands SET status='needs_attention',lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running'", (row["id"],))
             cx.execute("INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), row["session_id"], event_sequence, "turn.needs_attention", json.dumps(payload, separators=(",", ":")), now))
             cx.execute("UPDATE sessions SET next_event_sequence=?,status='idle',updated_at=? WHERE id=?", (event_sequence + 1, now, row["session_id"]))
+            recovered.append((str(row["session_id"]), str(row["id"])))
         cx.execute("COMMIT")
+    return recovered
 
 
 def _finalize_cloud_command(db: CloudDB, session_id: str, command_id: str, status: str, payload: dict[str, Any], lease_owner: str) -> None:
@@ -2485,6 +3430,33 @@ def _start_queued_workers(app: FastAPI, db: CloudDB) -> None:
         _ensure_session_worker(app, db, row["id"], row["user_id"])
 
 
+def _start_command_reconciler(app: FastAPI, db: CloudDB) -> None:
+    """Continuously fail closed commands whose worker lease has expired."""
+    current = getattr(app.state, "command_reconciler", None)
+    if current is not None and current.is_alive():
+        return
+    lease_seconds = max(1, int(getattr(app.state.settings, "command_lease_seconds", 300)))
+    interval = max(1.0, min(30.0, lease_seconds / 3))
+
+    def reconcile() -> None:
+        while not app.state.worker_shutdown.wait(interval):
+            try:
+                recovered = _recover_running_commands(db)
+            except Exception:
+                LOGGER.exception("cloud command lease reconciliation failed")
+                continue
+            for session_id, command_id in recovered:
+                _notify_command_waiter(app, session_id, command_id)
+
+    worker = threading.Thread(
+        target=reconcile,
+        name="notemeld-cloud-command-reconciler",
+        daemon=True,
+    )
+    app.state.command_reconciler = worker
+    worker.start()
+
+
 def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str) -> None:
     worker_id = f"{os.getpid()}-{uuid.uuid4()}"
     try:
@@ -2503,10 +3475,26 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
                 messages = _cloud_history(db, session_id, exclude_command_id=command_id)
                 options = json.loads(command["options_json"] or "{}")
                 tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id, authorization_mode=options.get("authorization_mode", "default"), app=app)
-                runner = _runner_for_session(app, db, session)
-                result = runner.complete(input_text=command["input_text"], messages=messages + [{"role": "user", "content": command["input_text"]}], tools=tools, tool_handler=tool_handler)
-            except Exception:
-                _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}}, worker_id)
+                runner = _runner_for_session(app, db, session, command_model_id=options.get("model_id"))
+                def on_native_approval(payload: dict[str, Any]) -> None:
+                    _persist_native_approval(app=app, db=db, session_id=session_id, user_id=user_id, command_id=command_id, runner=runner, payload=payload)
+
+                complete_kwargs = {
+                    "input_text": command["input_text"],
+                    "messages": messages + [{"role": "user", "content": command["input_text"]}],
+                    "tools": tools,
+                    "tool_handler": tool_handler,
+                }
+                if getattr(runner, "native_library", None):
+                    complete_kwargs["on_approval"] = on_native_approval
+                result = runner.complete(**complete_kwargs)
+            except Exception as exc:
+                LOGGER.exception("cloud session worker failed")
+                if str(exc) == "cloud model is not configured":
+                    error = {"code": "model_not_configured", "message": "configure a Cloud model before sending messages"}
+                else:
+                    error = {"code": "provider_unavailable", "message": "cloud agent provider unavailable"}
+                _finalize_cloud_command(db, session_id, command_id, "failed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "failed", "error": error}, worker_id)
             else:
                 _finalize_cloud_command(db, session_id, command_id, "completed", {"command_id": command_id, "command_sequence": command["sequence"], "status": "completed", "output": result.content, "model": result.model, "usage": result.usage or {}}, worker_id)
             finally:
@@ -2516,12 +3504,33 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
                     close = getattr(runner, "close", None)
                     if callable(close):
                         close()
+                with app.state.native_approval_lock:
+                    for approval_id, approval_runner in list(app.state.native_approval_runtimes.items()):
+                        if approval_runner is runner:
+                            app.state.native_approval_runtimes.pop(approval_id, None)
                 _notify_command_waiter(app, session_id, command_id)
     finally:
         with app.state.command_locks_guard:
             current = app.state.queue_workers.get(session_id)
             if current is threading.current_thread():
                 app.state.queue_workers.pop(session_id, None)
+
+
+def _persist_native_approval(*, app: FastAPI, db: CloudDB, session_id: str, user_id: str, command_id: str, runner: Any, payload: dict[str, Any]) -> None:
+    """Persist one canonical SDK approval without storing tool arguments."""
+    approval_id = payload.get("approval_id")
+    if not isinstance(approval_id, str) or not approval_id or len(approval_id) > 128:
+        LOGGER.error("canonical SDK emitted an invalid approval id")
+        return
+    now = int(time.time())
+    with app.state.native_approval_lock:
+        app.state.native_approval_runtimes[approval_id] = runner
+    with db.connect() as cx:
+        cx.execute(
+            "INSERT OR IGNORE INTO approvals(id,user_id,session_id,command_id,tool_name,arguments_json,status,requested_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (approval_id, user_id, session_id, command_id, "agent.tool", "{}", "pending", "cloud-agent-native", now),
+        )
+    _audit(db, user_id, "approval.request", approval_id, {"session_id": session_id, "requested_by": "cloud-agent-native"})
 
 
 def _stop_queued_workers(app: FastAPI, timeout_seconds: float = 5.0) -> None:
@@ -2538,11 +3547,22 @@ def _stop_queued_workers(app: FastAPI, timeout_seconds: float = 5.0) -> None:
         if remaining <= 0:
             break
         worker.join(timeout=remaining)
+    reconciler = getattr(app.state, "command_reconciler", None)
+    if reconciler is not None and reconciler is not threading.current_thread():
+        reconciler.join(timeout=max(0.0, deadline - time.monotonic()))
+    app.state.command_reconciler = None
 
 
 def _claim_next_cloud_command(db: CloudDB, session_id: str, worker_id: str, lease_seconds: int):
     with db.connect() as cx:
         cx.execute("BEGIN IMMEDIATE")
+        active = cx.execute(
+            "SELECT 1 FROM commands WHERE session_id=? AND status IN ('running','needs_attention') LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        if active:
+            cx.execute("COMMIT")
+            return None
         row = cx.execute("SELECT id,input_text,options_json,sequence FROM commands WHERE session_id=? AND status='queued' ORDER BY sequence LIMIT 1", (session_id,)).fetchone()
         if not row:
             cx.execute("COMMIT")
@@ -2577,7 +3597,13 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
         raise HTTPException(409, "device_remote commands must be delivered through the host relay")
     if payload.model_id:
         with db.connect() as cx:
-            if not cx.execute("SELECT 1 FROM models WHERE id=? AND user_id=? AND enabled=1", (payload.model_id, user_id)).fetchone():
+            if not cx.execute(
+                "SELECT 1 FROM models m "
+                "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+                "WHERE m.id=? AND m.enabled=1 AND ("
+                "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))",
+                (user_id, payload.model_id, user_id),
+            ).fetchone():
                 raise HTTPException(404, "enabled model not found")
     attachments = [{"name": str(item.get("name", ""))[:255], "size": int(item.get("size", 0)), "type": str(item.get("type", ""))[:128], "content_base64": item.get("content_base64")} for item in payload.attachments]
     if any(item["size"] < 0 or not item["name"] for item in attachments):
@@ -2727,19 +3753,100 @@ def _execute_approved_tool(*, app: FastAPI, settings: CloudSettings, session: An
     raise ValueError("unsupported approval tool")
 
 
-def _runner_for_session(app: FastAPI, db: CloudDB, session: Any):
-    model_id = session["model_id"] if "model_id" in session.keys() else None
-    if not model_id:
-        return app.state.agent_runner
+def _runner_for_session(app: FastAPI, db: CloudDB, session: Any, command_model_id: str | None = None):
+    """按 model_row_id（命令覆盖优先，其次会话绑定）JOIN providers 解析协议并构造 runner。
+
+    组织目录对 member 可用；无可用模型时回退进程级 runner（仅当未配置模型凭据）。
+    """
+    user_id = session["user_id"]
+    selected_row_id = command_model_id or (
+        session["model_id"] if "model_id" in session.keys() else None
+    )
+    if not selected_row_id:
+        with db.connect() as cx:
+            default_model = cx.execute(
+                "SELECT m.id FROM models m "
+                "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+                "WHERE m.enabled=1 AND m.is_default=1 AND ("
+                "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))"
+                " ORDER BY m.created_at LIMIT 1",
+                (user_id, user_id),
+            ).fetchone()
+        selected_row_id = default_model["id"] if default_model else None
+        if not selected_row_id:
+            if getattr(app.state.agent_runner, "native_library", None):
+                raise RuntimeError("cloud model is not configured")
+            return app.state.agent_runner
     with db.connect() as cx:
-        model = cx.execute("SELECT provider,model,base_url,api_key_ciphertext,enabled FROM models WHERE id=? AND user_id=?", (model_id, session["user_id"])).fetchone()
-    if not model or not model["enabled"] or model["provider"] not in {"openai", "openai-compatible"} or not model["base_url"]:
+        model = cx.execute(
+            "SELECT m.id,m.model_id AS catalog_model_id,m.model AS legacy_model,"
+            "m.provider_id AS provider_id,m.provider AS legacy_provider,m.base_url AS legacy_base_url,"
+            "m.api_key_ciphertext AS model_ciphertext,m.enabled AS enabled,"
+            "p.protocol AS protocol,p.base_url AS provider_base_url,"
+            "p.api_key_ciphertext AS provider_ciphertext "
+            "FROM models m LEFT JOIN providers p ON p.id=m.provider_id "
+            "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+            "WHERE m.id=? AND ("
+            "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))",
+            (user_id, selected_row_id, user_id),
+        ).fetchone()
+    if not model or not model["enabled"]:
+        raise RuntimeError("configured session model is unavailable")
+    protocol = model["protocol"]
+    if protocol:
+        base_url = model["provider_base_url"]
+        ciphertext = (
+            model["model_ciphertext"]
+            if model["model_ciphertext"] is not None
+            else model["provider_ciphertext"]
+        )
+    else:
+        # 旧私有行（无 provider）：映射旧 provider 名并 fail-closed
+        if model["legacy_provider"] not in {"openai", "openai-compatible"}:
+            raise RuntimeError("configured session model is unavailable")
+        protocol = "openai-compatible"
+        base_url = model["legacy_base_url"]
+        ciphertext = model["model_ciphertext"]
+    if not base_url:
         raise RuntimeError("configured session model is unavailable")
     master_key = app.state.settings.secret_key
-    if model["api_key_ciphertext"] and not master_key:
+    if ciphertext and not master_key:
         raise RuntimeError("cloud secret key is unavailable")
-    api_key = decrypt_secret(model["api_key_ciphertext"], master_key) if model["api_key_ciphertext"] else None
-    return OpenAICompatibleAgentRunner(base_url=model["base_url"], model=model["model"], api_key=api_key, timeout_seconds=app.state.settings.agent_timeout_seconds, max_retries=getattr(app.state.settings, "agent_max_retries", 2))
+    api_key = decrypt_secret(ciphertext, master_key) if ciphertext else None
+    resolved_model_id = model["catalog_model_id"] or model["legacy_model"]
+    timeout_seconds = app.state.settings.agent_timeout_seconds
+    max_retries = getattr(app.state.settings, "agent_max_retries", 2)
+    canonical_library = getattr(app.state.agent_runner, "native_library", None)
+    if canonical_library:
+        # 仅 openai-compatible 具备 canonical SDK 适配；其余协议在 SDK 模式 fail-closed
+        if protocol != "openai-compatible":
+            raise RuntimeError("configured session protocol is unavailable")
+        from .agent import CanonicalSdkAgentRunner
+        return CanonicalSdkAgentRunner(
+            native_library=canonical_library,
+            base_url=base_url,
+            model=resolved_model_id,
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+        )
+    if protocol == "openai-compatible":
+        return OpenAICompatibleAgentRunner(
+            base_url=base_url, model=resolved_model_id, api_key=api_key,
+            timeout_seconds=timeout_seconds, max_retries=max_retries,
+        )
+    if protocol == "anthropic-messages":
+        from .agent import AnthropicMessagesRunner
+        return AnthropicMessagesRunner(
+            base_url=base_url, model=resolved_model_id, api_key=api_key,
+            timeout_seconds=timeout_seconds, max_retries=max_retries,
+        )
+    if protocol == "ollama":
+        from .agent import OllamaAgentRunner
+        return OllamaAgentRunner(
+            base_url=base_url, model=resolved_model_id, api_key=None,
+            timeout_seconds=timeout_seconds, max_retries=max_retries,
+        )
+    raise RuntimeError("configured session protocol is unavailable")
 
 
 def _validate_model_base_url(value: str) -> None:
@@ -2748,6 +3855,30 @@ def _validate_model_base_url(value: str) -> None:
         raise HTTPException(422, "model base_url must be an absolute HTTP(S) URL without embedded credentials")
     if any(key.lower() in {"api_key", "apikey", "token", "password", "secret"} for key in (part.split("=", 1)[0] for part in parsed.query.split("&") if part)):
         raise HTTPException(422, "model base_url query must not contain credentials")
+
+
+def _validate_provider_discovery_target(value: str) -> None:
+    """Reject local/private discovery targets before making a server-side request."""
+    _validate_model_base_url(value)
+    parsed = urlparse(value)
+    host = parsed.hostname
+    if not host or host.lower() in {"localhost", "localhost.localdomain"}:
+        raise HTTPException(422, "provider discovery target must be public")
+    try:
+        addresses = socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HTTPException(422, "provider discovery target could not be resolved") from exc
+    for address_info in addresses:
+        address = ipaddress.ip_address(address_info[4][0])
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        ):
+            raise HTTPException(422, "provider discovery target must be public")
 
 
 def _validate_lan_endpoints(value: list[str]) -> list[str]:
@@ -2788,11 +3919,15 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
             "name": "workspace.list",
             "description": "List files in the current cloud workspace.",
             "parameters": {"type": "object", "properties": {"prefix": {"type": "string"}}, "additionalProperties": False},
+            "risk": "safe",
+            "safe": True,
         },
         {
             "name": "workspace.read",
             "description": "Read a UTF-8 text file from the current cloud workspace.",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
+            "risk": "safe",
+            "safe": True,
         },
     ]
     if db is not None:
@@ -2801,11 +3936,15 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
                 "name": "workspace.write",
                 "description": "Write a UTF-8 text file; always requires explicit approval.",
                 "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"], "additionalProperties": False},
+                "risk": "high",
+                "safe": False,
             },
             {
                 "name": "workspace.delete",
                 "description": "Delete a workspace file; always requires explicit approval.",
                 "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
+                "risk": "high",
+                "safe": False,
             },
         ])
 
@@ -2907,6 +4046,15 @@ def _accept_relay_sequence(db: CloudDB, session_id: str, sender_device_id: str, 
         cx.execute("INSERT INTO relay_cursors(session_id,sender_device_id,last_sequence,updated_at) VALUES(?,?,?,?) ON CONFLICT(session_id,sender_device_id) DO UPDATE SET last_sequence=excluded.last_sequence,updated_at=excluded.updated_at", (session_id, sender_device_id, sequence, now))
         cx.execute("COMMIT")
         return True
+
+
+def _relay_next_sequence(db: CloudDB, session_id: str, sender_device_id: str) -> int:
+    with db.connect() as cx:
+        row = cx.execute(
+            "SELECT last_sequence FROM relay_cursors WHERE session_id=? AND sender_device_id=?",
+            (session_id, sender_device_id),
+        ).fetchone()
+    return int(row["last_sequence"]) + 1 if row else 1
 
 
 def _grant_allows(db: CloudDB, session_id: str, user_id: str, controller: str, host: str, required_scope: str | None = None, workspace_id: str | None = None) -> bool:
