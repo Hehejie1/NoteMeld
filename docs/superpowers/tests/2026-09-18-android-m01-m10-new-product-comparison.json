@@ -1,0 +1,31 @@
+{
+  "reference": "docs/new-product/PAGE-MAP.md and docs/new-product/pages/mobile/m01-m10.html",
+  "latest_verified_device": "Pixel_3a_API_34_extension_level_7_x86_64 / Android 14 / emulator-5554",
+  "physical_device_target": "Xiaomi 24115RA8EC / Android 14 / adb 3b929e09",
+  "apk_sha256": "c6fb3b0ff3ecd4a112002e05d910d6d6879462bdbfaf80f4d664d879eed27a8d",
+  "screens": {
+    "M01": {"reference": "docs/new-product/pages/mobile/m01.html", "actual": "/tmp/notemeld-final-m01.png", "status": "PASS_EMULATOR_VISUAL_AND_INTERACTION"},
+    "M02": {"reference": "docs/new-product/pages/mobile/m02.html", "actual": "/tmp/notemeld-final-m02.png", "status": "PASS_EMULATOR_VISUAL_AND_INTERACTION"},
+    "M03": {"reference": "docs/new-product/pages/mobile/m03.html", "status": "PASS_EMULATOR_INTERACTION"},
+    "M04": {"reference": "docs/new-product/pages/mobile/m04.html", "status": "PASS_EMULATOR_INTERACTION"},
+    "M05": {"reference": "docs/new-product/pages/mobile/m05.html", "status": "PASS_EMULATOR_INTERACTION"},
+    "M06": {"reference": "docs/new-product/pages/mobile/m06.html", "status": "PASS_EMULATOR_INTERACTION"},
+    "M07": {"reference": "docs/new-product/pages/mobile/m07.html", "status": "PASS_ROUTE_AND_PERSISTED_MODEL_FLOW"},
+    "M08": {"reference": "docs/new-product/pages/mobile/m08.html", "status": "PASS_ROUTE_EMPTY_STATE_BLOCKED_LIVE_REMOTE"},
+    "M09": {"reference": "docs/new-product/pages/mobile/m09.html", "status": "PASS_ROUTE_EMPTY_STATE_BLOCKED_LIVE_ARTIFACT"},
+    "M10": {"reference": "docs/new-product/pages/mobile/m10.html", "status": "PASS_ROUTE_EMPTY_STATE_BLOCKED_LIVE_ARTIFACT"}
+  },
+  "verification": {
+    "gradle": "PASS: unit tests, lintDebug, assembleDebug, assembleDebugAndroidTest",
+    "instrumentation": "PASS: 9/9 app tests on emulator-5554",
+    "canonical_sdk_aar_sha256": "e4f8acd6a2217b8fce683c26de2823b4407ebb8b5d9fa58c804c6142cc7fc2c0",
+    "permission_sheet": "PASS: default/full permission choices replace direct one-tap grant",
+    "localized_home_session": "PASS: 简体中文/繁體中文/English vocabulary unit coverage"
+  },
+  "limitations": [
+    "本轮实体机 adb 3b929e09 未保持在线，因此最新 APK 的实体机安装、仪器测试与 scrcpy 预览为 BLOCKED；不以模拟器结果冒充实体机结果。",
+    "未提供生产 Cloud/Remote 账号、在线 Host、真实 Provider 凭据，生产 Cloud Agent、LAN/Relay Remote Agent 和真实模型回复为 BLOCKED。",
+    "当前 APK 为 debug 测试制品，不宣称生产签名 RC 通过。",
+    "M09/M10 缺少真实 Agent 产物，已验证真实空状态与类型化路由，内容预览/下载仍需真实产物验收。"
+  ]
+}

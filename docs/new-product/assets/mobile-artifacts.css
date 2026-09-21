@@ -1,0 +1,25 @@
+.artifact-screen{display:flex;flex-direction:column;overflow:hidden;padding-bottom:24px;color:var(--mobile-ink)}
+.artifact-header{flex:none;grid-template-columns:44px minmax(0,1fr) auto;border-bottom:1px solid var(--mobile-line)}
+.artifact-header h1{overflow:hidden;margin:0;text-align:center;text-overflow:ellipsis;white-space:nowrap;font-size:16px}
+.artifact-count{min-width:44px;color:var(--mobile-muted);text-align:right;font-size:11px}
+.artifact-list{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;display:grid;align-content:start;gap:9px;padding:18px 1px 10px;scrollbar-width:thin}
+.artifact-row{display:grid;grid-template-columns:42px minmax(0,1fr) 18px;align-items:center;gap:12px;width:100%;min-height:72px;padding:11px 14px;border:1px solid var(--mobile-line);border-radius:16px;background:var(--mobile-panel);color:var(--mobile-ink);text-align:left;box-shadow:0 7px 20px #23334d08}
+.artifact-row:hover{border-color:var(--mobile-accent)}
+.artifact-row:focus-visible,.artifact-preview-actions button:focus-visible,.artifact-preview-bar a:focus-visible,.artifact-header button:focus-visible{outline:2px solid var(--mobile-accent);outline-offset:2px}
+.artifact-row>span:nth-child(2){min-width:0;display:grid;gap:5px}.artifact-row strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.artifact-row small{color:var(--mobile-muted);font-size:10px}.artifact-row>svg:last-child{width:16px;height:16px;color:var(--mobile-muted)}
+.artifact-file-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:var(--nm-color-accent-soft);color:var(--mobile-accent)}.artifact-file-icon svg{width:21px;height:21px}
+.artifact-empty{padding:36px 20px;border:1px dashed var(--mobile-line);border-radius:16px;color:var(--mobile-muted);text-align:center;font-size:12px}
+.artifact-preview-header{position:relative;grid-template-columns:38px minmax(0,1fr) 100px;gap:4px}
+.artifact-preview-header h1{position:absolute;left:50%;max-width:calc(100% - 170px);transform:translateX(-50%);font-size:14px}
+.artifact-preview-actions{grid-column:3;display:flex;align-items:center;justify-self:end;gap:2px;padding:3px;border-radius:9px;background:var(--nm-color-surface-muted)}
+.artifact-preview-actions button{height:30px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:var(--mobile-muted);font-size:10px}
+.artifact-preview-actions button[aria-pressed=true]{background:var(--mobile-panel);color:var(--mobile-ink);font-weight:750;box-shadow:0 2px 6px #24314814}
+.artifact-preview-panel{min-height:0;flex:1;display:flex;flex-direction:column;margin-top:16px;overflow:hidden;border:1px solid var(--mobile-line);border-radius:16px;background:var(--mobile-panel)}
+.artifact-preview-bar{flex:none;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:0 16px;border-bottom:1px solid var(--mobile-line)}
+.artifact-preview-bar strong{font-size:12px}.artifact-preview-bar a{display:flex;align-items:center;gap:5px;color:var(--mobile-accent);font-size:11px;text-decoration:none}.artifact-preview-bar a svg{width:15px;height:15px}
+.artifact-preview-bar a[hidden],.artifact-preview-actions[hidden]{display:none}
+.artifact-preview-body{min-height:0;flex:1;overflow:auto;scrollbar-width:thin}
+.artifact-preview-body pre{overflow:auto;margin:0;padding:18px;color:var(--mobile-ink);font-size:12px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}.artifact-preview-body iframe{display:block;width:100%;height:100%;min-height:440px;border:0;background:#fff}.artifact-preview-body img{display:block;max-width:100%;margin:auto}.artifact-preview-body audio,.artifact-preview-body video{max-width:100%;width:100%}
+.artifact-preview-body .artifact-markdown{padding:14px 19px;font-size:13px;line-height:1.7;overflow-wrap:anywhere}.artifact-markdown h1{font-size:20px}.artifact-markdown h2{font-size:16px}.artifact-markdown h3{font-size:14px}.artifact-markdown h1,.artifact-markdown h2,.artifact-markdown h3{line-height:1.35}.artifact-markdown ul{padding-left:22px}.artifact-markdown pre{padding:10px;border-radius:8px;background:var(--nm-color-surface-muted)}
+.artifact-preview-message{display:grid;place-content:center;min-height:220px;gap:8px;padding:24px;text-align:center}.artifact-preview-message strong{font-size:14px}.artifact-preview-message p{margin:0;color:var(--mobile-muted);font-size:11px;line-height:1.6}
+@media(max-width:600px){.artifact-screen{padding-bottom:calc(20px + env(safe-area-inset-bottom))}}

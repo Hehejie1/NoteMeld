@@ -47,6 +47,30 @@ class CloudClient:
     def capabilities(self) -> dict[str, Any]:
         return self._request("GET", "/v1/capabilities")
 
+    def verify_capabilities(self) -> dict[str, Any]:
+        data = self.capabilities()
+        protocol = data.get("protocol", {})
+        runtime = data.get("runtime", {})
+        if protocol.get("name") != "notemeld.sync" or protocol.get("current") != 1 or protocol.get("min", 0) > 1 or protocol.get("max", 0) < 1:
+            raise CloudClientError(409, "cloud protocol is incompatible")
+        if runtime.get("sdk_version") != "0.1.0" or runtime.get("abi") != 1 or runtime.get("schema") != 1:
+            raise CloudClientError(409, "cloud Agent runtime is incompatible")
+        required = set(data.get("required_features", []))
+        supported = {"config_sync_v1", "e2ee_relay_v1", "durable_receipt_v1"}
+        if not required.issubset(supported):
+            raise CloudClientError(409, "cloud requires unsupported capabilities")
+        return data
+
+    def config_sync_snapshot(self, workspace_id: str = "default", after_revision: int = 0) -> dict[str, Any]:
+        if not workspace_id or type(after_revision) is not int or after_revision < 0:
+            raise ValueError("invalid config sync cursor")
+        return self._request("GET", "/v1/config-sync/snapshot", params={"workspace_id": workspace_id, "after_revision": after_revision})
+
+    def config_sync_changes(self, workspace_id: str, base_revision: int, idempotency_key: str, changes: list[dict[str, Any]]) -> dict[str, Any]:
+        if not workspace_id or type(base_revision) is not int or base_revision < 0 or not idempotency_key or not changes:
+            raise ValueError("invalid config sync change request")
+        return self._request("POST", "/v1/config-sync/changes", json={"workspace_id": workspace_id, "base_revision": base_revision, "idempotency_key": idempotency_key, "changes": changes})
+
     def rotate_token(self) -> dict[str, Any]:
         data = self._request("POST", "/v1/auth/rotate")
         self.token = data["token"]

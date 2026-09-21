@@ -5,7 +5,7 @@
   "identifier": "ai.notemeld.desktop",
   "build": {
     "beforeDevCommand": "cd frontend && corepack pnpm dev --host 127.0.0.1 --port 3015",
-    "beforeBuildCommand": "cd frontend && VITE_BASE_PATH=./ corepack pnpm build",
+    "beforeBuildCommand": "cd frontend && corepack pnpm build",
     "devUrl": "http://127.0.0.1:3015",
     "frontendDist": "../frontend/dist"
   },
@@ -17,7 +17,7 @@
         "width": 1440,
         "height": 960,
         "resizable": true,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {

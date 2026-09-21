@@ -70,7 +70,14 @@ export const parseMessageContent = (content?: string): ParsedMessageContent => {
 }
 
 export const buildConversationTimeline = (task?: TimelineTask | null): TimelineItem[] => {
-  const messages = task?.messages || []
+  const messages = [...(task?.messages || [])]
+  // During the first streamed turn the persisted assistant reply can arrive
+  // before the locally-created user message. Keep the conversation contract:
+  // user message first, then the assistant's thinking/reply entries.
+  const firstUserIndex = messages.findIndex(message => message.role === 'user')
+  if (firstUserIndex > 0) {
+    messages.unshift(...messages.splice(firstUserIndex, 1))
+  }
   return messages.map(message => ({
     type: 'message' as const,
     id: message.id,

@@ -1,6 +1,5 @@
 package com.notemeld.mobile
 
-import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -8,19 +7,11 @@ import java.net.URL
 
 /** Small host adapter: native UI reads local NoteMeld conversations, never fabricates task cards. */
 object MobileApi {
-    /**
-     * The emulator exposes the host through 10.0.2.2. A physical device uses
-     * loopback so a USB `adb reverse tcp:8483 tcp:8483` or an explicit LAN
-     * endpoint can be used without pretending that the device is an emulator.
-     */
-    fun defaultBaseUrl(): String = if (
-        Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
-        Build.HARDWARE.contains("goldfish", ignoreCase = true) ||
-        Build.HARDWARE.contains("ranchu", ignoreCase = true)
-    ) "http://10.0.2.2:8483" else "http://127.0.0.1:8483"
+    /** No implicit host endpoint: a projection endpoint must be explicitly configured. */
+    fun defaultBaseUrl(): String = ""
 
     fun recordProjectionCursor(deviceId: String, baseUrl: String = defaultBaseUrl()): Boolean {
-        if (deviceId.isBlank()) return false
+        if (deviceId.isBlank() || baseUrl.isBlank()) return false
         val projection = URL("$baseUrl/api/mobile/projection?workspace_id=default").openConnection() as HttpURLConnection
         return try {
             projection.connectTimeout = 4000
@@ -44,7 +35,7 @@ object MobileApi {
     }
 
     fun deleteConversation(id: String, baseUrl: String = defaultBaseUrl()): Boolean {
-        if (id.isBlank()) return false
+        if (id.isBlank() || baseUrl.isBlank()) return false
         val connection = URL("$baseUrl/api/conversations/${java.net.URLEncoder.encode(id, "UTF-8")}").openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 4000
@@ -55,7 +46,7 @@ object MobileApi {
     }
 
     fun createMemory(content: String, baseUrl: String = defaultBaseUrl()): Boolean {
-        if (content.isBlank()) return false
+        if (content.isBlank() || baseUrl.isBlank()) return false
         val connection = URL("$baseUrl/api/mobile/memories").openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 4000
@@ -69,7 +60,39 @@ object MobileApi {
         } catch (_: Exception) { false } finally { connection.disconnect() }
     }
 
+    fun deleteMemory(id: String, baseUrl: String = defaultBaseUrl()): Boolean {
+        if (id.isBlank() || baseUrl.isBlank()) return false
+        val connection = URL("$baseUrl/api/mobile/memories/${java.net.URLEncoder.encode(id, "UTF-8")}").openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = 4000
+            connection.readTimeout = 8000
+            connection.requestMethod = "DELETE"
+            connection.responseCode in 200..299
+        } catch (_: Exception) { false } finally { connection.disconnect() }
+    }
+
+    fun loadMemoryProjection(baseUrl: String = defaultBaseUrl()): List<MobileMemory> {
+        if (baseUrl.isBlank()) return emptyList()
+        val connection = URL("$baseUrl/api/mobile/projection?workspace_id=default").openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = 4000
+            connection.readTimeout = 8000
+            connection.requestMethod = "GET"
+            if (connection.responseCode !in 200..299) return emptyList()
+            val rows = JSONObject(connection.inputStream.bufferedReader().use { it.readText() }).optJSONObject("data")?.optJSONArray("memories") ?: JSONArray()
+            buildList {
+                for (index in 0 until rows.length()) {
+                    val row = rows.optJSONObject(index) ?: continue
+                    val id = row.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    val content = row.optString("content").takeIf { it.isNotBlank() } ?: continue
+                    add(MobileMemory(id, content))
+                }
+            }
+        } finally { connection.disconnect() }
+    }
+
     fun loadProjection(baseUrl: String = defaultBaseUrl()): List<String> {
+        if (baseUrl.isBlank()) return emptyList()
         val connection = URL("$baseUrl/api/mobile/projection?workspace_id=default").openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 4000
@@ -84,6 +107,7 @@ object MobileApi {
     }
 
     fun loadTasks(baseUrl: String = defaultBaseUrl()): List<MobileTask> {
+        if (baseUrl.isBlank()) return emptyList()
         val connection = URL("$baseUrl/api/conversations?limit=20").openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 4000
@@ -102,7 +126,8 @@ object MobileApi {
         } finally { connection.disconnect() }
     }
 
-    fun streamAgent(input: String, onMessage: (String, Boolean) -> Unit, baseUrl: String = defaultBaseUrl()) {
+    fun streamAgent(input: String, onMessage: (String, String?) -> Unit, baseUrl: String = defaultBaseUrl()) {
+        require(baseUrl.isNotBlank()) { "an explicit projection endpoint is required" }
         val session = postJson("$baseUrl/api/agent/v1/sessions", "{\"title\":\"NoteMeld Mobile\"}")
         val sessionId = JSONObject(session).getJSONObject("data").getString("id")
         val turn = postJson("$baseUrl/api/agent/v1/sessions/$sessionId/turns", "{\"input\":${JSONObject.quote(input)}}")
@@ -121,9 +146,15 @@ object MobileApi {
                         line.startsWith("data:") -> data.append(line.substringAfter(':').trim())
                         line.isEmpty() && data.isNotEmpty() -> {
                             val event = JSONObject(data.toString())
-                            val content = event.optJSONObject("payload")?.optString("content", "") ?: ""
-                            if (content.isNotBlank()) onMessage(content, false)
-                            if (eventType.startsWith("turn.")) { onMessage("", true); return@forEach }
+                            val payload = event.optJSONObject("payload")
+                            val content = listOf("delta", "answer", "content", "output")
+                                .firstNotNullOfOrNull { key -> payload?.optString(key, "")?.takeIf { it.isNotBlank() } }
+                                ?: ""
+                            if (content.isNotBlank()) onMessage(content, null)
+                            if (eventType in setOf("turn.succeeded", "turn.failed", "turn.cancelled", "turn.interrupted")) {
+                                onMessage("", eventType)
+                                return@forEach
+                            }
                             data = StringBuilder(); eventType = ""
                         }
                     }

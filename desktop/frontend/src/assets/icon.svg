@@ -45,7 +45,8 @@
     </clipPath>
   </defs>
 
-  <g clip-path="url(#roundClip)">
+  <!-- Keep the artwork inside a macOS-safe zone so the Dock does not visually overpower neighboring icons. -->
+  <g transform="translate(76.8 76.8) scale(0.8)" clip-path="url(#roundClip)">
     <rect width="768" height="768" rx="154" fill="#001310"/>
     <rect width="768" height="768" rx="154" fill="url(#bgGlow)"/>
     <g opacity="0.52" filter="url(#mist)">

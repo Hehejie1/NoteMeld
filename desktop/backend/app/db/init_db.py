@@ -11,12 +11,13 @@ from app.db.models.whiteboard import Whiteboard, WhiteboardCard, WhiteboardNoteL
 from app.db.models.knowledge import KnowledgeArticle, KnowledgeChunk, KnowledgeIndexState, KnowledgeProfile, KnowledgeRelation, KnowledgeTerm, KnowledgeTermOccurrence  # noqa: F401
 from app.db.models.plugin import PluginAuditEvent, PluginInstallation, PluginMigration, PluginVersion  # noqa: F401
 from app.db.models.mobile_projection import MobileSyncCursor, WorkspaceMemory, WorkspaceProjection  # noqa: F401
+from app.db.models.workspace import Workspace  # noqa: F401
 from app.db.models.candidate import Candidate, CandidateArtifact, CandidateDecision, CandidateEvaluation, CandidateEvidence, CandidateMigration  # noqa: F401
 from app.db.engine import get_engine, Base, DATABASE_URL, SessionLocal, migrate_legacy_sqlite_if_needed
 from app.db.conversation_schema import ensure_conversation_columns
 from app.db.note_style_dao import ensure_note_style_columns
-from app.db.model_schema import ensure_model_runtime_schema
-from app.db.provider_schema import ensure_provider_schema
+from app.db.model_schema import ensure_model_catalog_schema, ensure_model_runtime_schema
+from app.db.provider_schema import ensure_provider_catalog_schema, ensure_provider_schema
 from app.db.database import ensure_agent_schema
 from app.db.knowledge_schema import ensure_knowledge_schema
 from app.db.plugin_migrations import ensure_plugin_migration_registry
@@ -48,6 +49,10 @@ def init_db():
             model_runtime_schema["cleared_capabilities"],
         )
     ensure_provider_schema(engine)
+    # notemeld.model-add.v1 additive 迁移（加列/回填/明文加密），必须在类型清表迁移之后、且幂等不清行
+    ensure_provider_catalog_schema(engine)
+    if ensure_model_catalog_schema(engine):
+        logger.info("Model catalog schema migrated (additive, no rows cleared)")
     ensure_agent_schema(engine)
     ensure_note_style_columns()
     ensure_conversation_columns(engine)

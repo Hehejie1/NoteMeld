@@ -25,6 +25,9 @@ import platform
 print(platform.machine())
 PY
 )}"
+REQUIRE_RELEASE="${NOTEMELD_REQUIRE_NOTARIZATION:-0}"
+REQUIRE_INTEL_X64="${NOTEMELD_REQUIRE_INTEL_X64:-0}"
+SKIP_UPDATER_SIGNING="${NOTEMELD_SKIP_UPDATER_SIGNING:-0}"
 
 case "${TARGET_ARCH}" in
   arm64|aarch64)
@@ -43,6 +46,11 @@ case "${TARGET_ARCH}" in
     ;;
 esac
 
+if [[ "${REQUIRE_INTEL_X64}" == "1" && "${TARGET_ARCH}" != "x86_64" && "${TARGET_ARCH}" != "amd64" ]]; then
+  echo "Intel macOS release requires NOTEMELD_TARGET_ARCH=x86_64 (got ${TARGET_ARCH})" >&2
+  exit 2
+fi
+
 TARGET_OUTPUT_DIR="${TARGET_DIR}/${TAURI_TARGET_TRIPLE}/release"
 APP_PATH="${TARGET_OUTPUT_DIR}/bundle/macos/NoteMeld.app"
 DMG_DIR="${TARGET_OUTPUT_DIR}/bundle/dmg"
@@ -50,13 +58,35 @@ DMG_STAGE_DIR="${DMG_DIR}/stage"
 DESKTOP_BIN="${TARGET_OUTPUT_DIR}/notemeld-desktop"
 DMG_PATH="${DMG_DIR}/NoteMeld_${VERSION}_${DMG_SUFFIX}.dmg"
 
+require_release_credentials() {
+  if [[ -z "${NOTEMELD_CODESIGN_IDENTITY:-}" || "${NOTEMELD_CODESIGN_IDENTITY}" == "-" ]]; then
+    echo "release macOS build requires NOTEMELD_CODESIGN_IDENTITY (Developer ID Application)" >&2
+    exit 2
+  fi
+  if [[ -z "${NOTEMELD_NOTARY_PROFILE:-}" ]]; then
+    echo "release macOS build requires NOTEMELD_NOTARY_PROFILE" >&2
+    exit 2
+  fi
+  security find-identity -v -p codesigning | grep -Fq "${NOTEMELD_CODESIGN_IDENTITY}" || {
+    echo "Developer ID identity is not available in the keychain: ${NOTEMELD_CODESIGN_IDENTITY}" >&2
+    exit 2
+  }
+  xcrun notarytool history --keychain-profile "${NOTEMELD_NOTARY_PROFILE}" >/dev/null 2>&1 || {
+    echo "notarytool profile is unavailable: ${NOTEMELD_NOTARY_PROFILE}" >&2
+    exit 2
+  }
+}
+
 mkdir -p "${TARGET_DIR}" "${LOG_DIR}"
+if [[ "${REQUIRE_RELEASE}" == "1" ]]; then
+  require_release_credentials
+fi
 if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
   echo "another desktop macOS build is already running; lock=${LOCK_DIR}" >&2
   exit 1
 fi
 export PATH="${HOME}/.cargo/bin:${PATH}"
-if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -z "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
+if [[ "${SKIP_UPDATER_SIGNING}" != "1" && -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -z "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
   DEFAULT_UPDATER_KEY="${HOME}/.tauri/notemeld-updater.key"
   if [[ -f "${DEFAULT_UPDATER_KEY}" ]]; then
     export TAURI_SIGNING_PRIVATE_KEY_PATH="${DEFAULT_UPDATER_KEY}"
@@ -99,7 +129,10 @@ if [[ ! -f "${STAGED_FFMPEG}" ]]; then
 fi
 
 cd "${ROOT_DIR}/desktop"
-if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" || -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
+if [[ "${SKIP_UPDATER_SIGNING}" == "1" ]]; then
+  TAURI_CONFIG_OVERRIDE_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+  echo "[notemeld] updater-signing=disabled (NOTEMELD_SKIP_UPDATER_SIGNING=1)"
+elif [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" || -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
   TAURI_CONFIG_OVERRIDE_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
   echo "[notemeld] updater-signing=enabled"
 else
@@ -116,6 +149,13 @@ corepack pnpm tauri build --no-bundle --target "${TAURI_TARGET_TRIPLE}" "${TAURI
 if [[ ! -x "${DESKTOP_BIN}" ]]; then
   echo "expected desktop binary not found at ${DESKTOP_BIN}" >&2
   exit 1
+fi
+if [[ "${REQUIRE_INTEL_X64}" == "1" ]]; then
+  ARCHES="$(lipo -archs "${DESKTOP_BIN}")"
+  if [[ "${ARCHES}" != "x86_64" ]]; then
+    echo "Intel macOS release produced unexpected desktop architectures: ${ARCHES}" >&2
+    exit 1
+  fi
 fi
 
 echo "[notemeld] step=tauri-bundle"
@@ -138,9 +178,13 @@ else
   codesign --force --deep --options runtime --timestamp --sign "${CODESIGN_IDENTITY}" "${APP_PATH}"
 fi
 codesign --verify --deep --strict --verbose=4 "${APP_PATH}"
-if ! spctl -a -vv --type execute "${APP_PATH}"; then
-  echo "[notemeld] warning=gatekeeper-rejected identity=${CODESIGN_IDENTITY}" >&2
-  echo "[notemeld] warning=installing without Apple notarization may require right-click Open or removing quarantine" >&2
+if [[ "${REQUIRE_RELEASE}" == "1" ]]; then
+  spctl -a -vv --type execute "${APP_PATH}"
+else
+  if ! spctl -a -vv --type execute "${APP_PATH}"; then
+    echo "[notemeld] warning=gatekeeper-rejected identity=${CODESIGN_IDENTITY}" >&2
+    echo "[notemeld] warning=installing without Apple notarization may require right-click Open or removing quarantine" >&2
+  fi
 fi
 
 echo "[notemeld] step=dmg"
@@ -151,6 +195,13 @@ cp -R "${APP_PATH}" "${DMG_STAGE_DIR}/NoteMeld.app"
 ln -s /Applications "${DMG_STAGE_DIR}/Applications"
 hdiutil create -volname NoteMeld -srcfolder "${DMG_STAGE_DIR}" -ov -format UDZO -fs HFS+ "${DMG_PATH}"
 hdiutil verify "${DMG_PATH}"
+if [[ "${REQUIRE_RELEASE}" == "1" ]]; then
+  echo "[notemeld] step=notarize"
+  xcrun notarytool submit "${DMG_PATH}" --keychain-profile "${NOTEMELD_NOTARY_PROFILE}" --wait
+  xcrun stapler staple "${DMG_PATH}"
+  xcrun stapler validate "${DMG_PATH}"
+  spctl -a -vv --type open "${DMG_PATH}"
+fi
 
 shopt -s nullglob
 DMG_FILES=("${DMG_DIR}"/*.dmg)

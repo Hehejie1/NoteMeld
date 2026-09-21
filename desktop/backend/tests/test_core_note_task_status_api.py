@@ -125,7 +125,7 @@ class TestCoreNoteTaskStatusApi(unittest.TestCase):
     def test_model_config_reset_keeps_historical_note_readable_via_conversation_api(self):
         from app.db.engine import Base
         from app.db import model_dao
-        from app.db.model_schema import ensure_model_runtime_schema
+        from app.db.model_schema import ensure_model_catalog_schema, ensure_model_runtime_schema
         from app.routers import conversation as conversation_router
         from app.services import conversation_store, note_document_store
         from app.services.model import ModelService
@@ -180,6 +180,8 @@ class TestCoreNoteTaskStatusApi(unittest.TestCase):
                 }
             )
             ensure_model_runtime_schema(engine)
+            # 与生产启动序列对齐：runtime 迁移后补 catalog 协议列（幂等，不删行）
+            ensure_model_catalog_schema(engine)
             with engine.connect() as conn:
                 self.assertEqual(conn.execute(text("SELECT COUNT(*) FROM models")).scalar_one(), 0)
 

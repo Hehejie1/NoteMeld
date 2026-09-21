@@ -115,6 +115,15 @@ class TestNoteStylePackagingContracts(unittest.TestCase):
 
         self.assertIn('PYTHON_BIN="${NOTEMELD_PYTHON_BIN:-${ROOT_DIR}/.venv/bin/python3}"', script_text)
 
+    def test_packaged_backend_smoke_requires_runtime_and_mcp_health(self):
+        script_text = (ROOT / "scripts" / "desktop" / "test-packaged-backend.sh").read_text(encoding="utf-8")
+
+        self.assertIn('"${SMOKE_ROOT}/data/run/agent-runtime.json"', script_text)
+        self.assertIn('PACKAGED_BACKEND_RUNTIME_OK', script_text)
+        self.assertIn('/api/deploy_status', script_text)
+        self.assertIn('descriptor.get("sdk_version") != "0.1.0"', script_text)
+        self.assertIn('data.get("mcp", {}).get("status") != "running"', script_text)
+
     def test_build_desktop_macos_cleans_bundle_history_before_packaging(self):
         script_text = (
             ROOT / "scripts" / "desktop" / "packaging" / "scripts" / "build-desktop-macos.sh"
@@ -132,6 +141,8 @@ class TestNoteStylePackagingContracts(unittest.TestCase):
         self.assertIn('hdiutil create -volname NoteMeld', script_text)
         self.assertIn('hdiutil verify "${DMG_PATH}"', script_text)
         self.assertIn('TAURI_CONFIG_OVERRIDE_ARGS=(--config \'{"bundle":{"createUpdaterArtifacts":false}}\')', script_text)
+        self.assertIn('SKIP_UPDATER_SIGNING="${NOTEMELD_SKIP_UPDATER_SIGNING:-0}"', script_text)
+        self.assertIn('NOTEMELD_SKIP_UPDATER_SIGNING=1', script_text)
         self.assertIn('createUpdaterArtifacts', script_text)
 
     def test_build_desktop_macos_logs_stages_and_verifies_artifacts(self):

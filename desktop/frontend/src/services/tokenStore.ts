@@ -1,5 +1,13 @@
 import type { CloudTokenStore } from './cloud'
 
+export const CLOUD_TOKEN_CHANGED_EVENT = 'notemeld-cloud-token-changed'
+
+function notifyCloudTokenChanged(present: boolean) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(CLOUD_TOKEN_CHANGED_EVENT, { detail: { present } }))
+  }
+}
+
 /** In-memory store for tests, private browsing, or explicitly ephemeral sessions. */
 export class MemoryTokenStore implements CloudTokenStore {
   private token: string | null = null
@@ -31,6 +39,7 @@ export class IndexedDbTokenStore implements CloudTokenStore {
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, this.cryptoKey, new TextEncoder().encode(token))
     await this.write({ iv, ciphertext })
+    notifyCloudTokenChanged(true)
   }
 
   async clear(): Promise<void> {
@@ -41,6 +50,7 @@ export class IndexedDbTokenStore implements CloudTokenStore {
       request.onerror = () => reject(request.error ?? new Error('secure token delete failed'))
     })
     db.close()
+    notifyCloudTokenChanged(false)
   }
 
   private open(): Promise<IDBDatabase> {

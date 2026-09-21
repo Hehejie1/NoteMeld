@@ -71,25 +71,42 @@ export function connectionCandidates(cloudBaseUrl: string, sessionId: string, de
 
 export type LanHandshake = (socket: WebSocket, signal: AbortSignal) => Promise<void>
 
-export function openRelayWebSocket(cloudBaseUrl: string, sessionId: string, device: DeviceConnectivity, token: string, timeoutMs = 3_000, lanHandshake?: LanHandshake): Promise<{ connection: WebSocket; candidate: ConnectionCandidate }> {
-  return connectWithFallback(connectionCandidates(cloudBaseUrl, sessionId, device), (candidate, signal) => new Promise<WebSocket>((resolve, reject) => {
+export function openRelayWebSocket(cloudBaseUrl: string, sessionId: string, device: DeviceConnectivity, token: string, controllerDeviceId: string, timeoutMs = 3_000, lanHandshake?: LanHandshake): Promise<{ connection: WebSocket; candidate: ConnectionCandidate; nextSequence?: number }> {
+  if (!controllerDeviceId) return Promise.reject(new Error('controller device identity is required'))
+  return connectWithFallback(connectionCandidates(cloudBaseUrl, sessionId, device), (candidate, signal) => new Promise<{ socket: WebSocket; nextSequence?: number }>((resolve, reject) => {
     if (candidate.auth === 'challenge' && !lanHandshake) {
       reject(new Error('LAN challenge handler is required'))
       return
     }
     const protocols = candidate.auth === 'bearer' ? relayWebSocketProtocols(token) : ['notemeld.lan.v1']
-    const socket = new WebSocket(candidate.url, protocols)
+    const url = new URL(candidate.url)
+    if (candidate.transport === 'relay') url.searchParams.set('device_id', controllerDeviceId)
+    const socket = new WebSocket(url.toString(), protocols)
     const abort = () => { socket.close(); reject(new DOMException('relay connection timed out', 'AbortError')) }
     if (signal.aborted) { abort(); return }
     signal.addEventListener('abort', abort, { once: true })
     socket.onopen = () => {
       if (candidate.auth === 'challenge') {
-        lanHandshake!(socket, signal).then(() => { signal.removeEventListener('abort', abort); resolve(socket) }).catch(error => { signal.removeEventListener('abort', abort); socket.close(); reject(error) })
+        lanHandshake!(socket, signal).then(() => { signal.removeEventListener('abort', abort); resolve({ socket }) }).catch(error => { signal.removeEventListener('abort', abort); socket.close(); reject(error) })
         return
       }
-      signal.removeEventListener('abort', abort)
-      resolve(socket)
+      const onReady = (event: MessageEvent) => {
+        try {
+          const value = JSON.parse(String(event.data)) as Record<string, unknown>
+          if (value.type !== 'relay_ready') return
+          if (!Number.isSafeInteger(value.next_sequence) || Number(value.next_sequence) < 1) throw new Error('invalid Relay sequence cursor')
+          socket.removeEventListener('message', onReady)
+          signal.removeEventListener('abort', abort)
+          resolve({ socket, nextSequence: Number(value.next_sequence) })
+        } catch (error) {
+          socket.removeEventListener('message', onReady)
+          signal.removeEventListener('abort', abort)
+          socket.close()
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+      socket.addEventListener('message', onReady)
     }
     socket.onerror = () => { signal.removeEventListener('abort', abort); socket.close(); reject(new Error('relay connection failed')) }
-  }), timeoutMs)
+  }), timeoutMs).then(({ connection, candidate }) => ({ connection: connection.socket, candidate, nextSequence: connection.nextSequence }))
 }

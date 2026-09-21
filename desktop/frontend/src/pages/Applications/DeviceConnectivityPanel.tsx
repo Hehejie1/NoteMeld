@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, RefreshCw, ShieldCheck, Wifi, WifiOff } from 'lucide-react'
 import CloudClient, { type CloudDevice } from '@/services/cloud'
 import { makeDeviceId } from '@/services/deviceIdentity'
-import { openDeviceKeyMaterial } from '@/services/deviceKeyStore'
 import { openIndexedDbTokenStore } from '@/services/tokenStore'
 import { bootstrap_cloud_host, get_desktop_device_id } from '@/services/desktopRuntime'
 import { isDemoMode } from '@/demo/mode'
@@ -49,12 +48,11 @@ export default function DeviceConnectivityPanel() {
     if (!client || !deviceId || deviceId === '读取中…') return
     setBusy(true); setError(''); setMessage('')
     try {
-      const keys = await openDeviceKeyMaterial()
       const endpoints = lanEndpoints.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8)
       if (device) await client.heartbeat(deviceId, endpoints)
-      else await client.registerDevice(deviceId, 'desktop', 'NoteMeld Desktop', keys.publicKey, endpoints)
       const token = await client.getAccessToken()
-      if (token) await bootstrap_cloud_host({ baseUrl: cloudBaseUrl, token, deviceId, displayName: 'NoteMeld Desktop', lanEndpoints: endpoints })
+      if (!token) throw new Error('请先登录 Cloud，再启动远程 Host')
+      await bootstrap_cloud_host({ baseUrl: cloudBaseUrl, token, deviceId, displayName: 'NoteMeld Desktop', lanEndpoints: endpoints })
       setMessage('设备身份、LAN 候选和远程 Host 状态已同步。'); await refresh()
     } catch (cause) { setError(cause instanceof Error ? cause.message : '设备同步失败，请确认 Cloud 登录状态') }
     finally { setBusy(false) }

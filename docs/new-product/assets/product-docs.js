@@ -65,10 +65,17 @@
     </tr>`).join('');
   };
 
-  const renderDecisionLog = config => {
-    document.querySelectorAll('[data-decision-log]').forEach(root => {
-      root.innerHTML = (config.decision_log || []).map(item => `<article class="doc-card decision-card"><div class="architecture-heading"><span class="doc-badge status-partial">待确认</span><div><h3>${escapeHtml(item.topic)}</h3><p>${escapeHtml(item.current)}</p></div></div><p><strong>建议：</strong>${escapeHtml(item.recommendation)}</p><p class="doc-meta"><strong>影响：</strong>${escapeHtml(item.impact)}</p></article>`).join('') || '<p>暂无待确认决策。</p>';
-    });
+  const renderRemoteConnection = config => {
+    const contract = config.remote_connection_contract;
+    const summary = document.querySelector('[data-remote-summary]');
+    if (!summary || !contract) return;
+    summary.textContent = contract.summary;
+    document.querySelector('[data-remote-maturity]').textContent = `当前实现边界：${contract.maturity}`;
+    document.querySelector('[data-remote-invariants]').innerHTML = (contract.invariants || []).map((rule, index) => `<article class="doc-card remote-rule"><span class="doc-badge">${String(index + 1).padStart(2, '0')}</span><p>${escapeHtml(rule)}</p></article>`).join('');
+    document.querySelector('[data-remote-entities]').innerHTML = (contract.entities || []).map(entity => `<tr><td><strong>${escapeHtml(entity.name)}</strong></td><td>${escapeHtml(entity.owner)}</td><td><code>${escapeHtml(entity.fields)}</code></td><td>${escapeHtml(entity.rule)}</td></tr>`).join('');
+    document.querySelector('[data-remote-flows]').innerHTML = (contract.flows || []).map(flow => `<article class="doc-card remote-flow"><h3>${escapeHtml(flow.name)}</h3><ol>${(flow.steps || []).map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol><p class="remote-gap"><strong>当前缺口：</strong>${escapeHtml(flow.current_gap)}</p></article>`).join('');
+    document.querySelector('[data-remote-states]').innerHTML = (contract.states || []).map(item => `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td>${escapeHtml(item.source)}</td><td>${escapeHtml(item.action)}</td></tr>`).join('');
+    document.querySelector('[data-remote-platforms]').innerHTML = (contract.platforms || []).map(item => `<article class="doc-card"><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.responsibility)}</p></article>`).join('');
   };
 
   const bindExplainMode = config => {
@@ -100,7 +107,7 @@
     renderArchitecture(config);
     renderDatabase(config);
     renderFeatures(config);
-    renderDecisionLog(config);
+    renderRemoteConnection(config);
     const questions = document.querySelector('[data-open-questions]');
     if (questions) questions.innerHTML = (config.open_questions || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     bindExplainMode(config);

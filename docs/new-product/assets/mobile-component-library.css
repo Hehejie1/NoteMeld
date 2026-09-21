@@ -1,0 +1,25 @@
+/* M11 组件库：只展示组件库；深/浅色同步外部设置（mobile.css 的 token）。 */
+.component-library-screen{display:flex;flex-direction:column;overflow:hidden;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+.component-library-header{grid-template-columns:76px 1fr 76px;flex:none}
+.component-library-header>strong{text-align:center;font-size:17px}
+
+.comp-content-scroll{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;padding:10px 4px 16px}
+.comp-current{margin:6px 2px 16px}
+.comp-current-label{display:block;color:var(--mobile-accent);font-size:10px;font-weight:800;letter-spacing:.08em}
+.comp-current h1{margin:6px 0 0;font-size:24px;font-weight:800;color:var(--mobile-ink)}
+
+.comp-impl-card{padding:18px 16px;border:1px solid var(--mobile-line);border-radius:16px;background:var(--mobile-panel)}
+.comp-impl-card h2{margin:0 0 10px;font-size:14px;font-weight:800;color:var(--mobile-ink)}
+.comp-impl-card p{margin:0;color:var(--mobile-muted);font-size:12px;line-height:1.7}
+
+/* 模块选择底部弹窗 */
+.comp-module-sheet{max-height:78%}
+.comp-module-list{padding:2px 2px 10px}
+.comp-group-label{margin:14px 4px 6px;color:var(--mobile-muted);font-size:10px;font-weight:800;letter-spacing:.06em}
+.comp-module-list button{display:flex;align-items:center;width:100%;min-height:46px;padding:0 12px;border:1px solid var(--mobile-line);border-radius:11px;background:var(--mobile-surface-muted, #f1f3f8);color:var(--mobile-ink);text-align:left;font-size:12px;margin-bottom:7px}
+.comp-module-list button span{flex:1}
+.comp-module-list button.is-active{border-color:var(--mobile-accent);color:var(--mobile-accent)}
+
+/* 深色：同步外部 data-theme，补齐 token */
+body[data-theme="dark"] .comp-module-list button,
+body[data-theme="深色"] .comp-module-list button{--mobile-surface-muted:#202a40}

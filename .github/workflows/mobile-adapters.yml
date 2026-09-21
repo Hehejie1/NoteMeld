@@ -31,8 +31,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.11.1
+      - name: Download pinned Agent SDK AAR
+        env:
+          SDK_AAR_URL: ${{ vars.NOTEMELD_AGENT_SDK_AAR_URL }}
+          SDK_AAR_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_AAR_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${SDK_AAR_URL:-}" || { echo "NOTEMELD_AGENT_SDK_AAR_URL is required" >&2; exit 2; }
+          test -n "${SDK_AAR_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_AAR_SHA256 is required" >&2; exit 2; }
+          [[ "$SDK_AAR_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid SDK AAR SHA-256" >&2; exit 2; }
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/notemeld-agent-sdk.aar" "$SDK_AAR_URL"
+          echo "$SDK_AAR_SHA256  $RUNNER_TEMP/notemeld-agent-sdk.aar" | sha256sum -c -
       - name: Assemble Android debug adapter
         working-directory: android
+        env:
+          NOTEMELD_AGENT_SDK_AAR: ${{ runner.temp }}/notemeld-agent-sdk.aar
+          NOTEMELD_AGENT_SDK_AAR_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_AAR_SHA256 }}
         run: gradle --no-daemon :app:assembleDebug
       - name: Install and launch Android adapter in API 34 emulator
         uses: reactivecircus/android-emulator-runner@v2

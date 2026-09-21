@@ -1,9 +1,8 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 多端架构设计</title><link rel="stylesheet" href="../../assets/product-docs.css"></head>
 <body data-page="A01"><main class="doc-shell">
-  <header class="doc-hero"><span class="doc-kicker">NOTEMELD · INFORMATION ARCHITECTURE</span><h1>多端整体架构</h1><p>把桌面端、Cloud Web、移动端和 Agent runtime 放在同一张可验证的系统地图中；每个边界都对应运行位置、数据责任和用户可见状态。</p></header>
-  <section class="doc-card architecture-overview"><h2>跨端主链路</h2><div class="flow"><span>Desktop / Mobile UI</span><i>→</i><span>Host Adapter</span><i>→</i><span>Agent Runtime</span><i>→</i><span>Events &amp; State</span><i>→</i><span>Human Verification</span></div><p class="doc-meta">云端页面通过 Cloud Control Plane 管理 Workspace、会话、设备授权和审批；移动端只展示已授权的会话投影与控制入口。</p></section>
+  <header class="doc-hero"><span class="doc-kicker">NOTEMELD · INFORMATION ARCHITECTURE</span><h1>多端整体架构</h1><p>以身份与组织范围、模型选择与端侧凭据、Workspace 与执行、设备授权与状态为四条主线，说明桌面端、Cloud Web、移动端和 Agent runtime 如何共同完成一次可验证的工作。</p></header>
+  <section class="doc-card architecture-overview"><h2>跨端主链路</h2><div class="flow"><span>Desktop / Mobile UI</span><i>→</i><span>Host Adapter</span><i>→</i><span>Agent Runtime</span><i>→</i><span>Events &amp; State</span><i>→</i><span>Human Verification</span></div><p class="doc-meta">Cloud 管理组织内共享的模型目录、Workspace 控制面、会话、设备授权与审计；本地模型凭据、设备私钥与会话密钥始终留在对应端侧。</p></section>
   <div data-architecture-body><p>正在读取架构配置…</p></div>
-  <section class="doc-card"><h2>待确认决策</h2><ul data-open-questions></ul><p data-doc-error></p></section>
-  <section class="doc-card"><h2>决策记录</h2><div class="doc-grid" data-decision-log><p>正在读取决策记录…</p></div></section>
+  <p data-doc-error></p>
 </main><script src="../../assets/product-docs.js"></script></body></html>

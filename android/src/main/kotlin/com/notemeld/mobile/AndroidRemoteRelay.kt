@@ -49,23 +49,29 @@ class AndroidRemoteRelay(
     private var input: BufferedInputStream? = null
     private var output: BufferedOutputStream? = null
     private var key: ByteArray? = null
-    private var sequence = 1
+    private var sequence = 0
     private var authorityEpoch = 1
     private var reader: Thread? = null
     private val receiptLock = Object()
     private var pendingFrameId: String? = null
     private var pendingRequestId: String? = null
     private var pendingReceipt: JSONObject? = null
+    @Volatile var activeTransport: String? = null
+        private set
+    @Volatile var relayCursorStart: Int? = null
+        private set
 
     fun connect() {
+        relayCursorStart = null
         val candidates = lanEndpoints.map { URI("ws://$it/v1/lan/connect/$sessionId") to true } + (webSocketUri(cloudUrl.trimEnd('/') + "/v1/relay/connect/$sessionId?device_id=$controllerId") to false)
         var failure: Throwable? = null
         for ((uri, lan) in candidates) {
             try {
                 close()
                 openSocket(uri, lan)
-                if (lan) authorizeLan()
+                if (lan) { sequence = 0; authorizeLan() } else { sequence = waitForRelayReady(); relayCursorStart = sequence }
                 completeE2ee(!lan)
+                activeTransport = if (lan) "lan" else "relay"
                 reader = Thread { readLoop() }.also { it.isDaemon = true; it.start() }
                 return
             } catch (error: Throwable) {
@@ -103,7 +109,7 @@ class AndroidRemoteRelay(
         val signed = arHandshakeMessage(sessionId, controllerId, hostId, ephemeralRaw)
         val signature = Signature.getInstance("Ed25519").apply { initSign(identity.private); update(signed) }.sign()
         val offer = mapOf("protocol_version" to "notemeld.e2ee.handshake.v1", "session_id" to sessionId, "sender_device_id" to controllerId, "recipient_device_id" to hostId, "ephemeral_public" to arB64(ephemeralRaw), "signature" to arB64(signature))
-        val frame = mapOf("authority_epoch" to authorityEpoch, "frame_id" to java.util.UUID.randomUUID().toString(), "frame_type" to "handshake", "nonce" to arB64(ByteArray(12)), "protocol_version" to "notemeld.sync.v1", "recipient_device_id" to hostId, "sender_device_id" to controllerId, "sequence" to 1, "session_id" to sessionId, "ciphertext" to arB64(arJson(offer).toByteArray()))
+        val frame = mapOf("authority_epoch" to authorityEpoch, "frame_id" to java.util.UUID.randomUUID().toString(), "frame_type" to "handshake", "nonce" to arB64(ByteArray(12)), "protocol_version" to "notemeld.sync.v1", "recipient_device_id" to hostId, "sender_device_id" to controllerId, "sequence" to sequence, "session_id" to sessionId, "ciphertext" to arB64(arJson(offer).toByteArray()))
         sendText(arJson(if (relay) frame else offer))
         val peer = if (relay) waitForHandshake() else JSONObject(String(readFrame() ?: error("LAN E2EE handshake missing"), StandardCharsets.UTF_8))
         val peerRaw = arDecode(peer.getString("ephemeral_public"))
@@ -137,7 +143,7 @@ class AndroidRemoteRelay(
     }
 
     fun close() {
-        runCatching { socket?.close() }; socket = null; reader?.interrupt(); reader = null
+        runCatching { socket?.close() }; socket = null; reader?.interrupt(); reader = null; activeTransport = null
         synchronized(receiptLock) { pendingReceipt = JSONObject().put("status", "failed").put("error", "remote transport closed"); receiptLock.notifyAll() }
     }
     private fun readUpgrade() { var line = readLine(); check(line?.contains("101") == true) { "Relay WebSocket upgrade failed" }; while (line?.isNotEmpty() == true) line = readLine() }
@@ -145,6 +151,14 @@ class AndroidRemoteRelay(
     private fun sendText(value: String) { sendFrame(value.toByteArray(StandardCharsets.UTF_8)) }
     private fun sendFrame(payload: ByteArray) { val stream = output ?: error("Relay socket is closed"); val mask = ByteArray(4).also(random::nextBytes); val header = ArrayList<Byte>(); header += 0x81.toByte(); when { payload.size < 126 -> header += (0x80 or payload.size).toByte(); payload.size <= 65535 -> { header += 0xfe.toByte(); header += ByteBuffer.allocate(2).putShort(payload.size.toShort()).array().toList() }; else -> error("Relay frame too large") }; header += mask.toList(); val masked = payload.mapIndexed { index, byte -> (byte.toInt() xor mask[index % 4].toInt()).toByte() }; stream.write(header.toByteArray()); stream.write(masked.toByteArray()); stream.flush() }
     private fun waitForHandshake(): JSONObject { while (true) { val payload = readFrame() ?: error("Relay closed during handshake"); val frame = JSONObject(String(payload, StandardCharsets.UTF_8)); if (frame.optString("frame_type") == "handshake") return JSONObject(String(arDecode(frame.getString("ciphertext")), StandardCharsets.UTF_8)); if (frame.optString("type") == "rejected") error(frame.optString("error")) } }
+    private fun waitForRelayReady(): Int {
+        val payload = readFrame() ?: error("Relay closed before cursor negotiation")
+        val message = JSONObject(String(payload, StandardCharsets.UTF_8))
+        check(message.optString("type") == "relay_ready") { "Relay cursor negotiation missing" }
+        val nextSequence = message.optLong("next_sequence", 0)
+        check(nextSequence in 1..Int.MAX_VALUE.toLong()) { "Relay sequence cursor is invalid" }
+        return nextSequence.toInt()
+    }
     private fun readFrame(): ByteArray? { val first = input?.read() ?: return null; val second = input?.read() ?: return null; val opcode = first and 0x0f; if (opcode == 8) return null; var length = second and 0x7f; if (length == 126) length = ByteBuffer.wrap(ByteArray(2).also { input!!.read(it) }).short.toInt() and 0xffff; if (length == 127) error("Relay frame is too large"); val mask = if ((second and 0x80) != 0) ByteArray(4).also { input!!.read(it) } else null; val data = ByteArray(length); var offset = 0; while (offset < length) offset += input!!.read(data, offset, length - offset); if (mask != null) data.indices.forEach { data[it] = (data[it].toInt() xor mask[it % 4].toInt()).toByte() }; return data }
     private fun readLoop() {
         while (!Thread.currentThread().isInterrupted) {

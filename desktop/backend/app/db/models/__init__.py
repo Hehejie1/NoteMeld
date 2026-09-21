@@ -16,6 +16,7 @@ from app.db.models.knowledge import (
 )
 from app.db.models.plugin import PluginAuditEvent, PluginInstallation, PluginMigration, PluginVersion
 from app.db.models.mobile_projection import MobileSyncCursor, WorkspaceMemory, WorkspaceProjection
+from app.db.models.workspace import Workspace
 
 __all__ = [
     "Whiteboard",
@@ -39,4 +40,5 @@ __all__ = [
     "WorkspaceMemory",
     "WorkspaceProjection",
     "MobileSyncCursor",
+    "Workspace",
 ]

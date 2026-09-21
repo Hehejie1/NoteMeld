@@ -83,12 +83,29 @@ def main() -> int:
             if table not in cloud_tables:
                 errors.append(f"architecture.cloud_control_plane.{module.get('id')}: table {table} is not in cloud/db.py")
 
+    def page_binding_source(page: str) -> str:
+        # 绑定选择器可能由页面引用的本地脚本动态渲染，检查范围需包含这些 JS 资产
+        parts = [html.get(page, "")]
+        page_dir = (DOCS / "pages" / (
+            "apps" if page.startswith("APP") else "cloud" if page.startswith(("A", "C"))
+            else "desktop" if page.startswith("D") else "mobile"
+        ))
+        for asset_ref in referenced_assets(parts[0]):
+            asset_path = (page_dir / asset_ref).resolve()
+            try:
+                asset_path.relative_to(DOCS)
+            except ValueError:
+                continue
+            if asset_path.exists():
+                parts.append(asset_path.read_text())
+        return "\n".join(parts)
+
     for feature_id, selectors in config.get("bindings", {}).items():
         feature = config["features"].get(feature_id)
         if not feature:
             errors.append(f"binding {feature_id}: feature is missing")
             continue
-        source = html.get(feature["page"], "")
+        source = page_binding_source(feature["page"])
         for selector in selectors:
             token = selector.strip("[]")
             if selector.startswith("."):
@@ -111,6 +128,32 @@ def main() -> int:
         script_source = (DOCS / "assets" / script_name).read_text()
         if "event.target.closest('[data-feature-id]')" not in script_source:
             errors.append(f"{script_name}: explain mode must inherit a feature binding from the nearest container")
+
+    remote = config.get("remote_connection_contract", {})
+    if not remote.get("version") or not remote.get("maturity") or not remote.get("invariants"):
+        errors.append("remote_connection_contract: version, maturity and invariants are required")
+    for section, required_names in {
+        "entities": ("CloudConnectionProfile", "RemoteClientBinding", "Device", "Pairing", "Grant", "Remote Session"),
+        "flows": ("扫描云端二维码", "扫描远程客户端二维码", "手动添加或编辑", "删除、撤销与恢复"),
+        "platforms": ("Cloud Web", "桌面 Host", "移动控制端"),
+    }.items():
+        names = [item.get("name", "") for item in remote.get(section, [])]
+        for name in required_names:
+            if not any(item.startswith(name) for item in names):
+                errors.append(f"remote_connection_contract.{section}: missing {name}")
+    for marker in ("data-remote-summary", "data-remote-entities", "data-remote-flows", "data-remote-states", "data-remote-platforms"):
+        if marker not in html.get("A03", ""):
+            errors.append(f"A03: missing {marker}")
+
+    a04_source = (DOCS / "assets" / "a04.js").read_text()
+    catalog_match = re.search(r"const iconCatalog = '([^']+)'", a04_source)
+    catalog = set(catalog_match.group(1).split()) if catalog_match else set()
+    mobile_icons = set()
+    for page in ("M03", "M08"):
+        mobile_icons.update(re.findall(r'data-icon="([^"]+)"', html.get(page, "")))
+    mobile_icons.update(re.findall(r"icon\('([^']+)'\)", (DOCS / "assets" / "mobile-remote-settings.js").read_text()))
+    for name in sorted(mobile_icons - catalog):
+        errors.append(f"A04: icon {name} used by M03/M08 is absent from Iconography")
 
     if errors:
         print("\n".join(errors))

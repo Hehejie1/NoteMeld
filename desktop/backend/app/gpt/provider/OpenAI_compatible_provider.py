@@ -3,9 +3,12 @@ from typing import Optional, Union
 from openai import OpenAI
 import httpx
 
+from app.services.vendor_registry import trim_url
 from app.utils.logger import get_logger
 
 logging = get_logger(__name__)
+
+TEST_TIMEOUT = 12.0
 
 
 def _create_httpx_client(base_url: str) -> httpx.Client:
@@ -48,3 +51,39 @@ class OpenAICompatibleProvider:
         except Exception as e:
             logging.info(f"连通性测试失败：{e}")
             return False
+
+    @staticmethod
+    def test_chat_connection(api_key: str, base_url: str, model: str) -> bool:
+        """
+        协议 v1 真连接测试：POST {base_url}/chat/completions，
+        max_tokens=1、非流式，校验 choices 为数组。
+        直接走 httpx，不依赖 OpenAI SDK；密钥不进日志。
+        """
+        if not api_key:
+            raise RuntimeError("请填写 API 密钥")
+        if not model:
+            raise RuntimeError("请选择或填写要测试的模型 ID")
+        url = f"{trim_url(base_url)}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "stream": False,
+        }
+        try:
+            transport = httpx.HTTPTransport(http2=False) if _create_httpx_client(base_url) else None
+            with httpx.Client(timeout=TEST_TIMEOUT, transport=transport) as client:
+                resp = client.post(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPStatusError:
+            return False
+        except httpx.HTTPError:
+            return False
+        except ValueError:
+            return False
+        return bool(isinstance(data, dict) and isinstance(data.get("choices"), list))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -56,6 +58,8 @@ class CloudSettings:
     startup_backup_image: Path | None = None
     startup_backup_workspace: str = "default"
     deployment_env: str = "development"
+    build_commit: str | None = None
+    image_digest: str | None = None
 
     @property
     def database_path(self) -> Path:
@@ -136,21 +140,32 @@ class CloudSettings:
                 raise ValueError("production requires a 32-character cloud secret key")
             if not self.agent_base_url:
                 raise ValueError("production requires an OpenAI-compatible agent provider")
+            parsed_agent = urlparse(self.agent_base_url)
+            if parsed_agent.scheme != "https" or not parsed_agent.hostname or parsed_agent.hostname in {"localhost", "127.0.0.1", "::1"}:
+                raise ValueError("production requires a remote HTTPS agent provider")
             if self.backup_storage_backend != "s3":
                 raise ValueError("production requires S3-compatible backup storage")
-            if self.relay_backend == "memory":
-                raise ValueError("production requires a durable relay backend")
+            if self.relay_backend != "redis":
+                raise ValueError("production requires the supported Redis durable relay backend")
             if not self.require_device_proof:
                 raise ValueError("production requires device proof")
             if urlparse(self.invite_base_url).scheme != "https":
                 raise ValueError("production invitation base URL must use HTTPS")
             if not self.cors_origins:
                 raise ValueError("production requires explicit CORS origins")
+            if not self.build_commit or re.fullmatch(r"[0-9a-f]{40}", self.build_commit) is None:
+                raise ValueError("production requires a full lowercase build commit")
+            if not self.image_digest or re.fullmatch(r"sha256:[0-9a-f]{64}", self.image_digest) is None:
+                raise ValueError("production requires an immutable Cloud image digest")
 
 
 def load_settings() -> CloudSettings:
     default_data_dir = Path(__file__).resolve().parent / "data"
     data_dir = Path(os.getenv("NOTEMELD_CLOUD_DATA_DIR", str(default_data_dir))).expanduser().resolve()
+    deployment_env = os.getenv("NOTEMELD_CLOUD_ENV", "development").strip().lower()
+    configured_secret_key = os.getenv("NOTEMELD_CLOUD_SECRET_KEY") or None
+    if configured_secret_key is None and deployment_env == "development":
+        configured_secret_key = _development_secret_key(data_dir)
     return CloudSettings(
         data_dir=data_dir,
         admin_username=os.getenv("NOTEMELD_CLOUD_ADMIN_USERNAME", "admin"),
@@ -174,7 +189,7 @@ def load_settings() -> CloudSettings:
         agent_timeout_seconds=float(os.getenv("NOTEMELD_CLOUD_AGENT_TIMEOUT_SECONDS", "120")),
         require_device_proof=os.getenv("NOTEMELD_CLOUD_REQUIRE_DEVICE_PROOF", "0").strip().lower() in {"1", "true", "yes"},
         command_wait_seconds=float(os.getenv("NOTEMELD_CLOUD_COMMAND_WAIT_SECONDS", "20")),
-        secret_key=os.getenv("NOTEMELD_CLOUD_SECRET_KEY") or None,
+        secret_key=configured_secret_key,
         command_lease_seconds=int(os.getenv("NOTEMELD_CLOUD_COMMAND_LEASE_SECONDS", "300")),
         max_request_bytes=int(os.getenv("NOTEMELD_CLOUD_MAX_REQUEST_BYTES", str(16 * 1024 * 1024))),
         approval_ttl_seconds=int(os.getenv("NOTEMELD_CLOUD_APPROVAL_TTL_SECONDS", "900")),
@@ -199,4 +214,36 @@ def load_settings() -> CloudSettings:
         startup_backup_image=Path(os.getenv("NOTEMELD_CLOUD_STARTUP_BACKUP_IMAGE")).expanduser().resolve() if os.getenv("NOTEMELD_CLOUD_STARTUP_BACKUP_IMAGE") else None,
         startup_backup_workspace=os.getenv("NOTEMELD_CLOUD_STARTUP_BACKUP_WORKSPACE", "default"),
         deployment_env=os.getenv("NOTEMELD_CLOUD_ENV", "development").strip().lower(),
+        build_commit=os.getenv("NOTEMELD_CLOUD_BUILD_COMMIT") or None,
+        image_digest=os.getenv("NOTEMELD_CLOUD_IMAGE_DIGEST") or None,
     )
+
+
+def _development_secret_key(data_dir: Path) -> str:
+    """Keep locally configured provider credentials decryptable across dev restarts.
+
+    Production deployments must provide NOTEMELD_CLOUD_SECRET_KEY explicitly. In
+    development, a machine-local key is generated once under the ignored Cloud
+    data directory so a server restart does not silently invalidate saved model
+    credentials.
+    """
+    path = data_dir / ".cloud-secret-key"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+        if len(value) >= 32:
+            return value
+    except FileNotFoundError:
+        pass
+    value = secrets.token_urlsafe(48)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    fd = os.open(path, flags, 0o600)
+    try:
+        os.write(fd, value.encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return value

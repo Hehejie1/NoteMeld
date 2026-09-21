@@ -30,11 +30,13 @@ Session、Agent、Workspace、Wiki、设备和管理后台等业务组件留在�
 门户中的“产品设计文档 → A04 组件库设计”是本设计系统的主查看入口。A04 分为两个一级菜单：
 
 - **设计价值观**：NoteMeld 的设计北极星、判断标准、跨端一致性、状态透明、安全可逆和可访问性。
-- **组件库**：Design Tokens、Typography、Spacing、Iconography、Motion，以及 Actions、Fields、Selection、Navigation、Data Display、Feedback、Overlay 等基础原语。
+- **组件库**：Color、Spacing、Radius、Typography、Iconography、Layout、Motion，以及 Actions、Fields、Selection、Navigation、Data Display、Feedback、Overlay 等基础原语。基础设计每项独立成 Tab，便于单独核对 token、示例和跨端规则。
 
 每个基础原语都应说明目的、结构、状态、适用/禁用场景、桌面与移动端适配和可访问性，并提供可操作的 HTML 参考实现。
 
 Select 的参考实现单独展示 Desktop/Web 和 Mobile 两种形态：前者是 32px 触发器 + 对齐的 Popover/Listbox，后者是适合触摸的 Bottom Sheet/Listbox；两者共享当前值、选项、键盘/返回、取消和确认语义。
+
+Motion 的参考实现使用快速 160ms、标准 240ms、慢速 320ms 三档，并提供缓出/缓入曲线、进入、反馈、状态和退出四类示例。动画只服务层级、状态和操作确认；不动画布局属性，支持中断，并在 `prefers-reduced-motion: reduce` 下即时完成。
 
 ## 在原型页面中使用
 

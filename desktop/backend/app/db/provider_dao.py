@@ -12,16 +12,35 @@ def insert_provider(
     base_url: str,
     logo: str,
     enabled: int = 1,
+    api_key_ciphertext: str | None = None,
+    display_name: str | None = None,
+    vendor_id: str = "custom",
+    protocol: str = "openai-compatible",
+    auth_type: str = "api_key",
 ):
     db = next(get_db())
     try:
-        provider = Provider(id=id, name=name, api_key=api_key, base_url=base_url, logo=logo, enabled=enabled)
+        provider = Provider(
+            id=id,
+            name=name,
+            api_key=api_key,
+            base_url=base_url,
+            logo=logo,
+            enabled=enabled,
+            api_key_ciphertext=api_key_ciphertext,
+            display_name=display_name or name,
+            vendor_id=vendor_id,
+            protocol=protocol,
+            auth_type=auth_type,
+        )
         db.add(provider)
         db.commit()
         logger.info(f"Provider inserted successfully. id: {id}, name: {name}")
         return id
-    except Exception as e:
-        logger.error(f"Failed to insert provider: {e}")
+    except Exception:
+        db.rollback()
+        logger.exception(f"Failed to insert provider. id: {id}")
+        raise
     finally:
         db.close()
 
@@ -64,16 +83,20 @@ def update_provider(id: str, **kwargs):
         provider = db.query(Provider).filter_by(id=id).first()
         if not provider:
             logger.warning(f"Provider {id} not found for update.")
-            return
+            return None
 
         for key, value in kwargs.items():
             if hasattr(provider, key):
                 setattr(provider, key, value)
 
         db.commit()
+        # 日志只允许出现字段名，绝不打印值（值中可能含密钥/密文）
         logger.info(f"Provider updated successfully. id: {id}, updated_fields: {list(kwargs.keys())}")
-    except Exception as e:
-        logger.error(f"Failed to update provider: {e}")
+        return id
+    except Exception:
+        db.rollback()
+        logger.exception(f"Failed to update provider. id: {id}")
+        raise
     finally:
         db.close()
 
@@ -86,7 +109,11 @@ def delete_provider(id: str):
             db.delete(provider)
             db.commit()
             logger.info(f"Provider deleted successfully. id: {id}")
-    except Exception as e:
-        logger.error(f"Failed to delete provider: {e}")
+            return id
+        return None
+    except Exception:
+        db.rollback()
+        logger.exception(f"Failed to delete provider. id: {id}")
+        raise
     finally:
         db.close()

@@ -1,0 +1,35 @@
+{
+  "schema": "notemeld.visual-locator-contract.v1",
+  "required": {
+    "web": ["cloud-login", "cloud-workbench", "cloud-session-list", "cloud-settings"],
+    "android": [
+      "notemeld-mobile-root",
+      "notemeld-screen-home",
+      "notemeld-screen-session",
+      "notemeld-screen-settings",
+      "notemeld-screen-memory",
+      "notemeld-screen-font_size",
+      "notemeld-screen-storage",
+      "notemeld-settings",
+      "notemeld-session-detail",
+      "notemeld-start-chat",
+      "notemeld-open-settings",
+      "notemeld-open-memory",
+      "notemeld-open-font-size",
+      "notemeld-open-storage",
+      "notemeld-memory-input",
+      "notemeld-memory-add",
+      "notemeld-font-slider",
+      "notemeld-storage-clear-all"
+    ]
+  },
+  "android_cases": {
+    "mobile/home": ["notemeld-mobile-root", "notemeld-screen-home", "notemeld-start-chat", "notemeld-open-settings"],
+    "mobile/session": ["notemeld-mobile-root", "notemeld-screen-session", "notemeld-session-detail"],
+    "mobile/offline": ["notemeld-mobile-root", "notemeld-screen-session"],
+    "mobile/settings": ["notemeld-mobile-root", "notemeld-screen-settings", "notemeld-settings", "notemeld-open-memory", "notemeld-open-font-size", "notemeld-open-storage"],
+    "mobile/memory": ["notemeld-mobile-root", "notemeld-screen-memory", "notemeld-memory-input", "notemeld-memory-add"],
+    "mobile/font": ["notemeld-mobile-root", "notemeld-screen-font_size", "notemeld-font-slider"],
+    "mobile/storage": ["notemeld-mobile-root", "notemeld-screen-storage", "notemeld-storage-clear-all"]
+  }
+}

@@ -70,7 +70,7 @@ echo "NoteMeld 原型预览：http://127.0.0.1:${PORT}/"
 echo "预览目录：${SCRIPT_DIR}"
 echo "服务 PID：启动中"
 echo "按 Ctrl-C 停止服务器。"
-python3 -m http.server "${PORT}" --bind 127.0.0.1 --directory "${SCRIPT_DIR}" &
+python3 "${SCRIPT_DIR}/preview_server.py" --port "${PORT}" --directory "${SCRIPT_DIR}" &
 SERVER_PID=$!
 echo "服务 PID：${SERVER_PID}"
 wait "${SERVER_PID}"

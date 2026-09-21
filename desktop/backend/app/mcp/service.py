@@ -476,7 +476,7 @@ def list_enabled_model_catalog() -> list[dict[str, Any]]:
         rows = (
             db.query(Model, Provider)
             .join(Provider, Model.provider_id == Provider.id)
-            .filter(Provider.enabled == 1)
+            .filter(Provider.enabled == 1, Model.enabled == 1)
             .order_by(Provider.name.asc(), Model.id.asc())
             .all()
         )
@@ -484,7 +484,7 @@ def list_enabled_model_catalog() -> list[dict[str, Any]]:
             {
                 "providerId": provider.id,
                 "providerName": provider.name,
-                "model": model.model_name,
+                "model": model.model_id or model.model_name,
                 "modelId": model.id,
                 "baseUrl": provider.base_url,
             }

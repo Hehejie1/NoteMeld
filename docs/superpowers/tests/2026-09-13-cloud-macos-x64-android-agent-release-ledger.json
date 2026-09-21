@@ -1,0 +1,233 @@
+{
+  "ledger_schema": "notemeld.release-ledger.v1",
+  "rc": {
+    "version": null,
+    "commit": null
+  },
+  "gates": {
+    "BUILD-CLOUD-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "BUILD-MAC-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "BUILD-ANDROID-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "BUILD-COMPAT-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "BUILD-EVIDENCE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-CLOUD-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-CLOUD-02": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-MAC-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-MAC-02": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-ANDROID-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-ANDROID-02": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-PARITY-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "RUNTIME-ISOLATION-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-BASELINE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-CHANGE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-CONFLICT-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-DELETE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-OFFLINE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-SECRET-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-RECOVERY-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SYNC-SCOPE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-PAIR-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-WEB-MAC-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-ANDROID-MAC-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-FALLBACK-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-CLOUD-CLIENT-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-OPAQUE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-REPLAY-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-OFFLINE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-RECOVERY-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-REVOKE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-APPROVAL-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "E2E-LIMIT-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-DATA-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-STATE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-CLOUD-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-MAC-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-ANDROID-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-RESPONSIVE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-THEME-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-A11Y-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "UI-NAV-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-WEB-PACKAGE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-WEB-CONSUME-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-ANDROID-MODULE-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-CONTRACT-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-CATALOG-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-SELECT-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-ICON-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-MOTION-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DS-VISUAL-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SEC-IDENTITY-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "SEC-AUTH-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "DATA-MIGRATION-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "OBS-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    },
+    "CLEAN-01": {
+      "status": "UNVERIFIED",
+      "evidence": null
+    }
+  }
+}

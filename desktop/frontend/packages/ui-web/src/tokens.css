@@ -1,0 +1,38 @@
+:root {
+  --nm-color-bg: #f7f8fb;
+  --nm-color-surface: #ffffff;
+  --nm-color-surface-muted: #f1f3f8;
+  --nm-color-text: #202533;
+  --nm-color-text-muted: #7d879a;
+  --nm-color-border: #dfe4ec;
+  --nm-color-accent: #4b7cf3;
+  --nm-color-accent-strong: #2864e8;
+  --nm-color-success: #168a63;
+  --nm-color-warning: #a86608;
+  --nm-color-danger: #bf3d47;
+  --nm-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --nm-space-1: 4px;
+  --nm-space-2: 8px;
+  --nm-space-3: 12px;
+  --nm-space-4: 16px;
+  --nm-space-6: 24px;
+  --nm-radius-sm: 7px;
+  --nm-radius-md: 9px;
+  --nm-radius-lg: 12px;
+  --nm-control-height-md: 40px;
+  --nm-focus-ring: 0 0 0 3px rgb(75 124 243 / 18%);
+  --nm-motion-fast: 160ms;
+  --nm-motion-normal: 240ms;
+}
+[data-theme="dark"], .theme-dark {
+  --nm-color-bg: #101522;
+  --nm-color-surface: #181f31;
+  --nm-color-surface-muted: #202a40;
+  --nm-color-text: #f2f5fc;
+  --nm-color-text-muted: #9da9c0;
+  --nm-color-border: #303b55;
+  --nm-color-accent: #769aff;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --nm-motion-fast: 0ms; --nm-motion-normal: 0ms; }
+}

@@ -7,3 +7,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "NoteMeldAndroid"
 include(":app")
+include(":agent-runtime")
+include(":ui-core")

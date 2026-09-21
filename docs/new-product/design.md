@@ -3,7 +3,7 @@
 ## Product documentation and explanation mode
 
 `docs/new-product/config/feature-registry.json` is the configuration source for
-page features, architecture layers, data ownership, and open decisions. Each
+page features, architecture layers, data ownership, and integrated scope rules. Each
 feature records its description, API/capability mapping, storage tables, state
 transitions, implementation status, and explicit selector bindings. The
 prototype catalog provides two modes: Preview performs normal page interaction;
@@ -100,6 +100,12 @@ architecture, data design, and the complete feature registry.
 
 组件库只维护 Design Tokens、基础交互原语、状态语义和跨端适配规则，不维护 Session、Agent、Workspace、Wiki、设备管理等业务组件。基础原语的 HTML 参考实现必须能展示变体、状态、桌面/移动差异、键盘/触摸行为和错误/加载/空状态；各平台生产代码使用自己的原生实现，但遵循相同语义契约。
 
+## Workspace 与远程设备交互契约
+
+D01 的工作区按钮打开已注册目标列表，并提供“选择本地文件夹”；注册后显示名称、transport、路径引用、能力和在线状态。D03 顶部显示 Workspace 与 execution target，文件/产物面板只操作该目标范围。D09/APP04 提供工作区注册、删除、连接状态和权限策略入口。
+
+本地文件夹的创建、编辑、删除必须限定在注册 root 下；Agent 的写入、删除、执行仍受 Host policy 和 approval 控制。SSH remote 记录 host/user/port/key reference，不记录密码或私钥；WSL 仅 Windows Host 可用。远程设备不是 Workspace：C05 负责配对、Grant、撤销和在线设备，D03 负责远程会话上下文，Host 本机负责高风险审批。
+
 ## Cloud page contract
 
 - C01 是普通用户与管理员共用的认证入口；登录表单不提供角色选择，登录后的权限决定可见菜单和数据范围。
@@ -115,5 +121,7 @@ architecture, data design, and the complete feature registry.
 - C02 桌面宽度使用紧凑导航、主会话列表和次级运行摘要；窄宽度先隐藏次要元数据，不压缩会话标题的可读宽度。
 - 当前云端页面固定为六页：C01 登录页面、C02 AI 工作台、C03 云端会话、C04 人员管理、C05 设备管理、C06 设置页面。Workspace 不单独占用页面，而是作为 C02/C03 的上下文。
 - C04 仅在管理员权限返回时显示；C06 中的资源、异常和审计内容也按管理员权限显示，不新增独立的 C07 页面。
+- 一个 Cloud 服务端对应一个团队；模型配置是组织共享资源，默认选择为 `Auto`，按当前用户场景自动路由，用户可在会话内显式覆盖。当前后端仍按用户隔离模型时，页面必须标注未完成组织迁移，不能伪装共享成功。
+- 桌面端与移动端都按第三端设备处理：持续心跳同步在线状态；离线统一进入 `offline_readonly`，隐藏或禁用命令、审批、设备授权和其他远程写操作，恢复在线并完成同步后才恢复控制。
 - 云端工作台采用统一顶部导航 Tab：工作台、会话、设置；右上角展示当前用户信息，菜单提供修改用户信息和退出登录。C02 主体展示工作台会话列表，C03 展示单个云端会话。
 - C06 设置页左侧分类固定为通用、人员管理、设备管理；人员管理和设备管理仍保留独立页面内容，设置页分类用于进入对应管理区域。

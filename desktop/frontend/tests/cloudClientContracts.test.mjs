@@ -4,8 +4,13 @@ import test from 'node:test'
 
 const source = fs.readFileSync(new URL('../src/services/cloud.ts', import.meta.url), 'utf8')
 
+test('cloud client exposes real Workspace listing for preferences', () => {
+  assert.match(source, /listWorkspaces\(\)/)
+  assert.match(source, /GET', '\/v1\/workspaces'/)
+})
+
 test('cloud client exposes stateless cross-device control plane methods', () => {
-  for (const method of ['login', 'acceptInvitation', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'listModels', 'createModel', 'updateModel', 'deleteModel', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'createDeviceToken', 'startPairing', 'confirmPairing', 'listGrants', 'createShareToken', 'listShareTokens', 'revokeShareToken', 'sharedSnapshot', 'sharedEvents', 'sharedCommand', 'createSession', 'importSession', 'sendCommand', 'events', 'snapshot', 'archiveSession', 'restoreSession', 'copySession', 'deleteSession', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile', 'workspaceStats', 'createWorkspaceBackup', 'listWorkspaceBackups', 'restoreWorkspaceBackup']) {
+  for (const method of ['login', 'sendPasswordResetCode', 'resetPassword', 'acceptInvitation', 'rotateToken', 'revokeCurrentToken', 'listTokens', 'createToken', 'revokeToken', 'listUsers', 'listAccessRequests', 'reviewAccessRequest', 'createUser', 'updateUser', 'deleteUser', 'listAudits', 'capabilities', 'verifyCapabilities', 'configSyncSnapshot', 'configSyncChanges', 'listModels', 'createModel', 'updateModel', 'deleteModel', 'listDevices', 'registerDevice', 'rotateDeviceKey', 'heartbeat', 'requestDeviceChallenge', 'verifyDeviceChallenge', 'createDeviceToken', 'startPairing', 'confirmPairing', 'listGrants', 'createShareToken', 'listShareTokens', 'revokeShareToken', 'sharedSnapshot', 'sharedEvents', 'sharedCommand', 'createSession', 'importSession', 'sendCommand', 'events', 'snapshot', 'archiveSession', 'restoreSession', 'copySession', 'deleteSession', 'recoverCommand', 'listApprovals', 'resolveApproval', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'deleteWorkspaceFile', 'workspaceStats', 'createWorkspaceBackup', 'listWorkspaceBackups', 'restoreWorkspaceBackup']) {
     assert.match(source, new RegExp(`\\b${method}\\s*\\(`), `missing ${method}`)
   }
   assert.match(source, /\bme\s*\(/)
@@ -15,6 +20,16 @@ test('cloud client exposes stateless cross-device control plane methods', () => 
   assert.match(source, /class CloudClient/)
   assert.match(source, /audience: 'device-api'/)
   assert.match(source, /expires_in_seconds/)
+  assert.match(source, /interface CloudAttachment/)
+  assert.match(source, /attachments\?: CloudAttachment\[\]/)
+  assert.match(source, /authorization_mode: options\.authorization_mode/)
+})
+
+test('cloud config sync uses the canonical kind/key/operation wire shape', () => {
+  assert.match(source, /interface CloudConfigSyncChange[\s\S]*operation: 'set' \| 'delete'/)
+  assert.match(source, /changes: CloudConfigSyncChange\[\]/)
+  assert.match(source, /changes\.some\(\s*change => !change\.kind \|\| !change\.key/)
+  assert.doesNotMatch(source, /deleted\?: boolean/)
 })
 
 test('cloud client exposes injectable token storage without localStorage coupling', () => {
@@ -23,6 +38,15 @@ test('cloud client exposes injectable token storage without localStorage couplin
   assert.match(source, /persistToken/)
   assert.doesNotMatch(source, /localStorage/)
   assert.match(source, /validateCloudBaseUrl/)
+})
+
+test('cloud client replacement preserves a token during secure storage bootstrap', () => {
+  assert.match(source, /getToken\(\)/)
+  assert.match(source, /persistCurrentToken\(\)/)
+  const cloudPage = fs.readFileSync(new URL('../src/pages/CloudPage/index.tsx', import.meta.url), 'utf8')
+  assert.match(cloudPage, /const currentToken = client\.getToken\(\)/)
+  assert.match(cloudPage, /new CloudClient\(baseUrl, currentToken \?\? undefined, undefined, store\)/)
+  assert.match(cloudPage, /nextClient\.persistCurrentToken\(\)/)
 })
 
 test('web token store uses encrypted IndexedDB rather than plaintext browser storage', () => {
@@ -49,7 +73,7 @@ test('web remote control persists an Ed25519 device key and registers its public
   assert.match(keyStore, /device-ed25519-keypair/)
   assert.match(keyStore, /crypto\.subtle\.sign/)
   assert.match(cloudPage, /openDeviceKeyMaterial/)
-  assert.match(cloudPage, /registerDevice\(deviceId, 'web', 'Web browser', deviceKeys\.publicKey\)/)
+  assert.match(cloudPage, /registerDevice\(controllerDeviceId,[\s\S]*deviceKeys\.publicKey/)
 })
 
 test('web relay protocol validates canonical encrypted frame metadata', () => {
@@ -77,7 +101,12 @@ test('web remote handshake matches the cross-platform signed X25519 contract', (
 
 test('web remote client performs LAN proof and sends encrypted command frames', () => {
   const source = fs.readFileSync(new URL('../src/services/lanRemoteClient.ts', import.meta.url), 'utf8')
+  const connection = fs.readFileSync(new URL('../src/services/connectionStrategy.ts', import.meta.url), 'utf8')
   for (const token of ['connectLanRemoteClient', 'type: \'hello\'', 'type: \'proof\'', 'openRelayWebSocket', 'encryptRemoteFrame', 'decryptRemoteFrame', 'LAN handshake timed out', 'authority_epoch']) assert.match(source, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), token)
+  assert.match(connection, /relay_ready/)
+  assert.match(connection, /next_sequence/)
+  assert.match(source, /nextSequence/)
+  assert.match(source, /sequence = Number\(socketResult\.nextSequence\) - 1/)
 })
 
 test('connection strategy orders LAN candidates before cloud relay fallback', () => {
@@ -96,7 +125,8 @@ test('connection strategy orders LAN candidates before cloud relay fallback', ()
   assert.match(source, /notemeld\.lan\.v1/)
   assert.match(source, /openRelayWebSocket/)
   assert.match(source, /parsed\.search/)
-  assert.match(source, /new WebSocket\(candidate\.url, protocols\)/)
+  assert.match(source, /searchParams\.set\('device_id', controllerDeviceId\)/)
+  assert.match(source, /new WebSocket\(url\.toString\(\), protocols\)/)
   const crypto = fs.readFileSync(new URL('../src/services/relayCrypto.ts', import.meta.url), 'utf8')
   assert.match(crypto, /AES-GCM/)
   assert.match(crypto, /additionalData/)

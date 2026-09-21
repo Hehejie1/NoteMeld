@@ -1,6 +1,6 @@
 # Product Rules
 
-更新时间：2026-08-19
+更新时间：2026-09-19
 
 本文记录已经确认的产品硬规则。任何开发者或 Agent 修改需求、方案、代码、接口、数据结构前，都必须确认不会破坏这些规则。
 
@@ -22,6 +22,12 @@
 - N05 的 MCP Note create/link/read/search 与 CLI 关联 Note 必须复用 Agent Host capability registry 和 N02 Note authority；外部入口不得直接写 SQLite 或 Agent Event。桌面插件/任务诊断请求服从 Backend ready gate。
 - 外部链接转 Note 只能通过已安装并校验的 `official.link-note` capability；插件通过 host port 使用现有字幕优先、下载、转写、截图、多源总结、网页抓取、任务状态和降级能力，不直接写 Conversation、Agent Event 或内部 SQLite。
 - 危险或未知 Agent 工具必须由 SDK 在原 Turn 内发起 approval 并暂停；UI/CLI 只能通过 Agent v1 resolve 同一个 native 暂停点。HTTP 成功不得伪装 runtime 已恢复，拒绝不得执行受保护工具，approval 事件与 `waiting_approval/running` 必须进入既有 Conversation/Turn/Event 链。
+- 一个 Cloud 服务端对应一个团队/组织。Cloud 模型目录与默认策略属于组织共享资源：组织成员添加的模型在组织内可见；使用时默认由 `Auto` 根据用户场景选择，用户也可为当前会话显式指定模型。连接 Cloud 的桌面与移动端发送时只能选择该目录；各端本地 Provider 的 API Key 继续由本端独立保管，不进入 Cloud 目录、跨端同步或扫码材料。当前按 `user_id` 隔离的 Cloud `models` schema/API 是待迁移现状，不能被文档或 UI 宣称为组织共享已经实现。
+- 本地开发验证码通过 `.env` 的 `NOTEMELD_CLOUD_DEV_OTP_CODE` 配置，默认 `888888`；生产必须关闭开发验证码模式，通过 SMTP 邮件适配器发送，并且响应不得回传验证码。
+- Workspace 备份在生产环境使用 S3 兼容对象存储；Cloud SQLite 只保存对象键、大小和时间索引。用户偏好按用户保存；组织级设置按组织保存，并在读取有效配置时覆盖对应默认值。
+- 桌面端与移动端对 Cloud 都是第三端设备。在线设备持续发送心跳，Cloud 将在线状态同步给同组织其他已连接设备；任一设备离线均进入 `offline_readonly`，禁止命令、审批、设备授权和其他远程写操作，恢复在线且完成同步后才恢复控制。
+- 扫码添加 Cloud 连接或模型配置只允许短时、一次性材料；它只服务当前端添加流程，不能携带或持久化模型 API Key、长期 Token、设备私钥或会话密钥。
+- 成员角色暂时只读。未来开放升降级时必须使用独立接口、二次确认、最小管理员保护和完整审计，不能复用普通成员资料保存动作。
 
 ## 不允许被改坏的行为
 
@@ -49,6 +55,7 @@
 - Wiki 图谱和实体/概念页读取 materialized Wiki 文件和 `graph.json`。
 - usage 统计来自 `model_usage_records`，按 provider、model、phase、platform、task_id 等维度聚合。
 - LLM 实际运行只能选择用户已添加的模型；`models` 表中的上下文长度、图像支持和流式支持是权威配置，能力探测缓存不得覆盖用户保存值。
+- Cloud 会话及已连接 Cloud 的本地端只从组织共享模型目录选择；端侧本地模型及其 API Key 仍是独立本地配置，不参与目录同步。
 - 本地模型目录只用于添加时给出可修改建议；未命中、缺失或损坏必须安全回退 `4096 / false / true`。用户保存的端点实际值始终优先，不得用官网或模型文件的理论窗口自动覆盖。
 - 不支持流式的模型仍须对现有流式调用方可用；后端将非流式结果转换为兼容事件，并保证单次 Provider 请求只记录一条 usage。
 - 任何含图片内容的 LLM 请求必须在 Provider 请求前以用户保存的 `supports_vision` 做最终闸门；探测缓存的 `true` 不能绕过保存的 `false`，探测的 `false` 也不能覆盖保存的 `true`。不支持时返回可分类的 vision capability 错误；OCR 降级不在当前运行时层实现。

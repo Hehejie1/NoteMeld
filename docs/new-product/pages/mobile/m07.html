@@ -1,1 +1,106 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld</title><link rel="stylesheet" href="../../assets/page.css"></head><body data-page="M07"><div class="page-shell"><header class="page-top"><h1>NoteMeld</h1><div class="meta"><a class="button" href="#" data-go="D01">桌面端</a><a class="button" href="#" data-go="C01">云端</a><a class="button" href="#" data-go="M01">移动端</a></div></header><main class="page-main"><section class="hero"><div class="eyebrow" id="eyebrow"></div><h2 id="title"></h2><p class="muted" id="desc"></p><div class="chat"><div class="bubble user" id="primaryText"></div><div class="bubble"><strong>NoteMeld Agent</strong><p class="muted">页面内容将在这里展示具体功能、状态和交互。</p><div class="composer">输入框 / 页面操作区域</div></div></div></section><aside class="side"><h3 id="primaryTitle"></h3><div class="card"><div class="state"><span>●</span>当前状态</div><p>页面主要内容、权限、文件、应用或设备信息</p><div class="metric"><span>数据范围</span><strong>当前 workspace</strong></div><div class="metric"><span>下一步</span><strong>查看详情</strong></div></div></aside></main></div><script src="../../assets/page.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>NoteMeld · 模型设置</title>
+  <link rel="stylesheet" href="../../assets/mobile.css">
+  <link rel="stylesheet" href="../../assets/mobile-model-settings.css">
+</head>
+<body class="mobile-preview" data-page="M07">
+  <div class="iphone-shell"><div class="iphone-island"></div>
+
+    <!-- 视图一：模型设置列表 -->
+    <main class="mobile-screen model-settings-screen" data-view="list">
+      <header class="mobile-header model-settings-header">
+        <button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button>
+        <strong>模型设置</strong>
+        <span class="model-header-actions"><button class="icon-only" data-scan-open aria-label="扫一扫导入模型"><i data-icon="scan-line"></i></button><button class="icon-only" data-provider-open aria-label="添加模型"><i data-icon="plus"></i></button></span>
+      </header>
+      <p class="model-list-note">按服务商管理模型 · 原型配置仅当前页面内存有效；正式版使用端侧 SQLite + 系统密钥库长期保存</p>
+      <div class="model-list-scroll" data-model-groups aria-live="polite"></div>
+    </main>
+
+    <!-- 视图二：添加/编辑模型（独立页面） -->
+    <main class="mobile-screen model-add-page" data-view="add" hidden>
+      <header class="mobile-header model-settings-header">
+        <button class="icon-only" data-add-back aria-label="返回模型列表"><i data-icon="chevron-left"></i></button>
+        <strong data-form-title>添加模型</strong>
+        <span class="model-header-actions"><button class="icon-only" data-add-save aria-label="保存"><i data-icon="check"></i></button></span>
+      </header>
+
+      <div class="model-add-scroll">
+        <p class="model-fetch-status">先选择服务商，自动带出协议与接口地址；再填写 API 密钥、拉取并多选模型。</p>
+
+        <!-- 服务商选择（select：点击底部弹窗） -->
+        <label class="model-field">服务商
+          <button type="button" class="model-select-field" data-vendor-select aria-haspopup="dialog">
+            <span data-vendor-select-label>请选择服务商</span>
+            <i data-icon="chevron-right"></i>
+          </button>
+        </label>
+
+        <!-- 配置名称：服务商决定，只读 -->
+        <label class="model-field">配置名称
+          <input name="displayName" data-display-name readonly autocomplete="off" placeholder="由服务商决定">
+        </label>
+
+        <!-- Base URL：服务商决定，只读 -->
+        <label class="model-field">Base URL
+          <input name="baseUrl" data-base-url readonly autocomplete="off" placeholder="由服务商决定">
+        </label>
+
+        <p class="model-readonly-note">服务商、名称与接口地址由所选预设决定，如需自定义请选择「自定义」。</p>
+        <p class="model-url-note" data-url-note hidden></p>
+
+        <!-- 协议（只读展示） -->
+        <p class="model-proto-line" data-protocol-line>协议 · -</p>
+
+        <!-- API 密钥 -->
+        <label class="model-field" data-key-field>API 密钥<span class="field-hint"><button type="button" class="model-key-toggle" data-key-toggle aria-label="切换密钥可见性"><i data-icon="eye"></i><span data-key-toggle-text>显示</span></button></span>
+          <input name="apiKey" data-api-key type="password" autocomplete="off" placeholder="填写 API Key">
+        </label>
+
+        <!-- 拉取 + 测试 -->
+        <div class="model-button-row">
+          <button type="button" data-fetch-models><i data-icon="download-cloud"></i>拉取模型</button>
+          <button type="button" data-test-model><i data-icon="plug-zap"></i>测试连接</button>
+        </div>
+        <p class="model-fetch-status" data-fetch-status role="status">填写密钥后拉取模型；Anthropic 与 Ollama 无需手填 Key。</p>
+
+        <!-- 模型多选 -->
+        <div class="model-field-head"><span>选择模型（可多选）</span><button type="button" class="model-check-all" data-check-all>全选</button></div>
+        <div class="model-multi-select" data-model-options></div>
+
+        <button type="button" class="model-save-bottom" data-add-save-bottom>保存模型</button>
+      </div>
+    </main>
+
+    <div class="sheet-backdrop" data-sheet-backdrop hidden></div>
+
+    <!-- 厂商选择底部弹窗：固定高度、上下滚动 -->
+    <section class="mobile-sheet vendor-pick-sheet" data-vendor-pick hidden aria-label="选择服务商">
+      <div class="sheet-handle"></div>
+      <div class="sheet-heading"><div><span class="sheet-eyebrow">新建配置</span><h2>选择服务商</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="vendor-pick-list" data-vendor-pick-list></div>
+    </section>
+
+    <section class="mobile-sheet model-actions-sheet" data-actions-sheet hidden aria-label="模型操作"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-action-vendor></span><h2 data-action-title>模型操作</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div><button data-model-edit><i data-icon="pencil"></i>编辑模型<i data-icon="chevron-right"></i></button><button data-model-share><i data-icon="share-2"></i>分享给其他端<i data-icon="chevron-right"></i></button><button class="danger" data-model-delete><i data-icon="trash-2"></i>删除模型<i data-icon="chevron-right"></i></button></section>
+    <section class="mobile-sheet model-share-sheet" data-share-sheet hidden aria-label="分享模型配置"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>分享模型配置</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="share-qr" data-share-qr><div class="qr-placeholder"><i data-icon="qr-code"></i></div></div>
+      <p class="model-fetch-status">扫码或复制信息到其他端导入。分享内容仅含厂商、地址与模型清单，<strong>不包含 API 密钥</strong>，导入后需自行填写。</p>
+      <label class="share-uri-label">分享信息<input data-share-uri readonly></label>
+      <button type="button" class="model-test" data-share-copy><i data-icon="copy"></i>复制分享信息</button>
+    </section>
+    <section class="mobile-sheet model-import-sheet" data-import-sheet hidden aria-label="导入模型配置"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>导入模型配置</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <textarea data-import-text rows="5" placeholder="粘贴 notemeld://model-add?d=... 链接或分享 JSON"></textarea>
+      <p class="model-fetch-status" data-import-status role="status"></p>
+      <button type="button" class="model-save" data-import-parse>解析并填入表单</button>
+    </section>
+    <section class="mobile-modal model-delete-modal" data-delete-modal hidden role="dialog" aria-modal="true" aria-labelledby="delete-model-title"><div class="modal-card"><span class="modal-icon"><i data-icon="trash-2"></i></span><h2 id="delete-model-title">删除模型？</h2><p>确定删除 <strong data-delete-name></strong> 的配置吗？此操作不可撤销。</p><div class="modal-actions"><button data-delete-cancel>取消</button><button class="danger" data-delete-confirm>删除模型</button></div></div></section>
+    <section class="mobile-sheet model-scan-sheet" data-scan-sheet hidden aria-label="扫码导入模型"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>扫一扫</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div><div class="scan-view"><i data-icon="scan-line"></i><p data-scan-status role="status">扫描其他端「分享模型配置」二维码，将自动填入厂商、地址与模型清单（不含 API 密钥）。也可识别设备配对码。</p><video data-scan-video playsinline muted hidden></video></div><button class="sheet-action" data-scan-start>开始扫描</button></section>
+    <div class="toast" data-model-toast role="status" hidden></div>
+  </div>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/model-vendor-registry.js"></script><script src="../../assets/mobile.js"></script><script src="../../assets/mobile-model-settings.js"></script>
+</body>
+</html>

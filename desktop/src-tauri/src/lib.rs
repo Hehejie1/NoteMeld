@@ -160,15 +160,18 @@ fn desktop_backend_port() -> u16 {
     8483
 }
 
-fn ensure_fixed_backend_port_available() -> Result<u16, String> {
-    let port = desktop_backend_port();
+fn ensure_backend_port_available(port: u16) -> Result<u16, String> {
     let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|err| {
         format!(
-            "NoteMeld MCP port {port} is unavailable: {err}. Check the occupying process with `lsof -i :8483`."
+            "NoteMeld MCP port {port} is unavailable: {err}. Check the occupying process with `lsof -i :{port}`."
         )
     })?;
     drop(listener);
     Ok(port)
+}
+
+fn ensure_fixed_backend_port_available() -> Result<u16, String> {
+    ensure_backend_port_available(desktop_backend_port())
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -537,7 +540,7 @@ pub fn run() {
 mod tests {
     #[cfg(unix)]
     use super::{
-        desktop_backend_port, ensure_executable_permissions, ensure_fixed_backend_port_available,
+        desktop_backend_port, ensure_backend_port_available, ensure_executable_permissions,
         normalize_cloud_base_url, optional_packaged_ffmpeg_dir, packaged_ffmpeg_is_usable,
         validate_cloud_base_url,
     };
@@ -664,13 +667,17 @@ mod tests {
 
     #[test]
     fn occupied_fixed_backend_port_error_mentions_mcp_port() {
-        let listener = TcpListener::bind(("127.0.0.1", 8483))
-            .expect("test should reserve fixed NoteMeld MCP port");
+        let listener = TcpListener::bind(("127.0.0.1", 0))
+            .expect("test should reserve an ephemeral NoteMeld MCP port");
+        let port = listener
+            .local_addr()
+            .expect("ephemeral listener should expose its port")
+            .port();
 
-        let error = ensure_fixed_backend_port_available().expect_err("occupied port should fail");
+        let error = ensure_backend_port_available(port).expect_err("occupied port should fail");
 
         drop(listener);
-        assert!(error.contains("8483"));
-        assert!(error.contains("lsof -i :8483"));
+        assert!(error.contains(&port.to_string()));
+        assert!(error.contains(&format!("lsof -i :{port}")));
     }
 }

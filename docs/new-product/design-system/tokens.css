@@ -54,6 +54,10 @@
   --nm-shadow-popover: 0 18px 50px rgb(30 42 68 / 12%);
   --nm-motion-fast: 160ms;
   --nm-motion-normal: 240ms;
+  --nm-motion-slow: 320ms;
+  --nm-motion-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --nm-motion-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --nm-motion-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
 }
 
 /* Platforms can opt into the same semantic contract with their own surface values. */
@@ -77,5 +81,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --nm-motion-fast: 0ms; --nm-motion-normal: 0ms; }
+  :root { --nm-motion-fast: 0ms; --nm-motion-normal: 0ms; --nm-motion-slow: 0ms; }
 }

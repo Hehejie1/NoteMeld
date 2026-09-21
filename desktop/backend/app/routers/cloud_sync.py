@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
@@ -48,6 +50,15 @@ def bootstrap_host(payload: HostBootstrapRequest, request: Request):
         public_key=public_key,
         lan_endpoints=payload.lan_endpoints,
     )
+    challenge = client.request_device_challenge(payload.device_id)["challenge"]
+    proof_message = b"notemeld-device-proof-v1\0" + payload.device_id.encode("utf-8") + b"\0" + challenge.encode("utf-8")
+    signature = base64.urlsafe_b64encode(Ed25519PrivateKey.from_private_bytes(identity.private_key).sign(proof_message)).decode("ascii").rstrip("=")
+    client.verify_device_challenge(challenge, signature, payload.device_id)
+    client.create_device_token(
+        ["device.read", "device.write", "grant.read", "session.read"],
+        device_id=payload.device_id,
+        revoke_source_token=False,
+    )
     mailbox_path = Path(data_root()) / "cloud-sync" / "mailbox.sqlite"
     runtime = CloudSyncHostRuntime(
         cloud_client=client,
@@ -70,6 +81,15 @@ def stop_host(request: Request):
     runtime.close()
     request.app.state.cloud_sync_runtime = None
     return {"status": "stopped"}
+
+
+@router.get("/host/status")
+def host_status(request: Request):
+    """Expose only the running Host identity fingerprint, never credentials."""
+    runtime = getattr(request.app.state, "cloud_sync_runtime", None)
+    if runtime is None:
+        return {"status": "stopped", "device_id": None, "public_key_sha256": None}
+    return runtime.host_status()
 
 
 @router.post("/host/relay/{session_id}/start")

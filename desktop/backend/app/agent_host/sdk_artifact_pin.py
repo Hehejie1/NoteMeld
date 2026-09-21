@@ -13,7 +13,8 @@ TEST_RUN_ID = "t12-local"
 # These are the S08 handoff identity pins plus the desktop bundle consumed by
 # NoteMeld. Runtime/platform waivers do not waive identity verification.
 ARTIFACT_MANIFEST_SHA256 = {
-    "x86_64-apple-darwin": "c6dc368cd40cdfdb4af90646a93037d415645a8ba01f145098de3eaad1ac16c2",
+    "x86_64-apple-darwin": "45b28fa761c218acc2bde1817cf07cc6025208cb55999ed24b89cb4886c6eb3c",
+    "aarch64-apple-darwin": "82da881553b5cb269a923c032bcdf94f171419f7926d342ea5f06929e588bd3e",
     "aarch64-apple-ios": "e381e742a8c7916dc7e78756b69b8e5270f9f140d70e62605da9f6759e8abadf",
     "x86_64-apple-ios": "e8352e225a3ecb8add97d463e97f3547ac42a3b1376a14a3638f4a054aea8c84",
     "aarch64-linux-android": "aeb6065624c9f0935688aab3d49a2d0c4797ea349f09cb06472f3e7dd87681fe",
@@ -24,17 +25,27 @@ ARTIFACT_MANIFEST_SHA256 = {
 }
 
 NATIVE_LIBRARY_SHA256 = {
-    "x86_64-apple-darwin": "8683655f8982847752a2372a37fc7bf3f83a082d390dc9a4f8a954cfb65274ff",
+    "x86_64-apple-darwin": "8ebe0a83d8ec3a191e5897b7f8ef4016f362dcbfdc4543ae05c28892f1784c9c",
+    "aarch64-apple-darwin": "6be8c59d44668361ee4f1cfcc82efba19233e8707c524eda1c93d677f35aecfd",
+}
+
+# PyInstaller rewrites the install name of bundled Mach-O libraries from the
+# build-tree path to @rpath while assembling a frozen sidecar.  The frozen
+# sidecar must therefore verify the deterministic post-packaging digest, while
+# standalone SDK consumers continue to verify NATIVE_LIBRARY_SHA256 above.
+PACKAGED_NATIVE_LIBRARY_SHA256 = {
+    "x86_64-apple-darwin": "57d1d1bdf7732b9137950a4e14d5032cd96d56e27b37f19a61eae66b5ad4cd5c",
 }
 
 PYTHON_WHEEL_SHA256 = {
-    "x86_64-apple-darwin": "fc2aeef780af95d5ed3b242484e97936a3780aec946e929523c128512584f19a",
+    "x86_64-apple-darwin": "912d7df566dbacd239a32b5afd06c1daf48d64a61260aab9ae718754416407ed",
+    "aarch64-apple-darwin": "f2d2f1bbc5cfd125c449bc8786b1e79e690f6e90c067ab64326675926d4c280d",
 }
 
 SUPPORTED_CONFORMANCE = {
     "python-ctypes": "verified",
     "swift-ios-device": "verified",
     "swift-ios-simulator": "verified",
-    "kotlin-android": "waived/skipped",
+    "kotlin-android": "verified",
     "harmony-har-hap": "waived/skipped",
 }

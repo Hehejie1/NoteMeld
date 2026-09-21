@@ -5,6 +5,7 @@ import hashlib
 import importlib
 import json
 import os
+import sys
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.agent_host.sdk_artifact_pin import (
     ABI_VERSION as PINNED_ABI_VERSION,
     ARTIFACT_MANIFEST_SHA256,
     NATIVE_LIBRARY_SHA256,
+    PACKAGED_NATIVE_LIBRARY_SHA256,
     PYTHON_WHEEL_SHA256,
     SCHEMA_VERSION as PINNED_SCHEMA_VERSION,
     SDK_SOURCE_COMMIT,
@@ -92,7 +94,12 @@ class AgentSdkRuntime:
                 raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
 
             native_library = cls._probe_native_artifact(binding, requested, contract)
-            expected_native = NATIVE_LIBRARY_SHA256.get(target)
+            packaged = requested == "packaged" and bool(getattr(sys, "frozen", False))
+            expected_native = (
+                PACKAGED_NATIVE_LIBRARY_SHA256.get(target)
+                if packaged
+                else NATIVE_LIBRARY_SHA256.get(target)
+            )
             if expected_native is None or native_library is None:
                 raise AgentSdkUnavailable("Agent SDK artifact hash mismatch")
             if cls._sha256(Path(native_library)) != expected_native:

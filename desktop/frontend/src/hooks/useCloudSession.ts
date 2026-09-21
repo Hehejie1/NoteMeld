@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type CloudClient from '../services/cloud'
+import CloudClient, { CloudClientError } from '../services/cloud'
 import { CloudSessionController, CloudSessionState } from '../services/cloudSessionController'
 
 export function useCloudSession(client: CloudClient, sessionId?: string) {
@@ -9,8 +9,22 @@ export function useCloudSession(client: CloudClient, sessionId?: string) {
   useEffect(() => {
     if (!sessionId) return
     void controller.open(sessionId)
-    const timer = window.setInterval(() => { void controller.refreshEvents().catch(() => undefined) }, 5000)
+    let polling = true
+    const timer = window.setInterval(() => {
+      if (!polling) return
+      void controller.refreshEvents().catch(error => {
+        // A session can be deleted or archived by another Cloud client. Stop
+        // polling a terminal 404 instead of producing a permanent Network
+        // error storm against a stale selection.
+        if (error instanceof CloudClientError && error.statusCode === 404) {
+          polling = false
+          window.clearInterval(timer)
+          controller.reset()
+        }
+      })
+    }, 5000)
     return () => {
+      polling = false
       window.clearInterval(timer)
       controller.reset()
     }

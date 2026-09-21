@@ -1,6 +1,9 @@
 import './App.css'
 import './newProductDesktop.css'
 import './newProductPolish.css'
+import './desktopShellPolish.css'
+import './desktopShellCompliance.css'
+import './hostApprovalInbox.css'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, HashRouter, Navigate, Outlet, Routes, Route, useLocation, useParams } from 'react-router-dom'
 import { useTaskPolling } from '@/hooks/useTaskPolling.ts'
@@ -13,6 +16,7 @@ import { isDemoMode } from '@/demo/mode'
 import DemoControlBar from '@/demo/DemoControlBar'
 import { FeatureGuideProvider } from '@/demo/FeatureGuideContext'
 import { FeatureGuideDrawer } from '@/demo/FeatureGuideDrawer'
+import DesktopCloudHostBootstrap from '@/components/DesktopCloudHostBootstrap'
 
 // 工作区页面使用 React.lazy 按需加载，避免 Markdown/Markmap 等重依赖阻塞 /new 首屏
 const HomePage = lazy(() => import('./pages/HomePage/Home.tsx'))
@@ -154,6 +158,7 @@ const WorkspaceApp = () => {
         onRetry={handleRetry}
         onClose={handleClose}
       />
+      <DesktopCloudHostBootstrap backendReady={backendReady} />
       {isDemoMode() && <DemoControlBar />}
       {isDemoMode() && <FeatureGuideDrawer />}
     </>

@@ -60,6 +60,7 @@ export async function connectLanRemoteClient(options: RemoteClientOptions): Prom
     options.sessionId,
     options.hostConnectivity,
     options.relayToken,
+    options.controllerDeviceId,
     3_000,
     socket => {
       transport = 'lan'
@@ -72,6 +73,10 @@ export async function connectLanRemoteClient(options: RemoteClientOptions): Prom
   if (handshakePromise) await handshakePromise
   let sessionKey = options.sessionKey
   let sequence = 0
+  if (transport === 'relay') {
+    if (!Number.isSafeInteger(socketResult.nextSequence) || Number(socketResult.nextSequence) < 1) throw new Error('Relay sequence cursor is unavailable')
+    sequence = Number(socketResult.nextSequence) - 1
+  }
   if (transport === 'lan' && !sessionKey) {
     if (!options.hostPublicKey) throw new Error('LAN Host public key is required for E2EE handshake')
     const handshake = await createHandshake(options.keyMaterial, options.sessionId, options.controllerDeviceId, options.hostDeviceId)
@@ -81,6 +86,7 @@ export async function connectLanRemoteClient(options: RemoteClientOptions): Prom
     sessionKey = await deriveHandshakeKey(handshake, peer)
   } else if (transport === 'relay' && !sessionKey) {
     if (!options.hostPublicKey) throw new Error('Host public key is required for Relay E2EE handshake')
+    sequence += 1
     const handshake = await createHandshake(options.keyMaterial, options.sessionId, options.controllerDeviceId, options.hostDeviceId)
     const nonce = crypto.getRandomValues(new Uint8Array(12))
     const handshakeFrame: RemoteFrame = {
@@ -88,7 +94,7 @@ export async function connectLanRemoteClient(options: RemoteClientOptions): Prom
       session_id: options.sessionId,
       sender_device_id: options.controllerDeviceId,
       recipient_device_id: options.hostDeviceId,
-      sequence: 1,
+      sequence,
       frame_id: crypto.randomUUID(),
       authority_epoch: authorizedEpoch,
       frame_type: 'handshake',
@@ -100,7 +106,6 @@ export async function connectLanRemoteClient(options: RemoteClientOptions): Prom
     const peerPayload = JSON.parse(new TextDecoder().decode(decode(String(peerFrame.ciphertext)))) as HandshakeEnvelope
     await verifyHandshake(peerPayload, options.sessionId, options.hostDeviceId, options.controllerDeviceId, options.hostPublicKey)
     sessionKey = await deriveHandshakeKey(handshake, peerPayload)
-    sequence = 1
   }
   if (!sessionKey) throw new Error('remote session key is unavailable')
   const pending = new Map<string, { resolve: (value: Record<string, unknown>) => void; reject: (reason: Error) => void }>()

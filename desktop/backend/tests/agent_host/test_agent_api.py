@@ -7,6 +7,7 @@ import pytest
 from app.routers import agent
 from app.agent_host.host import ApprovalControlError
 from app.services import agent_store
+from app.security.session_token import require_session_token
 from fastapi import HTTPException
 
 
@@ -16,6 +17,12 @@ def test_agent_router_is_versioned_and_exposes_core_commands():
     assert "/agent/v1/sessions/{session_id}/turns" in paths
     assert "/agent/v1/turns/{turn_id}/events" in paths
     assert "/agent/v1/sessions/{session_id}/model-preference" in paths
+    approval_routes = [route for route in agent.router.routes if route.path.startswith("/agent/v1/approvals")]
+    assert len(approval_routes) == 2
+    assert all(
+        any(dependency.call is require_session_token for dependency in route.dependant.dependencies)
+        for route in approval_routes
+    )
 
 
 def test_events_endpoint_replays_then_waits_until_terminal(monkeypatch):
@@ -170,6 +177,22 @@ def test_resolve_approval_routes_to_native_host(monkeypatch):
     result = agent.resolve_approval("approval-1", agent.ApprovalRequest(decision="approve"))
     assert result["data"] == {"approval_id": "approval-1", "decision": "approve", "accepted": True}
     assert calls == [("approval-1", "approve")]
+
+
+def test_list_pending_approvals_routes_to_durable_host_entry(monkeypatch):
+    expected = [{"approval_id": "approval-1", "summary": "write"}]
+    calls = []
+    monkeypatch.setattr(
+        agent._entry,
+        "list_pending_approvals",
+        lambda *, limit: calls.append(limit) or expected,
+    )
+
+    result = agent.list_pending_approvals(limit=12)
+
+    assert result["data"] == expected
+    assert calls == [12]
+    assert "/agent/v1/approvals" in {route.path for route in agent.router.routes}
 
 
 def test_resolve_approval_has_stable_invalid_unknown_and_duplicate_errors(monkeypatch):

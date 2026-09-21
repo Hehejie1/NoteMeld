@@ -1,0 +1,27 @@
+{
+  "schema": "notemeld.visual-matrix.v1",
+  "cases": [
+    { "id": "C01-cloud-login", "platform": "web", "page": "cloud", "case": "login", "maxDiffPixelRatio": 0.01 },
+    { "id": "C01-cloud-access-request", "platform": "web", "page": "cloud", "case": "access-request", "maxDiffPixelRatio": 0.01 },
+    { "id": "C02-cloud-workbench-wide", "platform": "web", "page": "cloud", "case": "workbench-wide", "maxDiffPixelRatio": 0.01 },
+    { "id": "C03-cloud-session-mobile", "platform": "web", "page": "cloud", "case": "session-mobile", "maxDiffPixelRatio": 0.01 },
+    { "id": "C04-cloud-people", "platform": "web", "page": "cloud", "case": "people", "maxDiffPixelRatio": 0.01 },
+    { "id": "C05-cloud-devices", "platform": "web", "page": "cloud", "case": "devices", "maxDiffPixelRatio": 0.01 },
+    { "id": "C06-cloud-settings-narrow", "platform": "web", "page": "cloud", "case": "settings-narrow", "maxDiffPixelRatio": 0.01 },
+    { "id": "D01-desktop-new-session", "platform": "macos", "page": "desktop", "case": "new-session", "maxDiffPixelRatio": 0.01 },
+    { "id": "D03-desktop-session-detail", "platform": "macos", "page": "desktop", "case": "session-detail", "maxDiffPixelRatio": 0.01 },
+    { "id": "D06-desktop-capability-center", "platform": "macos", "page": "desktop", "case": "capability-center", "maxDiffPixelRatio": 0.01 },
+    { "id": "D09-desktop-settings", "platform": "macos", "page": "desktop", "case": "settings", "maxDiffPixelRatio": 0.01 },
+    { "id": "APP01-desktop-notes", "platform": "macos", "page": "applications", "case": "notes", "maxDiffPixelRatio": 0.01 },
+    { "id": "APP02-desktop-learning", "platform": "macos", "page": "applications", "case": "learning", "maxDiffPixelRatio": 0.01 },
+    { "id": "APP03-desktop-monitoring", "platform": "macos", "page": "applications", "case": "monitoring", "maxDiffPixelRatio": 0.01 },
+    { "id": "APP04-desktop-runtime", "platform": "macos", "page": "applications", "case": "runtime", "maxDiffPixelRatio": 0.01 },
+    { "id": "M01-mobile-home", "platform": "android", "page": "mobile", "case": "home", "maxDiffPixelRatio": 0.01 },
+    { "id": "M02-mobile-session", "platform": "android", "page": "mobile", "case": "session", "maxDiffPixelRatio": 0.01 },
+    { "id": "M02-mobile-offline", "platform": "android", "page": "mobile", "case": "offline", "maxDiffPixelRatio": 0.01 },
+    { "id": "M03-mobile-settings", "platform": "android", "page": "mobile", "case": "settings", "maxDiffPixelRatio": 0.01 },
+    { "id": "M04-mobile-memory", "platform": "android", "page": "mobile", "case": "memory", "maxDiffPixelRatio": 0.01 },
+    { "id": "M05-mobile-font", "platform": "android", "page": "mobile", "case": "font", "maxDiffPixelRatio": 0.01 },
+    { "id": "M06-mobile-storage", "platform": "android", "page": "mobile", "case": "storage", "maxDiffPixelRatio": 0.01 }
+  ]
+}

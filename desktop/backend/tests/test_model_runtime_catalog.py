@@ -172,6 +172,8 @@ def test_defaults_api_returns_wrapper_and_normalized_catalog_result():
         "data": {
             "model_name": "deepseek-r1:7b",
             "context_window_tokens": 131072,
+            "max_input_tokens": 3072,
+            "max_output_tokens": 1024,
             "supports_vision": False,
             "supports_stream": True,
             "source": "catalog",

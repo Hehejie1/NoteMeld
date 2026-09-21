@@ -1,0 +1,17 @@
+{
+  "name": "@notemeld/ui-contract",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "files": ["src", "dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

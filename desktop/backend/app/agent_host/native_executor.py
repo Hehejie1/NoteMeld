@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 from typing import Any, Callable
 
@@ -35,6 +36,27 @@ _CONTENT_CONVERSION_TOOLS = [
     "audio:transcribe",
     "video:frames",
 ]
+
+
+def _approval_timeout_seconds() -> int | None:
+    """Read an optional Host-wide SDK approval timeout override.
+
+    The canonical runtime still owns the timer and terminal semantics.  This
+    knob exists so signed RC field gates can exercise expiry without waiting
+    the five-minute production default.
+    """
+    raw = os.getenv("NOTEMELD_AGENT_APPROVAL_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid Agent approval timeout override")
+        return None
+    if not 1 <= value <= 86_400:
+        logger.warning("Ignoring out-of-range Agent approval timeout override")
+        return None
+    return value
 
 
 def _conversion_discovery_names(content: str, attachments: list[dict[str, Any]] | None) -> list[str]:
@@ -476,20 +498,24 @@ class NativeAgentExecutor:
             sdk_messages = [_coerce_history_item(item) for item in history]
             sdk_messages = [item for item in sdk_messages if item is not None]
             sdk_messages.append({"role": "user", "content": content})
+            turn_request = {
+                "schema_version": "1",
+                "request_id": turn_id,
+                "session_id": session_id,
+                "input": normalized_input,
+                "history": history,
+                "messages": sdk_messages,
+                "tools": tool_descriptors,
+                "model": model_config,
+                "model_override": model_override,
+                "approval_mode": "interactive",
+            }
+            approval_timeout_seconds = _approval_timeout_seconds()
+            if approval_timeout_seconds is not None:
+                turn_request["approval_timeout_seconds"] = approval_timeout_seconds
             handle = host.submit(
                 turn_id,
-                {
-                    "schema_version": "1",
-                    "request_id": turn_id,
-                    "session_id": session_id,
-                    "input": normalized_input,
-                    "history": history,
-                    "messages": sdk_messages,
-                    "tools": tool_descriptors,
-                    "model": model_config,
-                    "model_override": model_override,
-                    "approval_mode": "interactive",
-                },
+                turn_request,
                 driver=driver,
                 on_event=on_event,
             )

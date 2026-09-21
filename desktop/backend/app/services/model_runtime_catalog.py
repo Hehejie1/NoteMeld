@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 _FALLBACK = {
     "context_window_tokens": 4096,
+    "max_input_tokens": 3072,
+    "max_output_tokens": 1024,
     "supports_vision": False,
     "supports_stream": True,
 }
@@ -34,6 +36,8 @@ _CATALOG_PATH = _resource_path("model_runtime_catalog.json")
 class ModelRuntimeDefaults:
     model_name: str
     context_window_tokens: int
+    max_input_tokens: int
+    max_output_tokens: int
     supports_vision: bool
     supports_stream: bool
     source: str
@@ -81,9 +85,12 @@ def _load_catalog() -> dict[str, Any] | None:
         return None
 
 
-def _runtime_values(rule: dict[str, Any], fallback: dict[str, Any]) -> tuple[int, bool, bool]:
+def _runtime_values(rule: dict[str, Any], fallback: dict[str, Any]) -> tuple[int, int, int, bool, bool]:
+    context = int(rule.get("context_window_tokens", fallback["context_window_tokens"]))
     return (
-        int(rule.get("context_window_tokens", fallback["context_window_tokens"])),
+        context,
+        min(int(rule.get("max_input_tokens", fallback["max_input_tokens"])), context),
+        min(int(rule.get("max_output_tokens", fallback["max_output_tokens"])), context),
         bool(rule.get("supports_vision", fallback["supports_vision"])),
         bool(rule.get("supports_stream", fallback["supports_stream"])),
     )
@@ -101,10 +108,12 @@ def resolve_model_runtime_defaults(model_name: str) -> ModelRuntimeDefaults:
     for rule in rules:
         match = rule["match"].strip().lower()
         if normalized_name == match:
-            context_window_tokens, supports_vision, supports_stream = _runtime_values(rule, fallback)
+            context_window_tokens, max_input_tokens, max_output_tokens, supports_vision, supports_stream = _runtime_values(rule, fallback)
             return ModelRuntimeDefaults(
                 normalized_name,
                 context_window_tokens,
+                max_input_tokens,
+                max_output_tokens,
                 supports_vision,
                 supports_stream,
                 "catalog",
@@ -114,10 +123,12 @@ def resolve_model_runtime_defaults(model_name: str) -> ModelRuntimeDefaults:
     for rule in rules:
         match = rule["match"].strip().lower()
         if fnmatchcase(normalized_name, match):
-            context_window_tokens, supports_vision, supports_stream = _runtime_values(rule, fallback)
+            context_window_tokens, max_input_tokens, max_output_tokens, supports_vision, supports_stream = _runtime_values(rule, fallback)
             return ModelRuntimeDefaults(
                 normalized_name,
                 context_window_tokens,
+                max_input_tokens,
+                max_output_tokens,
                 supports_vision,
                 supports_stream,
                 "catalog",

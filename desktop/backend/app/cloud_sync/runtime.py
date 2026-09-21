@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread, current_thread
 import time
 import json
 import uuid
 import inspect
+import hashlib
 import base64
 import os
 from typing import Callable, Awaitable, Any
@@ -23,6 +24,28 @@ from .protocol import RemoteFrame
 from .relay_host import RelayHostSession
 from .queue import DurableSessionMailbox
 from .remote_host import RemoteHostAuthority
+
+
+def eligible_relay_session_ids(grants: list[dict], sessions: list[dict], host_device_id: str) -> set[str]:
+    """Return active remote sessions authorized for this Host device."""
+    active_sessions = {
+        str(session.get("id"))
+        for session in sessions
+        if session.get("id")
+        and session.get("kind") == "device_remote"
+        and session.get("status") not in {"archived", "deleted"}
+    }
+    active_host_grants = [
+        grant for grant in grants
+        if grant.get("host_device_id") == host_device_id and grant.get("revoked_at") is None
+    ]
+    if any(not grant.get("session_id") for grant in active_host_grants):
+        return active_sessions
+    return {
+        str(grant["session_id"])
+        for grant in active_host_grants
+        if grant.get("session_id") and str(grant["session_id"]) in active_sessions
+    }
 
 
 class CloudSyncHostRuntime:
@@ -73,6 +96,8 @@ class CloudSyncHostRuntime:
         self._relay_sessions: dict[str, RelayHostSession] = {}
         self._relay_tasks: dict[str, Any] = {}
         self._relay_discovery_task: Any | None = None
+        self._relay_discovery_thread: Thread | None = None
+        self._relay_loop: Any | None = None
         self._lock = Lock()
         self._closed = False
         from .lan_auth import LanPeerAuthenticator
@@ -107,8 +132,21 @@ class CloudSyncHostRuntime:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
-        if loop is not None and self._relay_discovery_task is None:
-            self._relay_discovery_task = loop.create_task(self._discover_relay_sessions(), name="notemeld-relay-discovery")
+        if loop is not None:
+            with self._lock:
+                if self._relay_discovery_task is None:
+                    self._relay_discovery_task = loop.create_task(self._discover_relay_sessions(), name="notemeld-relay-discovery")
+        else:
+            # FastAPI executes the synchronous bootstrap route in a worker
+            # thread. Relay discovery still has to outlive that request.
+            with self._lock:
+                if self._relay_discovery_thread is None:
+                    thread = Thread(target=self._run_relay_discovery_loop, name="notemeld-relay-discovery", daemon=True)
+                    self._relay_discovery_thread = thread
+                else:
+                    thread = None
+            if thread is not None:
+                thread.start()
 
     def install_session_cipher(self, session_id: str, controller_device_id: str, cipher: SessionCipher) -> None:
         """Install a platform-derived cipher for one remote session.
@@ -140,69 +178,84 @@ class CloudSyncHostRuntime:
             self._relay_sessions.clear()
             discovery_task = self._relay_discovery_task
             self._relay_discovery_task = None
-        if discovery_task is not None:
-            discovery_task.cancel()
-        for task in relay_tasks:
-            task.cancel()
+            discovery_thread = self._relay_discovery_thread
+            relay_loop = self._relay_loop
+            if relay_loop is None and discovery_task is not None:
+                get_loop = getattr(discovery_task, "get_loop", None)
+                if callable(get_loop):
+                    relay_loop = get_loop()
+
+        def cancel_relay_tasks() -> None:
+            if discovery_task is not None:
+                discovery_task.cancel()
+            for task in relay_tasks:
+                task.cancel()
+
+        if relay_loop is not None and relay_loop.is_running():
+            relay_loop.call_soon_threadsafe(cancel_relay_tasks)
+        else:
+            cancel_relay_tasks()
+        if discovery_thread is not None and discovery_thread is not current_thread():
+            discovery_thread.join(timeout=5)
         self._agent_consumer.stop()
         self.cloud_client.close()
+
+    def _run_relay_discovery_loop(self) -> None:
+        import asyncio
+
+        try:
+            asyncio.run(self._discover_relay_sessions())
+        except asyncio.CancelledError:
+            pass
+        finally:
+            with self._lock:
+                if self._relay_discovery_thread is current_thread():
+                    self._relay_discovery_thread = None
 
     async def _discover_relay_sessions(self) -> None:
         """Keep relays aligned with Cloud grants for this host device."""
         import asyncio
 
-        list_grants = getattr(self.cloud_client, "list_grants", None)
-        list_sessions = getattr(self.cloud_client, "list_sessions", None)
-        if not callable(list_grants) or not callable(list_sessions):
-            return
-        while not self._closed:
-            try:
-                grants, sessions = await asyncio.gather(
-                    asyncio.to_thread(list_grants),
-                    asyncio.to_thread(list_sessions, False),
-                )
-                eligible = {
-                    str(grant["session_id"])
-                    for grant in grants
-                    if grant.get("session_id")
-                    and grant.get("host_device_id") == self.host_device_id
-                    and grant.get("revoked_at") is None
-                }
-                # Cloud grants are not currently session-bound, so intersect
-                # with active device_remote sessions owned by this account.
-                eligible.intersection_update(
-                    str(session.get("id"))
-                    for session in sessions
-                    if session.get("kind") == "device_remote"
-                    and session.get("status") not in {"archived", "deleted"}
-                )
-                # The Cloud API exposes grants by device pair. If no session
-                # id is present, a device-pair grant authorizes all active
-                # remote sessions and each relay still performs frame-level
-                # authorization before accepting traffic.
-                pair_grants = {
-                    grant for grant in grants
-                    if grant.get("host_device_id") == self.host_device_id
-                    and grant.get("revoked_at") is None
-                }
-                if pair_grants and not eligible:
-                    eligible = {
-                        str(session.get("id")) for session in sessions
-                        if session.get("kind") == "device_remote"
-                        and session.get("status") not in {"archived", "deleted"}
-                    }
-                for session_id in sorted(eligible):
-                    await self.start_relay_session(session_id)
-                running = set(self._relay_tasks)
-                for session_id in sorted(running - eligible):
-                    await self.stop_relay_session(session_id)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                # Cloud may be temporarily offline; the next cycle retries
-                # without taking down the local Agent or LAN service.
-                pass
-            await asyncio.sleep(5)
+        task = asyncio.current_task()
+        loop = asyncio.get_running_loop()
+        with self._lock:
+            self._relay_loop = loop
+            if self._relay_discovery_task is None:
+                self._relay_discovery_task = task
+        try:
+            list_grants = getattr(self.cloud_client, "list_grants", None)
+            list_sessions = getattr(self.cloud_client, "list_sessions", None)
+            if not callable(list_grants) or not callable(list_sessions):
+                return
+            while not self._closed:
+                try:
+                    _heartbeat, grants, sessions = await asyncio.gather(
+                        asyncio.to_thread(self.heartbeat),
+                        asyncio.to_thread(list_grants),
+                        asyncio.to_thread(list_sessions, False),
+                    )
+                    # Current Cloud grants authorize a device pair. The helper
+                    # also preserves forward compatibility with session-bound
+                    # grants while excluding archived/deleted sessions.
+                    eligible = eligible_relay_session_ids(grants, sessions, self.host_device_id)
+                    for session_id in sorted(eligible):
+                        await self.start_relay_session(session_id)
+                    running = set(self._relay_tasks)
+                    for session_id in sorted(running - eligible):
+                        await self.stop_relay_session(session_id)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # Cloud may be temporarily offline; the next cycle retries
+                    # without taking down the local Agent or LAN service.
+                    pass
+                await asyncio.sleep(5)
+        finally:
+            with self._lock:
+                if self._relay_discovery_task is task:
+                    self._relay_discovery_task = None
+                if self._relay_loop is loop:
+                    self._relay_loop = None
 
     def heartbeat(self, lan_endpoints: list[str] | None = None) -> dict:
         """Refresh cloud presence and publish current LAN candidates."""
@@ -238,7 +291,7 @@ class CloudSyncHostRuntime:
             handshake_handler=self._handle_relay_handshake,
         )
 
-    def _handle_relay_handshake(self, frame: RemoteFrame, authorization: LanPeerAuthorization) -> RemoteFrame:
+    def _handle_relay_handshake(self, frame: RemoteFrame, authorization: LanPeerAuthorization, response_sequence: int = 1) -> RemoteFrame:
         """Complete the signed X25519 handshake inside an E2EE Relay frame."""
         if self._host_signing_private is None or self._host_signing_public is None:
             raise RuntimeError("host signing identity is unavailable")
@@ -256,7 +309,11 @@ class CloudSyncHostRuntime:
         verify_handshake_envelope(peer, _unb64(authorization.controller_public_key, expected_length=32))
         local_private, local_public = generate_ephemeral()
         local = create_handshake_envelope(self._host_signing_private, frame.session_id, self.host_device_id, frame.sender_device_id, local_public)
-        cipher = SessionCipher(derive_handshake_session_key(local_private, local, peer))
+        cipher = SessionCipher(
+            derive_handshake_session_key(local_private, local, peer),
+            last_sent_sequence=response_sequence,
+            last_received_sequence=frame.sequence,
+        )
         self.install_session_cipher(frame.session_id, frame.sender_device_id, cipher)
         payload = json.dumps(local.as_dict(), separators=(",", ":")).encode("utf-8")
         nonce = _b64(os.urandom(12))
@@ -264,7 +321,7 @@ class CloudSyncHostRuntime:
             session_id=frame.session_id,
             sender_device_id=self.host_device_id,
             recipient_device_id=frame.sender_device_id,
-            sequence=1,
+            sequence=response_sequence,
             ciphertext=_b64(payload),
             frame_id=frame.frame_id,
             authority_epoch=frame.authority_epoch,
@@ -342,6 +399,16 @@ class CloudSyncHostRuntime:
                 }
                 for item in pending
             ],
+        }
+
+    def host_status(self) -> dict[str, object]:
+        """Return a credential-free identity projection for release checks."""
+        return {
+            "status": "running" if not self._closed else "stopped",
+            "device_id": self.host_device_id,
+            "public_key_sha256": hashlib.sha256(self._host_signing_public).hexdigest()
+            if self._host_signing_public is not None
+            else None,
         }
 
     def _authorize_lan_peer(
@@ -471,6 +538,10 @@ class CloudSyncHostRuntime:
         ).encode("utf-8")
         encrypted = cipher.encrypt_frame(frame, payload)
         self.service.send_event_nowait(command.session_id, controller_device_id, encrypted)
+        with self._lock:
+            relay = self._relay_sessions.get(command.session_id)
+        if relay is not None:
+            relay.send_frame_nowait(encrypted)
 
     def _cipher_for(self, authorization: LanPeerAuthorization) -> SessionCipher:
         with self._lock:

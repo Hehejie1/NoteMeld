@@ -39,6 +39,8 @@ import { fetchNoteStyles, type NoteStyleItem } from '@/services/noteStyle'
 import { cn } from '@/lib/utils'
 import { composeNoteFirstMessage } from '@/pages/HomePage/conversationHelpers'
 import { useBackendInitContext } from '@/contexts/BackendInitContext.tsx'
+import { listRegisteredWorkspaces, registerWorkspace, type RegisteredWorkspace } from '@/services/workspace'
+import { selectWorkspaceFolderPath } from '@/utils/fileDialog'
 import PlatformLinkCard, {
   detectPlatform,
   formatUrlHost,
@@ -122,7 +124,13 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
   const [submitting, setSubmitting] = useState(false)
   const [compactToolbar, setCompactToolbar] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false)
+  const [workspaceDraftName, setWorkspaceDraftName] = useState('')
+  const [workspaceDraftKind, setWorkspaceDraftKind] = useState<RegisteredWorkspace['kind']>('local_folder')
+  const [workspaceDraftPath, setWorkspaceDraftPath] = useState('')
   const [workspaceName, setWorkspaceName] = useState('未选择工作空间')
+  const [workspaces, setWorkspaces] = useState<RegisteredWorkspace[]>([])
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [showLinkNoteInput, setShowLinkNoteInput] = useState(false)
   const [urlCookieStatus, setUrlCookieStatus] = useState<PlatformCookieStatus | null>(null)
   const [cookieFallbackPromptOpen, setCookieFallbackPromptOpen] = useState(false)
@@ -195,6 +203,11 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
   }, [backendReady, loadEnabledModels, fetchProviderList])
 
   useEffect(() => {
+    if (!backendReady) return
+    void listRegisteredWorkspaces().then(items => setWorkspaces(items || [])).catch(() => setWorkspaces([]))
+  }, [backendReady])
+
+  useEffect(() => {
     if (modelList.length && !modelName) {
       setModelName(modelList[0].model_name)
     }
@@ -252,19 +265,6 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
 
   const removePendingUpload = () => {
     setPendingUploadedFile(null)
-  }
-
-  const selectMode = (nextMode: ComposerMode) => {
-    modeWasExplicitlySelectedRef.current = true
-    if (mode === 'learn' && nextMode !== 'learn') {
-      const match = text.match(URL_REGEX)
-      if (match) {
-        setUrlCard(match[0])
-        setText(text.replace(match[0], '').trimStart())
-        setShowLinkNoteInput(false)
-      }
-    }
-    setMode(nextMode)
   }
 
   const handleTextChange = (value: string) => {
@@ -583,8 +583,8 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
     if (!matchedModel) return
     if (!ensureBackendReady()) return
 
-    const workspaceRefs = workspaceName === 'notemeld-project'
-      ? [{ type: 'workspace', workspace_id: 'notemeld-project', label: workspaceName }]
+    const workspaceRefs = workspaceId
+      ? [{ type: 'workspace', workspace_id: workspaceId, label: workspaceName }]
       : []
     const effectiveContextRefs = [...(contextRefs || []), ...workspaceRefs]
     const input: { text: string; attachments?: Array<{ type: string; content: string; source?: string }>; context_refs?: typeof effectiveContextRefs } = {
@@ -597,22 +597,11 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       input.context_refs = effectiveContextRefs
     }
 
-    const assistantMessageId = uuidv4()
-    const assistantMessage = {
-      id: assistantMessageId,
-      role: 'assistant' as const,
-      message_type: 'assistant_text' as const,
-      content: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isStreaming: true,
-    }
-
-    appendMessage(conversationId, assistantMessage)
-
+    let assistantMessageId = ''
     let finalAnswer = ''
     let finalSources: ConversationSource[] = []
     let streamError = ''
+    const terminalTypes: string[] = []
 
     const turn = await startAgentTurn(conversationId, {
       input,
@@ -622,6 +611,8 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
       asset_content: assetContent,
       context_refs: effectiveContextRefs,
     })
+    assistantMessageId = turn.data.assistant_message_id || uuidv4()
+    if (!turn.data.assistant_message_id) appendMessage(conversationId, { id: assistantMessageId, role: 'assistant', message_type: 'assistant_text', content: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isStreaming: true })
     // Open the conversation as soon as the turn is accepted. Provider errors
     // should still leave the user on the conversation with a visible failure.
     navigate(`/notes/${conversationId}`)
@@ -645,13 +636,17 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
             isStreaming: true,
           })
         }
+      } else if ((event.type === 'reasoning.delta' || event.type === 'thinking.delta') && typeof (payload.delta || payload.content) === 'string') {
+        updateMessage(conversationId, assistantMessageId, { content: String(payload.delta || payload.content), meta: { phase: 'thinking' }, error: false, isStreaming: true })
       } else if (event.type === 'turn.succeeded') {
+        terminalTypes.push(event.type)
         const terminalAnswer = payload.answer || payload.content
         if (typeof terminalAnswer === 'string' && terminalAnswer) {
           finalAnswer = terminalAnswer
         }
         finalSources = Array.isArray(payload.sources) ? payload.sources : []
       } else if (event.type === 'turn.failed' || event.type === 'turn.cancelled' || event.type === 'turn.interrupted') {
+        terminalTypes.push(event.type)
         const error = payload.error
         streamError = typeof error === 'object' && error && 'message' in error ? String(error.message) : 'Agent 执行失败'
       } else if (event.type === 'approval.required') {
@@ -698,6 +693,9 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         isStreaming: false,
       })
       throw new Error(streamError)
+    }
+    if (terminalTypes.length !== 1 || terminalTypes[0] !== 'turn.succeeded') {
+      throw new Error('Agent 终态数量异常')
     }
 
     updateMessage(conversationId, assistantMessageId, {
@@ -1167,6 +1165,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
         ) : (
           <textarea
             ref={inputRef}
+            aria-label={mode === 'chat' ? 'notemeld-local-agent-input' : undefined}
             value={text}
             rows={1}
             placeholder={
@@ -1194,7 +1193,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
                   <span className="h-1.5 w-1.5 rounded-full bg-primary" />
                   <span className={cn(hideToolText && 'hidden')}>{workspaceName}</span><ChevronDown className="h-3.5 w-3.5" />
                 </button>
-                {workspaceOpen && <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-lg border border-border-subtle bg-white p-1 shadow-lg"><div className="px-2.5 py-2 text-[11px] font-semibold text-on-surface">选择工作空间</div>{[['未选择工作空间', '仅使用当前会话'], ['notemeld-project', 'NoteMeld Agent 工作区']].map(([name, detail]) => <button type="button" key={name} onClick={() => { setWorkspaceName(name); setWorkspaceOpen(false) }} className="flex w-full items-start justify-between rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-surface-container-low"><span><strong className="block">{name}</strong><small className="text-on-surface-variant">{detail}</small></span>{workspaceName === name && <Check className="mt-0.5 h-3.5 w-3.5 text-primary" />}</button>)}</div>}
+                {workspaceOpen && <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-lg border border-border-subtle bg-surface-container-lowest p-1 shadow-lg"><div className="px-2.5 py-2 text-[11px] font-semibold text-on-surface">选择 Agent 工作区</div><button type="button" onClick={() => { setWorkspaceId(null); setWorkspaceName('未选择工作空间'); setWorkspaceOpen(false) }} className="flex w-full items-start justify-between rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-surface-container-low"><span><strong className="block">未选择工作空间</strong><small className="text-on-surface-variant">仅使用当前会话</small></span>{!workspaceId && <Check className="mt-0.5 h-3.5 w-3.5 text-primary" />}</button>{workspaces.map(item => <button type="button" key={item.id} onClick={() => { setWorkspaceId(item.id); setWorkspaceName(item.display_name); setWorkspaceOpen(false) }} className="flex w-full items-start justify-between rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-surface-container-low"><span><strong className="block">{item.display_name}</strong><small className="text-on-surface-variant">{item.kind === 'local_folder' ? item.root_ref : '待连接的远程执行目标'}</small></span>{workspaceId === item.id && <Check className="mt-0.5 h-3.5 w-3.5 text-primary" />}</button>)}<button type="button" aria-haspopup="dialog" onMouseDown={event => { event.preventDefault(); event.stopPropagation(); setWorkspaceDraftName(''); setWorkspaceDraftPath(''); setWorkspaceOpen(false); setWorkspaceDialogOpen(true) }} className="mt-1 w-full rounded-md border-t border-border-subtle px-2.5 py-2 text-left text-[12px] font-medium text-primary hover:bg-surface-container-low">+ 添加工作区</button></div>}
               </div>
               {/* 上传 */}
           <button
@@ -1209,9 +1208,6 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
             )}
             <span className={cn(hideToolText && 'hidden')}>上传文件</span>
           </button>
-
-          {/* Chat / Note / Learn 模式切换 */}
-          <ModeSwitch mode={mode} onChange={selectMode} />
 
           {/* 仅 Note 模式显示风格 + 截图总结 */}
           {mode === 'note' && (
@@ -1285,6 +1281,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           <div ref={modelRef} className="relative">
             <button
               onClick={() => setModelOpen(v => !v)}
+              aria-label={`notemeld-local-agent-model:${modelName || 'none'}`}
               className="flex h-9 items-center gap-1.5 rounded-md border border-border-subtle bg-white px-2.5 text-[12px] text-on-surface transition-colors hover:bg-surface-container-low md:h-8"
             >
               <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10">
@@ -1321,6 +1318,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
                       {group.items.map(m => (
                         <button
                           key={m.id}
+                          aria-label={`notemeld-local-agent-model-option:${m.model_name}`}
                           onClick={() => {
                             setModelName(m.model_name)
                             setModelOpen(false)
@@ -1353,7 +1351,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
                 ? 'bg-primary hover:bg-primary-strong'
                 : 'cursor-not-allowed bg-surface-container text-on-surface-variant hover:bg-surface-container',
             )}
-            aria-label="发送"
+            aria-label={mode === 'chat' ? `notemeld-local-agent-send-${submitting ? 'busy' : 'idle'}` : '发送'}
           >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1363,6 +1361,17 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           </Button>
         </div>
       </div>
+      <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}>
+        <DialogContent className="max-w-[560px]">
+          <DialogHeader><DialogTitle>添加工作区</DialogTitle><DialogDescription>为 Agent 选择文件与产物所在的执行空间。</DialogDescription></DialogHeader>
+          <div className="space-y-4 py-2">
+            <label className="block text-sm font-medium text-on-surface">工作区名称<input value={workspaceDraftName} onChange={event => setWorkspaceDraftName(event.target.value)} className="mt-1 w-full rounded-md border border-border-subtle bg-surface-container-lowest px-3 py-2 text-sm text-on-surface" placeholder="例如：NoteMeld 项目" /></label>
+            <label className="block text-sm font-medium text-on-surface">连接类型<select value={workspaceDraftKind} onChange={event => setWorkspaceDraftKind(event.target.value as RegisteredWorkspace['kind'])} className="mt-1 w-full rounded-md border border-border-subtle bg-surface-container-lowest px-3 py-2 text-sm text-on-surface"><option value="local_folder">本地文件夹</option><option value="ssh_remote">SSH 远程文件夹</option><option value="wsl">WSL 文件夹（Windows）</option></select></label>
+            <label className="block text-sm font-medium text-on-surface">文件夹路径<input value={workspaceDraftPath} onChange={event => setWorkspaceDraftPath(event.target.value)} className="mt-1 w-full rounded-md border border-border-subtle bg-surface-container-lowest px-3 py-2 text-sm text-on-surface" placeholder={workspaceDraftKind === 'local_folder' ? '点击选择本地文件夹' : '例如：user@host:/workspace/project'} /><button type="button" className="mt-2 text-xs font-medium text-primary" onClick={async () => { const path = await selectWorkspaceFolderPath(); if (path) setWorkspaceDraftPath(path) }}>选择本地文件夹</button></label>
+          </div>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setWorkspaceDialogOpen(false)}>取消</Button><Button type="button" disabled={!workspaceDraftName.trim() || !workspaceDraftPath.trim()} onClick={async () => { const item = await registerWorkspace({ display_name: workspaceDraftName.trim(), kind: workspaceDraftKind, root_ref: workspaceDraftPath.trim() }); setWorkspaces(items => [...items, item]); setWorkspaceId(item.id); setWorkspaceName(item.display_name); window.dispatchEvent(new CustomEvent('notemeld:workspace-registered', { detail: item })); setWorkspaceDialogOpen(false) }}>添加工作区</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={cookieFallbackPromptOpen} onOpenChange={setCookieFallbackPromptOpen}>
         <DialogContent className="max-w-[520px] p-0" showCloseButton>
           <DialogHeader className="gap-3 px-6 pb-4 pt-6 text-left">
@@ -1399,43 +1408,6 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
-
-const ModeSwitch: FC<{ mode: ComposerMode; onChange: (m: ComposerMode) => void }> = ({
-  mode,
-  onChange,
-}) => {
-  return (
-    <div className="ml-1 flex h-7 items-center rounded-md border border-border-subtle bg-surface-container-low p-0.5">
-      <button
-        onClick={() => onChange('chat')}
-        className={cn(
-          'h-6 rounded px-2 text-[12px] font-medium transition-colors',
-          mode === 'chat' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant',
-        )}
-      >
-        聊天
-      </button>
-      <button
-        onClick={() => onChange('note')}
-        className={cn(
-          'h-6 rounded px-2 text-[12px] font-medium transition-colors',
-          mode === 'note' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant',
-        )}
-      >
-        笔记
-      </button>
-      <button
-        onClick={() => onChange('learn')}
-        className={cn(
-          'h-6 rounded px-2 text-[12px] font-medium transition-colors',
-          mode === 'learn' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant',
-        )}
-      >
-        学习
-      </button>
     </div>
   )
 }

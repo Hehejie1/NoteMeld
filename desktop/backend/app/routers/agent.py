@@ -6,7 +6,7 @@ from typing import Any
 
 import json
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,6 +26,7 @@ from app.agent_host.preferences import select_model
 from app.agent_host.host import ApprovalControlError, get_agent_sdk_host
 from app.agent_host.capabilities import NoteMeldCapabilityRegistry
 from app.db.model_dao import get_all_models
+from app.security.session_token import require_session_token
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 _events = EventBroker()
@@ -280,7 +281,12 @@ def steer_turn(turn_id: str, payload: dict | None = None):
     return _ok({"turn_id": turn_id, "accepted": True})
 
 
-@router.post("/approvals/{approval_id}")
+@router.get("/approvals", dependencies=[Depends(require_session_token)])
+def list_pending_approvals(limit: int = 100):
+    return _ok(_entry.list_pending_approvals(limit=limit))
+
+
+@router.post("/approvals/{approval_id}", dependencies=[Depends(require_session_token)])
 def resolve_approval(approval_id: str, payload: ApprovalRequest):
     normalized_approved = None if payload.approved is None else "approve" if payload.approved else "deny"
     if payload.decision not in {"approve", "deny"} or (

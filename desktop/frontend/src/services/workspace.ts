@@ -1,5 +1,52 @@
 import request from '@/utils/request'
 
+export interface RegisteredWorkspace {
+  id: string
+  display_name: string
+  kind: 'local_folder' | 'ssh_remote' | 'wsl'
+  root_ref: string
+  status: string
+  capabilities: string[]
+}
+
+export const listRegisteredWorkspaces = () => request.get<RegisteredWorkspace[]>('/workspaces')
+export const registerWorkspace = (payload: { display_name: string; kind?: RegisteredWorkspace['kind']; root_ref: string }) => request.post<RegisteredWorkspace>('/workspaces', payload)
+export const removeRegisteredWorkspace = (id: string) => request.delete(`/workspaces/${encodeURIComponent(id)}`)
+
+export interface TerminalResult {
+  command: string
+  cwd: string
+  stdout: string
+  stderr: string
+  exit_code: number
+  duration_ms: number
+}
+
+export interface SearchResult {
+  path: string
+  line: number
+  preview: string
+}
+
+export interface GitStatusResult {
+  is_repository: boolean
+  branch: string
+  changes: Array<{ index: string; worktree: string; path: string }>
+  ahead_behind?: string
+  message?: string
+}
+
+export const executeWorkspaceCommand = (id: string, command: string) =>
+  request.post<TerminalResult>(`/workspaces/${encodeURIComponent(id)}/terminal`, { command })
+
+export const searchWorkspaceContent = (id: string, query: string) =>
+  request.post<{ query: string; results: SearchResult[]; truncated: boolean }>(
+    `/workspaces/${encodeURIComponent(id)}/search`, { query },
+  )
+
+export const getWorkspaceGitStatus = (id: string) =>
+  request.get<GitStatusResult>(`/workspaces/${encodeURIComponent(id)}/git`)
+
 export interface WorkspaceEntry {
   name: string
   type: 'file' | 'directory'

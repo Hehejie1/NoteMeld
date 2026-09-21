@@ -403,6 +403,66 @@ def list_events(turn_id: str) -> list[dict[str, Any]]:
         db.close()
 
 
+def list_pending_approvals(*, limit: int = 100) -> list[dict[str, Any]]:
+    """Return the latest safe approval prompt for every waiting turn.
+
+    Tool arguments and opaque runtime payload fields intentionally stay in the
+    event ledger.  The Host notification surface only needs enough metadata to
+    identify the turn and make an explicit approve/deny decision.
+    """
+    bounded_limit = max(1, min(int(limit), 100))
+    db = _db()
+    try:
+        rows = (
+            db.query(AgentTurn, Conversation.title)
+            .join(Conversation, Conversation.id == AgentTurn.session_id)
+            .filter(
+                AgentTurn.status == "waiting_approval",
+                Conversation.deleted_at.is_(None),
+            )
+            .order_by(AgentTurn.updated_at.desc(), AgentTurn.turn_id.asc())
+            .limit(bounded_limit)
+            .all()
+        )
+        approvals: list[dict[str, Any]] = []
+        for turn, session_title in rows:
+            event = (
+                db.query(AgentEvent)
+                .filter(
+                    AgentEvent.turn_id == turn.turn_id,
+                    AgentEvent.event_type == "approval.required",
+                )
+                .order_by(AgentEvent.sequence.desc(), AgentEvent.created_at.desc())
+                .first()
+            )
+            payload = _json_loads(event.payload_json) if event is not None else None
+            if not isinstance(payload, dict):
+                continue
+            approval_id = str(payload.get("approval_id") or "").strip()
+            if not approval_id:
+                continue
+
+            def safe_text(key: str, maximum: int) -> str | None:
+                value = payload.get(key)
+                if value is None:
+                    return None
+                normalized = str(value).strip()
+                return normalized[:maximum] if normalized else None
+
+            approvals.append({
+                "approval_id": approval_id[:200],
+                "turn_id": str(turn.turn_id),
+                "session_id": str(turn.session_id),
+                "session_title": str(session_title or "未命名会话")[:200],
+                "risk": safe_text("risk", 40),
+                "summary": safe_text("summary", 500),
+                "deadline": safe_text("deadline", 100),
+            })
+        return approvals
+    finally:
+        db.close()
+
+
 def get_model_preference(session_id: str) -> dict[str, Any]:
     db = _db()
     try:
@@ -476,6 +536,7 @@ __all__ = [
     "get_turn",
     "get_model_preference",
     "list_events",
+    "list_pending_approvals",
     "recover_nonterminal",
     "set_model_preference",
     "transition_turn",

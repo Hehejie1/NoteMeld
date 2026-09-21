@@ -59,6 +59,14 @@
 }
 .nm-icon-button:hover { background: var(--nm-color-surface-muted); color: var(--nm-color-text); }
 
+/* Semantic icon treatment used by mobile session headers. */
+.nm-session-add-icon {
+  border-radius: var(--nm-radius-md);
+  background: transparent;
+  color: var(--nm-color-text-muted);
+}
+.nm-session-add-icon:hover { background: var(--nm-color-surface-muted); color: var(--nm-color-text); }
+
 .nm-field {
   display: flex;
   align-items: center;

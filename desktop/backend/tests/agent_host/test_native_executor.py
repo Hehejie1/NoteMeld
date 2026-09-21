@@ -459,6 +459,8 @@ def test_native_executor_keeps_waiting_through_approval_pause(monkeypatch):
 
     control_events = []
     finished = []
+    submitted = []
+    monkeypatch.setenv("NOTEMELD_AGENT_APPROVAL_TIMEOUT_SECONDS", "7")
 
     class Timeout(RuntimeError):
         code = -10
@@ -488,8 +490,9 @@ def test_native_executor_keeps_waiting_through_approval_pause(monkeypatch):
     class FakeHost:
         runtime = Runtime
 
-        def submit(self, _turn_id, _request, *, driver, on_event):
+        def submit(self, _turn_id, request, *, driver, on_event):
             del driver
+            submitted.append(request)
             Runtime.on_event = on_event
             on_event({
                 "event_id": "event-required",
@@ -531,8 +534,21 @@ def test_native_executor_keeps_waiting_through_approval_pause(monkeypatch):
     NativeAgentExecutor().run_sync("turn-1", "session-1", "hello", model_name="demo")
 
     assert Runtime.waits == 2
+    assert submitted[0]["approval_timeout_seconds"] == 7
     assert control_events == [
         ("turn-1", "waiting_approval", "approval.required"),
         ("turn-1", "running", "approval.resolved"),
     ]
     assert finished[-1][0][1] == "succeeded"
+
+
+def test_approval_timeout_override_is_validated_and_passed_to_canonical_runtime(monkeypatch):
+    from app.agent_host import native_executor
+
+    monkeypatch.delenv("NOTEMELD_AGENT_APPROVAL_TIMEOUT_SECONDS", raising=False)
+    assert native_executor._approval_timeout_seconds() is None
+    for invalid in ("zero", "0", "86401"):
+        monkeypatch.setenv("NOTEMELD_AGENT_APPROVAL_TIMEOUT_SECONDS", invalid)
+        assert native_executor._approval_timeout_seconds() is None
+    monkeypatch.setenv("NOTEMELD_AGENT_APPROVAL_TIMEOUT_SECONDS", "7")
+    assert native_executor._approval_timeout_seconds() == 7

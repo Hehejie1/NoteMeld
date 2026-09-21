@@ -1,6 +1,6 @@
 import { FC, useMemo, useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowUpRight, FileCode2, FileText, Files, MoreHorizontal, PanelBottomOpen, PanelRightClose, PanelRightOpen, Plus, Share2, Sparkles, Terminal, X } from 'lucide-react'
+import { ArrowUpRight, FileCode2, FileText, Files, MoreHorizontal, PanelBottomOpen, PanelRightClose, PanelRightOpen, Plus, Share2, Terminal, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ChatComposer from '@/pages/HomePage/components/ChatComposer'
 import LearningCanvasCard from '@/pages/HomePage/components/LearningCanvasCard'
@@ -26,7 +26,7 @@ import {
 } from '@/pages/HomePage/chatScrollHelpers'
 import { ConversationMessageRenderer } from '@/pages/HomePage/messageRenderers'
 import { get_task_status } from '@/services/note'
-import { cancelWorkspaceTask } from '@/services/workspace'
+import { cancelWorkspaceTask, executeWorkspaceCommand, getWorkspaceGitStatus, listRegisteredWorkspaces, searchWorkspaceContent, type GitStatusResult, type RegisteredWorkspace, type SearchResult, type TerminalResult } from '@/services/workspace'
 import { seedLearningCanvasWhiteboard } from '@/services/learning'
 import type { WhiteboardPublishResult } from '@/pages/HomePage/whiteboard/types'
 import { useBackendInitContext } from '@/contexts/BackendInitContext'
@@ -81,6 +81,16 @@ export const HomePage: FC = () => {
 
   const [viewerCollapsed, setViewerCollapsed] = useState(false)
   const [idlePanel, setIdlePanel] = useState<'side' | 'bottom' | null>(null)
+  const [sideTool, setSideTool] = useState<'explorer' | 'search' | 'git'>('explorer')
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(280)
+  const [workspaceForTools, setWorkspaceForTools] = useState<RegisteredWorkspace | null>(null)
+  const [terminalCommand, setTerminalCommand] = useState('pwd')
+  const [terminalResult, setTerminalResult] = useState<TerminalResult | null>(null)
+  const [terminalBusy, setTerminalBusy] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchBusy, setSearchBusy] = useState(false)
+  const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
   const [contextOpen, setContextOpen] = useState(false)
   const handleShareSession = async () => {
     const url = window.location.href
@@ -95,6 +105,28 @@ export const HomePage: FC = () => {
       toast.error('复制会话链接失败')
     }
   }
+  useEffect(() => {
+    const loadWorkspace = () => listRegisteredWorkspaces().then(items => setWorkspaceForTools(items[0] || null)).catch(() => setWorkspaceForTools(null))
+    void loadWorkspace()
+    window.addEventListener('notemeld:workspace-registered', loadWorkspace)
+    return () => window.removeEventListener('notemeld:workspace-registered', loadWorkspace)
+  }, [])
+  const runTerminalCommand = async () => {
+    if (!workspaceForTools || !terminalCommand.trim()) return
+    setTerminalBusy(true)
+    try { setTerminalResult(await executeWorkspaceCommand(workspaceForTools.id, terminalCommand.trim())) }
+    finally { setTerminalBusy(false) }
+  }
+  const runWorkspaceSearch = async () => {
+    if (!workspaceForTools || !searchQuery.trim()) return
+    setSearchBusy(true)
+    try { setSearchResults((await searchWorkspaceContent(workspaceForTools.id, searchQuery.trim())).results) }
+    finally { setSearchBusy(false) }
+  }
+  const loadGitStatus = async () => {
+    if (!workspaceForTools) return
+    setGitStatus(await getWorkspaceGitStatus(workspaceForTools.id))
+  }
   /** 对话栏宽度比例（0-1），默认 0.5 即各占一半 */
   const [chatRatio, setChatRatio] = useState(0.5)
   const [mobileView, setMobileView] = useState<'chat' | 'learning' | 'note' | 'wiki'>('chat')
@@ -106,6 +138,7 @@ export const HomePage: FC = () => {
   const [isMobile, setIsMobile] = useState(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
+  const bottomPanelDraggingRef = useRef(false)
   const scrollAreaRootRef = useRef<HTMLDivElement>(null)
   const previousAutoScrollTaskIdRef = useRef<string | null>(null)
   const autoScrollMessageKey = useMemo(() => {
@@ -258,6 +291,14 @@ export const HomePage: FC = () => {
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }
+
+  useEffect(() => {
+    const move = (event: MouseEvent) => { if (bottomPanelDraggingRef.current) setBottomPanelHeight(Math.min(560, Math.max(180, window.innerHeight - event.clientY))) }
+    const up = () => { bottomPanelDraggingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = '' }
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+  }, [])
+  const startBottomPanelDrag = (event: React.MouseEvent) => { event.preventDefault(); bottomPanelDraggingRef.current = true; document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none' }
 
   const status: ViewStatus = useMemo(() => {
     if (!currentTask) return 'idle'
@@ -456,37 +497,38 @@ export const HomePage: FC = () => {
     selectNoteDocument,
   ])
 
-  /** 空态：Hero 居中 */
+  /** 空态：明确的本地 Agent 工作台入口 */
   if (status === 'idle') {
     return (
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-surface">
-        <header className="flex h-12 shrink-0 items-center justify-end gap-1 border-b border-border-subtle/60 px-4">
+      <div className="nm-new-home relative flex h-full w-full flex-col overflow-hidden bg-surface">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border-subtle/60 px-5 md:px-8">
+          <div />
+          <div className="flex items-center gap-1">
           <button type="button" onClick={() => setIdlePanel('bottom')} className="rounded-lg p-2 text-on-surface-variant transition hover:bg-surface-container hover:text-primary" aria-label="打开底部面板" title="命令行与运行日志"><PanelBottomOpen className="h-4 w-4" /></button>
-          <button type="button" onClick={() => setIdlePanel('side')} className="rounded-lg p-2 text-on-surface-variant transition hover:bg-surface-container hover:text-primary" aria-label="打开侧边文件面板" title="选择文件并查看内容"><PanelRightOpen className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setIdlePanel('side')} className="rounded-lg p-2 text-on-surface-variant transition hover:bg-surface-container hover:text-primary" aria-label="打开侧边栏" title="选择文件并查看内容"><PanelRightOpen className="h-4 w-4" /></button>
+          </div>
         </header>
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-4 py-10 md:px-6">
-          <div className="w-full max-w-3xl">
-            <div className="mb-8 text-center">
-              <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-light text-primary"><Sparkles className="h-5 w-5" aria-hidden="true" /></div>
-              <h1 className="font-display text-[36px] font-extrabold leading-tight tracking-[-0.04em] text-on-surface md:text-[42px]">开始新对话</h1>
-              <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-on-surface-variant">选择工作空间，告诉 Agent 你想完成什么。</p>
+        <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto px-5 py-12 md:px-8 md:py-20">
+          <div className="w-full max-w-4xl">
+            <div className="nm-home-intro">
+              <p className="nm-home-kicker">D01 · NEW TASK</p>
+              <h1 className="font-display text-[38px] font-extrabold leading-[1.08] tracking-[-0.045em] text-on-surface md:text-[52px]">把想法变成<br /><span>可以继续工作的结果。</span></h1>
             </div>
-            <div className="mx-auto mb-6 grid max-w-2xl grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="nm-home-prompts">
               {[
-                ['探索并理解代码', '分析当前工作区的结构与关键模块。'],
-                ['构建新功能或应用', '从需求开始拆解并实现一个可验证的功能。'],
-                ['审查代码并提出修改建议', '检查风险、测试缺口和可维护性问题。'],
-                ['修复问题和失败', '定位根因，给出修复方案并验证结果。'],
-              ].map(([title, prompt]) => (
-                <button key={title} type="button" onClick={() => window.dispatchEvent(new CustomEvent('notemeld:prefill-research', { detail: { prompt, mode: 'chat' } }))} className="min-h-16 rounded-xl border border-border-subtle bg-surface-container-lowest px-3 py-2.5 text-left text-xs font-medium text-on-surface transition hover:border-primary/40 hover:bg-primary/[0.03] focus:outline-none focus:ring-2 focus:ring-primary/30">{title}</button>
+                ['探索代码', '分析结构与关键模块。', '⌘1'],
+                ['构建功能', '从需求开始拆解实现。', '⌘2'],
+                ['审查变更', '检查风险与测试缺口。', '⌘3'],
+                ['修复问题', '定位根因并验证结果。', '⌘4'],
+              ].map(([title, prompt, shortcut]) => (
+                <button key={title} type="button" onClick={() => window.dispatchEvent(new CustomEvent('notemeld:prefill-research', { detail: { prompt, mode: 'chat' } }))} className="nm-home-prompt"><span>{title}</span><small>{prompt}</small><kbd>{shortcut}</kbd></button>
               ))}
             </div>
-            <ChatComposer layout="hero" />
-            <p className="mt-3 text-center text-[12px] text-on-surface-variant/70">支持使用 / 调用能力，使用 @ 添加智能体和上下文。</p>
+            <div className="nm-home-composer"><ChatComposer layout="hero" /></div>
           </div>
         </div>
-        {idlePanel === 'side' && <aside className="absolute inset-y-12 right-0 z-20 flex w-[min(360px,90vw)] flex-col border-l border-border-subtle bg-surface-container-lowest shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border-subtle px-4"><span className="flex items-center gap-2 text-sm font-semibold"><Files className="h-4 w-4 text-primary" />选择文件</span><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭侧边文件面板" className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-container"><X className="h-4 w-4" /></button></div><div className="flex min-h-0 flex-1 flex-col gap-4 p-4"><div className="space-y-1"><button type="button" className="w-full rounded-lg bg-primary-light px-3 py-2 text-left text-xs font-medium text-primary">▧ event_bus_config.yaml</button><button type="button" className="w-full rounded-lg px-3 py-2 text-left text-xs text-on-surface-variant hover:bg-surface-container">▤ 系统架构研究报告.md</button><button type="button" className="w-full rounded-lg px-3 py-2 text-left text-xs text-on-surface-variant hover:bg-surface-container">▤ 架构风险清单.html</button></div><div className="rounded-xl bg-surface-container-low p-4 text-xs leading-5 text-on-surface-variant"><strong className="mb-1 block text-on-surface">event_bus_config.yaml</strong>选择工作空间后可查看文件摘要、类型、大小和最近修改信息。</div></div></aside>}
-        {idlePanel === 'bottom' && <section className="absolute inset-x-0 bottom-0 z-20 border-t border-border-subtle bg-[#17191e] text-[#d9dde7] shadow-2xl"><div className="flex h-11 items-center justify-between border-b border-white/10 px-4"><span className="flex items-center gap-2 text-xs font-semibold"><Terminal className="h-4 w-4 text-[#9b9afc]" />底部面板</span><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭底部面板" className="rounded-lg p-1.5 text-[#aeb4c2] hover:bg-white/10"><X className="h-4 w-4" /></button></div><div className="space-y-1 p-4 font-mono text-[11px] leading-5"><div><span className="text-[#9b9afc]">➜ notemeld-project</span> <span className="text-[#e8eaf0]">等待新的 Agent 指令</span></div><div className="text-[#9299a8]">Agent session ready · local runtime</div><div><span className="text-[#9b9afc]">➜</span> <span className="inline-block h-3 w-1.5 animate-pulse bg-[#9b9afc] align-middle" /></div></div></section>}
+        {idlePanel === 'side' && <aside className="absolute inset-y-12 right-0 z-20 flex w-[min(360px,90vw)] flex-col border-l border-border-subtle bg-surface-container-lowest shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border-subtle px-4"><span className="text-sm font-semibold text-on-surface">工作区工具</span><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭侧边工具栏" className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-container"><X className="h-4 w-4" /></button></div><div className="flex border-b border-border-subtle px-2"><button type="button" onClick={() => setSideTool('explorer')} className={cn('flex-1 px-2 py-2 text-xs', sideTool === 'explorer' ? 'border-b-2 border-primary text-primary' : 'text-on-surface-variant')}>资源管理器</button><button type="button" onClick={() => setSideTool('search')} className={cn('flex-1 px-2 py-2 text-xs', sideTool === 'search' ? 'border-b-2 border-primary text-primary' : 'text-on-surface-variant')}>搜索</button><button type="button" onClick={() => setSideTool('git')} className={cn('flex-1 px-2 py-2 text-xs', sideTool === 'git' ? 'border-b-2 border-primary text-primary' : 'text-on-surface-variant')}>源代码管理</button></div><div className="flex min-h-0 flex-1 flex-col gap-4 p-4">{sideTool === 'explorer' ? <><div className="space-y-1"><button type="button" className="w-full rounded-lg bg-primary-light px-3 py-2 text-left text-xs font-medium text-primary">event_bus_config.yaml</button><button type="button" className="w-full rounded-lg px-3 py-2 text-left text-xs text-on-surface-variant hover:bg-surface-container">系统架构研究报告.md</button><button type="button" className="w-full rounded-lg px-3 py-2 text-left text-xs text-on-surface-variant hover:bg-surface-container">架构风险清单.html</button></div><div className="rounded-xl bg-surface-container-low p-4 text-xs leading-5 text-on-surface-variant"><strong className="mb-1 block text-on-surface">event_bus_config.yaml</strong>选择工作空间后可查看文件摘要、类型、大小和最近修改信息。</div></> : sideTool === 'search' ? <label className="text-xs text-on-surface-variant">搜索工作区<input type="search" placeholder="输入文件名或内容" className="mt-2 w-full rounded-md border border-border-subtle bg-surface-container px-3 py-2 text-sm text-on-surface" /></label> : <div className="rounded-xl bg-surface-container-low p-4 text-xs text-on-surface-variant">Git 状态将在选择工作区后显示。</div>}</div></aside>}
+        {idlePanel === 'bottom' && <section style={{ height: bottomPanelHeight }} className="absolute inset-x-0 bottom-0 z-20 border-t border-border-subtle bg-[#17191e] text-[#d9dde7] shadow-2xl"><div role="separator" aria-orientation="horizontal" aria-label="上下拖动调整终端高度" onMouseDown={startBottomPanelDrag} className="nm-bottom-panel-resizer" /><div className="flex h-11 items-center justify-between border-b border-white/10 px-4"><span className="flex items-center gap-2 text-xs font-semibold"><Terminal className="h-4 w-4 text-[#9b9afc]" />终端</span><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭终端" className="rounded-lg p-1.5 text-[#aeb4c2] hover:bg-white/10"><X className="h-4 w-4" /></button></div><div className="space-y-1 p-4 font-mono text-[11px] leading-5"><div><span className="text-[#9b9afc]">➜ 当前工作区</span> <span className="text-[#e8eaf0]">等待 Agent 指令</span></div><div className="text-[#9299a8]">Agent session ready · local runtime</div><div><span className="text-[#9b9afc]">➜</span> <span className="inline-block h-3 w-1.5 animate-pulse bg-[#9b9afc] align-middle" /></div></div></section>}
       </div>
     )
   }
@@ -667,7 +709,7 @@ export const HomePage: FC = () => {
       >
         <div className="nm-d03-header flex h-12 shrink-0 items-center justify-between border-b border-border-subtle/60 px-4">
           <div className="min-w-0"><span className="block text-[10px] font-semibold tracking-[0.14em] text-primary">D03 · LOCAL AGENT</span><span className="mt-0.5 block truncate text-[13px] font-semibold text-on-surface">当前会话</span></div>
-          <div className="flex items-center gap-1"><button type="button" onClick={() => void handleShareSession()} className="nm-d03-action" aria-label="分享当前会话" title="复制会话链接"><Share2 /></button><button type="button" className={cn('nm-d03-action', contextOpen && 'is-active')} onClick={() => setContextOpen(value => !value)} aria-label="切换置顶摘要" title="显示或隐藏置顶摘要"><Files /></button><button type="button" onClick={() => setIdlePanel('side')} className="nm-d03-action" aria-label="打开侧边文件面板" title="选择文件并查看内容"><PanelRightOpen /></button><button type="button" onClick={() => setIdlePanel('bottom')} className="nm-d03-action" aria-label="打开底部面板" title="命令行与运行日志"><PanelBottomOpen /></button><button
+          <div className="flex items-center gap-1"><button type="button" onClick={() => void handleShareSession()} className="nm-d03-action" aria-label="分享当前会话" title="复制会话链接"><Share2 /></button><button type="button" className={cn('nm-d03-action', contextOpen && 'is-active')} onClick={() => setContextOpen(value => !value)} aria-label="切换置顶摘要" title="显示或隐藏置顶摘要"><Files /></button><button type="button" onClick={() => { setSideTool('explorer'); setIdlePanel('side') }} className="nm-d03-action" aria-label="打开侧边栏" title="选择文件并查看内容"><PanelRightOpen /></button><button type="button" onClick={() => setIdlePanel('bottom')} className="nm-d03-action" aria-label="打开底部面板" title="命令行与运行日志"><PanelBottomOpen /></button><button
             onClick={() => setViewerCollapsed(v => !v)}
             className="nm-d03-action"
             title={viewerCollapsed ? '展开右侧面板' : '隐藏右侧面板'}
@@ -793,8 +835,8 @@ export const HomePage: FC = () => {
         </div>
       )}
       {contextOpen && <aside className="nm-d03-context-panel"><div className="nm-d03-context-header"><div><span className="nm-kicker">PINNED CONTEXT</span><strong>置顶摘要</strong></div><button type="button" onClick={() => setContextOpen(false)} aria-label="关闭置顶摘要"><PanelRightClose /></button></div><section><div className="nm-d03-context-title">输出内容 <button type="button" aria-label="添加产物"><Plus /></button></div><button type="button"><FileText />系统架构研究报告.md <small><ArrowUpRight /></small></button><button type="button"><FileCode2 />架构风险清单.html <small><ArrowUpRight /></small></button></section><section><div className="nm-d03-context-title">子智能体 <b>2</b></div><p><i className="is-running" />架构分析 Agent <small>运行中</small></p><p><i />资料检索 Agent <small>已完成</small></p></section><section><div className="nm-d03-context-title">后台进程 <b>1</b></div><div className="nm-d03-process"><strong>生成 Markdown 报告</strong><small>正在处理 · 42%</small><span><i /></span></div></section><section><div className="nm-d03-context-title">来源 <button type="button" aria-label="添加来源"><Plus /></button></div><button type="button"><FileText />2026-08-29-stitch-multiplatform-prompts.md</button><button type="button"><FileCode2 />event_bus_config.yaml</button></section></aside>}
-      {idlePanel === 'side' && <aside className="nm-d03-file-panel"><div><strong><Files />选择文件</strong><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭侧边文件面板"><X /></button></div><button type="button" className="is-selected"><FileCode2 />event_bus_config.yaml</button><button type="button"><FileText />系统架构研究报告.md</button><button type="button"><FileText />架构风险清单.html</button><p><strong>event_bus_config.yaml</strong>选择工作空间后可查看文件摘要、类型、大小和最近修改信息。</p></aside>}
-      {idlePanel === 'bottom' && <section className="nm-d03-bottom-panel"><div><strong><Terminal />底部面板</strong><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭底部面板"><X /></button></div><p><span>➜ notemeld-project</span> 等待新的 Agent 指令</p><p>Agent session ready · local runtime</p><p><span>➜</span> <i /></p></section>}
+      {idlePanel === 'side' && <aside className="nm-d03-file-panel"><div><strong><Files />工作区工具</strong><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭工作区工具"><X /></button></div><div className="flex gap-1 border-b border-border-subtle/60 p-2"><button type="button" onClick={() => setSideTool('explorer')} className={cn('rounded px-2 py-1 text-xs', sideTool === 'explorer' && 'bg-primary-light text-primary')}>资源管理器</button><button type="button" onClick={() => setSideTool('search')} className={cn('rounded px-2 py-1 text-xs', sideTool === 'search' && 'bg-primary-light text-primary')}>搜索</button><button type="button" onClick={() => { setSideTool('git'); void loadGitStatus() }} className={cn('rounded px-2 py-1 text-xs', sideTool === 'git' && 'bg-primary-light text-primary')}>源代码管理</button></div>{!workspaceForTools ? <p>请先添加并选择本地工作区。</p> : sideTool === 'search' ? <div className="p-3"><div className="flex gap-2"><input value={searchQuery} onChange={event => setSearchQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runWorkspaceSearch() }} placeholder="搜索文件或内容" className="min-w-0 flex-1 rounded border border-border-subtle bg-surface-container-low px-2 py-1 text-xs" /><button type="button" onClick={() => void runWorkspaceSearch()} disabled={searchBusy} className="rounded bg-primary px-2 py-1 text-xs text-white">{searchBusy ? '…' : '搜索'}</button></div><div className="mt-3 space-y-2">{searchResults.map(result => <button type="button" key={`${result.path}:${result.line}`} className="block w-full text-left text-xs" onClick={() => setTerminalCommand(`sed -n '${result.line || 1},${(result.line || 1) + 4}p' '${result.path}'`)}><span className="text-primary">{result.path}{result.line ? `:${result.line}` : ''}</span><span className="mt-0.5 block truncate text-on-surface-variant">{result.preview}</span></button>)}</div></div> : sideTool === 'git' ? <div className="p-3 text-xs">{gitStatus ? gitStatus.is_repository ? <><p className="font-semibold">分支：{gitStatus.branch}</p><p className="mt-2 text-on-surface-variant">{gitStatus.changes.length ? `${gitStatus.changes.length} 个变更` : '工作区干净'}</p>{gitStatus.changes.map(change => <p key={change.path} className="mt-1 truncate">{change.index}{change.worktree} {change.path}</p>)}</> : <p>{gitStatus.message}</p> : <p>正在读取 Git 状态…</p>}</div> : <div className="p-3 text-xs">{workspaceForTools.display_name}<p className="mt-2 text-on-surface-variant">{workspaceForTools.root_ref}</p><p className="mt-3">真实文件树与文件读写已连接到当前工作区。</p></div>}</aside>}
+      {idlePanel === 'bottom' && <section className="nm-d03-bottom-panel" style={{ height: bottomPanelHeight }}><div><strong><Terminal />终端</strong><span className="ml-2 text-xs opacity-70">{workspaceForTools?.root_ref || '未选择工作区'}</span><button type="button" onClick={() => setIdlePanel(null)} aria-label="关闭终端"><X /></button></div><div className="flex gap-2 p-3"><input value={terminalCommand} onChange={event => setTerminalCommand(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runTerminalCommand() }} placeholder="输入 shell 命令" className="min-w-0 flex-1 rounded border border-border-subtle bg-surface-container-low px-2 py-1 font-mono text-xs" /><button type="button" onClick={() => void runTerminalCommand()} disabled={terminalBusy || !workspaceForTools} className="rounded bg-primary px-3 py-1 text-xs text-white">{terminalBusy ? '执行中…' : '运行'}</button></div><pre className="min-h-0 flex-1 overflow-auto px-3 pb-3 font-mono text-xs whitespace-pre-wrap">{workspaceForTools ? terminalResult ? `$ ${terminalResult.command}\n${terminalResult.stdout}${terminalResult.stderr ? `\n${terminalResult.stderr}` : ''}\n[exit ${terminalResult.exit_code}]` : '终端已连接，输入命令后执行。' : '请先添加并选择本地工作区。'}</pre></section>}
     </div>
   )
 }

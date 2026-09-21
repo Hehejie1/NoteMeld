@@ -156,7 +156,7 @@ def test_complete_runtime_schema_adds_unique_index_without_clearing_saved_model(
         """))
 
     assert ensure_model_runtime_schema(engine) == {
-        "upgraded": False,
+        "upgraded": True,
         "cleared_models": 0,
         "cleared_capabilities": 0,
     }

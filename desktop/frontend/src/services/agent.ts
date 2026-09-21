@@ -1,4 +1,4 @@
-import { getRuntimeApiBaseUrl } from '@/utils/runtime'
+import { getRuntimeApiBaseUrl, getRuntimeSessionToken } from '@/utils/runtime'
 
 export const AGENT_SCHEMA_VERSION = '1'
 
@@ -35,19 +35,34 @@ export type AgentTurnRequest = {
   context_refs?: AgentContextRef[]
 }
 
+export type PendingAgentApproval = {
+  approval_id: string
+  turn_id: string
+  session_id: string
+  session_title: string
+  risk: string | null
+  summary: string | null
+  deadline: string | null
+}
+
 const baseUrl = () => String(getRuntimeApiBaseUrl() || import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
+  const sessionToken = getRuntimeSessionToken()
   const response = await fetch(`${baseUrl()}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(sessionToken ? { 'X-NoteMeld-Session': sessionToken } : {}),
+      ...(init?.headers || {}),
+    },
   })
   if (!response.ok) throw new Error(`Agent 请求失败: ${response.status}`)
   return (await response.json()) as T
 }
 
 export const startAgentTurn = (sessionId: string, request: AgentTurnRequest) =>
-  json<{ data: { turn_id: string; session_id: string; status: string } }>(`/agent/v1/sessions/${sessionId}/turns`, {
+  json<{ data: { turn_id: string; session_id: string; status: string; assistant_message_id?: string } }>(`/agent/v1/sessions/${sessionId}/turns`, {
     method: 'POST',
     body: JSON.stringify(request),
   })
@@ -72,8 +87,13 @@ export const resolveAgentApproval = (
     ),
   })
 
+export const listPendingAgentApprovals = () =>
+  json<{ data: PendingAgentApproval[] }>('/agent/v1/approvals')
+
 export async function* streamAgentEvents(turnId: string, afterSequence = -1): AsyncGenerator<AgentEvent> {
   const headers: Record<string, string> = { Accept: 'text/event-stream' }
+  const sessionToken = getRuntimeSessionToken()
+  if (sessionToken) headers['X-NoteMeld-Session'] = sessionToken
   if (afterSequence >= 0) headers['Last-Event-ID'] = String(afterSequence)
   const response = await fetch(`${baseUrl()}/agent/v1/turns/${turnId}/events?after_sequence=${afterSequence}`, {
     headers,

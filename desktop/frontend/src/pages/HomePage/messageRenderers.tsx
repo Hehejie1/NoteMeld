@@ -111,6 +111,7 @@ const AssistantTextBubble: FC<ConversationMessageRendererProps> = ({
   const isUser = message.role === 'user'
   const parsed = isUser ? getUserInputParts(message) : { url: '', text: message.content }
   const showStreamingLoader = !isUser && !message.error && message.isStreaming && !parsed.text
+  const isThinking = !isUser && !message.error && message.isStreaming && message.meta?.phase === 'thinking'
   const assistantStreamingText =
     !isUser && !message.error && message.isStreaming && parsed.text
       ? `${parsed.text}...`
@@ -124,6 +125,7 @@ const AssistantTextBubble: FC<ConversationMessageRendererProps> = ({
         </div>
       )}
       <div
+        aria-label={!isUser ? (message.error ? 'notemeld-local-agent-error' : message.isStreaming ? 'notemeld-local-agent-assistant-streaming' : `notemeld-local-agent-assistant:turn.succeeded:1:${parsed.text}`) : undefined}
         className={cn(
           'min-w-0 max-w-[calc(100vw-56px)] overflow-hidden rounded-xl px-3 py-2 text-[13px] leading-relaxed shadow-[0_2px_8px_rgba(15,23,42,0.05)] md:max-w-[620px]',
           isUser
@@ -147,6 +149,7 @@ const AssistantTextBubble: FC<ConversationMessageRendererProps> = ({
             <span className="animate-pulse [animation-delay:300ms]">.</span>
           </div>
         )}
+        {isThinking && <div className="mb-1 text-[11px] font-medium text-primary">思考中…</div>}
         {assistantStreamingText && (
           isUser ? (
             <div className="min-w-0 whitespace-pre-wrap break-words">{assistantStreamingText}</div>

@@ -24,7 +24,7 @@ class RelayHostError(RuntimeError):
 AuthorizeFrame = Callable[[RemoteFrame], LanPeerAuthorization | Awaitable[LanPeerAuthorization]]
 FrameHandler = Callable[[RemoteFrame, LanPeerAuthorization], dict[str, Any] | Awaitable[dict[str, Any]]]
 CipherResolver = Callable[[LanPeerAuthorization], SessionCipher]
-HandshakeHandler = Callable[[RemoteFrame, LanPeerAuthorization], RemoteFrame | Awaitable[RemoteFrame]]
+HandshakeHandler = Callable[[RemoteFrame, LanPeerAuthorization, int], RemoteFrame | Awaitable[RemoteFrame]]
 
 
 class RelayHostSession:
@@ -65,6 +65,26 @@ class RelayHostSession:
         self._connector = connector
         self._stop = asyncio.Event()
         self._socket: Any | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._next_sequence: int | None = None
+
+    def send_frame_nowait(self, frame: RemoteFrame) -> bool:
+        """Schedule an already-encrypted Host frame on the active Relay socket."""
+        if (
+            frame.session_id != self.session_id
+            or frame.sender_device_id != self.host_device_id
+            or frame.frame_type != "event"
+        ):
+            raise ValueError("invalid Relay Host event frame")
+        socket = self._socket
+        loop = self._loop
+        if socket is None or loop is None or loop.is_closed():
+            return False
+        try:
+            asyncio.run_coroutine_threadsafe(socket.send(frame.to_json()), loop)
+        except RuntimeError:
+            return False
+        return True
 
     async def stop(self) -> None:
         self._stop.set()
@@ -73,10 +93,11 @@ class RelayHostSession:
             await socket.close()
 
     async def run(self) -> None:
+        self._loop = asyncio.get_running_loop()
         connector = self._connector
         if connector is None:
             try:
-                from websockets.client import connect
+                from websockets.asyncio.client import connect
             except ImportError as exc:  # pragma: no cover - packaging guard
                 raise RelayHostError("websockets dependency is required for Relay Host") from exc
             connector = connect
@@ -98,9 +119,17 @@ class RelayHostSession:
                     await self._handle_message(socket, raw)
         finally:
             self._socket = None
+            self._loop = None
 
     async def _handle_message(self, socket: Any, raw: str) -> None:
         try:
+            control = json.loads(raw)
+            if isinstance(control, dict) and control.get("type") == "relay_ready":
+                next_sequence = control.get("next_sequence")
+                if type(next_sequence) is not int or next_sequence < 1:
+                    raise RelayHostError("invalid relay cursor")
+                self._next_sequence = next_sequence
+                return
             frame = RemoteFrame.from_json(raw)
             if frame.session_id != self.session_id or frame.recipient_device_id != self.host_device_id or frame.frame_type not in {"command", "handshake"}:
                 raise RelayHostError("invalid relay command envelope")
@@ -110,11 +139,15 @@ class RelayHostSession:
             if frame.frame_type == "handshake":
                 if self.handshake_handler is None:
                     raise RelayHostError("relay handshake is unavailable")
-                response = self.handshake_handler(frame, authorization)
+                if self._next_sequence is None:
+                    raise RelayHostError("relay cursor is unavailable")
+                response = self.handshake_handler(frame, authorization, self._next_sequence)
                 if inspect.isawaitable(response):
                     response = await response
                 if not isinstance(response, RemoteFrame) or response.frame_type != "handshake":
                     raise RelayHostError("invalid relay handshake response")
+                if response.sequence != self._next_sequence:
+                    raise RelayHostError("relay handshake cursor mismatch")
                 response.validate()
                 await socket.send(response.to_json())
                 return

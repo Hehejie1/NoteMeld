@@ -85,12 +85,16 @@ class OsIdentityStore:
         system = platform.system()
         if system == "Darwin":
             return "security"
+        if system == "Windows":
+            return "windows-credential"
         if system == "Linux" and _which("secret-tool"):
             return "secret-tool"
         raise SecureIdentityUnavailable("OS secure credential store is unavailable")
 
     def _get(self, label: str) -> str | None:
         command = self._command()
+        if command == "windows-credential":
+            return _windows_credential_read(f"{self.service}.{label}")
         if command == "security":
             args = [command, "find-generic-password", "-a", self.account, "-s", f"{self.service}.{label}", "-w"]
             result = _run(args)
@@ -105,6 +109,9 @@ class OsIdentityStore:
 
     def _set(self, label: str, value: str) -> None:
         command = self._command()
+        if command == "windows-credential":
+            _windows_credential_write(f"{self.service}.{label}", self.account, value)
+            return
         if command == "security":
             result = _run([command, "add-generic-password", "-a", self.account, "-s", f"{self.service}.{label}", "-w", value, "-U"])
         else:
@@ -114,10 +121,93 @@ class OsIdentityStore:
 
     def _delete(self, label: str) -> None:
         command = self._command()
-        if command == "security":
+        if command == "windows-credential":
+            _windows_credential_delete(f"{self.service}.{label}")
+        elif command == "security":
             _run([command, "delete-generic-password", "-a", self.account, "-s", f"{self.service}.{label}"])
         else:
             _run([command, "clear", "service", self.service, "account", f"{self.account}.{label}"])
+
+
+def _windows_credential_api():
+    """Load the Unicode Windows Credential Manager API without pywin32."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class CredentialW(ctypes.Structure):
+            _fields_ = [
+                ("Flags", wintypes.DWORD),
+                ("Type", wintypes.DWORD),
+                ("TargetName", wintypes.LPWSTR),
+                ("Comment", wintypes.LPWSTR),
+                ("LastWritten", wintypes.FILETIME),
+                ("CredentialBlobSize", wintypes.DWORD),
+                ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
+                ("Persist", wintypes.DWORD),
+                ("AttributeCount", wintypes.DWORD),
+                ("Attributes", ctypes.c_void_p),
+                ("TargetAlias", wintypes.LPWSTR),
+                ("UserName", wintypes.LPWSTR),
+            ]
+
+        api = ctypes.WinDLL("Advapi32.dll", use_last_error=True)
+        credential_pointer = ctypes.POINTER(CredentialW)
+        api.CredReadW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(credential_pointer)]
+        api.CredReadW.restype = wintypes.BOOL
+        api.CredWriteW.argtypes = [credential_pointer, wintypes.DWORD]
+        api.CredWriteW.restype = wintypes.BOOL
+        api.CredDeleteW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD]
+        api.CredDeleteW.restype = wintypes.BOOL
+        api.CredFree.argtypes = [ctypes.c_void_p]
+        api.CredFree.restype = None
+        return ctypes, CredentialW, credential_pointer, api
+    except (AttributeError, ImportError, OSError) as exc:
+        raise SecureIdentityUnavailable("Windows Credential Manager is unavailable") from exc
+
+
+def _windows_credential_read(target: str) -> str | None:
+    ctypes, _credential_type, credential_pointer, api = _windows_credential_api()
+    pointer = credential_pointer()
+    if not api.CredReadW(target, 1, 0, ctypes.byref(pointer)):
+        error = ctypes.get_last_error()
+        if error == 1168:  # ERROR_NOT_FOUND
+            return None
+        raise SecureIdentityUnavailable(f"Windows credential lookup failed ({error})")
+    try:
+        size = int(pointer.contents.CredentialBlobSize)
+        blob = ctypes.string_at(pointer.contents.CredentialBlob, size) if size else b""
+        try:
+            return blob.decode("utf-8") or None
+        except UnicodeDecodeError as exc:
+            raise SecureIdentityUnavailable("Windows credential value is invalid") from exc
+    finally:
+        api.CredFree(pointer)
+
+
+def _windows_credential_write(target: str, username: str, value: str) -> None:
+    ctypes, credential_type, _credential_pointer, api = _windows_credential_api()
+    blob_bytes = value.encode("utf-8")
+    if not blob_bytes or len(blob_bytes) > 512:
+        raise SecureIdentityUnavailable("Windows credential value has an invalid size")
+    blob = (ctypes.c_ubyte * len(blob_bytes)).from_buffer_copy(blob_bytes)
+    credential = credential_type()
+    credential.Type = 1  # CRED_TYPE_GENERIC
+    credential.TargetName = target
+    credential.CredentialBlobSize = len(blob_bytes)
+    credential.CredentialBlob = ctypes.cast(blob, ctypes.POINTER(ctypes.c_ubyte))
+    credential.Persist = 2  # CRED_PERSIST_LOCAL_MACHINE, scoped to the current logon
+    credential.UserName = username
+    if not api.CredWriteW(ctypes.byref(credential), 0):
+        raise SecureIdentityUnavailable(f"Windows credential write failed ({ctypes.get_last_error()})")
+
+
+def _windows_credential_delete(target: str) -> None:
+    ctypes, _credential_type, _credential_pointer, api = _windows_credential_api()
+    if not api.CredDeleteW(target, 1, 0):
+        error = ctypes.get_last_error()
+        if error != 1168:  # ERROR_NOT_FOUND
+            raise SecureIdentityUnavailable(f"Windows credential delete failed ({error})")
 
 
 def _which(command: str) -> str | None:

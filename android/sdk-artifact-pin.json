@@ -1,0 +1,11 @@
+{
+  "schema": "notemeld.android-sdk-artifact-pin.v1",
+  "sdk_version": "0.1.0",
+  "schema_version": "1",
+  "binding_version": "0.1.0",
+  "note_wire_version": "note-agent-v1",
+  "source_repository": "packages/notemeld-agent-sdk",
+  "source_commit": "0766e80973a4021f200c8f9f0763aca2f743734d",
+  "aar_sha256": "e4f8acd6a2217b8fce683c26de2823b4407ebb8b5d9fa58c804c6142cc7fc2c0",
+  "abis": ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+}

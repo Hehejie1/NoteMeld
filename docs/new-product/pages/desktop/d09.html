@@ -1,17 +1,85 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 设置</title><link rel="stylesheet" href="../../assets/page.css"><link rel="stylesheet" href="../../assets/d01.css"><link rel="stylesheet" href="../../assets/d01-interactions.css"><link rel="stylesheet" href="../../assets/d01-tuning.css"><link rel="stylesheet" href="../../assets/settings-center.css"><link rel="stylesheet" href="../../assets/desktop-polish.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 设置</title><link rel="stylesheet" href="../../assets/page.css"><link rel="stylesheet" href="../../assets/d01.css"><link rel="stylesheet" href="../../assets/d01-interactions.css"><link rel="stylesheet" href="../../assets/d01-tuning.css"><link rel="stylesheet" href="../../assets/settings-center.css"><link rel="stylesheet" href="../../assets/desktop-model-settings.css"><link rel="stylesheet" href="../../assets/desktop-polish.css"></head>
 <body data-page="D09">
 <div class="desktop-app settings-app">
   <aside class="desktop-sidebar"><div class="sidebar-head"><div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div><div class="sidebar-actions"><button aria-label="收起侧边栏">‹</button><button aria-label="通知">♢</button><button aria-label="搜索">⌕</button></div></div><nav class="quick-nav" aria-label="主要功能"><a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a><a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a><a class="quick-link primary" href="#" data-go="D09"><span>⚙</span>设置</a></nav><section class="session-list"><div class="section-label"><span>会话</span><button aria-label="筛选会话">⌄</button></div><a class="session" href="#" data-go="D03"><strong>检查系统架构</strong><small>刚刚 · 本地 Agent</small></a><a class="session" href="#" data-go="D03"><strong>整理研究报告</strong><small>昨天 · 本地 Agent</small></a><a class="session" href="#" data-go="C02"><strong>云端项目规划</strong><small>2 天前 · 云端会话</small></a><a class="session" href="#" data-go="D03"><strong>远程设备排查</strong><small>上周 · 远程设备</small></a></section><div class="sidebar-footer"><span class="connection"><i></i>本地 Agent 已连接</span><button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button></div></aside>
   <main class="settings-main"><header class="settings-header"><div><span class="eyebrow">D09 · 设置</span><h1>设置</h1></div></header><div class="settings-body"><nav class="settings-nav" aria-label="设置分类"><button class="active" data-setting-tab="general">通用</button><button data-setting-tab="personal">个性化</button><button data-setting-tab="models">模型</button><button data-setting-tab="archive">归档列表</button><button data-setting-tab="about">关于</button></nav><div class="settings-views">
     <section class="settings-view active" data-setting-view="general"><h2>通用</h2><p class="view-intro">配置 NoteMeld 的基础行为和默认运行环境。</p><div class="settings-card"><div class="setting-row"><div><strong>语言</strong><small>设置应用界面的显示语言。</small></div><select><option>简体中文</option><option>English</option></select></div><div class="setting-row"><div><strong>字体大小</strong><small>调整界面和 Agent 内容的阅读字号。</small></div><label class="range-control"><input type="range" min="12" max="20" value="15"><output>默认</output></label></div><div class="setting-row"><div><strong>开机自启</strong><small>登录系统后自动启动 NoteMeld。</small></div><label class="toggle"><input type="checkbox"><span></span></label></div><div class="setting-row"><div><strong>默认工作空间目录</strong><small>新建本地会话默认使用的文件夹。</small></div><button class="select-like">notemeld-project　⌄</button></div><div class="setting-row"><div><strong>桌面通知</strong><small>Agent 完成任务或需要审批时通知。</small></div><label class="toggle"><input type="checkbox" checked><span></span></label></div></div></section>
     <section class="settings-view" data-setting-view="personal"><h2>个性化</h2><p class="view-intro">让 Agent 更了解你的工作方式，但这些内容只在本地生效。</p><div class="settings-card text-settings"><label><strong>自定义指令</strong><small>每次对话都会遵循的偏好和工作规则。</small><textarea>回答优先使用简体中文；先给出结论，再说明依据和下一步。</textarea></label><label><strong>个人画像</strong><small>你的角色、技术背景和常用工作方式。</small><textarea>研究负责人，关注知识整理、代码质量和可复现的工作流。</textarea></label><label><strong>长期记忆</strong><small>Agent 可以在后续会话中参考的稳定信息。</small><textarea placeholder="记录你希望 Agent 长期记住的内容…">输出内容默认使用 Markdown，并保留来源和上下文。</textarea><div class="form-actions"><button>清除记忆</button><button class="primary">保存更改</button></div></label></div></section>
-    <section class="settings-view" data-setting-view="models"><div class="view-title-row"><div><h2>模型</h2><p class="view-intro">管理本地和 OpenAI 兼容协议的模型。</p></div><button class="primary" data-model-add>＋ 添加模型</button></div><div class="settings-card model-list"><div class="model-row selected"><span class="model-avatar">✦</span><div><strong>Auto</strong><small>自动选择适合当前任务的模型 · 系统默认</small></div><span class="tag green">默认</span><button>编辑</button></div><div class="model-row"><span class="model-avatar blue">H</span><div><strong>Hy4 preview</strong><small>远程模型 · OpenAI 兼容协议 · 0.00x</small></div><span class="tag">已配置</span><button>编辑</button></div><div class="model-row"><span class="model-avatar dark">L</span><div><strong>Llama 3.3 70B</strong><small>本地模型 · macOS · 未连接</small></div><span class="tag gray">需配置</span><button>配置</button></div></div></section>
+    <section class="settings-view" data-setting-view="models"><div class="view-title-row"><div><h2>模型</h2><p class="view-intro">按服务商管理本地与远程模型；配置保存在本机 SQLite，密钥存于系统 Keychain。</p></div><div class="model-view-actions"><button data-model-import><i data-lucide="link-2"></i>粘贴分享信息导入</button><button class="primary" data-model-add><i data-lucide="plus"></i>添加模型</button></div></div>
+      <div class="model-row model-row-system"><span class="model-avatar"><i data-lucide="sparkles"></i></span><div><strong>Auto</strong><small>系统路由策略：按任务自动选择合适模型，不可作为模型添加或删除</small></div><span class="tag green">系统默认</span></div>
+      <div class="settings-card model-list" data-model-groups></div>
+      <p class="model-store-note">原型数据仅当前页面内存有效；正式版经后端写入 Desktop SQLite providers/models，密钥仅存系统 Keychain，列表只显示脱敏状态。</p>
+    </section>
     <section class="settings-view" data-setting-view="archive"><h2>归档列表</h2><p class="view-intro">查看已归档的会话，恢复后会回到会话列表。</p><div class="settings-card archive-list"><div class="archive-row"><div><strong>关于 NoteMeld 的应用协议</strong><small>归档于今天 · 本地 Agent</small></div><button>恢复</button><button aria-label="删除归档">×</button></div><div class="archive-row"><div><strong>当前这个提示词生成的 AI 和我想象的差距</strong><small>归档于昨天 · 本地 Agent</small></div><button>恢复</button><button aria-label="删除归档">×</button></div><div class="archive-row"><div><strong>云端项目规划</strong><small>归档于 2 天前 · 云端会话</small></div><button>恢复</button><button aria-label="删除归档">×</button></div></div></section>
     <section class="settings-view" data-setting-view="about"><h2>关于</h2><p class="view-intro">NoteMeld 是本地优先的 AI 知识工作台。</p><div class="about-card"><div class="about-mark">N</div><h3>NoteMeld</h3><p>让 AI 编译知识，人验证和消费。</p><dl><div><dt>当前版本</dt><dd>0.1.0 Preview</dd></div><div><dt>Agent Runtime</dt><dd>本地 Agent · 已连接</dd></div><div><dt>许可证</dt><dd>Personal Preview</dd></div></dl><button>查看更新日志</button></div></section>
   </div></div></main>
 </div>
-<dialog class="model-dialog" data-model-dialog><form method="dialog"><header><div><h2>添加模型</h2><p>仅支持 OpenAI 兼容协议 API。</p></div><button value="cancel" aria-label="关闭">×</button></header><div class="dialog-fields"><label>供应商<select><option>OpenAI 兼容接口</option><option>自定义供应商</option></select></label><label>API Key<input type="password" placeholder="输入 API Key"></label><label>模型名称<input value="Auto"></label><label>接口地址<input placeholder="https://api.example.com/v1"></label></div><footer><button value="cancel">取消</button><button class="primary" value="confirm">保存</button></footer></form></dialog>
-<script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/settings-center.js"></script>
+<dialog class="model-dialog" data-model-dialog aria-label="模型配置">
+  <section data-vendor-panel>
+    <header><div><span class="dialog-eyebrow">新建配置</span><h2>选择模型厂商</h2><p>选择后自动带出协议与 Base URL，也可在下一步自定义。</p></div><button type="button" data-dialog-close aria-label="关闭"><i data-lucide="x"></i></button></header>
+    <div class="dialog-body">
+      <div class="vendor-grid" data-vendor-grid></div>
+      <button type="button" class="model-import-entry" data-model-import><i data-lucide="link-2"></i>粘贴分享信息导入</button>
+    </div>
+  </section>
+  <section data-form-panel hidden>
+    <header><div><span class="dialog-eyebrow" data-form-eyebrow>新建配置</span><h2 data-form-title>添加模型</h2></div><button type="button" data-dialog-close aria-label="关闭"><i data-lucide="x"></i></button></header>
+    <form data-model-form class="dialog-body model-form">
+      <div class="form-grid">
+        <label>配置名称<input name="displayName" required autocomplete="off" placeholder="例如：我的 DeepSeek"></label>
+        <label>协议类型
+          <select name="protocol" data-protocol-select>
+            <option value="openai-compatible">OpenAI 兼容</option>
+            <option value="anthropic-messages">Anthropic / Claude</option>
+            <option value="ollama">本地 Ollama</option>
+          </select>
+        </label>
+      </div>
+      <label>Base URL<input name="baseUrl" required type="url" inputmode="url" autocomplete="url" placeholder="https://api.example.com/v1"></label>
+      <p class="model-url-note" data-url-note hidden></p>
+      <label data-key-field>API 密钥
+        <span class="key-input-wrap">
+          <input name="apiKey" type="password" autocomplete="off" placeholder="填写 API Key">
+          <button type="button" class="model-key-toggle" data-key-toggle aria-label="切换密钥可见性"><i data-lucide="eye"></i><span data-key-toggle-text>显示</span></button>
+        </span>
+      </label>
+      <div class="model-field-head"><span>模型列表（可多选，逐个设置上下文窗口）</span><button type="button" class="ghost-btn" data-fetch-models><i data-lucide="refresh-cw"></i>从接口获取</button></div>
+      <p class="model-fetch-status" data-fetch-status role="status">选择厂商并填写密钥后，从 models/list 接口获取模型，或手动添加。</p>
+      <div class="model-options" data-model-options></div>
+      <div class="manual-row"><input name="manualModel" autocomplete="off" placeholder="手动添加模型 ID，例如 doubao-seed-1-6"><button type="button" class="ghost-btn" data-manual-add><i data-lucide="plus"></i>加入选择</button></div>
+      <p class="model-form-error" data-form-error role="alert" hidden></p>
+      <footer class="dialog-footer">
+        <button type="button" class="ghost-btn" data-test-connection><i data-lucide="plug-zap"></i>测试连接</button>
+        <p class="model-test-status" data-test-status role="status" hidden></p>
+        <span class="footer-spacer"></span>
+        <button type="button" class="ghost-btn" data-back-vendor>返回厂商</button>
+        <button type="submit" class="primary">保存模型</button>
+      </footer>
+    </form>
+  </section>
+</dialog>
+<dialog class="model-dialog model-share-dialog" data-share-dialog aria-label="分享模型配置">
+  <section>
+    <header><div><span class="dialog-eyebrow">跨端快速添加</span><h2>分享模型配置</h2><p data-share-subtitle></p></div><button type="button" data-share-close aria-label="关闭"><i data-lucide="x"></i></button></header>
+    <div class="dialog-body share-body">
+      <div class="share-qr" data-share-qr><div class="qr-placeholder"><i data-lucide="qr-code"></i></div></div>
+      <p class="model-fetch-status">扫码或复制信息到其他端导入。分享内容仅含厂商、地址与模型清单，<strong>不包含 API 密钥</strong>，导入后需自行填写。</p>
+      <label class="share-uri-label">分享信息<input data-share-uri readonly></label>
+      <button type="button" class="primary share-copy" data-share-copy><i data-lucide="copy"></i>复制分享信息</button>
+    </div>
+  </section>
+</dialog>
+<dialog class="model-dialog model-import-dialog" data-import-dialog aria-label="导入模型配置">
+  <section>
+    <header><div><span class="dialog-eyebrow">跨端快速添加</span><h2>导入模型配置</h2><p>粘贴其他端复制的分享信息。</p></div><button type="button" data-import-close aria-label="关闭"><i data-lucide="x"></i></button></header>
+    <div class="dialog-body">
+      <textarea data-import-text rows="5" placeholder="粘贴 notemeld://model-add?d=... 链接或分享 JSON"></textarea>
+      <p class="model-form-error" data-import-status role="status"></p>
+      <footer class="dialog-footer"><span class="footer-spacer"></span><button type="button" class="primary" data-import-parse>解析并填入表单</button></footer>
+    </div>
+  </section>
+</dialog>
+<script src="../../assets/vendor/lucide.js"></script><script src="../../assets/model-vendor-registry.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/settings-center.js"></script><script src="../../assets/desktop-model-settings.js"></script>
 </body></html>

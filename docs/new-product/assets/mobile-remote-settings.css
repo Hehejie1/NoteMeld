@@ -1,0 +1,33 @@
+.remote-settings-screen .model-list-scroll{padding-bottom:20px}
+.remote-cloud-group{margin-bottom:22px}
+.remote-cloud-heading{display:flex;align-items:center;justify-content:space-between;margin:0 3px 9px}
+.remote-cloud-heading h2{margin:0;font-size:13px;font-weight:800}
+.remote-cloud-heading span{color:var(--mobile-muted);font-size:10px}
+.remote-card{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:76px;margin-bottom:8px;padding:11px;border:1px solid var(--mobile-line);border-radius:16px;background:var(--mobile-panel);box-shadow:0 9px 24px #23334d08}
+.remote-card.client{margin-left:12px}
+.remote-card-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--nm-color-accent-soft);color:var(--nm-color-accent)}
+.remote-card-mark svg{width:17px;height:17px}
+.remote-card-body{display:grid;gap:4px;min-width:0}
+.remote-card-body strong,.remote-card-body small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.remote-card-body strong{font-size:12px}
+.remote-card-body small{color:var(--mobile-muted);font-size:9px}
+.remote-status{display:flex;align-items:center;gap:4px;color:var(--mobile-muted);font-size:9px}
+.remote-status:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--mobile-muted)}
+.remote-card-actions{display:flex;align-items:center;gap:1px}
+.remote-card-actions button{display:grid;place-items:center;width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--mobile-muted)}
+.remote-card-actions button:hover{background:var(--nm-color-surface-muted);color:var(--mobile-accent)}
+.remote-card-actions button[data-remote-delete]:hover{color:var(--mobile-danger)}
+.remote-card-actions svg{width:15px;height:15px}
+.remote-empty{padding:45px 18px;border:1px dashed var(--mobile-line);border-radius:16px;color:var(--mobile-muted);text-align:center;font-size:11px;line-height:1.7}
+.remote-empty svg{display:block;width:28px;height:28px;margin:0 auto 12px;color:var(--mobile-accent)}
+.remote-form-sheet form select{width:100%;height:39px;padding:0 11px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--nm-color-surface);color:var(--mobile-ink);font-size:11px}
+.remote-form-sheet form select:focus-visible{outline:2px solid var(--mobile-accent);outline-offset:2px}
+.remote-form-sheet [data-cloud-parent][hidden]{display:none}
+.remote-form-note{margin:0;color:var(--mobile-muted);font-size:10px;line-height:1.6}
+.remote-choice{display:flex;align-items:center;gap:12px;width:100%;min-height:68px;padding:10px 8px;border:0;border-bottom:1px solid var(--mobile-line);background:transparent;color:var(--mobile-ink);text-align:left}
+.remote-choice>svg:first-child{width:21px;height:21px;color:var(--mobile-accent)}
+.remote-choice>svg:last-child{width:15px;height:15px;margin-left:auto;color:var(--mobile-muted)}
+.remote-choice span{display:grid;gap:3px}
+.remote-choice strong{font-size:12px}
+.remote-choice small{color:var(--mobile-muted);font-size:10px}
+body[data-theme="深色"] .remote-card{background:var(--mobile-panel)}

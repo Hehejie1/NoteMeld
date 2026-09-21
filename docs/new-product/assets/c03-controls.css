@@ -5,7 +5,7 @@
 .cloud-session-page[data-new-session="true"] .session-layout{grid-template-columns:220px minmax(0,1fr)}
 .cloud-session-page[data-new-session="true"] .cloud-session-header{justify-content:flex-end;background:transparent;border-bottom:0}
 .cloud-session-page[data-new-session="true"] .cloud-session-header .header-actions{margin-left:auto}
-.cloud-session-page .cloud-composer-wrap{position:fixed;z-index:12;left:calc(224px + 220px + 16px);right:calc(290px + 16px);bottom:16px;max-width:none;margin:0}
+.cloud-session-page .cloud-composer-wrap{position:fixed;z-index:12;left:calc(224px + 220px + 16px);right:calc(290px + 16px);bottom:32px;max-width:none;margin:0}
 .cloud-session-page[data-new-session="true"] .cloud-composer-wrap{left:calc(220px + (100vw - 220px) / 2);right:auto;width:min(760px,calc(100vw - 220px - 32px));transform:translateX(-50%)}
 .cloud-session-page .permission-button,.cloud-session-page .model-button{position:relative;justify-content:space-between;min-width:116px;padding:7px 3px;border-radius:7px;color:var(--cloud-text)}
 .cloud-session-page .permission-button span,.cloud-session-page .model-button span{flex:1;text-align:center;white-space:nowrap}
@@ -19,4 +19,4 @@
 .c03-choice-popover [data-model-choice]:hover,.c03-choice-popover [data-model-choice][aria-selected=true]{background:var(--cloud-accent-soft);color:var(--cloud-accent)}
 @media(max-width:900px){.cloud-session-page .cloud-composer-wrap{left:calc(64px + 170px + 12px);right:12px}}
 @media(max-width:900px){.cloud-session-page[data-new-session="true"] .session-layout{grid-template-columns:190px minmax(0,1fr)}.cloud-session-page[data-new-session="true"] .cloud-composer-wrap{left:calc(190px + (100vw - 190px) / 2);right:auto;width:calc(100vw - 190px - 24px)}}
-@media(max-width:640px){.cloud-session-page .cloud-composer-wrap{left:calc(170px + (100vw - 170px) / 2);right:auto;width:calc(100vw - 170px - 16px);bottom:8px;transform:translateX(-50%)}.c03-choice-popover{left:0;right:0;min-width:0}.c03-choice-popover.model-popover{right:0}}
+@media(max-width:640px){.cloud-session-page .cloud-composer-wrap{left:calc(170px + (100vw - 170px) / 2);right:auto;width:calc(100vw - 170px - 16px);bottom:16px;transform:translateX(-50%)}.c03-choice-popover{left:0;right:0;min-width:0}.c03-choice-popover.model-popover{right:0}}

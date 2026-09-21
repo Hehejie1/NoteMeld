@@ -27,4 +27,4 @@ assert.match(packageJson.scripts['build:demo'], /VITE_NOTEMELD_DEMO=true/)
 assert.ok(packageJson.scripts['preview:demo'])
 
 const viteConfig = readFileSync(resolve(repositoryRoot, 'desktop/frontend/vite.config.ts'), 'utf8')
-assert.match(viteConfig, /mode\s*===\s*['"]demo['"]\s*\?\s*['"]\/['"]\s*:\s*['"]\.\/['"]/, 'demo build must use root-relative assets so deep routes can boot')
+assert.match(viteConfig, /base:\s*env\.VITE_BASE_PATH\s*\|\|\s*['"]\/['"]/, 'browser, demo and HashRouter desktop builds must use root-relative assets')

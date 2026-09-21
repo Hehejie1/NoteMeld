@@ -19,20 +19,46 @@ interface ProviderStore {
   updateProvider: (provider: IProvider) => Promise<void>
 }
 
-const normalizeProvider = (item: {
+type ProviderRaw = {
   id: string
   name: string
   logo: string
-  api_key: string
-  base_url: string
   enabled: number
-}): IProvider => ({
+  // 安全出口字段（notemeld.model-add.v1）
+  base_url?: string
+  display_name?: string
+  vendor_id?: string
+  protocol?: string
+  auth_type?: string
+  has_api_key?: boolean
+  credential_status?: string
+  api_key_masked?: string
+  created_at?: string
+  // 旧字段兜底
+  api_key?: string
+  baseUrl?: string
+  displayName?: string
+  vendorId?: string
+  authType?: string
+  hasApiKey?: boolean
+}
+
+const normalizeProvider = (item: ProviderRaw): IProvider => ({
   id: item.id,
   name: item.name,
   logo: item.logo,
+  // HTTP 安全出口不再回显明文；保留旧字段读取兜底一版
   apiKey: item.api_key,
-  baseUrl: item.base_url,
+  baseUrl: item.base_url ?? item.baseUrl ?? '',
   enabled: item.enabled,
+  displayName: item.display_name ?? item.displayName ?? item.name,
+  vendorId: item.vendor_id ?? item.vendorId ?? 'custom',
+  protocol: item.protocol ?? 'openai-compatible',
+  authType: item.auth_type ?? item.authType ?? 'api_key',
+  hasApiKey: item.has_api_key ?? item.hasApiKey ?? Boolean(item.api_key),
+  credentialStatus: item.credential_status,
+  apiKeyMasked: item.api_key_masked,
+  createdAt: item.created_at,
 })
 
 export const useProviderStore = create<ProviderStore>((set, get) => ({
@@ -57,14 +83,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     const res:IResponse<IProvider> = await getProviderById(id)
 
       const item = res
-      return normalizeProvider(item as unknown as {
-        id: string
-        name: string
-        logo: string
-        api_key: string
-        base_url: string
-        enabled: number
-      })
+      return normalizeProvider(item as unknown as ProviderRaw)
 
   },
   addNewProvider: async (provider: IProvider) => {
@@ -75,14 +94,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     }
     try {
       const res = await addProvider(payload)
-      const item = normalizeProvider(res as {
-        id: string
-        name: string
-        logo: string
-        api_key: string
-        base_url: string
-        enabled: number
-      })
+      const item = normalizeProvider(res as ProviderRaw)
       await get().fetchProviderList()
       return item
     } catch (error) {

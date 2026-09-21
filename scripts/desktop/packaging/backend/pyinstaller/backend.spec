@@ -33,6 +33,11 @@ def external_plugin_dir(plugin_name: str) -> Path | None:
 
 
 OFFICIAL_LINK_PLUGIN_DIR = external_plugin_dir("official-link-note")
+if OFFICIAL_LINK_PLUGIN_DIR is None:
+    raise SystemExit(
+        "official.link-note plugin release is required for desktop packaging; "
+        "provide NOTEMELD_PLUGINS_DIR pointing to the independent notemeld-plugins repository"
+    )
 APP_RESOURCE_DATAS = []
 if APPLICATIONS_DIR.is_dir():
     # Application packages are data, not Python modules. Keep the package

@@ -24,37 +24,104 @@
     "APP01": {"title": "笔记应用", "kind": "application"},
     "APP02": {"title": "学习应用", "kind": "application"},
     "APP03": {"title": "监控应用", "kind": "application"},
-    "APP04": {"title": "系统运行", "kind": "application"}
+    "APP04": {"title": "系统运行", "kind": "application"},
+    "M07": {"title": "移动端模型设置", "kind": "mobile"},
+    "M08": {"title": "移动端远程设置", "kind": "mobile"}
   },
   "architecture": {
     "cloud_control_plane": {
-      "description": "Cloud 是控制面，不直接把桌面端内部数据库暴露给网页或移动端；所有写操作都经过认证、作用域校验、状态机和审计。",
+      "description": "一个 Cloud 服务端承载一个团队的控制面：组织内共享模型目录与默认策略，端侧独立保管密钥和私钥；所有写操作都经过认证、作用域校验、状态机和审计。",
       "modules": [
-        {"id":"auth","title":"身份与准入","interface":"邮箱密码/验证码、邀请、访问申请、Token","implementation":"auth routes + security.py","data":["users","tokens","verification_codes","access_requests","invitations","login_attempts"]},
+        {"id":"auth","title":"身份与准入","interface":"邮箱密码/验证码、邀请、访问申请、Token；开发验证码仅由 .env 配置，生产由 SMTP 投递","implementation":"auth routes + security.py","data":["users","tokens","verification_codes","access_requests","invitations","login_attempts"]},
         {"id":"session","title":"会话控制面","interface":"session snapshot、command queue、event projection、approval","implementation":"session routes + worker","data":["sessions","commands","events","approvals","session_payloads"]},
-        {"id":"workspace","title":"Workspace 资源","interface":"list/read/write/delete、capacity、backup export；restore is selected at server startup","implementation":"workspace.py + workspace routes + backup storage adapter","data":["workspaces","workspace_backups"],"external":"workspace filesystem / local folders / local or S3-compatible backup storage"},
-        {"id":"device","title":"设备与授权","interface":"pairing、device scopes、grant revoke、one-time model bundle","implementation":"device/pairing routes","data":["devices","pairings","grants","relay_cursors"]},
-        {"id":"model","title":"模型目录","interface":"model CRUD、enable/default、provider adapter","implementation":"model routes + provider adapter","data":["models"]},
-        {"id":"audit","title":"审计与恢复","interface":"admin review、audit query、idempotency、lease recovery","implementation":"audit helpers + recovery paths","data":["audits","session_import_requests","session_archives"]}
+        {"id":"workspace","title":"Workspace 资源","interface":"list/read/write/delete、capacity、backup export；restore is selected at server startup","implementation":"workspace.py + workspace routes + backup storage adapter","data":["workspaces","workspace_backups"],"external":"正文由各端文件系统保存；生产备份使用 S3-compatible object storage，Cloud SQLite 仅保存对象索引"},
+        {"id":"device","title":"设备与授权","interface":"短时配对、device scopes、grant revoke；扫码材料只用于本次添加","implementation":"device/pairing routes","data":["devices","pairings","grants","relay_cursors"]},
+        {"id":"model","title":"组织模型目录","interface":"组织共享 model CRUD、Auto 默认策略、会话显式选择；端侧本地模型独立维护","implementation":"model routes + provider adapter","data":["models"]},
+        {"id":"audit","title":"审计与恢复","interface":"admin review、audit query、idempotency、lease recovery；角色保持只读","implementation":"audit helpers + recovery paths","data":["audits","session_import_requests","session_archives"]}
       ]
     },
     "layers": [
-      {"id":"UI","title":"多端界面层","description":"桌面端负责完整 Agent 工作台，Cloud Web 负责组织控制面，移动端负责会话消费与远程控制。","components":[
-        {"name":"Desktop UI","owner":"D01 · D03 · D06 · D09","responsibility":"创建本地会话、管理本地 Workspace（名称、多文件夹、长期记忆和授权策略）、消费知识产物和管理插件。","input":"用户输入、文件、Agent 事件","output":"会话操作、审批、Workspace 配置和设置变更","feature_id":"D03.session"},
-        {"name":"Cloud Web","owner":"C01 · C02 · C03 · C04 · C05 · C06","responsibility":"登录、云端会话、人员、设备、Workspace、权限和审计的控制面。","input":"组织身份、授权和云端状态","output":"云端命令、审批、管理操作","feature_id":"C02.dashboard"},
-        {"name":"Mobile UI","owner":"M01 · M02 · M03 · M04 · M05 · M06","responsibility":"在受限屏幕内展示 Workspace、会话、设置、记忆和存储，并通过授权设备控制任务。移动端离线时仅允许查看历史投影。","input":"同步投影、用户操作","output":"在线时提交命令；离线时只读","feature_id":"M02.session"}
+      {"id":"UI","title":"多端界面层","description":"Cloud Web 管理组织控制面；桌面与移动端既可维护各自本地模型，也作为第三端设备消费 Cloud 会话与远程控制。","components":[
+        {"name":"Desktop UI","owner":"D01 · D03 · D06 · D09","responsibility":"创建本地会话，管理本地 Workspace 与本地模型密钥；连接 Cloud 后发送只从组织共享模型目录选择，扫码添加不持久化或共享密钥。","input":"用户输入、文件、Agent 事件","output":"会话操作、审批、Workspace 配置和设置变更","feature_id":"D03.session"},
+        {"name":"Cloud Web","owner":"C01 · C02 · C03 · C04 · C05 · C06","responsibility":"管理组织共享模型目录、云端会话、人员、设备、Workspace、权限和审计，不向其他端分发模型 API Key。","input":"组织身份、授权和云端状态","output":"云端命令、审批、管理操作","feature_id":"C02.dashboard"},
+        {"name":"Mobile UI","owner":"M01 · M02 · M03 · M04 · M05 · M06 · M07 · M08 · M09 · M10","responsibility":"展示 Workspace、会话、设置、记忆、存储、模型、远程连接与任务产物；本地密钥独立保存，连接 Cloud 后只选择组织模型目录；作为第三端设备通过心跳与 Grant 控制在线设备。","input":"同步投影、用户操作","output":"在线且同步完成时提交命令；离线时只读","feature_id":"M02.session"}
       ]},
       {"id":"RUNTIME","title":"宿主与 Agent 运行层","description":"宿主负责权限、文件和生命周期，独立 Agent runtime 负责会话状态机、工具调用、事件和恢复。","components":[
         {"name":"Desktop Host Adapter","owner":"本地宿主","responsibility":"连接本地 SQLite、文件系统和 Agent runtime，提供设备/桌面能力边界。","input":"UI 命令和本地能力","output":"持久化事件和产物","feature_id":"D01.command"},
         {"name":"Cloud Control Plane","owner":"Cloud FastAPI","responsibility":"认证、队列、审批、配额、设备授权和云端 Workspace 访问控制。","input":"认证请求和云端命令","output":"排队、审批和事件投影","feature_id":"C03.send-command"},
         {"name":"Agent Worker","owner":"共享 runtime","responsibility":"按 session 顺序执行 turn，生成事件和终态，危险操作暂停等待人工审批。","input":"命令队列和能力描述","output":"events、approvals、终态","feature_id":"C03.session"}
       ]},
-      {"id":"DATA","title":"数据与同步层","description":"本地事实、Cloud 控制面元数据和移动端缓存分开管理，通过事件/快照和同步游标连接。","components":[
-        {"name":"Desktop SQLite + files","owner":"本地事实源","responsibility":"保存本地 Workspace 注册、名称、多个本地文件夹、Workspace 长期记忆、授权策略，以及 conversation、note、task、Agent event、Wiki 和附件。","input":"本地任务管线和 Agent 事件","output":"可验证知识和会话投影","feature_id":"D03.artifacts"},
-        {"name":"Cloud SQLite + Workspace","owner":"Cloud 控制面","responsibility":"保存云端 Workspace 注册、名称、关联文件夹引用、组织/Workspace 长期记忆和授权策略；文件内容受权限和配额约束。","input":"管理操作和 worker 状态","output":"控制面查询和审计","feature_id":"C05.devices"},
-        {"name":"Mobile cache","owner":"移动端投影","responsibility":"保存移动端 Workspace 投影、设置、会话摘要和同步游标；离线状态只允许读取历史信息，不提交远程命令。","input":"快照和事件投影","output":"在线控制或离线只读状态","feature_id":"M06.storage"}
+      {"id":"DATA","title":"数据与同步层","description":"组织模型目录、端侧本地凭据、Workspace 事实和移动端缓存分开管理；同步只传递可公开的配置与状态，不传 API Key、设备私钥或会话密钥。","components":[
+        {"name":"Desktop SQLite + files","owner":"本地事实源","responsibility":"保存本地 Workspace 注册、多个本地文件夹、长期记忆、授权策略、本地模型凭据以及 conversation、note、task、Agent event、Wiki 和附件。","input":"本地任务管线和 Agent 事件","output":"可验证知识和会话投影","feature_id":"D03.artifacts"},
+        {"name":"Cloud SQLite + Workspace","owner":"Cloud 控制面","responsibility":"保存组织模型目录、云端 Workspace 注册、关联文件夹引用、组织/Workspace 长期记忆、授权策略和备份对象索引；不保存端侧本地模型密钥。","input":"管理操作和 worker 状态","output":"控制面查询和审计","feature_id":"C05.devices"},
+        {"name":"Mobile cache","owner":"移动端投影","responsibility":"保存移动端 Workspace 投影、设置、会话摘要、同步游标和本地模型凭据引用；扫码添加信息在会话结束后丢弃，离线时只允许读取历史信息。","input":"快照和事件投影","output":"在线控制或离线只读状态","feature_id":"M06.storage"}
       ]}
     ]
+  },
+  "remote_connection_contract": {
+    "version": "notemeld.remote-connection.v1（设计契约，非已发布 API）",
+    "summary": "一个 Cloud 服务端对应一个团队。桌面端和移动端对 Cloud 都是普通第三端设备：上线后持续发送心跳，Cloud 把在线状态同步给同组织的其他已连接设备；控制端仍须选择受控设备并取得定向 Grant。连接配置、在线提示、控制权限和会话传输不得混为一体。",
+    "maturity": "Cloud 设备/配对/Grant/心跳和部分原生 LAN-first/Relay 能力已有实现；M08 的增删改查、扫码均为页面内存原型，缺少持久连接配置、扫码授权适配与跨端联调。",
+    "entities": [
+      {"name":"CloudConnectionProfile（本地连接配置，规划）","owner":"每个安装实例的本地配置 + 系统安全存储","fields":"local_id, display_name, base_url(HTTPS), account_user_id, auth_secret_ref, verified_at, last_error","rule":"local_id 仅用于本机分组；auth_secret_ref 指向系统安全存储，页面/日志/配置同步不得保存明文 Token。保存表单后仍是未验证。"},
+      {"name":"RemoteClientBinding（本地设备引用，规划）","owner":"控制端本地配置；设备事实以 Cloud 为准","fields":"local_id, cloud_profile_id, host_device_id, display_name_override, last_selected_workspace_id","rule":"必须引用同一 Cloud 账号下的 devices.id；地址只是经验证的 LAN 候选端点，不是设备身份。无独立 Cloud remote_clients 表。"},
+      {"name":"Device + DeviceToken（已实现）","owner":"Cloud SQLite devices / tokens；私钥与原始 Token 在端上安全存储","fields":"devices: id, user_id, public_key, platform, display_name, connectivity_json, last_seen_at, revoked_at；tokens: id, digest, audience, scopes_json, device_id, expires_at, revoked_at","rule":"按 user_id 隔离；列表返回在线提示与公开元数据，不返回私钥或 Token。"},
+      {"name":"Pairing（已实现的设备配对）","owner":"Cloud SQLite pairings","fields":"id, user_id, code_hash, expires_at, status, device_id, created_at","rule":"当前 /v1/pairings/start 产生 5 分钟短码，/confirm 需要已认证 cloud-api 和设备公钥；扫码本身不代表认证。二维码与临时添加材料不得含长期凭证、模型 API Key 或设备私钥。"},
+      {"name":"Grant（已实现的定向控制授权）","owner":"Cloud SQLite grants","fields":"id, user_id, controller_device_id, host_device_id, role, scopes_json, workspace_refs_json, expires_at, revoked_at, created_at","rule":"控制端和 Host 均为有效且有公钥的设备；Grant 按方向与 Workspace 约束，过期/撤销后立即拒绝新控制。"},
+      {"name":"Remote Session / Relay Cursor（已实现的运行元数据）","owner":"Cloud SQLite sessions / relay_cursors；明文与密钥留在端上","fields":"sessions: id, user_id, kind=device_remote, workspace_id, status, authority_epoch；relay_cursors: session_id, sender_device_id, last_sequence","rule":"Cloud Relay 只转发加密 envelope；与普通 Cloud-native Agent 会话分离，不存远程命令明文。"}
+    ],
+    "flows": [
+      {"name":"扫描云端二维码","steps":["Cloud Web/桌面端 C05 在已登录会话中请求 /v1/pairings/start，展示云端标识、HTTPS 地址、短时配对码和过期时间；二维码不得包含 Token、模型 API Key 或设备私钥。","移动端选择「扫描云端」，解析版本、来源和期限；核对地址及账号，登录或取得受保护的授权上下文，不自动信任二维码提供的地址。","移动端生成安装实例 ID 和 Ed25519 密钥对，提交 /v1/pairings/confirm 所需 code、device_id、platform、display_name、public_key；随后通过 /v1/devices/{id}/challenge、/challenge/verify 证明私钥持有，再由 /token 换取限定范围的 device-api Token，存入系统安全存储并读取 /v1/devices 核对身份。","验证完成后只读取组织共享模型目录；端侧如需本地模型，由本机独立维护密钥。验证完成才把 CloudConnectionProfile 标为已连接；失败、过期或取消保留未验证状态并提供重试。"],"current_gap":"当前 Cloud 配对确认要求已认证 cloud-api；跨设备扫码如何安全取得此授权上下文尚需实现。M08 目前只预填表单。"},
+      {"name":"扫描远程客户端二维码","steps":["已连接 Cloud 的 Host 通过受保护的设备流程生成短时邀请；二维码指向 cloud_profile、host_device_id、公钥指纹与短码，不携带长期凭证。","移动端先选所属 Cloud，再校验短码、用户归属、Host 公钥指纹和 devices.id；展示设备名与权限范围供用户确认。","由有权主体通过 POST /v1/grants 为 controller_device_id → host_device_id 创建限定 scopes、workspace_refs、expiry 的 Grant；必要时 Host 本机确认。","使用 Grant 建立 device_remote session，先尝试 LAN，失败后使用加密 Relay；签名握手与 SessionCipher 成功、Host receipt 到达后才允许发送命令。"],"current_gap":"Host 邀请码签发/兑换、扫码确认和原生适配尚未形成完整实现；现有 /v1/pairings/start/confirm 是设备入网配对，不能直接当作远控 Grant。"},
+      {"name":"手动添加或编辑","steps":["云端表单填写名称、HTTPS 地址与受保护登录凭证；客户端表单先选云端，再选 Cloud 设备目录中的 Host，必要时填写经核验的 LAN 候选地址。","保存本地配置只产生未验证引用；随后认证、设备证明、Grant 校验和连接探测分别更新状态。编辑名称不轮换身份；更改地址/凭证须重新验证。","敏感凭证只写系统安全存储；列表仅显示名称、脱敏地址、最近验证与连接状态。"],"current_gap":"M08 当前仅在页面内存保存表单值，不持久化、不调用 Cloud，也不探测在线。"},
+      {"name":"删除、撤销与恢复","steps":["删除本地连接只删除本机配置和安全存储引用，必须提示是否存在关联客户端；不得暗中撤销 Cloud 设备/Grant。","撤销控制权限调用 /v1/grants/{id}/revoke；撤销设备调用 /v1/devices/{id}/revoke，并清理对应 Token，写入审计。","断网保留历史投影并标记不可操作；恢复后重新认证、心跳、读取设备与 Grant，再恢复 LAN/Relay，不重置 replay cursor。"],"current_gap":"M08 当前删除只影响本页内存记录；没有 Cloud 撤销操作。"}
+    ],
+    "states": [
+      {"label":"未配置 / 未验证","source":"无本地配置 / 仅保存了表单","action":"允许编辑、扫码或验证；不得显示在线或可控"},
+      {"label":"配对中 / 已配对","source":"短码待确认 / Cloud 返回设备身份且端上安全存储完成","action":"已配对不等于已授权远控；继续检查 Grant"},
+      {"label":"在线 / 离线","source":"所有第三端设备持续向 Cloud 发送心跳；GET /v1/devices 的 online 基于最近心跳和 device_online_ttl_seconds，并同步给同组织其他已连接设备；它不是传输成功证明","action":"离线进入 offline_readonly，禁止命令、审批、设备授权和其他远程写操作；恢复在线并完成同步后才恢复控制"},
+      {"label":"可连接 / 连接中 / 可控制","source":"有效定向 Grant + 设备公钥证明 + LAN 或 Relay 加密握手 + Host 接收回执","action":"只有可控制才开放远程发送；relay_accepted 不等于 Host received"},
+      {"label":"已过期 / 已撤销 / 失败","source":"配对码 TTL、Token/Grant expires_at 或 revoked_at、网络与证明错误","action":"立即关闭控制入口，展示明确原因与重新配对/申请授权路径"}
+    ],
+    "platforms": [
+      {"name":"Cloud Web · C05","responsibility":"设备与配对码、Grant 管理、心跳目录、撤销与审计；不托管私钥和远程会话明文。"},
+      {"name":"桌面 Host · D09/APP04","responsibility":"生成并保护设备密钥；上报心跳与 LAN 候选端点；本机批准高风险操作，持久接收命令并执行 Agent；提供受保护的客户端邀请入口。"},
+      {"name":"移动控制端与桌面端 · 第三端设备（macOS/Windows/Android/iOS/Harmony）","responsibility":"所有端按相同协议注册设备、持续发送心跳、接收同组织设备状态并使用定向 Grant；控制端采用 LAN-first/Relay E2EE，离线统一进入 offline_readonly。"}
+    ],
+    "invariants": ["Cloud 连接配置、设备在线提示、Grant 和真正可控制是四个独立状态。","二维码只允许短时、一次性材料；地址必须核对，私钥、长期 Token 与模型 API Key 永不入码。","Cloud 只共享组织模型目录与默认策略；配置同步和扫码添加不传模型 API Key，端侧本地凭据、设备私钥和会话密钥留在各自安全存储。","Cloud 按 user_id/设备身份/Grant/Workspace 校验；Host 仍保有最终审批权。","所有端使用相同错误和状态语义，但分别采用桌面 Dialog、Cloud 面板与移动 Sheet 展示。"]
+  },
+  "model_config_contract": {
+    "version": "notemeld.model-add.v1（设计契约，非已发布 API；跨端分享载荷使用同名 schema）",
+    "summary": "桌面 D09、Cloud C06、移动 M07 的「添加模型」使用同一套字段、校验和状态语义：先选内置厂商预设（自动带出协议与 Base URL，也可手动填写自定义名称），再按协议从 Provider 拉取模型列表并多选，每个模型独立维护上下文窗口；保存前可测试连接，保存后形成 Provider（一次接入连接）→ Model（该连接下的可用模型）两层数据。Auto 是系统路由策略，保留在选择列表顶部，不能作为模型名称添加。",
+    "maturity": "产品侧桌面 providers/models 表与基础模型管理已实现；Cloud 组织共享目录后端仍为 user_id 作用域（partial，待 Provider/Model 两级 + organization_id 迁移）；D09/M07/C06 三端统一表单均已在 new-product 落地为 prototype（C06 为 assets/c06-model-manager.js，经注入 fetch mock 完成管理员/普通成员全流程与明暗主题浏览器验证），共享资产为 assets/model-vendor-registry.js；移动端端侧持久化为 proposed。",
+    "shared_asset": "assets/model-vendor-registry.js（window.ModelVendorRegistry：厂商预设、协议适配、统一校验、连接测试、分享载荷编解码）",
+    "entities": [
+      {"name":"VendorPreset（内置预设，非用户数据）","owner":"各端内置 registry","fields":"vendor_id, name, protocol, base_url, icon, urlNote?, unsupported?","rule":"选择预设自动填充协议与 Base URL，仍允许用户改写；base_url 为空的预设（如 Xiaomi MIMO、模力方舟）表示官方兼容地址待确认，不得臆造；AWS Bedrock 标记 unsupported，v1 经 OpenAI 兼容网关接入。"},
+      {"name":"Provider（一次接入连接）","owner":"桌面 Desktop SQLite providers；Cloud 组织目录（目标 organization_id）；移动端 mobile_model_providers（proposed）","fields":"local_id, display_name, vendor_id, protocol(openai-compatible|anthropic-messages|ollama), base_url, auth_type, api_key_ref/api_key_ciphertext, scope(cloud_org|local_device), created_at, updated_at","rule":"display_name 支持手动填写或取厂商名；同一 scope 下不得与已有 Provider 重名；密钥只存安全存储或加密列，列表/回显/日志/分享载荷永不返回明文，编辑留空表示保留原密钥。"},
+      {"name":"Model（Provider 下的模型）","owner":"与 Provider 同库：models / mobile_models（proposed）","fields":"id, provider_id, model_id, display_name, context_window, modalities, enabled, is_default, test_status, created_at, updated_at","rule":"model_id 来自 Provider 列表或手动添加；同一 Provider 内不得重复；context_window 按模型独立填写，整数 512–4,000,000，默认 128000；is_default 每个 scope 至多一个；Auto 不是 Model。"}
+    ],
+    "protocols": [
+      {"id":"openai-compatible","label":"OpenAI 兼容","auth":"Bearer API Key","models_api":"GET {base_url}/models（data[] 或 models[]）","test_api":"POST {base_url}/chat/completions，max_tokens=1 非流式","vendors":"OpenAI、DeepSeek、火山方舟、MiniMax CN/Global、Bigmodel、阿里云百炼、硅基流动、Z.ai、OpenRouter、Kimi CN/Global、BytePlus、腾讯混元、PPIO、Gemini 兼容端点、自定义"},
+      {"id":"anthropic-messages","label":"Anthropic / Claude","auth":"x-api-key + anthropic-version: 2023-06-01","models_api":"无标准公开列表接口，使用内置常用目录（claude-opus-4-1 / claude-sonnet-4-5 / claude-3-5-haiku-latest）并允许手动添加","test_api":"POST {base_url}/v1/messages，max_tokens=1","vendors":"Anthropic 官方、DeepSeek anthropic 兼容地址（同一 Provider 二选一协议）"},
+      {"id":"ollama","label":"本地 Ollama","auth":"免密钥","models_api":"GET {base_url}/api/tags（models[].name）","test_api":"GET {base_url}/api/tags","vendors":"本机/局域网 Ollama，默认 http://localhost:11434"}
+    ],
+    "validation": ["名称必填；厂商可选，未选按 custom 处理。","Base URL 必填且为 http/https；非 localhost/127.0.0.1/[::1] 必须 HTTPS；保存时去除尾部斜杠。","需要密钥的协议在新建时必填；编辑回显不回显密钥，密钥框留空表示保留已存值，可显式替换或移除。","至少选择或手动添加一个模型；模型在同 Provider 内去重。","上下文窗口为每模型独立整数，范围 512–4,000,000。","桌面/Cloud 即时校验；移动端原型保持提交时校验，正式端补齐字段级即时反馈。"],
+    "share": {
+      "uri": "notemeld://model-add?d=<UTF-8 安全 base64url(JSON)>",
+      "payload": {"s":"notemeld.model-add.v1","v":1,"vendor":"预设只传 vendor_id；custom 传 vendor=custom + name/protocol/url","models":"[{id, n?显示名, c?上下文窗口}]"},
+      "rules": ["载荷永不包含 api_key、密钥引用或任何长期凭证，接收端必须自行填写密钥。","预设厂商的协议与 Base URL 由接收端查本地 registry 解析，二维码保持精简并随 registry 更新。","接收端必须展示解析结果供用户确认，不自动信任、不自动保存；支持二维码扫描与粘贴 URI/JSON 两种导入方式。","与设备配对码 notemeld://pair?code= 明确区分，不得互相识别。","分享入口按模型/Provider 生成，导入后进入同一统一表单并标记 imported 状态。"]
+    },
+    "platform_storage": [
+      {"platform":"桌面 D09","store":"Desktop SQLite providers/models + 系统 Keychain 保存密钥（已实现表结构）","rule":"原型弹窗为内存演示；产品保存走后端，列表只回显脱敏状态。"},
+      {"platform":"Cloud C06","store":"Cloud SQLite，目标 organization_id 作用域共享目录；组织凭据加密入库，不分发到端","rule":"仅管理员可写，普通成员只读；空 api_key 不覆盖已存凭据；当前 user_id 实现迁移完成前保持 partial 标注。"},
+      {"platform":"移动 M07","store":"目标：端侧 SQLite（mobile_model_providers/mobile_models）+ iOS Keychain / Android Keystore / Harmony HUKS，数据库仅存 key_ref","rule":"implemented（Android）：SQLite + Android Keystore 支持 App 重启后长期保存、编辑回显、密钥替换/移除、导入与分享；iOS/Harmony 为后续目标。"}
+    ],
+    "flows": [
+      {"name":"添加（三端统一八步）","steps":["选择厂商预设或手动填写自定义名称","按预设带出协议与 Base URL（可在高级设置中改写）","填写/粘贴 API Key（Ollama 免 Key），支持显示/隐藏","按协议拉取模型列表（Anthropic 用内置目录）或手动添加","多选模型并逐个确认上下文窗口","必填与 URL 格式即时校验（移动端提交时校验）","对所选模型执行一次最小请求测试并展示结果","保存：写入对应端存储，刷新分组列表，可再次编辑/测试"]},
+      {"name":"编辑回显","steps":["打开已有 Provider 配置；表单回显名称、厂商、协议、URL、模型多选与每模型上下文。","密钥显示为「已保存」占位而非明文；留空保存保留、填写新值替换、移除按钮清空。","保存执行同一套校验与去重；测试状态写回模型 test_status。"]},
+      {"name":"跨端分享与导入","steps":["源端从 Provider/模型生成不含密钥的 notemeld://model-add 载荷，展示二维码并支持复制 URI。","目标端扫码或粘贴识别 schema（拒绝配对码与其他 scheme），解析后预填统一表单并标记 imported。","用户核对信息、补填密钥、拉取/测试通过后保存到本端存储。"]}
+    ],
+    "invariants": ["三端字段名、协议枚举、校验规则、错误文案与状态语义一致，仅容器不同（桌面 Dialog、Cloud 模态、移动 Sheet）。","密钥与配置分离：明文密钥只存在于系统安全存储或加密列，不回显、不入日志、不入配置同步、不入分享码。","Auto 是路由策略不是模型，不可作为模型记录添加。","浏览器直连第三方 Provider 存在 CORS 与页面暴露密钥风险，原型拉取/测试仅作演示；正式实现由各端原生/后端代理发起。","厂商预设中的不确定地址留空标注，不臆造官方端点。"]
   },
   "features": {
     "D01.command": {"page":"D01","title":"创建本地 Agent 会话","description":"从新对话页提交用户意图，绑定本地 Workspace、模型、权限和附件后进入会话执行。","api":["Agent v1 session/turn","Local workspace capability"],"tables":["conversations","agent_turns","conversation_context_refs"],"state":["idle","submitting","queued","running","completed","failed"],"status":"implemented"},
@@ -62,28 +129,35 @@
     "D03.artifacts": {"page":"D03","title":"文件与产物上下文","description":"Agent 产物和引用文件通过 Workspace 上下文展示，用户可检查来源后再消费结果。","api":["Workspace capability read","GET /api/conversations/{id}/assets"],"tables":["note_documents","conversation_context_refs"],"state":["empty","loading","ready","error"],"status":"implemented"},
     "D06.capabilities": {"page":"D06","title":"能力中心","description":"按 Skills、MCP、插件和 Application 分类查看来源、版本、权限、兼容性和启停状态。","api":["GET /api/applications","GET /api/mcp/servers"],"tables":["plugins","applications"],"state":["loading","installed","disabled","error"],"status":"implemented"},
     "D09.settings": {"page":"D09","title":"桌面设置分组","description":"统一管理模型、主题、账户、设备、数据、安全和 Agent 诊断入口。","api":["GET/PUT /api/config","GET /api/models"],"tables":["providers","models","user_preferences"],"state":["ready","dirty","saving","saved","error"],"status":"implemented"},
+    "D09.model-config": {"page":"D09","title":"桌面统一添加/编辑模型弹窗（原型）","description":"遵循 model_config_contract：模型设置页的添加弹窗与行内编辑共用同一 Dialog；厂商预设选择后自动带出协议与 Base URL，支持手动自定义名称；密钥显示/隐藏、编辑回显留空保留；按协议拉取列表多选、每模型独立上下文窗口；字段级即时校验、去重；保存前最小请求测试并在保存后可再次测试。Auto 仅为列表顶部的系统路由策略，不再作为模型名称默认值。原型为页面内存演示，不落产品库；分享/导入能力与 M07 共用 notemeld.model-add.v1。","api":["window.ModelVendorRegistry（原型共享资产）","GET/PUT /api/models + providers（产品目标）"],"tables":["providers","models"],"state":["ready","editing","imported","loading_list","testing","test_success","test_error","saved","error"],"status":"prototype"},
     "APP01.notes": {"page":"APP01","title":"笔记应用","description":"承载笔记列表、笔记样式与模板、Wiki 图谱/文章/关系/重建，以及旧笔记和 Markdown 导入。页面只展示真实笔记、导入任务和 Wiki 状态。","api":["GET /api/notes/library","GET/PUT /api/note_styles*","GET /api/wiki/graph","GET /api/wiki/articles/{source_id}","POST /api/notes/import"],"tables":["note_documents","conversations"],"state":["loading","empty","ready","importing","rebuilding","error"],"status":"implemented"},
     "APP02.learning": {"page":"APP02","title":"学习应用","description":"承载学习空间、学习画布、掌握验证、复习和可编辑语义白板；卡片、关系与发布笔记共享学习领域状态。","api":["Learning service","Learning canvas service","Whiteboard service"],"tables":["learning spaces","learning canvases","whiteboards"],"state":["loading","empty","ready","editing","reviewing","publishing","error"],"status":"implemented"},
     "APP03.monitoring": {"page":"APP03","title":"监控应用","description":"聚合 Token 用量、供应商和任务统计，并检查部署、GPU、CUDA、MCP、自动启动、插件和转写运行健康。","api":["GET /api/monitoring/snapshot","GET /api/usage/overview","GET /api/usage/records","GET /api/usage/task_summary","GET /api/deploy_status","GET /api/plugins/ready"],"tables":["model_usage_records","agent_turns","plugins"],"state":["loading","ready","degraded","offline","error"],"status":"implemented"},
     "APP04.runtime": {"page":"APP04","title":"系统运行应用","description":"提供 Agent Turn 诊断、Application 实例/项目目录/外部文件权限、候选验证与人工审批、安全声明、桌面更新、设备身份、LAN/Relay 和远程帧状态。","api":["Agent diagnostics","Application Host","Candidate approval service","Desktop updater","Device and Relay service"],"tables":["agent_turns","agent_events","devices","audits"],"state":["loading","ready","waiting_approval","updating","degraded","error"],"status":"implemented"},
     "M01.home": {"page":"M01","title":"移动端 Agent 首页","description":"首页提供本地/云端/远程工作入口、Workspace 摘要、任务摘要、菜单抽屉和 Agent 输入；Workspace 的名称、多个本地文件夹、长期记忆和授权策略由 Workspace 注册表统一关联。","api":["GET /api/mobile/projection","Agent v1 session"],"tables":["workspace_projections","workspace_memories","conversations","mobile_sync_cursors"],"state":["ready","offline","syncing","error"],"status":"partial"},
     "M02.session": {"page":"M02","title":"移动端会话","description":"移动端以消息为主体，支持菜单、新会话、产物、模型、权限、添加文件和删除对话；检测到移动端离线时切换为历史只读态，隐藏或禁用提交入口。Android、iOS 与 Harmony 已接入原生 LAN-first/Relay WebSocket、签名握手与 AES-GCM；Harmony HAP 已编译，但真实设备互操作仍需验收。未取得有效 Grant 或传输不可用时仍 fail-closed，不得降级为 Cloud-native 执行。","api":["GET /api/agent/v1/sessions/{id}","POST /api/agent/v1/sessions/{id}/turns","POST /v1/sessions (device_remote)","E2EE Relay transport (iOS/Android/Harmony)","LAN-first transport (iOS/Android/Harmony)"],"tables":["conversations","conversation_messages","agent_events","mobile_sync_cursors"],"state":["loading","idle","sending","running","completed","offline_readonly","remote_transport_unavailable","failed"],"status":"partial"},
-    "M03.settings": {"page":"M03","title":"移动端设置","description":"设置入口覆盖记忆库、主题、语言、字体、通知、日志和存储，并通过独立详情页承载复杂操作。","api":["Mobile preference store","Local export/share"],"tables":["user_preferences","mobile_cache_entries"],"state":["ready","sheet_open","saving","saved"],"status":"implemented"},
+    "M03.settings": {"page":"M03","title":"移动端设置","description":"设置入口覆盖记忆库、模型设置、远程连接、主题、语言、字体、通知、日志和存储，并通过独立详情页承载复杂操作。","api":["Mobile preference store","Local export/share"],"tables":["user_preferences","mobile_cache_entries"],"state":["ready","sheet_open","saving","saved"],"status":"implemented"},
     "M04.memory": {"page":"M04","title":"移动端记忆库","description":"展示结构化记忆内容，支持复制和添加新记忆；记忆写入需保留来源和更新时间。Android、iOS 与 Harmony 均从真实投影 API 读取；写入成功后才更新本地视图。","api":["GET /api/mobile/projection","POST /api/mobile/memories","DELETE /api/mobile/memories/{memory_id}"],"tables":["workspace_memories"],"state":["loading","ready","adding","saved","error"],"status":"implemented"},
     "M05.font": {"page":"M05","title":"字体大小预览","description":"拖动字号滑块实时预览，确认后保存用户偏好；跟随系统是独立开关。","api":["Local preference store"],"tables":["user_preferences"],"state":["previewing","dirty","saved"],"status":"implemented"},
     "M06.storage": {"page":"M06","title":"移动端存储清理","description":"按缓存、云端会话、本机会话和下载产物分类查看占用，并支持单项或全部清理。","api":["Local storage manager","Cloud cache sync"],"tables":["mobile_cache_entries","conversation_cache"],"state":["ready","clearing","completed","error"],"status":"implemented"},
-    "C01.auth": {"page": "C01", "title": "邮箱登录", "description": "以邮箱作为身份主体，支持密码、一次性验证码登录和密码重置；显示名称不是登录主键。", "api": ["POST /v1/auth/login/password", "POST /v1/auth/login/code", "POST /v1/auth/code/send", "POST /v1/auth/password/reset"], "tables": ["users", "tokens", "login_attempts", "verification_codes", "audits"], "state": ["idle", "loading", "authenticated", "resetting", "error"], "status": "implemented"},
+    "M07.models": {"page":"M07","title":"移动端模型设置原型","description":"遵循 model_config_contract 统一语义：厂商预设网格（选择后自动带出协议与 Base URL）或手动自定义；按协议拉取 /models、/api/tags 或使用 Anthropic 内置目录，多选模型且每个模型独立编辑上下文窗口；密钥支持显示/隐藏、编辑留空保留与显式移除；保存时统一校验（必填、HTTPS、上下文范围、去重），保存后可执行最小请求测试闭环；支持生成/复制 notemeld://model-add 分享载荷以及扫码或粘贴导入（载荷不含密钥）。原型数据仅存页面内存并明确提示不落盘；产品目标为端侧 SQLite 长期存储 + Keychain/Keystore/HUKS 保存密钥。扫码添加模型与扫描配对码入口互相独立。","api":["GET {base_url}/models（按协议适配）","GET {base_url}/api/tags (Ollama)","POST {base_url}/chat/completions / /v1/messages（用户发起的连接测试）","Mobile local SQLite + secure store (production target, proposed)"],"tables":["providers","models","mobile_model_providers","mobile_models"],"state":["ready","empty","loading_list","editing","imported","testing","test_success","test_error","confirming_delete","scan_unavailable","error"],"status":"implemented"},
+    "model.share-schema": {"page":"D09","title":"跨端模型配置分享协议","description":"notemeld.model-add.v1：任一 Provider/模型可生成二维码或复制 URI（notemeld://model-add?d=<base64url>），预设厂商只带 vendor_id，自定义带名称/协议/URL，模型带 id 与可选显示名/上下文；载荷永不包含 api_key。接收端扫码或粘贴解析后预填统一表单、标记 imported，用户补密钥并测试后保存。与设备配对 notemeld://pair?code= 严格区分。","api":["window.ModelVendorRegistry.buildSharePayload/encodeShare/decodeShare（原型）"],"tables":[],"state":["idle","qr_shown","copied","parsed","imported","rejected"],"status":"implemented"},
+      "M08.remote": {"page":"M08","title":"移动端远程设置原型","description":"按云端分组展示连接和远程客户端；可添加、编辑、确认删除本页配置，扫码明确区分云端与客户端。配置仅在当前页面内存中，在线状态未验证；扫码只识别一次性配对码并预填表单，不建立真实连接。实际认证、Grant 和加密传输仍由 Cloud/原生端执行。","api":["POST /v1/pairings/confirm (future native adapter)","GET /v1/devices (future native adapter)"],"tables":["devices","pairings","grants"],"state":["empty","ready","editing","confirming_delete","scan_unavailable","unverified","error"],"status":"prototype"},
+    "M09.artifacts": {"page":"M09","title":"移动端全部产物原型","description":"从当前会话进入任务产物文件列表；原型只展示明确标注的示例数据。正式接入须按任务权限返回文件 ID、名称、类型和下载能力。","api":["GET /api/conversations/{id}/assets (production integration target)"],"tables":["conversation_context_refs","note_documents"],"state":["loading","empty","ready","error"],"status":"prototype"},
+    "M10.preview": {"page":"M10","title":"移动端文件预览原型","description":"按选中文件 ID 预览 HTML、Markdown、纯文本及浏览器支持的媒体；HTML 沙箱隔离，未知格式提供明确的不可内嵌提示与授权下载。静态样例不代表真实任务产物。","api":["Authorized artifact read/download capability (future mobile adapter)"],"tables":["conversation_context_refs","note_documents"],"state":["loading","rendered","source","unsupported","missing","error"],"status":"prototype"},
+    "C01.auth": {"page": "C01", "title": "邮箱登录", "description": "以邮箱作为身份主体，支持密码、一次性验证码登录和密码重置；开发环境验证码只由 .env 配置，生产环境由 SMTP 邮件投递且响应不回传验证码。显示名称不是登录主键。", "api": ["POST /v1/auth/login/password", "POST /v1/auth/login/code", "POST /v1/auth/code/send", "POST /v1/auth/password/reset"], "tables": ["users", "tokens", "login_attempts", "verification_codes", "audits"], "state": ["idle", "loading", "authenticated", "resetting", "error"], "status": "implemented"},
     "C01.access-request": {"page": "C01", "title": "申请访问", "description": "未成为成员的用户提交邮箱、显示名称和申请说明，由管理员审核；申请不是账号。", "api": ["POST /v1/access-requests", "GET /v1/admin/access-requests", "POST /v1/admin/access-requests/{id}/review"], "tables": ["access_requests", "users", "audits"], "state": ["pending", "approved", "rejected", "expired"], "status": "implemented"},
     "C02.dashboard": {"page": "C02", "title": "云端运行看板", "description": "从真实 Workspace、会话、命令、事件和用量记录聚合存储总量、今日 Agent 对话、实时运行数量和 Token 总消耗，并以趋势图展示时间序列。", "api": ["GET /v1/cloud/dashboard", "GET /v1/cloud/usage", "GET /v1/cloud/sessions", "GET /v1/workspaces"], "tables": ["workspaces", "sessions", "commands", "events", "model_usage_records"], "state": ["loading", "ready", "empty", "error"], "status": "implemented"},
     "C02.storage": {"page":"C02","title":"Workspace 存储用量","description":"聚合当前账号各 Workspace 的真实文件数、已用空间和配额比例；文件正文仍由 Workspace 文件系统保存。","api":["GET /v1/workspaces","GET /v1/workspaces/{id}/capacity"],"tables":["workspaces","workspace_backups"],"state":["loading","ready","over_quota","error"],"status":"implemented"},
     "C03.session": {"page": "C03", "title": "云端会话详情", "description": "读取会话、命令、事件和审批，页面不展示固定示例数据。", "api": ["GET /v1/cloud/sessions", "GET /v1/cloud/sessions/{id}/snapshot", "GET /v1/cloud/sessions/{id}/commands", "GET /v1/cloud/sessions/{id}/events", "GET /v1/cloud/sessions/{id}/approvals"], "tables": ["sessions", "commands", "events", "approvals", "session_payloads"], "state": ["loading", "empty", "idle", "queued", "running", "waiting_approval", "completed", "failed", "needs_attention"], "status": "implemented"},
     "C03.send-command": {"page": "C03", "title": "发送 Agent 消息", "description": "消息写入命令队列，由 Cloud Agent Worker 顺序执行；危险 Workspace 操作只产生审批，不隐式修改文件。", "api": ["POST /v1/cloud/sessions/{id}/commands", "GET /v1/cloud/sessions/{id}/commands/{command_id}"], "tables": ["commands", "events", "approvals"], "state": ["submitting", "queued", "running", "completed", "failed"], "status": "implemented"},
     "C03.attachments": {"page":"C03","title":"会话附件","description":"附件在发送前由页面读取并作为受限 Base64 载荷写入命令；Cloud Worker 再按 Workspace 和权限策略消费，页面不直接写任意文件。","api":["POST /v1/cloud/sessions/{id}/commands"],"tables":["commands","events"],"state":["idle","selecting","encoding","submitting","queued","error"],"status":"implemented"},
-    "C03.model": {"page":"C03","title":"会话模型选择","description":"从当前账号可用模型目录切换本次会话使用的模型；选择结果随命令提交，模型密钥不在页面回显。","api":["GET /v1/models","POST /v1/cloud/sessions/{id}/commands"],"tables":["models","commands"],"state":["loading","ready","selected","error"],"status":"implemented"},
+    "C03.model": {"page":"C03","title":"会话模型选择","description":"默认使用 Auto 根据用户场景从组织共享模型目录自动选择；用户也可为当前会话显式选择模型。连接 Cloud 的桌面与移动端发送时只能选择该目录（经 /v1/catalog/providers 读取），端侧本地模型密钥不上传、不共享；命令载荷携带 model_id，Cloud 按组织目录解析协议/URL/凭据。","api":["GET /v1/catalog/providers","POST /v1/cloud/sessions/{id}/commands"],"tables":["models","providers","organization_members","commands"],"state":["loading","auto","ready","selected","error"],"status":"implemented"},
     "C03.permissions": {"page":"C03","title":"会话授权模式","description":"默认权限和完全授权是命令授权模式，不等于绕过 Cloud 的设备、Workspace 或审批校验；高风险操作仍由服务端决定是否进入审批。","api":["POST /v1/cloud/sessions/{id}/commands"],"tables":["commands","approvals","audits"],"state":["default","full","submitting","approval_required","error"],"status":"implemented"},
-    "C04.members": {"page": "C04", "title": "成员管理", "description": "管理员查看成员、编辑显示信息、停用/启用账号和删除成员；密码变更会撤销该成员现有 Token。", "api": ["GET /v1/admin/users", "PUT /v1/admin/users/{id}", "DELETE /v1/admin/users/{id}"], "tables": ["users", "tokens", "audits"], "state": ["loading", "ready", "editing", "disabled", "deleted", "forbidden", "error"], "status": "implemented"},
-    "C05.devices": {"page": "C05", "title": "设备与配对", "description": "设备通过一次性、短时配对凭证和公钥建立信任；确认成功只返回一次当前账号模型配置及 API Key，设备本地直连 Provider，不经过 Cloud 代理。设备撤销会使关联 Token 和授权失效。", "api": ["GET /v1/devices", "POST /v1/pairings/start", "POST /v1/pairings/confirm", "GET/PUT /v1/devices/{id}/permissions", "POST /v1/devices/{id}/revoke"], "tables": ["devices", "pairings", "tokens", "models", "grants", "audits"], "state": ["loading", "unpaired", "pairing", "online", "offline", "revoked", "error"], "status": "implemented"},
-    "C06.settings": {"page": "C06", "title": "云端设置", "description": "设置页面应保存用户偏好、默认 Workspace、默认模型、通知和安全策略，而不是只显示提示。", "api": ["GET/PUT /v1/preferences", "GET /v1/models", "GET /v1/workspaces", "GET /v1/workspaces/{id}/capacity", "GET /v1/audits"], "tables": ["user_preferences", "models", "audits", "workspaces", "workspace_backups"], "state": ["loading", "dirty", "saving", "saved", "error"], "status": "implemented"},
+    "C04.members": {"page": "C04", "title": "成员管理", "description": "管理员查看成员、编辑显示信息、停用/启用账号和删除成员；密码变更会撤销该成员现有 Token。成员角色当前只读，不能通过资料编辑修改。", "api": ["GET /v1/admin/users", "PUT /v1/admin/users/{id}", "DELETE /v1/admin/users/{id}"], "tables": ["users", "tokens", "audits"], "state": ["loading", "ready", "editing", "disabled", "deleted", "forbidden", "error"], "status": "implemented"},
+    "C05.devices": {"page": "C05", "title": "设备与配对", "description": "设备通过一次性、短时配对凭证和公钥建立信任；配对确认只下发组织启用模型的 model_id/显示名，不下发 API Key，端侧回传所选 model_id。设备连接 Cloud 后读取组织共享模型目录；本地模型密钥始终由各设备独立维护。设备撤销会使关联 Token 和授权失效。", "api": ["GET /v1/devices", "POST /v1/pairings/start", "POST /v1/pairings/confirm", "GET/PUT /v1/devices/{id}/permissions", "POST /v1/devices/{id}/revoke"], "tables": ["devices", "pairings", "tokens", "models", "providers", "grants", "audits"], "state": ["loading", "unpaired", "pairing", "online", "offline", "revoked", "error"], "status": "implemented"},
+    "C06.settings": {"page":"C06","title":"云端设置","description":"设置页面保存用户偏好和组织默认值；模型目录（C06.model-catalog）已落地为组织 Provider/Model 两级结构并在组织内共享，默认模型策略为 Auto，用户可在会话中显式覆盖。Cloud 目录不保存或向设备分发端侧模型 API Key。", "api": ["GET/PUT /v1/preferences", "GET /v1/catalog/providers", "GET /v1/workspaces", "GET /v1/workspaces/{id}/capacity", "GET /v1/audits"], "tables": ["user_preferences", "organization_preferences", "organization_members", "models", "providers", "audits", "workspaces", "workspace_backups"], "state": ["loading", "dirty", "saving", "saved", "error"], "status": "implemented"},
+    "C06.model-catalog": {"page":"C06","title":"云端组织模型目录管理","description":"遵循 model_config_contract 的 Provider/Model 两层结构，cloud-web 正式接入（CloudModelList/CloudModelForm，物理树同 desktop/frontend）：22 个内置厂商预设（选预设自动带出协议与 Base URL，支持自定义名称）；按协议经云端代理拉取 openai-compatible /models、Ollama /api/tags（仅本地）、Anthropic 内置目录，多选且逐模型上下文窗口（512–4,000,000，默认 128000）；三协议 test-connection；Fernet 加密入库、仅回 has_api_key/api_key_masked，编辑留空保留；跨端分享 notemeld://model-add（载荷不含 Key）与粘贴导入；owner/admin 可写、member 只读；旧 /v1/models 扁平 facade 保留兼容；CloudDB.init 幂等迁移回填。SSRF 防护：非 ollama 目标 DNS 解析拒绝 loopback/私网。","api":["GET/POST/PATCH/DELETE /v1/catalog/providers","POST /v1/catalog/providers/{id}/models/batch","PATCH/DELETE /v1/catalog/models/{id}","POST /v1/catalog/models/{id}/default","POST /v1/catalog/discover","POST /v1/catalog/test-connection","GET/POST /v1/models（legacy facade）"],"tables":["models","providers","organization_members"],"state":["loading","ready","forbidden","vendors","form","editing","imported","testing","saving","saved","error"],"status":"implemented","assets":["assets/model-vendor-registry.js","assets/c06-model-manager.js"]},
     "C03.create-session": {"page":"C03","title":"新建云端会话","description":"在云端会话左侧创建新会话，统一使用默认 Workspace；没有模型时必须先到设置配置模型。","api":["POST /v1/cloud/sessions"],"tables":["sessions","models","workspaces"],"state":["idle","submitting","created","error"],"status":"implemented"},
     "C03.panels": {"page":"C03","title":"会话侧边栏与运行面板","description":"在会话中查看命令、事件和审批摘要，面板可独立展开或收起。","api":["GET /v1/cloud/sessions/{id}/snapshot","GET /v1/cloud/sessions/{id}/events","GET /v1/cloud/sessions/{id}/approvals"],"tables":["events","approvals","session_payloads"],"state":["closed","open","loading","error"],"status":"implemented"},
     "C04.requests": {"page":"C04","title":"访问申请审核","description":"管理员查看待审核申请并同意或拒绝；同意后将申请与成员身份关联，不复制成两套账号。","api":["GET /v1/admin/access-requests","POST /v1/admin/access-requests/{id}/review"],"tables":["access_requests","users","audits"],"state":["loading","pending","approved","rejected","error"],"status":"implemented"},
@@ -92,11 +166,11 @@
     "C05.manage": {"page":"C05","title":"设备权限管理","description":"查看设备当前授权范围，调整 Workspace 文件、远程执行和后台运行能力；保存后影响后续命令准入。","api":["GET /v1/devices/{id}/permissions","PUT /v1/devices/{id}/permissions"],"tables":["devices","grants","audits"],"state":["loading","ready","dirty","saved","error"],"status":"implemented"},
     "C05.revoke": {"page":"C05","title":"撤销设备","description":"撤销设备会使设备授权、关联 Grant 和设备 Token 立即失效，并保留可追溯审计记录。","api":["POST /v1/devices/{id}/revoke"],"tables":["devices","grants","tokens","audits"],"state":["ready","confirming","revoked","error"],"status":"implemented"},
     "C05.scope-filter": {"page":"C05","title":"设备范围切换","description":"在可信用户设备和运行节点之间切换视图。当前 Cloud 数据模型只有 devices 表中的可信用户设备，没有独立运行节点实体，因此运行节点视图明确显示空状态，不把用户设备伪装成运行节点。","api":["GET /v1/devices"],"tables":["devices"],"state":["devices","runtime_nodes_empty"],"status":"implemented"},
-    "C06.preferences": {"page":"C06","title":"偏好与默认资源","description":"保存通知偏好、默认 Workspace 和默认模型；用户偏好与组织/Workspace 权限分开计算。","api":["GET/PUT /v1/preferences","GET /v1/models"],"tables":["user_preferences","models"],"state":["ready","dirty","saving","saved","error"],"status":"implemented"},
+    "C06.preferences": {"page":"C06","title":"偏好与默认资源","description":"通知、主题、语言等用户偏好按用户保存；组织级设置按组织保存，并在读取有效配置时覆盖对应默认值。模型默认策略为 Auto，用户可在会话中显式选择组织共享目录中的模型；端侧 API Key 不进入偏好或配置同步。","api":["GET/PUT /v1/preferences","GET/PUT /v1/admin/organization/preferences","GET /v1/models"],"tables":["user_preferences","organization_preferences","models"],"state":["ready","dirty","saving","saved","error"],"status":"partial"},
     "C06.workspace": {"page":"C06","title":"Workspace 容量与备份","description":"创建当前在线 Cloud Workspace 环境镜像并下载；服务端启动时可指定镜像目录恢复，页面不提供恢复和删除按钮。开发环境使用本地文件系统，生产环境可使用 S3 兼容对象存储。","api":["GET /v1/workspaces","GET /v1/workspaces/{id}/capacity","POST /v1/workspaces/{id}/backups","GET /v1/workspaces/{id}/backups","GET /v1/workspaces/{id}/backups/{backup_id}/download"],"tables":["workspaces","workspace_backups"],"state":["loading","ready","over_quota","error"],"status":"implemented"},
     "C06.security": {"page":"C06","title":"安全策略","description":"通知、主题和语言按用户保存；默认 Workspace、模型和高风险审批支持组织级覆盖；组织长期记忆通过管理员 API 单独管理。","api":["GET/PUT /v1/preferences","GET/PUT /v1/admin/organization/preferences","GET/POST/DELETE /v1/admin/organization/memories","GET /v1/devices","GET/DELETE /v1/grants"],"tables":["user_preferences","organizations","organization_members","organization_preferences","organization_memories","devices","approvals"],"state":["ready","dirty","saved","error"],"status":"implemented"},
     "C06.audits": {"page":"C06","title":"日志排查","description":"查看登录、权限、设备和审批审计摘要，展示有界信息，不泄露 Token、密钥或消息明文。","api":["GET /v1/audits?limit=50"],"tables":["audits"],"state":["loading","ready","forbidden","error"],"status":"implemented"},
-    "C06.categories": {"page":"C06","title":"设置分类切换","description":"在通用、空间管理、安全管理和日志排查之间切换当前视图；切换本身不修改服务端数据，具体保存动作由分类内控件完成。","api":[],"tables":["user_preferences","audits","workspaces"],"state":["general","workspace","security","audits"],"status":"implemented"}
+    "C06.categories": {"page":"C06","title":"设置分类切换","description":"在通用、空间管理、模型配置、安全管理和日志排查之间切换当前视图；切换本身不修改服务端数据，具体保存动作由分类内控件完成。","api":[],"tables":["user_preferences","organization_preferences","models","audits","workspaces"],"state":["general","workspace","models","security","audits"],"status":"implemented"}
   },
   "bindings": {
     "C01.auth": ["[data-login-form]", "[data-login-mode]", "[data-send-code]", "[data-password-reset]", "[data-password-toggle]", ".login-button"],
@@ -117,8 +191,9 @@
     "C05.manage": [".device-row"],
     "C05.revoke": [".security-callout"],
     "C05.scope-filter": [".scope-tabs"],
-    "C06.settings": [".settings-layout", ".setting-card", ".setting-row"],
+    "C06.settings": [".settings-layout", "[data-setting-tab]", "[data-setting-panel]", ".setting-row"],
     "C06.preferences": ["[data-preference]", "[data-workspace-picker]", "[data-model-manager]", "[data-preference-select]"],
+    "C06.model-catalog": ["[data-model-manager]", "[data-default-model]", "[data-model-test]", "[data-cm-add]", "[data-cm-import]", "[data-cm-vendor]", "[data-cm-back-root]", "[data-cm-back-vendors]", "[data-cm-form]", "[name=\"displayName\"]", "[name=\"protocol\"]", "[name=\"baseUrl\"]", "[name=\"apiKey\"]", "[data-cm-key-toggle]", "[data-cm-fetch]", "[data-cm-test]", "[data-cm-manual-add]", "[data-cm-options]", "[name=\"isDefault\"]", "[data-cm-error]", "[data-cm-edit]", "[data-cm-toggle]", "[data-cm-default]", "[data-cm-delete]", "[data-cm-share]", "[data-cm-share-uri]", "[data-cm-share-copy]", "[data-cm-import-text]", "[data-cm-import-error]"],
     "C06.workspace": ["[data-workspace-summary]", "[data-backup-manager]"],
     "C06.security": ["[data-preference=\"high_risk_approval\"]", "[data-go=\"C05\"]"],
     "C06.audits": ["[data-audit-summary]", "[data-audit-manager]", "[data-audit-filter]"],
@@ -129,36 +204,45 @@
     "D03.artifacts": ["[data-file]", ".file-panel", ".workspace-context"],
     "D06.capabilities": ["[data-capability-tab]", "[data-add-open]", ".capability-search"],
     "D09.settings": ["[data-setting-tab]", "[data-model-add]", ".settings-main"],
+    "D09.model-config": ["[data-model-dialog]", "[data-model-form]", "[data-vendor-grid]", "[data-protocol-select]", "[data-fetch-models]", "[data-model-options]", "[dataset.modelContext]", "[data-key-toggle]", "[data-test-connection]", "[data-model-edit]"],
+    "model.share-schema": ["[data-model-share]", "[data-share-qr]", "[data-share-uri]", "[data-model-import]", "[data-import-text]"],
     "APP01.notes": [".app-product", "[data-app-tab]"],
     "APP02.learning": [".app-product", "[data-app-tab]"],
     "APP03.monitoring": [".app-product", "[data-app-tab]"],
     "APP04.runtime": [".app-product", "[data-app-tab]"],
-    "M01.home": ["[data-menu]", ".quick-actions", ".mobile-composer"],
-    "M02.session": ["[data-model-open]", "[data-file-add]", "[data-actions]", "[data-delete-chat]", ".chat-scroll"],
-    "M03.settings": ["[data-language-open]", "[data-notification-toggle]", "[data-log-export]", ".settings-screen"],
+    "M01.home": ["[data-menu]", ".quick-actions", ".mobile-composer", "[data-file-add]", "[data-model-open]", "[data-permission-toggle]", "[data-attachment-sheet]"],
+    "M02.session": ["[aria-label=\"新建会话\"]", "[data-model-open]", "[data-file-add]", "[data-permission-toggle]", "[data-attachment-sheet]", "[data-actions]", "[data-products]", "[data-delete-chat]", ".chat-scroll"],
+    "M03.settings": ["[data-go=\"M07\"]", "[data-go=\"M08\"]", "[data-language-open]", "[data-notification-toggle]", "[data-log-export]", ".settings-screen"],
     "M04.memory": ["[data-copy-memory]", "[data-add-memory]", "[data-memory-input]"],
     "M05.font": ["[data-font-range]", "[data-font-confirm]", "[data-system-font]"],
-    "M06.storage": ["[data-clear-storage]", "[data-clear-all-storage]", ".storage-list"]
+    "M06.storage": ["[data-clear-storage]", "[data-clear-all-storage]", ".storage-list"],
+    "M07.models": ["[data-model-groups]", "[data-provider-open]", "[data-scan-open]", "[data-model-form]", "[data-vendor-grid]", "[data-fetch-models]", "[data-model-options]", "[dataset.modelContext]", "[data-key-toggle]", "[data-test-model]", "[data-model-share]", "[data-model-import]", "[data-actions-sheet]", "[data-delete-modal]"],
+    "M08.remote": ["[data-remote-groups]", "[data-remote-scan-open]", "[data-remote-add]", "[data-remote-form]", "[data-remote-delete-modal]"],
+    "M09.artifacts": ["[data-artifact-list]", "[data-file-count]", "[data-go=\"M02\"]"],
+    "M10.preview": ["[data-preview-body]", "[data-preview-mode]", "[data-preview-download]", "[data-go=\"M09\"]"]
   },
   "database": {
     "users": {"purpose": "邮箱主体身份、头像、显示名称、角色和账号状态", "pages": ["C01", "C04"], "status": "implemented"},
-    "verification_codes": {"purpose": "邮箱验证码的摘要、用途、过期和尝试次数", "pages": ["C01"], "status": "implemented", "delivery_note": "当前仅开发模式返回 dev_code，生产邮件适配器待定"},
+    "verification_codes": {"purpose": "邮箱验证码的摘要、用途、过期和尝试次数", "pages": ["C01"], "status": "implemented", "delivery_note": "本地通过 .env 的 NOTEMELD_CLOUD_DEV_OTP_CODE 配置开发验证码，默认 888888；生产禁用开发验证码并通过 SMTP 邮件适配器发送，响应不回传验证码"},
     "access_requests": {"purpose": "访问申请及管理员审核状态", "pages": ["C01", "C04"], "status": "implemented"},
     "invitations": {"purpose": "管理员邀请的邮箱、一次性凭证摘要、有效期和接受状态", "pages": ["C04"], "status": "implemented"},
     "user_preferences": {"purpose": "按用户保存通知、主题、语言、字体和默认资源等交互偏好，不承载组织或 Workspace 长期记忆", "pages": ["D09", "C06", "M03", "M05"], "status": "implemented", "owner": "Cloud SQLite user_preferences plus native mobile local preference stores"},
+    "config_sync_state": {"purpose": "按用户和 Workspace 保存配置同步的单调 revision 游标", "pages": ["C06", "D09", "M03"], "status": "implemented", "owner": "Cloud SQLite"},
+    "config_sync_items": {"purpose": "保存可同步的非敏感配置项及 tombstone revision；禁止凭据、Token 和私钥进入同步投影", "pages": ["C06", "D09", "M03"], "status": "implemented", "owner": "Cloud SQLite"},
+    "config_sync_idempotency": {"purpose": "保存配置变更请求的幂等键、请求摘要和响应，避免重试产生重复副作用", "pages": ["C06", "D09", "M03"], "status": "implemented", "owner": "Cloud SQLite"},
     "workspaces": {"purpose": "三端 Workspace 注册表：名称、本地文件夹引用、长期记忆引用、授权策略引用和更新时间；文件正文不存入此表", "pages": ["D01", "D03", "C02", "C03", "C06", "M01", "M03"], "status": "implemented", "owner": "Desktop SQLite workspace_projections / Cloud SQLite workspaces / Mobile projection"},
     "workspace_projections": {"purpose": "Desktop Host 当前实现的 Workspace 权威投影，保存显示名称、目录引用、策略和 revision，供桌面与移动端读取", "pages": ["D09", "M01", "M03"], "status": "implemented", "owner": "Desktop SQLite"},
     "workspace_local_folders": {"purpose": "Workspace 关联的一个或多个本地文件夹，保存脱敏路径、排序和可用状态", "pages": ["D01", "D03", "C02", "C03", "M01"], "status": "implemented", "owner": "Desktop SQLite workspace_projections.folders_json; Cloud stores only workspace file roots and never receives local absolute paths"},
     "workspace_memories": {"purpose": "Workspace 长期记忆及其版本、来源和更新时间；与用户个人偏好及组织长期记忆分离", "pages": ["D01", "D03", "C06", "M01", "M03"], "status": "implemented", "owner": "Desktop SQLite workspace_memories"},
     "organization_memories": {"purpose": "组织级长期记忆，供组织授权范围内的 Workspace 使用；不存用户交互偏好", "pages": ["C04", "C06"], "status": "implemented", "owner": "Cloud control plane", "api": ["GET/POST/DELETE /v1/admin/organization/memories"]},
     "workspace_policies": {"purpose": "Workspace 授权策略：文件访问、远程执行、后台运行、审批和设备范围", "pages": ["D01", "D03", "C05", "C06", "M01"], "status": "implemented", "owner": "Desktop SQLite workspace_projections.policies_json"},
-    "workspace_backups": {"purpose": "Workspace 备份归属、归档路径、大小和创建时间索引", "pages": ["C06"], "status": "implemented", "owner": "Cloud SQLite metadata + backup filesystem"},
+    "workspace_backups": {"purpose": "Workspace 备份归属、对象键、大小和创建时间索引", "pages": ["C06"], "status": "implemented", "owner": "开发环境为本地 backup filesystem；生产为 S3-compatible object storage，Cloud SQLite 仅保存对象索引"},
     "sessions": {"purpose": "云端会话元数据和运行状态", "pages": ["C02", "C03"]},
     "session_archives": {"purpose": "已归档云端会话的可恢复元数据和归档状态", "pages": ["C03"], "status": "implemented", "owner": "Cloud SQLite"},
     "commands": {"purpose": "Agent 命令队列、幂等键、租约和状态", "pages": ["C02", "C03"]},
     "events": {"purpose": "Agent 执行事件和终态事件", "pages": ["C02", "C03"]},
     "approvals": {"purpose": "高风险工具调用的审批状态", "pages": ["C03", "C06"]},
-    "models": {"purpose": "用户可用的模型和 Provider 配置", "pages": ["C02", "C06"]},
+    "models": {"purpose": "Cloud 团队共享的模型目录与默认策略；默认由 Auto 按场景选择，用户可在会话中显式覆盖。目录不携带端侧模型 API Key。字段语义遵循 model_config_contract 的 Provider/Model 两层模型", "pages": ["C02", "C03", "C06"], "status":"partial", "owner":"目标为 organization_id；当前 Cloud SQLite/API 仍以 user_id 隔离，需迁移后才能视为组织共享；桌面 providers/models 与移动端 mobile_model_providers/mobile_models 各自独立保管凭据"},
     "devices": {"purpose": "可信设备、公钥、在线时间和撤销状态", "pages": ["C05", "C06"]},
     "pairings": {"purpose": "一次性设备配对凭证", "pages": ["C05"]},
     "grants": {"purpose": "设备远程控制授权和作用域", "pages": ["C05"]},
@@ -176,7 +260,9 @@
     "agent_events": {"purpose":"Agent 工具调用、审批、进度和终态事件", "pages":["D03","M02"], "owner":"Desktop SQLite"},
     "note_documents": {"purpose":"笔记和 Agent 生成产物的正文、来源和状态投影", "pages":["D03"], "owner":"Desktop SQLite"},
     "plugins": {"purpose":"桌面插件、Skill 和能力包的安装与权限元数据", "pages":["D06"], "owner":"Desktop SQLite"},
-    "providers": {"purpose":"本地模型 Provider 元数据与脱敏配置状态", "pages":["D09"], "owner":"Desktop SQLite"},
+    "providers": {"purpose":"本地模型 Provider 元数据与脱敏配置状态（model_config_contract：display_name/vendor_id/protocol/base_url/auth_type + 密钥引用）","pages":["D09"],"owner":"Desktop SQLite；产品目标在移动端另建 mobile_model_providers，不同步密钥","status":"implemented"},
+    "mobile_model_providers": {"purpose":"移动端本地模型接入连接：显示名称、vendor_id、协议、Base URL、密钥引用（key_ref 指向 Keychain/Keystore/HUKS，库存无名文）、作用域与时间戳","pages":["M07"],"owner":"Mobile on-device SQLite","status":"implemented","implementation":"Android SQLiteOpenHelper 新库 notemeld-models.db（mobile_model_providers，协议 CHECK 三协议）+ Android Keystore AES/GCM（每 Provider 一别名 model_provider_<id>，密钥密文存独立 prefs）；旧 prefs 一次性迁移并写 flag"},
+    "mobile_models": {"purpose":"移动端 Provider 下的模型记录：model_id、显示名、每模型独立 context_window、modalities、enabled、is_default、test_status","pages":["M07"],"owner":"Mobile on-device SQLite","status":"implemented","implementation":"Android mobile_models 与 provider 同库，外键 provider_id ON DELETE CASCADE，UNIQUE(provider_id,model_id)，test_status CHECK untested|ok|failed；支持 App 重启后编辑回显"},
     "memories": {"purpose":"用户个人长期记忆的当前版本；不等同于用户偏好", "pages":["M04"], "owner":"User memory authority"},
     "memory_revisions": {"purpose":"记忆变更历史、来源和更新时间", "pages":["M04"], "owner":"Desktop SQLite"},
     "mobile_sync_cursors": {"purpose":"移动端同步快照、事件和离线意图的游标", "pages":["M01"], "owner":"Desktop SQLite + Mobile local cache", "status":"implemented"},
@@ -197,34 +283,35 @@
     "share_tokens": {"columns":"id, user_id, session_id, token_digest, role, scopes_json, expires_at, revoked_at, created_at","primary_key":"id","foreign_keys":["user_id → users.id","session_id → sessions.id"]},
     "session_payloads": {"columns":"session_id, payload_json, created_at","primary_key":"session_id","foreign_keys":["session_id → sessions.id"]},
     "session_import_requests": {"columns":"user_id, request_id, payload_hash, session_id, created_at","primary_key":"user_id + request_id","foreign_keys":["user_id → users.id","session_id → sessions.id"]},
-    "models": {"columns":"id, user_id, name, provider, model, base_url, api_key_ciphertext, enabled, is_default, created_at, updated_at","primary_key":"id","foreign_keys":["user_id → users.id"]},
+    "providers": {"columns":"id, organization_id, display_name, vendor_id, protocol, base_url, auth_type, api_key_ciphertext, created_by, created_at, updated_at","primary_key":"id","foreign_keys":["organization_id → organizations.id","created_by → users.id"],"external":"api_key_ciphertext 为 Fernet 密文；接口仅回 has_api_key/api_key_masked，空提交不覆盖已存凭据；配对/分享载荷与日志不含明文密钥"},
+    "models": {"columns":"id, user_id, name, provider, model, base_url, api_key_ciphertext, enabled, is_default, created_at, updated_at, organization_id, provider_id, display_name, context_window, modalities, test_status, model_id","primary_key":"id","foreign_keys":["user_id → users.id","organization_id → organizations.id","provider_id → providers.id"],"external":"两级迁移后新模型以 organization_id/provider_id/model_id 为准，旧列保留兼容；端侧本地 Provider API Key 不进入配对下发载荷"},
+    "mobile_model_providers": {"columns":"id, display_name, vendor_id, protocol, base_url, auth_type, api_key_ref, scope, created_at, updated_at","primary_key":"id","foreign_keys":[],"validation":"design（proposed）","external":"api_key_ref 仅指向 iOS Keychain / Android Keystore / Harmony HUKS 的条目，数据库不存明文；分享载荷与日志不含密钥"},
+    "mobile_models": {"columns":"id, provider_id, model_id, display_name, context_window, modalities, enabled, is_default, test_status, created_at, updated_at","primary_key":"id","foreign_keys":["provider_id → mobile_model_providers.id"],"validation":"design（proposed）"},
     "model_usage_records": {"columns":"id, user_id, session_id, command_id, model_id, provider, model, prompt_tokens, completion_tokens, total_tokens, created_at","primary_key":"id","foreign_keys":["user_id → users.id","session_id → sessions.id","command_id → commands.id"]},
     "approvals": {"columns":"id, user_id, session_id, command_id, tool_name, arguments_json, status, requested_by, resolved_by, resolution_note, created_at, resolved_at","primary_key":"id","foreign_keys":["user_id → users.id","session_id → sessions.id"]},
     "relay_cursors": {"columns":"session_id, sender_device_id, last_sequence, updated_at","primary_key":"session_id + sender_device_id","foreign_keys":["session_id → sessions.id"]},
     "login_attempts": {"columns":"key, window_started, failed_count","primary_key":"key","foreign_keys":[]},
     "user_preferences": {"columns":"user_id, preferences_json, updated_at","primary_key":"user_id","foreign_keys":["user_id → users.id"],"scope":"user only; stores interaction habits, not organization or Workspace memory"},
+    "config_sync_state": {"columns":"user_id, workspace_id, revision, updated_at","primary_key":"user_id + workspace_id","foreign_keys":["user_id → users.id"]},
+    "config_sync_items": {"columns":"user_id, workspace_id, kind, item_key, value_json, revision, deleted, updated_at","primary_key":"user_id + workspace_id + kind + item_key","foreign_keys":["user_id → users.id"]},
+    "config_sync_idempotency": {"columns":"user_id, workspace_id, idempotency_key, request_hash, response_json, created_at","primary_key":"user_id + workspace_id + idempotency_key","foreign_keys":["user_id → users.id"]},
     "verification_codes": {"columns":"id, email, purpose, code_hash, expires_at, attempts, used_at, created_at, request_ip","primary_key":"id","foreign_keys":[]},
     "access_requests": {"columns":"id, email, display_name, reason, password_hash, status, reviewed_by, reviewed_at, created_at, expires_at","primary_key":"id","foreign_keys":[]},
     "invitations": {"columns":"id, email, display_name, role, token_hash, status, created_by, created_at, expires_at, accepted_at","primary_key":"id","foreign_keys":["created_by → users.id"]},
     "organizations": {"columns":"id, name, created_at, updated_at","primary_key":"id","foreign_keys":[]},
     "organization_members": {"columns":"organization_id, user_id, role, created_at","primary_key":"organization_id + user_id","foreign_keys":["organization_id → organizations.id","user_id → users.id"]},
     "organization_preferences": {"columns":"organization_id, preferences_json, updated_at","primary_key":"organization_id","foreign_keys":["organization_id → organizations.id"]},
-    "workspaces": {"columns":"id, owner_scope, owner_id, display_name, local_folders_count, long_term_memory_id, authorization_policy_id, created_at, updated_at","primary_key":"id","foreign_keys":["long_term_memory_id → workspace_memories.id","authorization_policy_id → workspace_policies.id"],"external":"各端本地文件夹/Cloud Workspace 文件系统保存正文；三端各有本地表或投影"},
+    "workspaces": {"columns":"id, owner_scope, owner_id, display_name, kind, root_ref, status, capabilities_json, local_folders_count, long_term_memory_id, authorization_policy_id, created_at, updated_at","primary_key":"id","foreign_keys":["long_term_memory_id → workspace_memories.id","authorization_policy_id → workspace_policies.id"],"external":"各端本地文件夹/Cloud Workspace 文件系统保存正文；三端各有本地表或投影"},
     "workspace_local_folders": {"columns":"id, workspace_id, path_alias, folder_order, availability, created_at","primary_key":"id","foreign_keys":["workspace_id → workspaces.id"],"external":"path_alias 只保存受控/脱敏路径引用","validation":"design"},
     "workspace_memories": {"columns":"id, workspace_id, revision, content_json, source, updated_at","primary_key":"id + revision","foreign_keys":["workspace_id → workspaces.id"],"validation":"design"},
     "organization_memories": {"columns":"id, organization_id, content, source, created_at, updated_at","primary_key":"id","foreign_keys":["organization_id → organizations.id"],"validation":"cloud"},
     "workspace_policies": {"columns":"id, workspace_id, file_access, remote_execution, background_run, approval_mode, device_scopes_json, updated_at","primary_key":"id","foreign_keys":["workspace_id → workspaces.id"],"validation":"design"},
     "workspace_backups": {"columns":"id, workspace_id, archive_path, bytes, created_at","primary_key":"id","foreign_keys":["workspace_id → workspaces.id"],"external":"archive_path 指向 Cloud backup filesystem/object storage"}
   },
-  "open_questions": [],
-  "decision_log": [
-    {"id":"mail.delivery","topic":"验证码邮件发送","current":"本地开发返回可配置验证码，默认 888888；生产通过 SMTP 邮件适配器发送且不回传验证码。","recommendation":"开发环境保留本地验证码，生产接入 SMTP/SES 等可替换邮件适配器。","impact":"需要邮件域名、发件人和投递监控；不会改变 users.email 身份模型。","status":"decided"},
-    {"id":"agent.provider","topic":"Cloud Agent 模型 Provider","current":"同一账号可保存多个模型配置，并可选择默认模型；未配置 Provider 时使用 deterministic runner。","recommendation":"生产按账号/Workspace 选择 OpenAI-compatible Provider，并由 Cloud 统一限制超时、重试和配额。","impact":"需要密钥托管、费用统计和 Provider 健康检查。","status":"decided"},
-    {"id":"workspace.backup","topic":"Workspace 备份存储","current":"开发环境使用本地 Cloud 数据目录保存 ZIP 备份；生产可切换 S3 兼容对象存储。","recommendation":"生产使用 S3 兼容对象存储，Cloud SQLite 保存对象键、大小和时间索引。","impact":"需要对象存储凭证、保留策略和恢复演练。","status":"decided"},
-    {"id":"preference.scope","topic":"设置作用域","current":"通知、主题、语言保存在 user_preferences；默认 Workspace、默认模型和高风险审批可由 organization_preferences 覆盖。","recommendation":"用户偏好按用户保存；组织级设置按组织保存并在读取时覆盖对应默认值。","impact":"组织成员继承组织默认值，个人偏好仍保留独立作用域。","status":"decided"},
-    {"id":"workspace.cross-platform","topic":"三端 Workspace 数据","current":"桌面端、Cloud、移动端都拥有 Workspace 表；移动端保存投影，桌面端保存本地文件夹事实，Cloud 保存控制面元数据。","recommendation":"统一 Workspace ID 和字段语义：名称、多个本地文件夹引用、长期记忆引用、授权策略引用；文件正文仍由各端文件系统负责。","impact":"需要同步游标和冲突策略，移动端不能离线修改 Workspace 权限或提交远程命令。","status":"decided"},
-    {"id":"mobile.offline-control","topic":"移动端离线控制","current":"移动端离线时可读取已同步的历史会话和 Workspace 摘要。","recommendation":"离线状态进入 offline_readonly：禁止发送命令、审批、设备授权和其他远程写操作，恢复在线并完成同步后才恢复控制。","impact":"页面需要明确离线提示并禁用提交控件，服务端仍必须二次校验连接/租约状态。","status":"decided"},
-    {"id":"c07.lifecycle","topic":"C07 页面生命周期","current":"C07 不再作为独立页面；管理员生命周期与审计并入 C06 设置的日志排查和人员管理分类。","recommendation":"保留 C06 内的管理员权限校验、审计数据脱敏和可追溯操作，不新增 C07 入口。","impact":"C06 需要承载管理员专用状态和权限拒绝态；页面目录、路由和功能绑定不得继续引用 C07。","status":"decided"},
-    {"id":"member.role-management","topic":"成员角色升降级","current":"C04 当前只展示 users.role，后端不允许通过成员编辑接口修改角色。","recommendation":"先保持角色只读；若开放角色变更，应单独接口、二次确认、最小管理员保护和完整审计。","impact":"会影响管理员权限模型和误操作风险，不能与普通成员资料编辑共用一个无差别保存动作。","status":"decided"}
+  "open_questions": [
+    {"id":"model-config-1","question":"Xiaomi MIMO、模力方舟的官方 OpenAI 兼容 Base URL 待按官方文档确认后填入 registry；确认前保持留空 + urlNote 提示。","related":["model_config_contract"]},
+    {"id":"model-config-2","question":"移动端原生长期存储（mobile_model_providers/mobile_models + Keychain/Keystore/HUKS）的落地排期与 Harmony 端密钥条目标识规则。","related":["M07.models"]},
+    {"id":"model-config-3","question":"Cloud 模型目录从 user_id 迁移到 organization_id 的 Provider/Model 两级 API 形态，以及组织凭据加密方案与管理员写权限闸门的后端排期。","related":["C06.model-catalog"]},
+    {"id":"model-config-4","question":"浏览器原型直连第三方 Provider 的 CORS 限制：正式实现需经各端原生网络层或后端代理发起 list/test 请求，避免页面暴露 API Key。","related":["D09.model-config","M07.models"]}
   ]
 }

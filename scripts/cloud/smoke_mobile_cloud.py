@@ -20,7 +20,7 @@ import uuid
 from typing import Any
 
 
-def request(base_url: str, method: str, path: str, token: str | None = None, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def request(base_url: str, method: str, path: str, token: str | None = None, payload: dict[str, Any] | None = None, request_timeout: float = 30.0) -> dict[str, Any]:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     headers = {"Accept": "application/json"}
     if body is not None:
@@ -29,7 +29,7 @@ def request(base_url: str, method: str, path: str, token: str | None = None, pay
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(f"{base_url.rstrip('/')}{path}", data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=request_timeout) as response:
             decoded = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -42,8 +42,12 @@ def request(base_url: str, method: str, path: str, token: str | None = None, pay
 
 
 def run(base_url: str, username: str, password: str, timeout: float) -> dict[str, Any]:
-    ready = request(base_url, "GET", "/ready")
-    login = request(base_url, "POST", "/v1/auth/login", payload={"username": username, "password": password})
+    # Command submission is intentionally synchronous for the short wait
+    # window. Give each HTTP request enough time to cover that window; the
+    # polling deadline remains controlled separately by `--timeout`.
+    request_timeout = max(30.0, timeout + 5.0)
+    ready = request(base_url, "GET", "/ready", request_timeout=request_timeout)
+    login = request(base_url, "POST", "/v1/auth/login", payload={"username": username, "password": password}, request_timeout=request_timeout)
     token = login["data"]["token"]
     device_id = f"mobile-smoke-{uuid.uuid4()}"
     request(
@@ -51,17 +55,17 @@ def run(base_url: str, username: str, password: str, timeout: float) -> dict[str
         "POST",
         "/v1/devices/register",
         token=token,
-        payload={"device_id": device_id, "platform": "smoke", "display_name": "NoteMeld mobile smoke"},
+        payload={"device_id": device_id, "platform": "smoke", "display_name": "NoteMeld mobile smoke"}, request_timeout=request_timeout,
     )
-    request(base_url, "POST", f"/v1/devices/{device_id}/heartbeat", token=token, payload={})
-    session = request(base_url, "POST", "/v1/sessions", token=token, payload={"kind": "cloud_native", "title": "mobile smoke"})["data"]
+    request(base_url, "POST", f"/v1/devices/{device_id}/heartbeat", token=token, payload={}, request_timeout=request_timeout)
+    session = request(base_url, "POST", "/v1/sessions", token=token, payload={"kind": "cloud_native", "title": "mobile smoke"}, request_timeout=request_timeout)["data"]
     request_id = f"mobile-smoke-{uuid.uuid4()}"
     submitted = request(
         base_url,
         "POST",
         f"/v1/sessions/{session['id']}/commands",
         token=token,
-        payload={"request_id": request_id, "input": "mobile cloud contract smoke"},
+        payload={"request_id": request_id, "input": 'Reply with exactly "cloud smoke ok" as plain text. Do not call tools or request approval.'}, request_timeout=request_timeout,
     )["data"]
 
     deadline = time.monotonic() + timeout
@@ -70,12 +74,12 @@ def run(base_url: str, username: str, password: str, timeout: float) -> dict[str
         if time.monotonic() >= deadline:
             raise RuntimeError(f"command {submitted.get('command_id')} did not reach a terminal state")
         time.sleep(0.05)
-        command = request(base_url, "GET", f"/v1/sessions/{session['id']}/commands/{submitted['command_id']}", token=token)["data"]
+        command = request(base_url, "GET", f"/v1/sessions/{session['id']}/commands/{submitted['command_id']}", token=token, request_timeout=request_timeout)["data"]
     if command["status"] != "completed":
         raise RuntimeError(f"mobile smoke command ended in {command['status']}")
 
-    events = request(base_url, "GET", f"/v1/sessions/{session['id']}/events?after=0", token=token)["data"]
-    snapshot = request(base_url, "GET", f"/v1/sessions/{session['id']}/snapshot", token=token)["data"]
+    events = request(base_url, "GET", f"/v1/sessions/{session['id']}/events?after=0", token=token, request_timeout=request_timeout)["data"]
+    snapshot = request(base_url, "GET", f"/v1/sessions/{session['id']}/snapshot", token=token, request_timeout=request_timeout)["data"]
     if not events or snapshot["snapshot_seq"] < events[-1]["sequence"]:
         raise RuntimeError("event stream and snapshot sequence are inconsistent")
     event_types = [event["event_type"] for event in events]

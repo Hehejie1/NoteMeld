@@ -31,7 +31,22 @@ def test_identity_store_round_trips_without_plain_file_fallback(monkeypatch):
     assert "test.notemeld.private" in values
 
 
-def test_identity_store_fails_closed_when_os_store_is_unavailable(monkeypatch):
+def test_identity_store_round_trips_through_windows_credential_manager(monkeypatch):
+    values = {}
     monkeypatch.setattr("app.cloud_sync.secure_identity.platform.system", lambda: "Windows")
+    monkeypatch.setattr("app.cloud_sync.secure_identity._windows_credential_read", lambda target: values.get(target))
+    monkeypatch.setattr("app.cloud_sync.secure_identity._windows_credential_write", lambda target, username, value: values.__setitem__(target, value))
+    monkeypatch.setattr("app.cloud_sync.secure_identity._windows_credential_delete", lambda target: values.pop(target, None))
+
+    store = OsIdentityStore("test.notemeld")
+    created = store.load_or_create()
+    loaded = store.load_or_create()
+
+    assert loaded == created
+    assert set(values) == {"test.notemeld.private", "test.notemeld.public"}
+
+
+def test_identity_store_fails_closed_when_os_store_is_unavailable(monkeypatch):
+    monkeypatch.setattr("app.cloud_sync.secure_identity.platform.system", lambda: "FreeBSD")
     with pytest.raises(SecureIdentityUnavailable):
         OsIdentityStore().load_or_create()

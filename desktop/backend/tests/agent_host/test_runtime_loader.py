@@ -4,6 +4,7 @@ import types
 
 import pytest
 
+import app.agent_host.runtime as runtime_module
 from app.agent_host.runtime import AgentSdkRuntime, AgentSdkUnavailable
 
 
@@ -31,7 +32,7 @@ def _stub_artifact(monkeypatch, binding, *, contract=None, native_library=None) 
             "binding_version": "0.1.0",
             "target_triples": ["x86_64-apple-darwin"],
             "source_commit": "0766e80973a4021f200c8f9f0763aca2f743734d",
-            "artifact_manifest_sha256": "c6dc368cd40cdfdb4af90646a93037d415645a8ba01f145098de3eaad1ac16c2",
+            "artifact_manifest_sha256": "45b28fa761c218acc2bde1817cf07cc6025208cb55999ed24b89cb4886c6eb3c",
         })),
     )
     monkeypatch.setattr(
@@ -43,7 +44,7 @@ def _stub_artifact(monkeypatch, binding, *, contract=None, native_library=None) 
 
 def test_loader_accepts_compatible_versioned_wheel_and_native_artifact(monkeypatch):
     _stub_artifact(monkeypatch, _compatible_binding(), native_library="/tmp/pinned-native")
-    monkeypatch.setattr(AgentSdkRuntime, "_sha256", staticmethod(lambda _path: "8683655f8982847752a2372a37fc7bf3f83a082d390dc9a4f8a954cfb65274ff"))
+    monkeypatch.setattr(AgentSdkRuntime, "_sha256", staticmethod(lambda _path: "8ebe0a83d8ec3a191e5897b7f8ef4016f362dcbfdc4543ae05c28892f1784c9c"))
 
     runtime = AgentSdkRuntime.load(binding_path="packaged")
 
@@ -53,6 +54,18 @@ def test_loader_accepts_compatible_versioned_wheel_and_native_artifact(monkeypat
     assert runtime.abi_version == 1
     assert runtime.native_library == "/tmp/pinned-native"
     assert runtime.source_commit == "0766e80973a4021f200c8f9f0763aca2f743734d"
+
+
+def test_frozen_loader_accepts_pyinstaller_rewritten_native_digest(monkeypatch):
+    _stub_artifact(monkeypatch, _compatible_binding(), native_library="/tmp/frozen-native")
+    monkeypatch.setattr(runtime_module.AgentSdkRuntime, "_sha256", staticmethod(
+        lambda _path: "57d1d1bdf7732b9137950a4e14d5032cd96d56e27b37f19a61eae66b5ad4cd5c"
+    ))
+    monkeypatch.setattr(runtime_module.sys, "frozen", True, raising=False)
+
+    loaded = AgentSdkRuntime.load(binding_path="packaged")
+
+    assert loaded.native_library == "/tmp/frozen-native"
 
 
 def test_loader_fails_closed_when_artifact_provenance_is_missing(monkeypatch):

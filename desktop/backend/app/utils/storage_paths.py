@@ -55,6 +55,11 @@ def research_search_config_path() -> Path:
     return data_root() / "config" / "research_search.json"
 
 
+def model_secret_key_path() -> Path:
+    """Fernet 主密钥文件（0600），仅用于加密 providers.api_key_ciphertext。"""
+    return data_root() / "config" / "model_secret.key"
+
+
 def database_path() -> Path:
     return data_root() / "notemeld.db"
 

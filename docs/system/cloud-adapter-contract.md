@@ -36,6 +36,8 @@ Relay 或同步任务。
 2. LAN 连接失败后回退到云端 `wss://` Relay。
 3. 远程云端地址必须是 HTTPS；HTTP 只允许本机开发地址。
 4. Relay 只传递加密 envelope，不发送明文会话内容。
+5. Relay WebSocket 建立后先返回 `relay_ready(next_sequence)`；发送端必须以该
+   序号发送本连接的首帧，不能在重连后重置为 1。
 
 ## Relay envelope
 
@@ -45,6 +47,10 @@ Relay 或同步任务。
 - 单调递增的发送序列号和 `authority_epoch`。
 - `frame_id`、12 字节 nonce、`frame_type`。
 - AEAD ciphertext 和绑定 envelope 元数据的 AAD。
+
+Cloud 只从持久 replay cursor 计算 `relay_ready.next_sequence`，不接受客户端
+回退或重置游标。这个控制消息不包含密钥、明文或对端状态；Host 和控制端各自
+获得自己设备方向的下一序号。
 
 收到 `host_offline`、`invalid_envelope` 或权限错误时，控制端必须将本次
 发送标记为失败；不能把未送达消息伪装成本地已完成。受控端收到命令后先
@@ -105,4 +111,7 @@ controller_device_id, cipher)`。runtime 只保存 cipher 实例以维护序列�
 LAN 连接可以在 proof 之后发送 `notemeld.e2ee.handshake.v1` signed X25519
 offer；Host 必须用 cloud assertion 中的 controller public key 验证，再返回自己的
 signed offer。Relay 连接也支持以 `frame_type=handshake` 转发该 signed envelope；
-Relay 只路由 opaque frame，握手验证和 session key 派生仍在两端完成。
+Relay 只路由 opaque frame，握手验证和 session key 派生仍在两端完成。Relay 会把
+handshake 和加密业务帧纳入同一个发送方 sequence 游标；双方安装 session cipher 时
+必须将已发送/接收的 handshake sequence 作为初始游标，首条 command/receipt/event
+使用更大的 sequence（当前首次握手后为 2），不得从 1 重新开始。

@@ -34,6 +34,14 @@ assert.match(
   'Developer ID 签名必须启用 hardened runtime，才能进入 Apple notarization',
 )
 
+assert.match(buildScript, /NOTEMELD_REQUIRE_NOTARIZATION/, '正式 macOS 构建必须有显式 release 门禁')
+assert.match(buildScript, /NOTEMELD_REQUIRE_INTEL_X64/, 'Intel macOS 构建必须有显式 x86_64 架构门禁')
+assert.match(buildScript, /lipo -archs/, 'Intel macOS 构建必须检查最终二进制架构')
+assert.match(buildScript, /require_release_credentials/, '正式 macOS 构建必须校验签名和公证凭据')
+assert.match(buildScript, /notarytool history/, '正式 macOS 构建必须先验证 notary profile')
+assert.match(buildScript, /notarytool submit/, '正式 macOS 构建必须提交 notarization')
+assert.match(buildScript, /stapler staple/, '正式 macOS 构建必须 staple 公证票据')
+
 assert.match(
   skillScript,
   /--release/,

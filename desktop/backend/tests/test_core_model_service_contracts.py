@@ -43,8 +43,15 @@ class TestCoreModelServiceContracts(unittest.TestCase):
             provider_id="provider-1",
             model_name="runtime-model",
             context_window_tokens=131072,
+            max_input_tokens=3072,
+            max_output_tokens=1024,
             supports_vision=True,
             supports_stream=False,
+            model_id=None,
+            display_name=None,
+            enabled=1,
+            is_default=0,
+            test_status="unknown",
         )
 
     def test_build_saved_model_config_uses_complete_persisted_runtime_row(self):

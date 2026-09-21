@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { openExternalUrl } from '@/utils/runtime'
+import logo from '@/assets/logo.png'
 import './landing.css'
 
 const desktopDownloads = {
@@ -294,7 +295,7 @@ const LandingPage = () => {
     <div className="landing-page">
       <header className="landing-nav">
         <Link to="/" className="landing-brand" aria-label="NoteMeld 首页">
-          <img src="/notemeld-logo.png" alt="" className="landing-brand-icon" />
+          <img src={logo} alt="" className="landing-brand-icon" />
           <span className="landing-brand-copy">
             <strong>NoteMeld</strong>
             <small>源知库 · 你的专属知识库</small>

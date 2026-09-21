@@ -2,11 +2,13 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import {
   fetchModels,
-  addModel,
   fetchEnableModels,
   fetchEnableModelById,
   deleteModelById,
-  type ModelRuntimeConfigPayload,
+  saveModelsBatch,
+  setDefaultModel,
+  type BatchModelsRequest,
+  type BatchModelsResult,
 } from '@/services/model'
 
 interface IModel {
@@ -23,9 +25,18 @@ export interface IModelListItem {
   provider_id: string
   model_name: string
   context_window_tokens: number
+  max_input_tokens: number
+  max_output_tokens: number
   supports_vision: boolean
   supports_stream: boolean
   created_at?: string
+  // notemeld.model-add.v1 两级协议新增字段
+  model_id?: string
+  display_name?: string
+  enabled?: number
+  is_default?: number
+  test_status?: string
+  capabilities?: Record<string, unknown>
 }
 
 interface ModelStore {
@@ -37,7 +48,8 @@ interface ModelStore {
   loadModels: (providerId: string) => Promise<void>
   loadModelsById: (providerId: string) => Promise<IModelListItem[]>
   loadEnabledModels: () => Promise<void>
-  addNewModel: (payload: ModelRuntimeConfigPayload) => Promise<IModelListItem>
+  saveModels: (data: BatchModelsRequest) => Promise<BatchModelsResult>
+  setModelDefault: (providerId: string, modelId: string) => Promise<void>
   deleteModel: (modelId: number) => Promise<void>
   setSelectedModel: (modelId: string) => void
   clearModels: () => void
@@ -99,8 +111,13 @@ export const useModelStore = create<ModelStore>()(
       }
     },
 
-    //  新增模型逻辑
-    addNewModel: async (payload) => (await addModel(payload)) as unknown as IModelListItem,
+    //  批量保存多选模型（notemeld.model-add.v1）
+    saveModels: async (data) => (await saveModelsBatch(data)) as BatchModelsResult,
+
+    //  设置供应商默认模型
+    setModelDefault: async (providerId, modelId) => {
+      await setDefaultModel({ provider_id: providerId, model_id: modelId })
+    },
 
     //  删除模型
     deleteModel: async (modelId: number) => {

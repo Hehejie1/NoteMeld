@@ -6,15 +6,21 @@ on:
       - "cloud/**"
       - "desktop/backend/app/cloud_sync/**"
       - "desktop/backend/tests/test_cloud_*.py"
+      - "desktop/backend/tests/test_first_batch_*.py"
       - "scripts/cloud/smoke_mobile_cloud.py"
+      - "scripts/release/*.py"
       - ".github/workflows/cloud-backend.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     paths:
       - "cloud/**"
       - "desktop/backend/app/cloud_sync/**"
       - "desktop/backend/tests/test_cloud_*.py"
+      - "desktop/backend/tests/test_first_batch_*.py"
       - "scripts/cloud/smoke_mobile_cloud.py"
+      - "scripts/release/*.py"
       - ".github/workflows/cloud-backend.yml"
+      - ".github/workflows/release.yml"
 
 jobs:
   test:
@@ -39,14 +45,37 @@ jobs:
       - name: Run cloud backend regression
         env:
           NOTEMELD_CLOUD_RELAY_TEST_URL: redis://127.0.0.1:6379/0
-        run: PYTHONPATH=.:desktop/backend python -m pytest desktop/backend/tests/test_cloud_*.py -q
+        run: PYTHONPATH=.:desktop/backend python -m pytest desktop/backend/tests/test_cloud_*.py desktop/backend/tests/test_first_batch_*.py -q
       - name: Validate cloud compose configuration
         env:
           NOTEMELD_CLOUD_ADMIN_USERNAME: ci-admin
           NOTEMELD_CLOUD_ADMIN_PASSWORD: ci-compose-password
         run: docker compose -f cloud/compose.yaml config --quiet
+      - name: Download pinned Linux Agent SDK artifacts
+        env:
+          SDK_WHEEL_URL: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_WHEEL_URL }}
+          SDK_WHEEL_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_WHEEL_SHA256 }}
+          SDK_LIBRARY_URL: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_LIBRARY_URL }}
+          SDK_LIBRARY_SHA256: ${{ vars.NOTEMELD_AGENT_SDK_LINUX_LIBRARY_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "${SDK_WHEEL_URL:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_WHEEL_URL is required" >&2; exit 2; }
+          test -n "${SDK_WHEEL_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_WHEEL_SHA256 is required" >&2; exit 2; }
+          test -n "${SDK_LIBRARY_URL:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_LIBRARY_URL is required" >&2; exit 2; }
+          test -n "${SDK_LIBRARY_SHA256:-}" || { echo "NOTEMELD_AGENT_SDK_LINUX_LIBRARY_SHA256 is required" >&2; exit 2; }
+          [[ "$SDK_WHEEL_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid Linux SDK wheel SHA-256" >&2; exit 2; }
+          [[ "$SDK_LIBRARY_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "invalid Linux SDK library SHA-256" >&2; exit 2; }
+          mkdir -p cloud/.sdk-build
+          curl --fail --location --retry 3 --output cloud/.sdk-build/notemeld-agent-sdk.whl "$SDK_WHEEL_URL"
+          curl --fail --location --retry 3 --output cloud/.sdk-build/libnotemeld_agent.so "$SDK_LIBRARY_URL"
+          echo "$SDK_WHEEL_SHA256  cloud/.sdk-build/notemeld-agent-sdk.whl" | sha256sum -c -
+          echo "$SDK_LIBRARY_SHA256  cloud/.sdk-build/libnotemeld_agent.so" | sha256sum -c -
       - name: Build cloud release image
-        run: docker build -f cloud/Dockerfile -t notemeld-cloud:ci-${{ github.sha }} .
+        run: |
+          docker build -f cloud/Dockerfile -t notemeld-cloud:ci-${{ github.sha }} \
+            --build-arg NOTEMELD_BUILD_COMMIT=${{ github.sha }} \
+            --build-arg NOTEMELD_AGENT_SDK_WHEEL=cloud/.sdk-build/notemeld-agent-sdk.whl \
+            --build-arg NOTEMELD_AGENT_SDK_LIBRARY=cloud/.sdk-build/libnotemeld_agent.so .
       - name: Run mobile Cloud-native smoke gate
         env:
           NOTEMELD_CLOUD_ADMIN_USERNAME: ci-admin

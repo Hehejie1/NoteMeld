@@ -1,0 +1,42 @@
+.doc-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0 8px;
+}
+.doc-jump a {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--blue);
+  font-size: 12px;
+  text-decoration: none;
+}
+.doc-jump a:hover,
+.doc-jump a:focus-visible { border-color: var(--blue); outline: none; }
+.architecture-section { scroll-margin-top: 24px; }
+.architecture-heading > .doc-badge { flex: none; white-space: nowrap; }
+.architecture-section > .doc-warning,
+.architecture-section > .doc-grid,
+.architecture-section > .table-scroll { margin-top: 18px; }
+.remote-invariants { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.remote-rule { box-shadow: none; }
+.remote-rule p { margin-bottom: 0; color: var(--text); }
+.remote-table { min-width: 780px; }
+.remote-table td { line-height: 1.6; }
+.remote-table code { white-space: normal; overflow-wrap: anywhere; }
+.remote-flow-grid { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.remote-flow ol { padding-left: 20px; margin: 12px 0; }
+.remote-flow li { font-size: 13px; line-height: 1.7; margin-bottom: 10px; }
+.remote-gap {
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #7b5a20 !important;
+}
+.remote-gap strong { color: #7b5a20; }
+@media (max-width: 700px) {
+  .remote-flow-grid { grid-template-columns: 1fr; }
+  .doc-jump { gap: 6px; }
+}

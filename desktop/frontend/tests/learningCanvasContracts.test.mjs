@@ -76,7 +76,7 @@ assert.match(whiteboardPanel, /笔记/, '语义工作区即使无 document 也�
 assert.match(whiteboardPanel, /尚未发布/, '无 Note 时必须显示明确发布状态')
 
 assert.match(composer, /ComposerMode = 'note' \| 'chat' \| 'learn'/, '输入区必须支持 learn intent')
-assert.match(composer, />\s*学习\s*</, '模式切换必须展示“学习”')
+assert.doesNotMatch(composer, />\s*学习\s*</, '输入区不再展示聊天/笔记/学习模式切换')
 assert.match(composer, /submitLearning/, '学习模式必须有显式提交路径')
 assert.match(composer, /createLearningCanvas/, '学习提交必须直接调用 canvas API')
 assert.match(composer, /modeWasExplicitlySelectedRef\.current/, '用户显式选择模式后输入内容不得自动切换')

@@ -3,10 +3,15 @@ services:
     build:
       context: ..
       dockerfile: cloud/Dockerfile
+      args:
+        NOTEMELD_BUILD_COMMIT: ${NOTEMELD_CLOUD_BUILD_COMMIT:-}
+        NOTEMELD_AGENT_SDK_WHEEL: ${NOTEMELD_AGENT_SDK_WHEEL:-cloud/.sdk-build/notemeld_agent_sdk-0.1.0-py3-none-any.whl}
+        NOTEMELD_AGENT_SDK_LIBRARY: ${NOTEMELD_AGENT_SDK_LIBRARY:-cloud/.sdk-build/libnotemeld_agent.so}
     ports:
       - "8583:8583"
     environment:
       NOTEMELD_CLOUD_ENV: ${NOTEMELD_CLOUD_ENV:-development}
+      NOTEMELD_CLOUD_IMAGE_DIGEST: ${NOTEMELD_CLOUD_IMAGE_DIGEST:-}
       NOTEMELD_CLOUD_ADMIN_USERNAME: ${NOTEMELD_CLOUD_ADMIN_USERNAME:?set admin username}
       NOTEMELD_CLOUD_ADMIN_PASSWORD: ${NOTEMELD_CLOUD_ADMIN_PASSWORD:?set admin password}
       NOTEMELD_CLOUD_ADMIN_EMAIL: ${NOTEMELD_CLOUD_ADMIN_EMAIL:-}

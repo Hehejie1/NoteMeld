@@ -155,23 +155,9 @@ assert.match(
   '侧边栏 GitHub 区块必须固定占位并使用白色背景避免和列表重叠',
 )
 
-assert.match(
-  appLayoutSource,
-  /const logo = '\/notemeld-logo\.png'/,
-  '应用内侧边栏 logo 必须使用桌面 PNG 静态资源，避免和 Tauri 打包图标链路不一致',
-)
-
-assert.match(
-  landingPageSource,
-  /src="\/notemeld-logo\.png"/,
-  '首页品牌 logo 必须使用和桌面一致的 PNG 静态资源',
-)
-
-assert.match(
-  aboutPageSource,
-  /src="\/notemeld-logo\.png"/,
-  '关于页品牌 logo 必须使用和桌面一致的 PNG 静态资源',
-)
+assert.match(appLayoutSource, /import logo from ['"]@\/assets\/icon\.svg['"]/, '应用内侧边栏 logo 必须使用可被 Tauri 相对基址正确打包的前端资源')
+assert.match(landingPageSource, /import logo from ['"]@\/assets\/icon\.svg['"]/, '首页品牌 logo 必须使用可被 Tauri 相对基址正确打包的前端资源')
+assert.match(aboutPageSource, /import logo from ['"]@\/assets\/icon\.svg['"]/, '关于页品牌 logo 必须使用可被 Tauri 相对基址正确打包的前端资源')
 
 assert.match(
   dataMigrationSource,
@@ -180,7 +166,7 @@ assert.match(
 )
 
 assert.match(deviceConnectivitySource, /get_desktop_device_id/)
-assert.match(deviceConnectivitySource, /openDeviceKeyMaterial/)
+assert.doesNotMatch(deviceConnectivitySource, /openDeviceKeyMaterial|registerDevice/)
 assert.match(deviceConnectivitySource, /listDevices/)
 assert.match(deviceConnectivitySource, /heartbeat/)
 assert.match(deviceConnectivitySource, /bootstrap_cloud_host/)

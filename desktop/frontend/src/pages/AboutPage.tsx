@@ -10,6 +10,7 @@ import {
 } from '@/services/desktopUpdater'
 import { isDesktopEmbedded } from '@/utils/runtime'
 import { FeatureGuideTarget } from '@/demo/FeatureGuideTarget'
+import logo from '@/assets/logo.png'
 
 const fallbackVersion = '0.0.4'
 const defaultReleaseNotes = `每次升级的内容
@@ -117,7 +118,7 @@ export default function AboutPage() {
 
       <div className="mx-auto flex w-full max-w-[860px] flex-col items-center px-8 pb-16 pt-4">
         <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[24px] bg-[#0e0d2a] shadow-sm">
-          <img src="/notemeld-logo.png" alt="NoteMeld" className="h-full w-full object-contain" />
+          <img src={logo} alt="NoteMeld" className="h-full w-full object-contain" />
         </div>
 
         <h2 className="mt-5 font-display text-[32px] font-bold leading-none text-on-surface">

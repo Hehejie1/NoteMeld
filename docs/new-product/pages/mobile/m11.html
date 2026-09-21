@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>NoteMeld · 组件库</title>
+  <link rel="stylesheet" href="../../assets/mobile.css">
+  <link rel="stylesheet" href="../../assets/mobile-component-library.css">
+</head>
+<body class="mobile-preview" data-page="M11">
+  <div class="iphone-shell"><div class="iphone-island"></div>
+    <main class="mobile-screen component-library-screen">
+      <header class="mobile-header component-library-header">
+        <button class="icon-only" data-comp-back aria-label="返回设置"><i data-icon="chevron-left"></i></button>
+        <strong>组件库</strong>
+        <span class="model-header-actions"><button class="icon-only" data-comp-menu aria-label="选择模块"><i data-icon="ellipsis"></i></button></span>
+      </header>
+
+      <div class="comp-content-scroll" data-comp-content aria-live="polite"></div>
+    </main>
+
+    <div class="sheet-backdrop" data-sheet-backdrop hidden></div>
+    <section class="mobile-sheet comp-module-sheet" data-comp-module hidden aria-label="选择模块">
+      <div class="sheet-handle"></div>
+      <div class="sheet-heading"><div><span class="sheet-eyebrow">组件库</span><h2>选择模块</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="comp-module-list" data-comp-module-list></div>
+    </section>
+
+    <div class="toast" data-comp-toast role="status" hidden></div>
+  </div>
+  <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../assets/mobile-component-library.js"></script>
+</body>
+</html>

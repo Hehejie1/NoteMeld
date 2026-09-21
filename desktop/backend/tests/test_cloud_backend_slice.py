@@ -9,7 +9,9 @@ import pytest
 
 from fastapi.testclient import TestClient
 
+import cloud.app as cloud_app
 from cloud.app import _login_key, _valid_nonce, create_app
+from cloud.db import CloudDB
 from cloud.security import parse_token
 from cloud.config import CloudSettings
 
@@ -50,6 +52,22 @@ def login(client: TestClient, username: str, password: str) -> str:
     response = client.post("/v1/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200
     return response.json()["data"]["token"]
+
+
+def test_default_workspace_preference_is_used_for_protocol_default_session(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key="test-secret-key-not-for-production")
+    with client(tmp_path, settings=settings) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        user_id = http.get("/v1/auth/me", headers=headers).json()["data"]["user_id"]
+        (settings.workspaces_dir / user_id / "team").mkdir(parents=True)
+        assert http.put("/v1/preferences", headers=headers, json={"default_workspace": "team"}).status_code == 200
+        workspaces = http.get("/v1/workspaces", headers=headers)
+        assert workspaces.status_code == 200
+        assert "team" in {item["id"] for item in workspaces.json()["data"]}
+        created = http.post("/v1/cloud/sessions", headers=headers, json={"kind": "cloud_native"})
+        assert created.status_code == 200
+        assert created.json()["data"]["workspace_id"] == "team"
 
 
 def test_bootstrap_admin_and_user_crud(tmp_path):
@@ -432,9 +450,17 @@ def test_cors_allows_device_header_and_security_headers(tmp_path):
         assert health.headers["x-content-type-options"] == "nosniff"
         assert health.headers["x-frame-options"] == "DENY"
         assert health.headers["cache-control"] == "no-store"
-        docs = http.get("/cloud/index.html")
-        assert docs.status_code == 200
-        assert docs.headers["x-frame-options"] == "SAMEORIGIN"
+        prototype = http.get("/cloud/pages/cloud/c01.html")
+        assert prototype.status_code == 404
+        cloud_login = http.get("/cloud/login")
+        cloud_dist_index = Path(__file__).resolve().parents[3] / "desktop" / "frontend" / "dist-cloud-web" / "index.html"
+        assert cloud_login.status_code == (200 if cloud_dist_index.is_file() else 404)
+        if cloud_login.status_code == 200:
+            assert cloud_login.headers["x-frame-options"] == "SAMEORIGIN"
+            csp = cloud_login.headers["content-security-policy"]
+            assert "default-src 'self'" in csp
+            assert "object-src 'none'" in csp
+            assert "frame-ancestors 'self'" in csp
 
 
 def test_readiness_checks_database_and_workspace(tmp_path):
@@ -442,6 +468,8 @@ def test_readiness_checks_database_and_workspace(tmp_path):
         response = http.get("/ready")
         assert response.status_code == 200
         assert response.json()["ready"] is True
+        assert response.json()["environment"] == "development"
+        assert response.json()["agent_backend"] == "deterministic"
         assert response.json()["checks"] == {"database": "ok", "workspace_root": "ok"}
 
 
@@ -546,11 +574,68 @@ def test_cloud_model_registry_never_returns_provider_secret(tmp_path):
         assert "api_key" not in model and "ciphertext" not in str(model).lower()
         listed = http.get("/v1/models", headers=headers).json()["data"]
         assert listed[0]["has_api_key"] is True
+        assert listed[0]["credential_status"] == "configured"
         assert "api_key_ciphertext" not in listed[0]
         assert http.put(f"/v1/models/{model['id']}", headers=headers, json={"is_default": False}).status_code == 200
         assert http.delete(f"/v1/models/{model['id']}", headers=headers).status_code == 200
         assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "base_url": "file:///etc/passwd"}).status_code == 422
         assert http.post("/v1/models", headers=headers, json={"name": "bad", "provider": "x", "model": "x", "api_key": "secret", "unexpected": "must-reject"}).status_code == 422
+
+
+def test_first_enabled_cloud_model_becomes_default_for_web_configuration(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        created = http.post(
+            "/v1/models",
+            headers=headers,
+            json={"name": "Cloud provider", "provider": "openai-compatible", "model": "model-a", "base_url": "https://provider.example/v1"},
+        )
+        assert created.status_code == 200
+        assert created.json()["data"]["is_default"] is True
+        listed = http.get("/v1/models", headers=headers).json()["data"]
+        assert sum(1 for model in listed if model["is_default"]) == 1
+
+
+def test_cloud_model_discovery_uses_provider_models_endpoint_without_persisting_secret(tmp_path, monkeypatch):
+    import cloud.app as cloud_app
+
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": [{"id": "provider-model-a"}, {"id": "provider-model-b", "name": "Model B"}]}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            seen["kwargs"] = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, headers):
+            seen["url"] = url
+            seen["headers"] = headers
+            return FakeResponse()
+
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        monkeypatch.setattr(cloud_app.socket, "getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 443))])
+        monkeypatch.setattr(cloud_app.httpx, "Client", FakeClient)
+        response = http.post("/v1/models/discover", headers={"Authorization": f"Bearer {token}"}, json={"provider": "openai-compatible", "base_url": "https://provider.example/v1", "api_key": "sk-not-persisted"})
+        assert response.status_code == 200
+        assert response.json()["data"] == [{"id": "provider-model-a", "model": "provider-model-a", "name": "provider-model-a"}, {"id": "provider-model-b", "model": "provider-model-b", "name": "Model B"}]
+        assert seen["url"] == "https://provider.example/v1/models"
+        assert seen["headers"]["Authorization"] == "Bearer sk-not-persisted"
+        assert http.get("/v1/models", headers={"Authorization": f"Bearer {token}"}).json()["data"] == []
 
 
 def test_cloud_model_secret_requires_dedicated_master_key(tmp_path):
@@ -597,6 +682,38 @@ def test_cloud_session_model_id_selects_registered_runner(tmp_path, monkeypatch)
         result = http.post(f"/v1/cloud/sessions/{session['id']}/commands", headers=headers, json={"request_id": "selected-runner", "input": "hello"})
         assert result.status_code == 200
         assert selected["model"] == "registered-model"
+
+
+def test_cloud_session_without_model_uses_enabled_default_model(tmp_path, monkeypatch):
+    from cloud.agent import AgentResult
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    selected = {}
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            selected.update(kwargs)
+        def complete(self, *, input_text, messages, **kwargs):
+            del messages, kwargs
+            return AgentResult(content=f"default:{input_text}", model=selected["model"])
+        def close(self):
+            pass
+
+    monkeypatch.setattr("cloud.app.OpenAICompatibleAgentRunner", FakeRunner)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        model = http.post(
+            "/v1/models",
+            headers=headers,
+            json={"name": "Default", "provider": "openai-compatible", "model": "default-model", "base_url": "https://provider.invalid/v1", "is_default": True},
+        ).json()["data"]
+        session = http.post("/v1/cloud/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        assert session["model_id"] == model["id"]
+        result = http.post(f"/v1/cloud/sessions/{session['id']}/commands", headers=headers, json={"request_id": "default-runner", "input": "hello"})
+        assert result.status_code == 200
+        assert selected["model"] == "default-model"
 
 
 def test_cloud_workspace_rejects_cross_platform_path_tricks(tmp_path):
@@ -707,6 +824,27 @@ def test_cloud_provider_failure_is_persisted_as_failed_command(tmp_path):
         snapshot = http.get(f"/v1/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
         assert snapshot["events"][-1]["event_type"] == "turn.failed"
         assert "provider payload" not in snapshot["events"][-1]["payload"].get("error", {}).get("message", "")
+
+
+def test_cloud_canonical_runner_requires_a_configured_model(tmp_path):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+
+    class CanonicalRunnerWithoutModel:
+        native_library = "/opt/notemeld-agent-sdk/libnotemeld_agent.so"
+
+        def complete(self, **kwargs):
+            raise AssertionError("canonical runner must not be called without a configured model")
+
+    app.state.agent_runner = CanonicalRunnerWithoutModel()
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post(f"/v1/cloud/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        failed = http.post(f"/v1/cloud/sessions/{session['id']}/commands", headers=headers, json={"request_id": "missing-model", "input": "hello"})
+        assert failed.status_code == 502
+        snapshot = http.get(f"/v1/cloud/sessions/{session['id']}/snapshot", headers=headers).json()["data"]
+        assert snapshot["events"][-1]["payload"]["error"] == {"code": "model_not_configured", "message": "configure a Cloud model before sending messages"}
 
 
 def test_cloud_agent_receives_only_readonly_workspace_tools(tmp_path):
@@ -858,6 +996,104 @@ def test_cloud_startup_preserves_running_command_with_active_lease(tmp_path):
         token = login(http, "admin", "admin-password-123")
         status = http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers={"Authorization": f"Bearer {token}"}).json()["data"]["status"]
         assert status == "running"
+
+
+def test_cloud_reconciler_marks_crashed_worker_after_lease_expires(tmp_path):
+    import uuid
+
+    settings = CloudSettings(
+        tmp_path / "data",
+        "admin",
+        "admin-password-123",
+        command_lease_seconds=3,
+    )
+    app = create_app(settings)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        command_id = str(uuid.uuid4())
+        with app.state.db.connect() as cx:
+            cx.execute("UPDATE sessions SET status='running',next_sequence=2,next_event_sequence=1 WHERE id=?", (session["id"],))
+            cx.execute(
+                "INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,lease_owner,lease_expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (command_id, session["id"], "crashed-live-lease", "0" * 64, 1, "hello", "running", "dead-worker", int(time.time()) + 2, int(time.time())),
+            )
+
+    recovered = create_app(settings)
+    with TestClient(recovered) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        initial = http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers=headers).json()["data"]
+        assert initial["status"] == "running"
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            command = http.get(f"/v1/sessions/{session['id']}/commands/{command_id}", headers=headers).json()["data"]
+            if command["status"] == "needs_attention":
+                break
+            time.sleep(0.1)
+        assert command["status"] == "needs_attention"
+        events = http.get(f"/v1/sessions/{session['id']}/events?after=0", headers=headers).json()["data"]
+        attention = [event for event in events if event["event_type"] == "turn.needs_attention"]
+        assert len(attention) == 1
+        assert attention[0]["payload"]["error"]["code"] == "process_restarted"
+
+
+def test_cloud_command_claim_is_single_active_turn_per_session(tmp_path):
+    import uuid
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        command_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        with app.state.db.connect() as cx:
+            cx.execute("UPDATE sessions SET status='queued',next_sequence=3 WHERE id=?", (session["id"],))
+            for sequence, command_id in enumerate(command_ids, start=1):
+                cx.execute(
+                    "INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                    (command_id, session["id"], f"queued-{sequence}", "0" * 64, sequence, "hello", "queued", int(time.time())),
+                )
+
+        first = cloud_app._claim_next_cloud_command(app.state.db, session["id"], "worker-one", 300)
+        assert first["id"] == command_ids[0]
+        assert cloud_app._claim_next_cloud_command(app.state.db, session["id"], "worker-two", 300) is None
+        with app.state.db.connect() as cx:
+            statuses = cx.execute("SELECT status FROM commands WHERE session_id=? ORDER BY sequence", (session["id"],)).fetchall()
+            assert [row["status"] for row in statuses] == ["running", "queued"]
+            cx.execute("UPDATE commands SET status='completed',lease_owner=NULL,lease_expires_at=NULL WHERE id=?", (command_ids[0],))
+        second = cloud_app._claim_next_cloud_command(app.state.db, session["id"], "worker-two", 300)
+        assert second["id"] == command_ids[1]
+
+
+def test_abandon_needs_attention_continues_next_queued_command(tmp_path):
+    import uuid
+
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123")
+    app = create_app(settings)
+    with TestClient(app) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "cloud_native"}).json()["data"]
+        blocked_id, queued_id = str(uuid.uuid4()), str(uuid.uuid4())
+        with app.state.db.connect() as cx:
+            cx.execute("UPDATE sessions SET status='needs_attention',next_sequence=3,next_event_sequence=1 WHERE id=?", (session["id"],))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (blocked_id, session["id"], "blocked", "0" * 64, 1, "unknown side effect", "needs_attention", int(time.time())))
+            cx.execute("INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (queued_id, session["id"], "next", "0" * 64, 2, "hello", "queued", int(time.time())))
+
+        response = http.post(f"/v1/sessions/{session['id']}/commands/{blocked_id}/recover", headers=headers, json={"mode": "abandon"})
+        assert response.status_code == 200
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            queued = http.get(f"/v1/sessions/{session['id']}/commands/{queued_id}", headers=headers).json()["data"]
+            if queued["status"] == "completed":
+                break
+            time.sleep(0.01)
+        assert queued["status"] == "completed"
+        blocked = http.get(f"/v1/sessions/{session['id']}/commands/{blocked_id}", headers=headers).json()["data"]
+        assert blocked["status"] == "abandoned"
 
 
 def test_cloud_session_spec_prefix_aliases(tmp_path):
@@ -1406,6 +1642,69 @@ def test_cloud_readiness_reports_required_device_proof_dependency(tmp_path):
             assert response.status_code == 200
 
 
+def test_production_readiness_exposes_non_secret_release_checks(tmp_path, monkeypatch):
+    pytest.importorskip("cryptography")
+    monkeypatch.setattr("cloud.app.create_backup_storage", lambda _settings: object())
+    class CanonicalReadyRunner:
+        native_library = "/opt/notemeld-agent-sdk/libnotemeld_agent.so"
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("cloud.app.create_agent_runner", lambda _settings: CanonicalReadyRunner())
+    settings = CloudSettings(
+        tmp_path / "data",
+        "admin",
+        "admin-password-123",
+        admin_email="admin@example.com",
+        otp_dev_mode=False,
+        smtp_host="smtp.example.com",
+        smtp_sender="notemeld@example.com",
+        invite_base_url="https://cloud.example.com",
+        cors_origins=("https://cloud.example.com",),
+        agent_base_url="https://provider.example.com/v1",
+        agent_api_key="provider-secret",
+        require_device_proof=True,
+        secret_key="x" * 32,
+        relay_backend="redis",
+        relay_url="rediss://redis.example.com/0",
+        backup_storage_backend="s3",
+        s3_bucket="notemeld-backups",
+        deployment_env="production",
+        build_commit="a" * 40,
+        image_digest="sha256:" + "b" * 64,
+    )
+    app = create_app(settings)
+
+    class ReadyRelay:
+        async def ready(self):
+            return True
+
+        async def close(self):
+            return None
+
+    app.state.relay_broker = ReadyRelay()
+    with TestClient(app) as http:
+        response = http.get("/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["environment"] == "production"
+    assert body["agent_backend"] == "canonical-sdk"
+    assert body["checks"] == {
+        "database": "ok",
+        "workspace_root": "ok",
+        "relay": "ok",
+        "device_proof_crypto": "ok",
+        "agent_provider_config": "ok",
+        "backup_storage_config": "ok",
+        "otp_delivery_config": "ok",
+        "device_proof_config": "ok",
+        "release_identity": "ok",
+    }
+    assert body["build_commit"] == "a" * 40
+    assert body["image_digest"] == "sha256:" + "b" * 64
+
+
 def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
@@ -1416,12 +1715,16 @@ def test_relay_rejects_replay_and_reports_offline_host(tmp_path):
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "relay-controller", "recipient_device_id": "relay-host", "sequence": 1, "frame_id": "frame-1", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=relay-controller", headers=headers) as socket:
+            assert socket.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             socket.send_json([])
             assert socket.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
             socket.send_json(frame)
             assert socket.receive_json()["error"] == "host_offline"
+            assert cloud_app._relay_next_sequence(http.app.state.db, session["id"], "relay-controller") == 2
             socket.send_json(frame)
             assert socket.receive_json()["error"] == "invalid_envelope"
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=relay-controller", headers=headers) as socket:
+            assert socket.receive_json() == {"type": "relay_ready", "next_sequence": 2}
 
 
 def test_relay_accepts_browser_subprotocol_bearer_auth(tmp_path):
@@ -1433,6 +1736,7 @@ def test_relay_accepts_browser_subprotocol_bearer_auth(tmp_path):
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "browser-controller", "host_device_id": "browser-host", "scopes": ["message.send"]}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=browser-controller", subprotocols=["notemeld.v1", f"bearer.{token}"]) as socket:
+            assert socket.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             socket.close()
 
 
@@ -1447,6 +1751,8 @@ def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
         frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "controller-online", "recipient_device_id": "host-online", "sequence": 1, "frame_id": "frame-online", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
         receipt = {**frame, "sender_device_id": "host-online", "recipient_device_id": "controller-online", "sequence": 1, "frame_id": "receipt-online", "frame_type": "receipt", "ciphertext": "received"}
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=controller-online", headers=headers) as controller, http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=host-online", headers=headers) as host:
+            assert controller.receive_json() == {"type": "relay_ready", "next_sequence": 1}
+            assert host.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             controller.send_json(frame)
             assert controller.receive_json()["type"] == "relay_accepted"
             assert host.receive_json()["frame_id"] == "frame-online"
@@ -1458,6 +1764,40 @@ def test_relay_forwards_to_target_and_allows_host_receipt(tmp_path):
             assert host.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
 
 
+def test_device_remote_relay_payload_and_tokens_are_absent_from_cloud_storage_and_application_logs(tmp_path, caplog):
+    ciphertext_sentinel = "opaque-relay-ciphertext-must-not-persist"
+    plaintext_sentinel = "decrypted-message-cloud-must-never-see"
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("privacy-controller", "privacy-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "privacy-controller", "host_device_id": "privacy-host", "scopes": ["message.send"]}).status_code == 200
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "privacy-controller", "recipient_device_id": "privacy-host", "sequence": 1, "frame_id": "privacy-command", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": ciphertext_sentinel}
+        receipt = {**frame, "sender_device_id": "privacy-host", "recipient_device_id": "privacy-controller", "sequence": 1, "frame_id": "privacy-receipt", "frame_type": "receipt", "ciphertext": "opaque-receipt-must-not-persist"}
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=privacy-controller", headers=headers) as controller, http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=privacy-host", headers=headers) as host:
+            assert controller.receive_json()["type"] == "relay_ready"
+            assert host.receive_json()["type"] == "relay_ready"
+            controller.send_json(frame)
+            assert controller.receive_json()["type"] == "relay_accepted"
+            assert host.receive_json()["ciphertext"] == ciphertext_sentinel
+            host.send_json(receipt)
+            assert host.receive_json()["type"] == "relay_accepted"
+            assert controller.receive_json()["frame_id"] == "privacy-receipt"
+
+        with http.app.state.db.connect() as cx:
+            assert cx.execute("SELECT COUNT(*) FROM commands WHERE session_id=?", (session["id"],)).fetchone()[0] == 0
+            assert cx.execute("SELECT COUNT(*) FROM events WHERE session_id=?", (session["id"],)).fetchone()[0] == 0
+            assert cx.execute("SELECT COUNT(*) FROM relay_cursors WHERE session_id=?", (session["id"],)).fetchone()[0] == 2
+            database_dump = "\n".join(cx.iterdump())
+
+    combined = database_dump + "\n" + caplog.text
+    assert ciphertext_sentinel not in combined
+    assert plaintext_sentinel not in combined
+    assert token not in combined
+
+
 def test_relay_command_requires_message_scope(tmp_path):
     with client(tmp_path) as http:
         token = login(http, "admin", "admin-password-123")
@@ -1467,6 +1807,7 @@ def test_relay_command_requires_message_scope(tmp_path):
         assert http.post("/v1/grants", headers=headers, json={"controller_device_id": "scope-controller", "host_device_id": "scope-host"}).status_code == 200
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=scope-controller", headers=headers) as socket:
+            assert socket.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             socket.send_json({"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "scope-controller", "recipient_device_id": "scope-host", "sequence": 1, "frame_id": "scope-frame", "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"})
             assert socket.receive_json()["error"] == "invalid_envelope"
 
@@ -1481,7 +1822,29 @@ def test_relay_rechecks_device_revocation_on_each_frame(tmp_path):
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "revocation-controller", "recipient_device_id": "revocation-host", "sequence": 1, "frame_id": "revocation-frame", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=revocation-controller", headers=headers) as controller, http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=revocation-host", headers=headers) as host:
+            assert controller.receive_json() == {"type": "relay_ready", "next_sequence": 1}
+            assert host.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             assert http.delete("/v1/devices/revocation-controller", headers=headers).status_code == 200
+            controller.send_json(frame)
+            assert controller.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
+
+
+def test_relay_rechecks_grant_revocation_on_existing_and_new_connections(tmp_path):
+    with client(tmp_path) as http:
+        token = login(http, "admin", "admin-password-123")
+        headers = {"Authorization": f"Bearer {token}"}
+        for device in ("grant-revoke-controller", "grant-revoke-host"):
+            assert http.post("/v1/devices", headers=headers, json={"device_id": device, "platform": "test", "display_name": device, "public_key": PUBLIC_KEY}).status_code == 200
+        grant = http.post("/v1/grants", headers=headers, json={"controller_device_id": "grant-revoke-controller", "host_device_id": "grant-revoke-host", "scopes": ["message.send"]}).json()["data"]["grant_id"]
+        session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
+        frame = {"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "grant-revoke-controller", "recipient_device_id": "grant-revoke-host", "sequence": 1, "frame_id": "grant-revoked-frame", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"}
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=grant-revoke-controller", headers=headers) as controller:
+            assert controller.receive_json() == {"type": "relay_ready", "next_sequence": 1}
+            assert http.delete(f"/v1/grants/{grant}", headers=headers).status_code == 200
+            controller.send_json(frame)
+            assert controller.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
+        with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=grant-revoke-controller", headers=headers) as controller:
+            assert controller.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             controller.send_json(frame)
             assert controller.receive_json() == {"type": "rejected", "error": "invalid_envelope"}
 
@@ -1496,6 +1859,7 @@ def test_authority_rotation_invalidates_old_relay_epoch(tmp_path):
         session = http.post("/v1/sessions", headers=headers, json={"kind": "device_remote"}).json()["data"]
         assert http.post(f"/v1/sessions/{session['id']}/authority/rotate", headers=headers).json()["data"]["authority_epoch"] == 2
         with http.websocket_connect(f"/v1/relay/connect/{session['id']}?device_id=epoch-controller", headers=headers) as socket:
+            assert socket.receive_json() == {"type": "relay_ready", "next_sequence": 1}
             socket.send_json({"protocol_version": "notemeld.sync.v1", "session_id": session["id"], "sender_device_id": "epoch-controller", "recipient_device_id": "epoch-host", "sequence": 1, "frame_id": "old-epoch", "authority_epoch": 1, "frame_type": "command", "nonce": NONCE, "ciphertext": "opaque"})
             assert socket.receive_json()["error"] == "invalid_envelope"
 
@@ -1582,8 +1946,23 @@ def test_pairing_confirmation_returns_model_bundle_once(tmp_path):
         code = http.post("/v1/pairings/start", headers=headers).json()["data"]["code"]
         confirmed = http.post("/v1/pairings/confirm", headers=headers, json={"code": code, "device_id": "device-test-001", "platform": "macos", "display_name": "Test Mac"})
         assert confirmed.status_code == 200
-        bundle = confirmed.json()["data"]["models"]
-        assert bundle[0]["api_key"] == "sk-test"
+        data = confirmed.json()["data"]
+        bundle = data["models"]
+        # 安全红线：配对仅下发模型元数据，绝不下发任何密钥/密文字段；客户端选定后回传 model_id。
+        assert bundle[0]["model_id"] == "gpt-test"
+        assert bundle[0]["protocol"] == "openai-compatible"
+        forbidden = ("api_key", "apikey", "secret", "token", "password", "ciphertext", "credential")
+
+        def _assert_no_secret(value):
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    assert not any(part in str(key).lower() for part in forbidden), key
+                    _assert_no_secret(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    _assert_no_secret(nested)
+
+        _assert_no_secret(data)
         assert http.post("/v1/pairings/confirm", headers=headers, json={"code": code, "device_id": "device-test-002", "platform": "macos", "display_name": "Second Mac"}).status_code == 400
 
 
@@ -1694,3 +2073,411 @@ def test_session_copy_is_independent_with_provenance(tmp_path):
         assert http.get(f"/v1/workspaces/{target['workspace_id']}/files/context.txt", headers=headers).json()["data"]["content"] == "copied"
         assert len(http.get(f"/v1/sessions/{target['id']}/commands", headers=headers).json()["data"]) == 2
         assert http.post(f"/v1/sessions/{target['id']}/commands", headers=headers, json={"request_id": "copy-3", "input": "independent"}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# 云端模型目录（notemeld.model-add.v1）专项回归
+# ---------------------------------------------------------------------------
+
+import json
+import sqlite3
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class _CatalogMockHandler(BaseHTTPRequestHandler):
+    """本地第三方协议模拟：/models、/chat/completions、/api/tags、/v1/messages。"""
+
+    def log_message(self, *args):  # 保持测试输出干净
+        pass
+
+    def _send(self, status: int, body: bytes, content_type: str = "application/json"):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/v1/models":
+            self._send(200, json.dumps({"data": [
+                {"id": "gpt-4o", "name": "GPT-4o"},
+                {"id": "gpt-4o-mini", "name": "GPT-4o mini"},
+            ]}).encode())
+        elif self.path == "/api/tags":
+            self._send(200, json.dumps({"models": [
+                {"name": "llama3.1:8b", "details": {"family": "llama"}},
+                {"name": "qwen2.5:7b", "details": {"family": "qwen2"}},
+            ]}).encode())
+        else:
+            self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        self.rfile.read(length)
+        if self.path in ("/v1/chat/completions", "/v1/v1/messages"):
+            self._send(200, json.dumps({"ok": True}).encode())
+        else:
+            self._send(404, b"not found", "text/plain")
+
+
+@pytest.fixture
+def mock_provider():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _CatalogMockHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def _user_id(db_path: Path, username: str) -> str:
+    with sqlite3.connect(db_path) as cx:
+        row = cx.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+    return row[0]
+
+
+def _set_org_role(db_path: Path, user_id: str, role: str):
+    now = int(time.time())
+    with sqlite3.connect(db_path) as cx:
+        cx.execute(
+            "INSERT OR REPLACE INTO organization_members(organization_id,user_id,role,created_at) "
+            "VALUES('default',?,?,?)",
+            (user_id, role, now),
+        )
+
+
+def test_catalog_org_authorization_owner_admin_member(tmp_path):
+    with client(tmp_path) as http:
+        admin_token = login(http, "admin", "admin-password-123")
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        http.post("/v1/admin/users", headers=admin_headers, json={"username": "bob", "password": "bob-password-123"})
+        db_path = tmp_path / "data" / "cloud.db"
+        bob_id = _user_id(db_path, "bob")
+
+        # admin 在迁移中被回填为 default 组织 owner
+        me = http.get("/v1/auth/me", headers=admin_headers).json()["data"]
+        assert me["organization_id"] == "default" and me["organization_role"] == "owner"
+
+        # member：可读不可写
+        _set_org_role(db_path, bob_id, "member")
+        bob_headers = {"Authorization": f"Bearer {login(http, 'bob', 'bob-password-123')}"}
+        assert http.get("/v1/catalog/providers", headers=bob_headers).status_code == 200
+        blocked = http.post(
+            "/v1/catalog/providers", headers=bob_headers,
+            json={"display_name": "X", "vendor_id": "custom", "protocol": "ollama", "base_url": "http://127.0.0.1:11434"},
+        )
+        assert blocked.status_code == 403
+
+        # admin 角色可写
+        _set_org_role(db_path, bob_id, "admin")
+        bob_headers = {"Authorization": f"Bearer {login(http, 'bob', 'bob-password-123')}"}
+        allowed = http.post(
+            "/v1/catalog/providers", headers=bob_headers,
+            json={"display_name": "Bob Ollama", "vendor_id": "ollama", "protocol": "ollama", "base_url": "http://127.0.0.1:11434"},
+        )
+        assert allowed.status_code == 200
+
+        # 未加入任何组织：读写均被拒
+        with sqlite3.connect(db_path) as cx:
+            cx.execute("DELETE FROM organization_members WHERE user_id=?", (bob_id,))
+        bob_headers = {"Authorization": f"Bearer {login(http, 'bob', 'bob-password-123')}"}
+        assert http.get("/v1/catalog/providers", headers=bob_headers).status_code == 403
+        assert http.post(
+            "/v1/catalog/providers", headers=bob_headers,
+            json={"display_name": "Y", "vendor_id": "ollama", "protocol": "ollama", "base_url": "http://127.0.0.1:11434"},
+        ).status_code == 403
+
+
+def test_catalog_provider_validation_and_masked_credential(tmp_path, mock_provider):
+    with client(tmp_path) as http:
+        headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+
+        # 非本地地址必须 HTTPS
+        bad_scheme = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "Plain", "vendor_id": "custom", "protocol": "openai-compatible",
+                  "base_url": "http://api.example.com/v1", "api_key": "k"},
+        )
+        assert bad_scheme.status_code == 422
+
+        # 非 ollama 协议缺密钥
+        missing_key = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "NoKey", "vendor_id": "custom", "protocol": "openai-compatible",
+                  "base_url": "https://api.example.com/v1"},
+        )
+        assert missing_key.status_code == 422
+
+        # ollama 必须指向本地
+        remote_ollama = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "FarOllama", "vendor_id": "ollama", "protocol": "ollama",
+                  "base_url": "https://ollama.example.com"},
+        )
+        assert remote_ollama.status_code == 422
+
+        # 正常创建（本地模拟端点）：密钥只回掩码
+        created = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "Mock OpenAI", "vendor_id": "openai", "protocol": "openai-compatible",
+                  "base_url": f"{mock_provider}/v1", "api_key": "sk-secret-123456"},
+        )
+        assert created.status_code == 200
+        provider = created.json()["data"]
+        assert provider["has_api_key"] is True
+        assert provider["api_key_masked"].endswith("****")
+        full_body = json.dumps(created.json())
+        assert "sk-secret-123456" not in full_body
+
+        # 同名厂商冲突
+        duplicate = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "Mock OpenAI", "vendor_id": "openai", "protocol": "openai-compatible",
+                  "base_url": f"{mock_provider}/v1", "api_key": "sk-secret-123456"},
+        )
+        assert duplicate.status_code == 409
+
+        # 编辑留空保留密钥；改名生效
+        patched = http.patch(
+            f"/v1/catalog/providers/{provider['id']}", headers=headers,
+            json={"display_name": "Mock OpenAI Renamed"},
+        )
+        assert patched.status_code == 200
+        assert patched.json()["data"]["display_name"] == "Mock OpenAI Renamed"
+        assert patched.json()["data"]["has_api_key"] is True
+
+        # 空载荷 400
+        assert http.patch(f"/v1/catalog/providers/{provider['id']}", headers=headers, json={}).status_code == 400
+
+
+def test_catalog_models_batch_idempotency_and_default_rules(tmp_path, mock_provider):
+    with client(tmp_path) as http:
+        headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+        provider = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "Batch Provider", "vendor_id": "openai", "protocol": "openai-compatible",
+                  "base_url": f"{mock_provider}/v1", "api_key": "sk-batch-123456"},
+        ).json()["data"]
+
+        # 首批：组织无默认 → 首条自动默认
+        first = http.post(
+            f"/v1/catalog/providers/{provider['id']}/models/batch", headers=headers,
+            json={"models": [
+                {"model_id": "gpt-4o", "display_name": "GPT-4o", "context_window": 128000},
+                {"model_id": "gpt-4o-mini", "display_name": "GPT-4o mini", "context_window": 128000},
+            ]},
+        )
+        assert first.status_code == 200
+        rows = first.json()["data"]
+        assert len(rows) == 2
+        # 返回按 created_at,id 排序，同秒插入时次序不确定 → 按 model_id 取行
+        by_model = {row["model_id"]: row for row in rows}
+        assert by_model["gpt-4o"]["is_default"] is True
+        assert by_model["gpt-4o-mini"]["is_default"] is False
+        assert by_model["gpt-4o"]["test_status"] == "unknown"
+
+        # 再次提交相同 model_id：幂等跳过
+        repeat = http.post(
+            f"/v1/catalog/providers/{provider['id']}/models/batch", headers=headers,
+            json={"models": [{"model_id": "gpt-4o"}, {"model_id": "brand-new-model"}]},
+        )
+        assert repeat.status_code == 200
+        repeated_rows = repeat.json()["data"]
+        assert {row["model_id"] for row in repeated_rows} == {"gpt-4o", "gpt-4o-mini", "brand-new-model"}
+
+        # 显式指定默认：原默认被清除，每条 payload 均不带默认时不自动改
+        switch = http.post(
+            f"/v1/catalog/providers/{provider['id']}/models/batch", headers=headers,
+            json={"models": [{"model_id": "another-one", "is_default": True}]},
+        )
+        switched = switch.json()["data"]
+        defaults = [row for row in switched if row["is_default"]]
+        assert len(defaults) == 1 and defaults[0]["model_id"] == "another-one"
+
+        # 不存在的 provider → 404
+        assert http.post(
+            "/v1/catalog/providers/prov_missing/models/batch", headers=headers,
+            json={"models": [{"model_id": "x"}]},
+        ).status_code == 404
+
+        # context_window 越界 → 422
+        bad_window = http.post(
+            f"/v1/catalog/providers/{provider['id']}/models/batch", headers=headers,
+            json={"models": [{"model_id": "huge", "context_window": 5_000_000}]},
+        )
+        assert bad_window.status_code == 422
+
+
+def test_catalog_model_update_default_and_delete(tmp_path, mock_provider):
+    with client(tmp_path) as http:
+        headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+        provider = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "Lifecycle Provider", "vendor_id": "openai", "protocol": "openai-compatible",
+                  "base_url": f"{mock_provider}/v1", "api_key": "sk-life-123456"},
+        ).json()["data"]
+        models = http.post(
+            f"/v1/catalog/providers/{provider['id']}/models/batch", headers=headers,
+            json={"models": [{"model_id": "m-a"}, {"model_id": "m-b"}]},
+        ).json()["data"]
+        # 同样不依赖返回次序：首条提交的 m-a 为自动默认
+        first_row = next(row for row in models if row["model_id"] == "m-a")
+        second_row = next(row for row in models if row["model_id"] == "m-b")
+        assert first_row["is_default"] is True
+
+        # 禁用默认模型：PATCH 同时更新 enabled
+        patched = http.patch(f"/v1/catalog/models/{first_row['id']}", headers=headers, json={"enabled": False})
+        assert patched.status_code == 200 and patched.json()["data"]["enabled"] is False
+
+        # 禁用模型不能设为默认
+        assert http.post(f"/v1/catalog/models/{first_row['id']}/default", headers=headers).status_code == 404
+
+        # 第二条设为默认
+        set_default = http.post(f"/v1/catalog/models/{second_row['id']}/default", headers=headers)
+        assert set_default.status_code == 200 and set_default.json()["data"]["is_default"] is True
+
+        # 删除模型；重复删除 404
+        assert http.delete(f"/v1/catalog/models/{first_row['id']}", headers=headers).status_code == 200
+        assert http.delete(f"/v1/catalog/models/{first_row['id']}", headers=headers).status_code == 404
+
+        # 删除厂商：其下模型随级联移除
+        assert http.delete(f"/v1/catalog/providers/{provider['id']}", headers=headers).status_code == 200
+        assert http.delete(f"/v1/catalog/providers/{provider['id']}", headers=headers).status_code == 404
+        listed = http.get("/v1/catalog/providers", headers=headers).json()["data"]
+        assert listed == []
+
+
+def test_catalog_discover_three_protocols(tmp_path, mock_provider, monkeypatch):
+    # discover 对非 ollama 目标强制公网 SSRF 校验；测试中放行本地模拟端点
+    monkeypatch.setattr(cloud_app, "_validate_provider_discovery_target", lambda value: None)
+    with client(tmp_path) as http:
+        headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+
+        # openai-compatible：GET /models
+        openai_result = http.post(
+            "/v1/catalog/discover", headers=headers,
+            json={"protocol": "openai-compatible", "base_url": f"{mock_provider}/v1", "api_key": "k"},
+        )
+        assert openai_result.status_code == 200
+        items = openai_result.json()["data"]
+        assert [item["id"] for item in items] == ["gpt-4o", "gpt-4o-mini"]
+
+        # ollama：GET /api/tags（本地地址）
+        ollama_url = mock_provider.replace("127.0.0.1", "localhost")
+        ollama_result = http.post(
+            "/v1/catalog/discover", headers=headers,
+            json={"protocol": "ollama", "base_url": ollama_url},
+        )
+        assert ollama_result.status_code == 200
+        ollama_items = ollama_result.json()["data"]
+        assert [item["id"] for item in ollama_items] == ["llama3.1:8b", "qwen2.5:7b"]
+
+        # ollama 不允许远端
+        remote = http.post(
+            "/v1/catalog/discover", headers=headers,
+            json={"protocol": "ollama", "base_url": "https://ollama.example.com"},
+        )
+        assert remote.status_code == 422
+
+        # anthropic-messages：直接返回内置目录，不发起网络请求
+        anthropic_result = http.post(
+            "/v1/catalog/discover", headers=headers,
+            json={"protocol": "anthropic-messages", "base_url": "https://api.anthropic.com"},
+        )
+        assert anthropic_result.status_code == 200
+        assert anthropic_result.json()["data"][0]["context_window"] == 200000
+
+
+def test_catalog_test_connection_success_and_failure(tmp_path, mock_provider, monkeypatch):
+    monkeypatch.setattr(cloud_app, "_validate_provider_discovery_target", lambda value: None)
+    with client(tmp_path) as http:
+        headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+
+        # openai-compatible 带 model_id：POST /chat/completions 成功
+        ok = http.post(
+            "/v1/catalog/test-connection", headers=headers,
+            json={"protocol": "openai-compatible", "base_url": f"{mock_provider}/v1",
+                  "api_key": "sk-test-123456", "model_id": "gpt-4o"},
+        )
+        assert ok.status_code == 200 and ok.json()["data"]["ok"] is True
+
+        # 缺密钥：业务失败但 HTTP 200（结果在 data 内）
+        missing = http.post(
+            "/v1/catalog/test-connection", headers=headers,
+            json={"protocol": "openai-compatible", "base_url": f"{mock_provider}/v1"},
+        )
+        assert missing.status_code == 200
+        result = missing.json()["data"]
+        assert result["ok"] is False and result["status"] == "failed"
+
+        # anthropic-messages 缺 model_id：业务失败
+        anthropic_missing = http.post(
+            "/v1/catalog/test-connection", headers=headers,
+            json={"protocol": "anthropic-messages", "base_url": "https://api.anthropic.com", "api_key": "k"},
+        )
+        assert anthropic_missing.json()["data"]["ok"] is False
+
+        # ollama 本地：GET /api/tags 成功
+        ollama_url = mock_provider.replace("127.0.0.1", "localhost")
+        ollama_ok = http.post(
+            "/v1/catalog/test-connection", headers=headers,
+            json={"protocol": "ollama", "base_url": ollama_url},
+        )
+        assert ollama_ok.json()["data"]["ok"] is True
+
+
+def test_catalog_migration_is_idempotent_across_restart(tmp_path, mock_provider):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123",
+                             secret_key="test-secret-key-not-for-production")
+    # 旧扁平模型：直接构造旧结构行（provider_id 为 NULL）
+    with TestClient(create_app(settings)):
+        pass
+    db_path = settings.database_path
+    admin_id = _user_id(db_path, "admin")
+    now = int(time.time())
+    with sqlite3.connect(db_path) as cx:
+        cx.execute(
+            "INSERT INTO models(id,user_id,name,provider,model,base_url,api_key_ciphertext,"
+            "enabled,is_default,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("legacy-1", admin_id, "My OpenAI", "openai", "gpt-old", f"{mock_provider}/v1",
+             "cipher-placeholder", 1, 1, now, now),
+        )
+    CloudDB(db_path).init()
+
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        migrated = cx.execute("SELECT * FROM models WHERE id='legacy-1'").fetchone()
+        assert migrated["provider_id"] is not None
+        provider = cx.execute("SELECT * FROM providers WHERE id=?", (migrated["provider_id"],)).fetchone()
+        assert provider["protocol"] == "openai-compatible" and provider["vendor_id"] == "openai"
+        providers_before = cx.execute("SELECT COUNT(*) FROM providers").fetchone()[0]
+
+    # 再次迁移：不产生重复 provider，不重复回填组织成员
+    CloudDB(db_path).init()
+    with sqlite3.connect(db_path) as cx:
+        assert cx.execute("SELECT COUNT(*) FROM providers").fetchone()[0] == providers_before
+        assert cx.execute(
+            "SELECT COUNT(*) FROM organization_members WHERE user_id=?", (admin_id,)
+        ).fetchone()[0] == 1
+
+
+def test_catalog_provider_creation_without_secret_key_is_503(tmp_path, mock_provider):
+    settings = CloudSettings(tmp_path / "data", "admin", "admin-password-123", secret_key=None)
+    with client(tmp_path, settings=settings) as http:
+        headers = {"Authorization": f"Bearer {login(http, 'admin', 'admin-password-123')}"}
+        response = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "NoSecret", "vendor_id": "openai", "protocol": "openai-compatible",
+                  "base_url": f"{mock_provider}/v1", "api_key": "sk-x"},
+        )
+        assert response.status_code == 503
+        # ollama 无需密钥，仍可创建
+        ollama_ok = http.post(
+            "/v1/catalog/providers", headers=headers,
+            json={"display_name": "Local Ollama", "vendor_id": "ollama", "protocol": "ollama",
+                  "base_url": "http://127.0.0.1:11434"},
+        )
+        assert ollama_ok.status_code == 200

@@ -16,10 +16,11 @@ export default defineConfig(({ mode }) => {
   const port = parseInt(env.VITE_FRONTEND_PORT || '3015', 10)
 
   return {
-    // BrowserRouter needs root-relative assets for direct deep links such as
-    // /apps/monitoring. Tauri sets VITE_BASE_PATH=./ because its bundled
-    // WebView loads the dist directory from a local resource URL.
-    base: env.VITE_BASE_PATH || (mode === 'demo' ? '/' : './'),
+    // Use root-relative assets for both browser and Tauri production builds.
+    // The desktop router is a HashRouter, so this does not depend on server
+    // fallback routing and avoids WebView MIME/path mismatches caused by a
+    // relative `./` base in packaged applications.
+    base: env.VITE_BASE_PATH || '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

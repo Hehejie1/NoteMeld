@@ -93,6 +93,9 @@
 @media(max-width:900px){.cloud-top-header.has-theme-control{grid-template-columns:42px minmax(0,1fr) 32px auto;column-gap:6px}.cloud-top-header.has-theme-control .header-theme-button{grid-column:3}.cloud-top-header.has-theme-control .cloud-user{grid-column:4}.settings-layout{grid-template-columns:160px minmax(0,1fr);gap:16px}}
 @media(max-width:560px){.cloud-top-header.has-theme-control{grid-template-columns:36px minmax(0,1fr) 28px auto}.cloud-top-header .header-theme-button{width:28px;height:28px}.settings-layout{grid-template-columns:1fr}.settings-nav{position:static;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.settings-nav button{padding:0 8px;text-align:center;font-size:11px}.setting-row{align-items:flex-start}}
 
+.settings-content [data-setting-panel][hidden]{display:none}
+@media(max-width:560px){.settings-nav{grid-template-columns:repeat(5,minmax(0,1fr))}.settings-nav button{padding:0 6px;font-size:10px}}
+
 /* Dense data tables keep their action affordance visible while the center scrolls. */
 .people-table .people-head>span:last-child,.people-table .person-row>span:last-child,.people-table .person-row>button:last-child{position:sticky;right:0;z-index:2;min-height:100%;background:var(--cloud-surface);box-shadow:-10px 0 14px -14px var(--cloud-text)}
 .people-table .people-head>span:last-child{display:flex;align-items:center;justify-content:flex-end}

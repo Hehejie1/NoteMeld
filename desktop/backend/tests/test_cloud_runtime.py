@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import time
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 import pytest
@@ -121,6 +123,9 @@ def test_host_runtime_completes_relay_handshake_and_installs_cipher(tmp_path):
     expected = SessionCipher(derive_handshake_session_key(controller_ephemeral_private, peer, host_peer))
     installed = runtime._cipher_for(authorization)
     assert installed.key == expected.key
+    assert installed.last_received_sequence == frame.sequence
+    assert installed.last_sent_sequence == response.sequence
+    assert installed.last_sent_sequence + 1 == 2
 
 
 def test_host_runtime_uses_installed_session_cipher_and_can_revoke_it(tmp_path):
@@ -168,13 +173,17 @@ def test_host_runtime_projects_agent_event_as_encrypted_event_frame(tmp_path):
     ), json.dumps({"request_id": "request-a", "input": "hello"}).encode())
     runtime._handle_frame(incoming, authorization)
     sent = []
+    relay_sent = []
     runtime.service.send_event_nowait = lambda *args: sent.append(args) or True  # type: ignore[method-assign]
+    runtime._relay_sessions["session-a"] = SimpleNamespace(send_frame_nowait=lambda frame: relay_sent.append(frame) or True)  # type: ignore[assignment]
     runtime._emit_remote_event(
         SessionCommand.create("session-a", "request-a", "hello", 1, 1),
         {"type": "message.delta", "payload": {"delta": "hi"}},
     )
     assert len(sent) == 1
+    assert len(relay_sent) == 1
     event_frame = sent[0][2]
+    assert relay_sent[0] is event_frame
     payload = SessionCipher(b"k" * 32).decrypt(event_frame.sequence, event_frame.nonce, event_frame.ciphertext, event_frame.associated_data())
     assert json.loads(payload)["request_id"] == "request-a"
     assert event_frame.frame_type == "event"
@@ -190,6 +199,24 @@ def test_host_runtime_install_is_explicit(tmp_path):
     app = FastAPI()
     runtime.install(app)
     assert app.state.lan_direct_service is runtime.service
+
+
+def test_host_runtime_status_exposes_only_stable_public_identity(tmp_path):
+    public_key = b"p" * 32
+    runtime = CloudSyncHostRuntime(
+        cloud_client=_CloudStub(),  # type: ignore[arg-type]
+        host_device_id="host-device",
+        mailbox_path=tmp_path / "mailbox.sqlite",
+        cipher_resolver=lambda _: SessionCipher(b"k" * 32),
+        host_signing_private=b"s" * 32,
+        host_signing_public=public_key,
+    )
+
+    assert runtime.host_status() == {
+        "status": "running",
+        "device_id": "host-device",
+        "public_key_sha256": hashlib.sha256(public_key).hexdigest(),
+    }
 
 
 def test_host_runtime_can_be_attached_once_for_backend_lifecycle(tmp_path):

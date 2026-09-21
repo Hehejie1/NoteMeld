@@ -50,6 +50,10 @@ export async function selectMigrationPackagePath(): Promise<string | null> {
   })
 }
 
+export async function selectWorkspaceFolderPath(): Promise<string | null> {
+  return await openDesktopDialog({ directory: true, multiple: false, title: '选择 Agent 工作区文件夹' })
+}
+
 export async function selectExportPackagePath(defaultName?: string): Promise<string | null> {
   if (isDemoMode()) return await demoDesktopAction('select_export_package', defaultName) as string
   if (!isDesktopEmbedded()) {

@@ -230,6 +230,55 @@ def test_approval_events_atomically_persist_waiting_and_running_status(monkeypat
     assert events[0]["event_id"] == "event-required"
 
 
+def test_pending_approval_list_is_safe_and_tracks_waiting_status(monkeypatch, tmp_path):
+    session_factory = _make_session_factory(tmp_path)
+    monkeypatch.setattr(agent_store, "_db", session_factory)
+    agent_store.create_turn("conv-1", turn_id="turn-approval", status="running")
+    agent_store.transition_turn(
+        "turn-approval",
+        "waiting_approval",
+        terminal_event={
+            "type": "approval.required",
+            "payload": {
+                "approval_id": "approval-safe",
+                "risk": "high",
+                "summary": "写入本地笔记",
+                "deadline": "2026-09-13T12:00:00Z",
+                "arguments": {"secret": "must-not-leak"},
+                "action_digest": "private-digest",
+            },
+        },
+        terminal_event_type="approval.required",
+        event_sequence=4,
+    )
+
+    pending = agent_store.list_pending_approvals()
+
+    assert pending == [{
+        "approval_id": "approval-safe",
+        "turn_id": "turn-approval",
+        "session_id": "conv-1",
+        "session_title": "test",
+        "risk": "high",
+        "summary": "写入本地笔记",
+        "deadline": "2026-09-13T12:00:00Z",
+    }]
+    assert "must-not-leak" not in str(pending)
+    assert "private-digest" not in str(pending)
+
+    agent_store.transition_turn(
+        "turn-approval",
+        "running",
+        terminal_event={
+            "type": "approval.resolved",
+            "payload": {"approval_id": "approval-safe", "decision": "deny"},
+        },
+        terminal_event_type="approval.resolved",
+        event_sequence=5,
+    )
+    assert agent_store.list_pending_approvals() == []
+
+
 def test_model_preference_get_set_and_update(monkeypatch, tmp_path):
     session_factory = _make_session_factory(tmp_path)
     monkeypatch.setattr(agent_store, "_db", session_factory)

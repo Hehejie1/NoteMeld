@@ -11,9 +11,13 @@ router = APIRouter()
 
 class ProviderRequest(BaseModel):
     name: str
-    api_key: str
+    api_key: str = ""
     base_url: str
     logo: Optional[str] = None
+    display_name: Optional[str] = None
+    vendor_id: str = "custom"
+    protocol: str = "openai-compatible"
+    auth_type: str = "api_key"
 
 class ProviderTemplateRequest(BaseModel):
     name: str
@@ -23,6 +27,8 @@ class ProviderTemplateRequest(BaseModel):
 class TestRequest(BaseModel):
     api_key: Optional[str] = None
     base_url: str
+    protocol: str = "openai-compatible"
+    model_id: Optional[str] = None
 
 class ProviderUpdateRequest(BaseModel):
     id: str
@@ -31,6 +37,10 @@ class ProviderUpdateRequest(BaseModel):
     base_url: Optional[str] = None
     logo: Optional[str] = None
     enabled: Optional[int] = None
+    display_name: Optional[str] = None
+    vendor_id: Optional[str] = None
+    protocol: Optional[str] = None
+    auth_type: Optional[str] = None
 
 @router.post("/add_provider")
 def add_provider(data: ProviderRequest):
@@ -40,6 +50,10 @@ def add_provider(data: ProviderRequest):
             api_key=data.api_key,
             base_url=data.base_url,
             logo=data.logo,
+            display_name=data.display_name,
+            vendor_id=data.vendor_id,
+            protocol=data.protocol,
+            auth_type=data.auth_type,
         )
         return R.success(msg='添加模型供应商成功',data=res)
     except Exception as e:
@@ -108,7 +122,10 @@ def update_provider(data: ProviderUpdateRequest):
     try:
         if all(
             field is None
-            for field in [data.name, data.api_key, data.base_url, data.logo, data.enabled]
+            for field in [
+                data.name, data.api_key, data.base_url, data.logo, data.enabled,
+                data.display_name, data.vendor_id, data.protocol, data.auth_type,
+            ]
         ):
             return R.error(msg='请至少填写一个参数')
 
@@ -126,5 +143,22 @@ def update_provider(data: ProviderUpdateRequest):
 
 @router.post('/connect_test')
 def gpt_connect_test(data: TestRequest):
-    ModelService().connect_test_by_config(data.api_key or '', data.base_url)
+    ModelService().connect_test_by_config(
+        data.api_key or '',
+        data.base_url,
+        protocol=data.protocol,
+        model_id=data.model_id or '',
+    )
+    return R.success(msg='连接成功')
+
+
+class SavedTestRequest(BaseModel):
+    provider_id: str
+    model_id: Optional[str] = None
+
+
+@router.post('/connect_test_saved')
+def gpt_connect_test_saved(data: SavedTestRequest):
+    """编辑态使用库内 Fernet 密钥做三协议测试；响应永不包含明文密钥。"""
+    ModelService().connect_test(data.provider_id, data.model_id or '')
     return R.success(msg='连接成功')

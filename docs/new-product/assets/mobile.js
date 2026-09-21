@@ -24,6 +24,26 @@
     else location.href='./'+id.toLowerCase()+'.html';
   };
 
+  if(document.body.dataset.page==='M01'){
+    document.querySelector('.mobile-home > .mobile-section')?.remove();
+    const drawerHeaderAction=document.querySelector('[data-menu-panel] header button');
+    if(drawerHeaderAction){
+      drawerHeaderAction.removeAttribute('data-go');
+      drawerHeaderAction.setAttribute('data-menu-close','');
+      drawerHeaderAction.setAttribute('aria-label','关闭菜单');
+      drawerHeaderAction.innerHTML='<i data-icon="x"></i>';
+    }
+    const drawerSettings=document.querySelector('.drawer-close');
+    if(drawerSettings){
+      drawerSettings.classList.add('drawer-settings');
+      drawerSettings.removeAttribute('data-menu-close');
+      drawerSettings.dataset.go='M03';
+      drawerSettings.innerHTML='<i data-icon="settings"></i><span><strong>iPhone 15 Pro</strong><small>NoteMeld Mobile · v0.9.0</small></span>';
+    }
+  }
+
+  const newSessionIcon=document.querySelector('[aria-label="新建会话"] [data-icon]');
+  if(newSessionIcon) newSessionIcon.dataset.icon='message-circle-plus';
   iconize();
   document.querySelectorAll('[data-go]').forEach(node=>node.addEventListener('click',event=>{
     event.preventDefault();
@@ -60,14 +80,18 @@
   const action=document.querySelector('[data-action-popover]');
   const backdrop=document.querySelector('[data-sheet-backdrop]');
   const sheets={
+    attachment:document.querySelector('[data-attachment-sheet]'),
     model:document.querySelector('[data-model-sheet]'),
+    permission:document.querySelector('[data-permission-sheet]'),
     language:document.querySelector('[data-language-sheet]'),
     log:document.querySelector('[data-log-sheet]')
   };
+  const accessModal=document.querySelector('[data-access-modal]');
   const closeSheets=()=>{
     if(action)action.hidden=true;
     if(backdrop)backdrop.hidden=true;
     Object.values(sheets).forEach(sheet=>{if(sheet)sheet.hidden=true;});
+    if(accessModal) accessModal.hidden=true;
   };
   const openSheet=sheet=>{
     closeSheets();
@@ -78,6 +102,22 @@
     }
   };
   document.querySelector('[data-sheet-backdrop]')?.addEventListener('click',closeSheets);
+  document.querySelectorAll('[data-sheet-close]').forEach(button=>button.addEventListener('click',closeSheets));
+
+  document.querySelectorAll('[data-composer]').forEach(composer=>{
+    const input=composer.querySelector('input');
+    let engaged=false;
+    const sync=()=>{
+      const expanded=Boolean(input?.value.trim())||engaged||composer.contains(document.activeElement);
+      composer.classList.toggle('is-expanded',expanded);
+      composer.setAttribute('aria-expanded',String(expanded));
+    };
+    input?.addEventListener('focus',()=>{engaged=true;sync();});
+    input?.addEventListener('input',sync);
+    input?.addEventListener('blur',()=>setTimeout(sync,0));
+    composer.querySelectorAll('button').forEach(button=>button.addEventListener('pointerdown',()=>{engaged=true;sync();}));
+    composer.addEventListener('composer:reset',()=>{engaged=false;sync();});
+  });
 
   document.querySelector('[data-actions]')?.addEventListener('click',()=>{
     closeSheets();
@@ -88,7 +128,7 @@
   });
   document.querySelector('[data-products]')?.addEventListener('click',()=>{
     closeSheets();
-    document.querySelector('.chat-scroll')?.scrollTo({top:0,behavior:'smooth'});
+    navigate('M09');
   });
   document.querySelector('[data-delete-chat]')?.addEventListener('click',()=>{
     closeSheets();
@@ -104,17 +144,48 @@
     if(label) label.textContent=choice.dataset.modelChoice;
     closeSheets();
   }));
-  document.querySelector('[data-permission-toggle]')?.addEventListener('click',event=>{
-    const button=event.currentTarget;
-    const enabled=button.getAttribute('aria-pressed')!=='true';
-    button.setAttribute('aria-pressed',String(enabled));
-    const label=button.querySelector('[data-permission-label]');
-    if(label) label.textContent=enabled?'完全授权':'默认权限';
-  });
-  document.querySelectorAll('[data-file-add]').forEach(button=>button.addEventListener('click',()=>{
-    const input=document.querySelector('.mobile-chat input');
-    if(input){input.placeholder='已选择文件，继续告诉 Agent…';input.focus();}
+  document.querySelectorAll('[data-permission-toggle]').forEach(button=>button.addEventListener('click',()=>openSheet(sheets.permission)));
+  document.querySelectorAll('[data-permission-choice]').forEach(choice=>choice.addEventListener('click',()=>{
+    if(choice.dataset.permissionChoice==='full'){
+      closeSheets();
+      if(accessModal) accessModal.hidden=false;
+      return;
+    }
+    document.querySelectorAll('[data-permission-choice]').forEach(item=>item.classList.toggle('selected',item===choice));
+    document.querySelectorAll('[data-permission-toggle]').forEach(button=>{
+      button.setAttribute('aria-pressed','false');
+      button.querySelector('[data-permission-label]')?.replaceChildren(document.createTextNode('默认权限'));
+    });
+    closeSheets();
   }));
+  document.querySelector('[data-access-cancel]')?.addEventListener('click',()=>{if(accessModal) accessModal.hidden=true;});
+  document.querySelector('[data-access-confirm]')?.addEventListener('click',()=>{
+    document.querySelectorAll('[data-permission-choice]').forEach(item=>item.classList.toggle('selected',item.dataset.permissionChoice==='full'));
+    document.querySelectorAll('[data-permission-toggle]').forEach(button=>{button.setAttribute('aria-pressed','true');button.querySelector('[data-permission-label]')?.replaceChildren(document.createTextNode('完全访问'));});
+    if(accessModal) accessModal.hidden=true;
+  });
+
+  document.querySelectorAll('[data-file-add]').forEach(button=>button.addEventListener('click',()=>openSheet(sheets.attachment)));
+  const chooseFile=selector=>document.querySelector(selector)?.click();
+  document.querySelector('[data-camera-open]')?.addEventListener('click',()=>chooseFile('[data-camera-input]'));
+  document.querySelector('[data-gallery-open]')?.addEventListener('click',()=>chooseFile('[data-gallery-input]'));
+  document.querySelector('[data-files-open]')?.addEventListener('click',()=>chooseFile('[data-files-input]'));
+  ['camera','gallery','files'].forEach(kind=>document.querySelector(`[data-${kind}-input]`)?.addEventListener('change',event=>{
+    if(event.target.files?.length){document.querySelectorAll('[data-composer] input').forEach(input=>{input.placeholder=`已添加 ${event.target.files.length} 个文件，继续告诉 Agent…`;input.focus();});closeSheets();}
+  }));
+  const capabilityData={skills:[['会议纪要整理','从录音或文本提炼结论与行动项'],['网页研究','检索资料并整理带来源的摘要'],['代码审查','检查 Workspace 代码并标记风险']],plugins:[['浏览器','访问网页并提取可引用内容'],['文档处理','读取、转换和生成办公文档'],['终端','在授权范围内执行命令']],apps:[['笔记应用','把结果整理进 NoteMeld 笔记'],['学习空间','生成学习卡片与复习计划'],['监控中心','查看 Agent 与设备状态']],agents:[['研究助理','擅长检索、归纳和引用'],['项目管家','拆解任务并持续跟进'],['代码专家','定位工程问题并提出修复建议']]};
+  const renderCapabilities=(type,query='')=>{
+    const list=document.querySelector('[data-capability-list]'); if(!list)return;
+    const values=capabilityData[type]||[]; const filtered=values.filter(([name,desc])=>(name+desc).includes(query));
+    list.className='capability-list'; list.innerHTML=filtered.map(([name,desc])=>`<button class="capability-item" data-capability-choice="${name}"><i data-icon="${type==='skills'?'sparkles':type==='plugins'?'puzzle':type==='apps'?'grid-2x2':'bot'}"></i><span><strong>${name}</strong><small>${desc}</small></span><i class="check" data-icon="plus"></i></button>`).join('')||'<p class="sheet-description">没有匹配的内容</p>';
+    iconize();
+  };
+  document.querySelectorAll('[data-capability-tab]').forEach(tab=>tab.addEventListener('click',()=>{
+    document.querySelectorAll('[data-capability-tab]').forEach(item=>item.classList.toggle('active',item===tab));
+    const library=document.querySelector('[data-capability-library]'); if(library) library.hidden=false;
+    renderCapabilities(tab.dataset.capabilityTab,document.querySelector('[data-capability-search]')?.value||'');
+  }));
+  document.querySelector('[data-capability-search]')?.addEventListener('input',event=>{const active=document.querySelector('[data-capability-tab].active');renderCapabilities(active?.dataset.capabilityTab||'skills',event.target.value.trim());});
 
   document.querySelector('[data-language-open]')?.addEventListener('click',()=>openSheet(sheets.language));
   document.querySelectorAll('[data-language-choice]').forEach(choice=>choice.addEventListener('click',()=>{
@@ -308,7 +379,7 @@
 
   document.querySelectorAll('.mobile-composer .send').forEach(button=>button.addEventListener('click',()=>{
     const input=button.closest('.mobile-composer')?.querySelector('input');
-    if(input?.value.trim()){input.value='';input.placeholder='已发送，Agent 正在处理…';}
+    if(input?.value.trim()){input.value='';input.placeholder='已发送，Agent 正在处理…';button.closest('.mobile-composer')?.dispatchEvent(new Event('composer:reset'));}
   }));
 
   loadGsap().then(gsap=>{
