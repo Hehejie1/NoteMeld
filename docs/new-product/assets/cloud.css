@@ -118,3 +118,4 @@
 .dashboard-section .section-heading h2{font-size:15px}
 @media(max-width:900px){.dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.dashboard-hero{grid-column:1/-1}.metric-card{grid-column:span 2;min-height:170px}.recent-runs,.workspace-overview,.storage-overview{grid-column:1/-1}}
 @media(max-width:560px){.dashboard-grid{grid-template-columns:1fr}.metric-card,.recent-runs,.workspace-overview,.storage-overview{grid-column:auto}.dashboard-hero{min-height:0;padding:22px}.metric-card{min-height:140px}}
+.permission-button:hover,.model-button:hover{background:var(--cloud-accent-soft);color:var(--cloud-accent)}

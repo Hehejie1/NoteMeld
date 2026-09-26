@@ -57,6 +57,7 @@ web_modules/
 
 # Build output
 dist/
+dist-cloud-web/
 build/
 out/
 .next/
@@ -261,6 +262,17 @@ pids
 
 # Release artifacts
 .release/
+artifacts/
+
+# Mobile build outputs / local machine config
+*.ipa
+harmony/local.properties
+
+# Cloud locally built native SDK artifacts
+cloud/.sdk-build/
+
+# Playwright / test runner outputs
+test-results/
 
 # Deploy
 deploy/deploy.env

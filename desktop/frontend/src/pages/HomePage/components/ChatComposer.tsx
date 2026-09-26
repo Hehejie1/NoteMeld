@@ -1349,7 +1349,7 @@ const ChatComposer: FC<ChatComposerProps> = ({ layout = 'hero', className }) => 
               'h-9 w-10 rounded-md p-0 transition-colors md:h-8 md:w-9',
               canSubmit
                 ? 'bg-primary hover:bg-primary-strong'
-                : 'cursor-not-allowed bg-surface-container text-on-surface-variant hover:bg-surface-container',
+                : 'cursor-not-allowed bg-transparent text-on-surface-variant hover:bg-transparent',
             )}
             aria-label={mode === 'chat' ? `notemeld-local-agent-send-${submitting ? 'busy' : 'idle'}` : '发送'}
           >

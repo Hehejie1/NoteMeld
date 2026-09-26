@@ -71,15 +71,35 @@ class OpenAICompatibleAgentRunner:
             for _ in range(8):
                 request_json: dict[str, Any] = {"model": self.model, "messages": conversation, "stream": False}
                 if tools:
-                    request_json["tools"] = [{"type": "function", "function": tool} for tool in tools]
+                    # 只映射 OpenAI function 字段；内部的 risk/safe 等字段不能
+                    # 泄露给厂商，否则 Ark 以 InvalidParameter 拒绝整个请求。
+                    request_json["tools"] = [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": tool["name"],
+                                "description": tool.get("description", ""),
+                                "parameters": tool.get("parameters", tool.get("input_schema", {"type": "object"})),
+                            },
+                        }
+                        for tool in tools
+                    ]
                 response: httpx.Response | None = None
                 for attempt in range(self.max_retries + 1):
-                    response = self._client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=request_json,
-                        timeout=self.timeout_seconds,
-                    )
+                    try:
+                        response = self._client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=request_json,
+                            timeout=self.timeout_seconds,
+                        )
+                    except (httpx.ConnectError, httpx.ReadTimeout, httpx.ReadError) as exc:
+                        # 瞬时网络错误（DNS 解析失败、连接中断）：重试而不是
+                        # 立刻判定 provider unavailable。
+                        if attempt >= self.max_retries:
+                            raise
+                        time.sleep(min(2.0, 0.25 * (2 ** attempt)))
+                        continue
                     transient = response.status_code in {408, 429} or 500 <= response.status_code <= 504
                     if not transient or attempt >= self.max_retries:
                         break
@@ -656,3 +676,55 @@ def create_agent_runner(settings: Any) -> CloudAgentRunner:
             max_retries=getattr(settings, "agent_max_retries", 2),
         )
     return DeterministicAgentRunner()
+
+
+def stream_openai_compatible(
+    *,
+    base_url: str,
+    model: str,
+    api_key: str | None,
+    messages: list[dict[str, Any]],
+    timeout_seconds: float = 120.0,
+):
+    """以 SSE 方式调用 OpenAI 兼容接口，逐块产出思考/正文增量。
+
+    yields:
+      {"type":"reasoning","text":...}  思考过程（reasoning_content）
+      {"type":"delta","text":...}      正式回复（content）
+    """
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    body = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "stream_options": {"include_usage": False},
+    }
+    with httpx.Client(timeout=timeout_seconds, trust_env=False) as client:
+        with client.stream(
+            "POST", f"{base_url.rstrip('/')}/chat/completions", headers=headers, json=body
+        ) as response:
+            if response.status_code >= 400:
+                detail = response.read().decode("utf-8", errors="replace")[:300]
+                raise CloudAgentError(f"provider request failed: HTTP {response.status_code} {detail}")
+            for line in response.iter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                reasoning = delta.get("reasoning_content")
+                if reasoning:
+                    yield {"type": "reasoning", "text": reasoning}
+                content = delta.get("content")
+                if content:
+                    yield {"type": "delta", "text": content}

@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 import httpx
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import MutableHeaders
@@ -35,6 +35,7 @@ from .db import CloudDB
 from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace, workspace_mutation_lock
+from .terminal import SandboxedShell, TerminalError, open_workspace_shell
 from .backup_storage import BackupStorage, create_backup_storage
 from .relay import InMemoryRelayBroker, RedisRelayBroker
 from .mailer import MailDeliveryError, send_invitation as deliver_invitation, send_verification_code as deliver_verification_code
@@ -151,7 +152,9 @@ class RequestSizeGuardMiddleware:
         async def replay_receive() -> dict[str, Any]:
             if buffered:
                 return buffered.pop(0)
-            return {"type": "http.request", "body": b"", "more_body": False}
+            # 缓冲已全部回放：交回原始 receive。它会阻塞直到客户端真正断开，
+            # 从而既不会用无限空 request 形成忙循环，也不会过早终止响应流。
+            return await receive()
 
         await self.app(scope, replay_receive, send)
 
@@ -545,6 +548,20 @@ class CommandCreate(BaseModel):
     attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=16)
     model_id: str | None = Field(default=None, max_length=128)
     authorization_mode: str = Field(default="default", pattern="^(default|full)$")
+
+
+class StreamCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input: str = Field(min_length=1, max_length=65536)
+    request_id: str = Field(min_length=1, max_length=64)
+    model_id: str | None = None
+    authorization_mode: str = Field(default="default", pattern="^(default|full)$")
+
+
+class TerminalExec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    command: str = Field(min_length=1, max_length=4096)
+    cwd: str | None = None
 
 
 class CommandRecover(BaseModel):
@@ -1767,12 +1784,22 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     ):
         org_id, _role = _resolve_org(db, current, None, write=True)
         with db.connect() as cx:
+            cx.execute("BEGIN IMMEDIATE")
+            # 旧库的 models 表是先建表、后 ALTER 增加 provider_id，没有
+            # ON DELETE CASCADE 外键，必须显式删除，否则留下 provider_id
+            # 悬空的孤儿模型（JOIN providers 为 NULL，发送即报错）。
+            cx.execute(
+                "DELETE FROM models WHERE provider_id=? AND organization_id=?",
+                (provider_id, org_id),
+            )
             result = cx.execute(
                 "DELETE FROM providers WHERE id=? AND organization_id=?",
                 (provider_id, org_id),
             )
-        if result.rowcount != 1:
-            raise HTTPException(404, "provider not found")
+            if result.rowcount != 1:
+                cx.execute("ROLLBACK")
+                raise HTTPException(404, "provider not found")
+            cx.execute("COMMIT")
         _audit(db, current["id"], "catalog.provider.delete", provider_id, {"organization_id": org_id})
         return {"code": 0, "msg": "success", "data": {"id": provider_id, "deleted": True}}
 
@@ -2838,6 +2865,78 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             response.status_code = 202
         return result
 
+    @app.post("/v1/cloud/sessions/{session_id}/terminal")
+    def terminal_exec(session_id: str, payload: TerminalExec, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
+        """在分配文件夹内执行一条 shell 命令并真实返回结果。"""
+        session = _owned_session(db, session_id, current["id"])
+        shell = open_workspace_shell(
+            app.state.settings.workspaces_dir, current["id"], str(session["workspace_id"])
+        )
+        try:
+            data = shell.run(payload.command, payload.cwd)
+        except TerminalError as exc:
+            raise HTTPException(400, str(exc))
+        return {"code": 0, "msg": "success", "data": data}
+
+    @app.post("/v1/cloud/sessions/{session_id}/stream")
+    async def stream_turn(
+        session_id: str,
+        payload: StreamCreate,
+        current=Depends(_auth_dependency(db, required_scope="session.write")),
+    ):
+        """流式发送一轮：先持久化命令（running），再以 SSE 推送思考/正文增量。"""
+        from starlette.concurrency import run_in_threadpool, iterate_in_threadpool
+
+        session = await run_in_threadpool(_owned_session, db, session_id, current["id"])
+        command_id, sequence = await run_in_threadpool(
+            _persist_running_command, db, session_id, payload, current["id"]
+        )
+        history = await run_in_threadpool(_cloud_history, db, session_id)
+        messages = history + [{"role": "user", "content": payload.input}]
+
+        def blocking_events():
+            # provider I/O 全部阻塞：整体放到线程池迭代，避免卡住事件循环。
+            status = "completed"
+            error_message: str | None = None
+            answer = ""
+            reasoning_parts: list[str] = []
+            current_reasoning = ""
+            try:
+                stream = _open_model_stream(app, db, session, command_model_id=payload.model_id)
+                for event in stream(messages):
+                    # reasoning 是思考过程（独立持久化），delta 才是正式回复。
+                    if event["type"] == "reasoning":
+                        current_reasoning += event["text"]
+                    if event["type"] == "delta":
+                        if current_reasoning:
+                            reasoning_parts.append(current_reasoning)
+                            current_reasoning = ""
+                        answer += event["text"]
+                    yield event
+                if current_reasoning:
+                    reasoning_parts.append(current_reasoning)
+            except Exception as exc:  # noqa: BLE001 - 失败也要落库并告知前端
+                status = "failed"
+                error_message = str(exc) or "cloud agent provider unavailable"
+                yield {"type": "error", "message": error_message}
+            finally:
+                _finalize_command_records(
+                    db, session_id, command_id, sequence,
+                    status=status, output=answer, error=error_message,
+                    reasoning=reasoning_parts,
+                )
+            yield {"type": "done", "status": status}
+
+        async def event_generator():
+            async for event in iterate_in_threadpool(blocking_events()):
+                yield _sse(event)
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     @app.get("/v1/sessions/{session_id}/commands/{command_id}")
     @app.get("/v1/cloud/sessions/{session_id}/commands/{command_id}")
     def command_status(session_id: str, command_id: str, current=Depends(_auth_dependency(db, required_scope="session.read"))):
@@ -3677,6 +3776,158 @@ def _submit_cloud_command(app: FastAPI, db: CloudDB, session_id: str, payload: C
         row = cx.execute("SELECT sequence,status FROM commands WHERE id=? AND session_id=?", (command_id, session_id)).fetchone()
     _drop_command_waiter(app, session_id, command_id)
     return {"code": 0, "msg": "success", "data": {"command_id": command_id, "sequence": row["sequence"], "status": row["status"] if row else "queued"}}
+
+
+def _open_model_stream(app: FastAPI, db: CloudDB, session: Any, command_model_id: str | None):
+    """解析模型并返回 stream(messages) 生成器（OpenAI 兼容 SSE）。"""
+    from .agent import stream_openai_compatible
+
+    user_id = session["user_id"]
+    selected = command_model_id or (
+        session["model_id"] if "model_id" in session.keys() else None
+    )
+    if not selected:
+        with db.connect() as cx:
+            row = cx.execute(
+                "SELECT m.id FROM models m "
+                "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+                "WHERE m.enabled=1 AND m.is_default=1 AND ("
+                "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))"
+                " ORDER BY m.created_at LIMIT 1",
+                (user_id, user_id),
+            ).fetchone()
+        if not row:
+            raise RuntimeError("cloud model is not configured")
+        selected = row["id"]
+    with db.connect() as cx:
+        model = cx.execute(
+            "SELECT m.model_id AS catalog_model_id,m.model AS legacy_model,"
+            "m.base_url AS legacy_base_url,m.api_key_ciphertext AS model_ciphertext,"
+            "m.enabled AS enabled,p.protocol AS protocol,p.base_url AS provider_base_url,"
+            "p.api_key_ciphertext AS provider_ciphertext "
+            "FROM models m LEFT JOIN providers p ON p.id=m.provider_id "
+            "LEFT JOIN organization_members om ON om.organization_id=m.organization_id AND om.user_id=? "
+            "WHERE m.id=? AND ("
+            "om.user_id IS NOT NULL OR (m.organization_id IS NULL AND m.user_id=?))",
+            (user_id, selected, user_id),
+        ).fetchone()
+    if not model or not model["enabled"]:
+        raise RuntimeError("configured session model is unavailable")
+    if model["protocol"]:
+        base_url = model["provider_base_url"]
+        ciphertext = (
+            model["model_ciphertext"]
+            if model["model_ciphertext"] is not None
+            else model["provider_ciphertext"]
+        )
+    else:
+        # 旧私有行：仅接受 openai-compatible（_runner_for_session 同样约束）。
+        base_url = model["legacy_base_url"]
+        ciphertext = model["model_ciphertext"]
+    if not base_url:
+        raise RuntimeError("configured session model is unavailable")
+    master_key = app.state.settings.secret_key
+    if ciphertext and not master_key:
+        raise RuntimeError("cloud secret key is unavailable")
+    api_key = decrypt_secret(ciphertext, master_key) if ciphertext else None
+    resolved_model_id = model["catalog_model_id"] or model["legacy_model"]
+
+    def stream(messages):
+        return stream_openai_compatible(
+            base_url=base_url,
+            model=resolved_model_id,
+            api_key=api_key,
+            messages=messages,
+            timeout_seconds=app.state.settings.agent_timeout_seconds,
+        )
+
+    return stream
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _persist_running_command(
+    db: CloudDB, session_id: str, payload: Any, user_id: str
+) -> tuple[str, int]:
+    """为流式轮次插入 running 命令（幂等：相同 request_id 复用）。"""
+    options = {"model_id": payload.model_id, "authorization_mode": payload.authorization_mode}
+    digest = hashlib.sha256(
+        json.dumps({"input": payload.input, "options": options}, sort_keys=True).encode()
+    ).hexdigest()
+    now = int(time.time())
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        existing = cx.execute(
+            "SELECT * FROM commands WHERE session_id=? AND request_id=?",
+            (session_id, payload.request_id),
+        ).fetchone()
+        if existing:
+            cx.execute("COMMIT")
+            return existing["id"], existing["sequence"]
+        sequence, event_sequence = cx.execute(
+            "SELECT next_sequence,next_event_sequence FROM sessions WHERE id=?",
+            (session_id,),
+        ).fetchone()
+        command_id = str(uuid.uuid4())
+        cx.execute(
+            "UPDATE sessions SET next_sequence=?,next_event_sequence=?,status='running',updated_at=? WHERE id=?",
+            (sequence + 1, event_sequence + 1, now, session_id),
+        )
+        cx.execute(
+            "INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,"
+            "attachments_json,options_json,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (command_id, session_id, payload.request_id, digest, sequence, payload.input,
+             "[]", json.dumps(options), "running", now),
+        )
+        queued = {"command_id": command_id, "command_sequence": sequence, "status": "running"}
+        cx.execute(
+            "INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (str(uuid.uuid4()), session_id, event_sequence, "command.queued",
+             json.dumps(queued), now),
+        )
+        cx.execute("COMMIT")
+    return command_id, sequence
+
+
+def _finalize_command_records(
+    db: CloudDB, session_id: str, command_id: str, sequence: int,
+    *, status: str, output: str, error: str | None,
+    reasoning: list[str] | None = None,
+) -> None:
+    """把流式轮次落库为终态命令 + turn.completed/failed 事件。"""
+    now = int(time.time())
+    with db.connect() as cx:
+        cx.execute("BEGIN IMMEDIATE")
+        cx.execute(
+            "UPDATE commands SET status=? WHERE id=? AND session_id=?",
+            (status, command_id, session_id),
+        )
+        event_sequence = cx.execute(
+            "SELECT next_event_sequence FROM sessions WHERE id=?", (session_id,)
+        ).fetchone()[0]
+        cx.execute(
+            "UPDATE sessions SET next_event_sequence=?,status=?,updated_at=? WHERE id=?",
+            (event_sequence + 1, status, now, session_id),
+        )
+        base = {"command_id": command_id, "command_sequence": sequence}
+        if status == "completed":
+            event_type = "turn.completed"
+            base.update({"status": "completed", "output": output})
+            if reasoning:
+                base["reasoning"] = reasoning
+        else:
+            event_type = "turn.failed"
+            base.update({"status": "failed", "error": {"code": "provider_unavailable", "message": error}})
+        cx.execute(
+            "INSERT INTO events(id,session_id,sequence,event_type,payload_json,created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (str(uuid.uuid4()), session_id, event_sequence, event_type,
+             json.dumps(base), now),
+        )
+        cx.execute("COMMIT")
 
 
 def _cloud_history(db: CloudDB, session_id: str, *, exclude_command_id: str | None = None) -> list[dict[str, str]]:

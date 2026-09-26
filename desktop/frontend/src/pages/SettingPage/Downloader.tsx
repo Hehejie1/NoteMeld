@@ -2,11 +2,11 @@ import { Outlet } from 'react-router-dom'
 import Options from '@/components/Form/DownloaderForm/Options.tsx'
 const Downloader = () => {
   return (
-    <div className={'flex h-full bg-white'}>
-      <div className={'flex-1/5 border-r border-neutral-200 p-2'}>
+    <div className="flex h-full min-h-0 min-w-0 bg-surface-container-lowest">
+      <div className="min-h-0 min-w-0 w-1/5 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface-container-lowest p-2">
         <Options></Options>
       </div>
-      <div className={'flex-4/5'}>
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto">
         <Outlet />
       </div>
     </div>

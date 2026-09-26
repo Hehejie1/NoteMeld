@@ -69,7 +69,7 @@ const DownloaderForm = () => {
   if (loading) return <div className="p-4">加载中...</div>
 
   return (
-    <div className="max-w-xl p-4">
+    <div className="mx-auto w-full max-w-xl p-4 md:p-6">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="text-lg font-bold">

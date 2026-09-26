@@ -17,7 +17,7 @@
 .cloud-product-main [role="menu"]{border-color:var(--border-subtle);background:var(--surface-container-lowest);color:var(--on-surface)}.cloud-product-main [role="menu"] button{color:var(--on-surface)}.cloud-product-main [role="menu"] button:hover{background:var(--surface-container);color:var(--on-surface)}.cloud-icon-button,.cloud-attachment-button{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;transition:background-color .15s ease,color .15s ease,border-color .15s ease}.cloud-icon-button:hover{background:var(--surface-container);color:var(--on-surface)}.cloud-attachment-button:hover{border-color:var(--primary);background:var(--surface-container);color:var(--primary)}
 .cloud-product-main button[class*="hover:bg-slate-100"]:hover{background:var(--surface-container);color:var(--on-surface)}.cloud-product-main button[aria-current="page"]{background:var(--surface-container);color:var(--on-surface)}.cloud-product-main button:focus-visible,.cloud-product-main a:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.cloud-dialog{position:relative;width:min(100%,34rem);max-height:min(90dvh,52rem);overflow:auto;border:1px solid var(--border-subtle);border-radius:1rem;background:var(--surface-container-lowest);color:var(--on-surface);box-shadow:0 24px 60px rgb(0 0 0 / .32)}
 .cloud-session-workspace aside nav button:hover,.cloud-session-workspace aside nav button:focus-visible{background:var(--surface-container)!important;color:var(--on-surface)!important}.cloud-session-workspace aside nav button:hover span:last-child,.cloud-session-workspace aside nav button:focus-visible span:last-child{color:var(--on-surface-variant)!important}
-.cloud-attachment-preview{display:flex;align-items:center;gap:.6rem;border:1px solid var(--border-subtle);border-radius:.65rem;background:var(--surface-container-low);padding:.45rem .6rem;color:var(--on-surface-variant);font-size:.75rem}.cloud-attachment-preview img{height:3.5rem;width:3.5rem;border-radius:.4rem;object-fit:cover}.cloud-attachment-preview span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cloud-session-search{display:flex;align-items:center;gap:.5rem;margin:.7rem .7rem .25rem;border:1px solid var(--border-subtle);border-radius:.6rem;background:var(--surface-container-low);padding:.5rem .65rem;color:var(--on-surface-variant)}.cloud-session-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 20%,transparent)}.cloud-session-search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--on-surface);font-size:.75rem}.cloud-session-search input::placeholder{color:var(--on-surface-variant)}
+.cloud-attachment-preview{display:flex;align-items:center;gap:.6rem;border:1px solid var(--border-subtle);border-radius:.65rem;background:var(--surface-container-low);padding:.45rem .6rem;color:var(--on-surface-variant);font-size:.75rem}.cloud-attachment-preview img{height:3.5rem;width:3.5rem;border-radius:.4rem;object-fit:cover}.cloud-attachment-preview span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cloud-session-search{display:flex;align-items:center;gap:.5rem;margin:.7rem .7rem .25rem;border:1px solid var(--border-subtle);border-radius:.6rem;background:transparent;padding:.5rem .65rem;color:var(--on-surface-variant)}.cloud-session-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 20%,transparent)}.cloud-session-search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--on-surface);font-size:.75rem}.cloud-session-search input::placeholder{color:var(--on-surface-variant)}
 .cloud-composer-feedback{margin:0;border-radius:.55rem;padding:.45rem .65rem;font-size:.75rem;line-height:1.4}.cloud-composer-feedback-status{border:1px solid color-mix(in srgb,var(--primary) 30%,var(--border-subtle));background:color-mix(in srgb,var(--primary) 9%,transparent);color:var(--on-surface-variant)}.cloud-composer-feedback-error{border:1px solid color-mix(in srgb,var(--error) 38%,var(--border-subtle));background:color-mix(in srgb,var(--error) 11%,transparent);color:var(--error)}
 @media(max-width:760px){.cloud-product-shell{display:block}.cloud-product-header{grid-template-columns:auto minmax(0,1fr) auto;height:64px;padding:0 .75rem}.cloud-product-header .cloud-product-brand{grid-template-columns:30px auto;padding:0}.cloud-product-header .cloud-product-brand span{height:30px;width:30px}.cloud-product-header .cloud-product-brand strong,.cloud-product-header .cloud-product-brand small{display:none}.cloud-product-header .cloud-product-tabs{overflow:auto;justify-content:center}.cloud-product-header .cloud-product-tabs a{padding:.55rem .4rem;font-size:10px}.cloud-product-header .cloud-product-actions{display:flex;padding:0}.cloud-product-header .cloud-user-trigger{grid-template-columns:30px;width:30px}.cloud-product-header .cloud-user-trigger strong,.cloud-product-header .cloud-user-trigger small,.cloud-product-header .cloud-user-trigger svg{display:none}.cloud-product-main{min-height:calc(100dvh - 64px)}}
 /* Wide page framing used by the approved People and Devices references. */
@@ -58,3 +58,61 @@
 .cloud-model-row-button:hover{border-color:var(--primary);background:var(--surface-container);color:var(--primary)}
 .cloud-model-row-danger:hover{border-color:var(--error);color:var(--error)}
 @media(max-width:760px){.cloud-model-row{align-items:flex-start;flex-direction:column}.cloud-model-row-actions{width:100%;justify-content:flex-start}.cloud-model-credential{margin-right:auto}}
+
+/* 会话输入框：输入区透明，使整张卡片是统一的 surface 背景，
+   不再被全局 textarea 规则刷成白色（对齐原型 cloud-composer）。 */
+.cloud-product-main .cloud-session-composer textarea{
+  background:transparent;
+}
+
+/* 时间默认隐藏，hover 到该回合才显示。 */
+.cloud-turn .cloud-turn-time{opacity:0;transition:opacity .15s ease;}
+.cloud-turn:hover .cloud-turn-time{opacity:1;}
+
+/* “思考中”三点动画。 */
+.cloud-thinking-dot{
+  width:6px;height:6px;border-radius:999px;
+  background:currentColor;opacity:.4;
+  animation:cloud-thinking-bounce 1s infinite ease-in-out;
+}
+@keyframes cloud-thinking-bounce{
+  0%,80%,100%{transform:scale(.6);opacity:.35}
+  40%{transform:scale(1);opacity:1}
+}
+
+/* ===== Cloud session: VSCode explorer + terminal (对齐 c03) ===== */
+:root{
+  --explorer-bg:#f3f3f3;
+  --explorer-text:#333333;
+  --explorer-muted:#7c7c7c;
+  --explorer-hover:#e8e8e8;
+  --explorer-active:#e4e4f4;
+  --explorer-border:#e2e2e2;
+  --term-bg:#ffffff;
+  --term-tab-bg:#ececec;
+  --term-tab-active:#ffffff;
+  --term-border:#e2e2e2;
+  --term-text:#333333;
+  --term-muted:#8c8c8c;
+  --term-green:#388a34;
+  --term-blue:#098658;
+}
+.dark{
+  --explorer-bg:#252526;
+  --explorer-text:#cccccc;
+  --explorer-muted:#858585;
+  --explorer-hover:#2a2d2e;
+  --explorer-active:#094771;
+  --explorer-border:#1e1e1e;
+  --term-bg:#1e1e1e;
+  --term-tab-bg:#252526;
+  --term-tab-active:#1e1e1e;
+  --term-border:#3c3c3c;
+  --term-text:#cccccc;
+  --term-muted:#85858c;
+  --term-green:#4ec9b0;
+  --term-blue:#569cd6;
+}
+.dark .explorer-search{background:#3c3c3c;border-color:#3c3c3c}
+.dark .explorer-search input{color:#cccccc}
+.dark .terminal-tab-close:hover{background:#3a3d41;color:#fff}

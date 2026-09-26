@@ -52,11 +52,6 @@
 .nm-sidebar-collapsed .nm-theme-toggle { justify-content: center; padding-inline: 0; }
 .nm-sidebar-collapsed .nm-brand-mark { height: 28px; width: 28px; border-radius: 8px; }
 
-/* D01 alignment: keep starter actions readable as a 2×2 grid on desktop. */
-@media (min-width: 900px) {
-  .nm-home-prompts { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-}
-
 /* Match the new-product brand mark scale in the expanded sidebar. */
 .nm-sidebar:not(.nm-sidebar-collapsed) .nm-brand-mark {
   width: 30px;

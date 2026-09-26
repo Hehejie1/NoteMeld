@@ -7,3 +7,12 @@
 @media(max-width:900px){.nm-home-prompts,.nm-settings-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.nm-settings-home>header,.nm-settings-home>main{padding-inline:20px}.nm-home-runtime-divider{display:none}.nm-home-runtime{flex-wrap:wrap}}
 @media(max-width:560px){.nm-home-prompts{grid-template-columns:1fr!important}.nm-settings-card-grid{grid-template-columns:1fr!important}.nm-settings-intro{align-items:flex-start!important;gap:14px}.nm-settings-intro-meta{align-items:flex-start}}
 .dark .nm-new-home{background:radial-gradient(circle at 54% 12%,rgb(34 52 93 / 35%),transparent 34%),#101522}.dark .nm-home-orb,.dark .nm-home-prompt,.dark .nm-settings-intro,.dark .nm-settings-card{background:#181f31!important;border-color:#303b55!important}.dark .nm-home-intro h1 span{color:#9fb7ff}.dark .nm-home-prompt:hover,.dark .nm-settings-card:hover{border-color:#769aff!important}.dark .nm-settings-home{background:#101522!important}
+
+.nm-home-prompt { min-height: 74px; padding: 12px; }
+.dark .nm-home-prompt { color: var(--on-surface); }
+.dark .nm-home-prompt small,
+.dark .nm-home-prompt kbd { color: var(--on-surface-variant); }
+.dark .nm-home-composer .nm-composer {
+  background: #101522 !important;
+  border-color: #303b55 !important;
+}

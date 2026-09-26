@@ -1150,6 +1150,80 @@ export class CloudClient {
       { status, note }
     )
   }
+
+  /** SSE 流式发送一轮：onEvent 收到 reasoning/delta/error/done 增量。 */
+  async streamTurn(
+    sessionId: string,
+    payload: {
+      input: string
+      requestId: string
+      model_id?: string | null
+      authorization_mode?: 'default' | 'full'
+    },
+    onEvent: (event: Record<string, unknown>) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.hydrateToken()
+    const base = this.http.defaults.baseURL ?? ''
+    const response = await fetch(
+      `${base}/v1/cloud/sessions/${encodeURIComponent(sessionId)}/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        },
+        body: JSON.stringify({
+          input: payload.input,
+          request_id: payload.requestId,
+          ...(payload.model_id ? { model_id: payload.model_id } : {}),
+          authorization_mode: payload.authorization_mode ?? 'default',
+        }),
+        signal,
+      }
+    )
+    if (!response.ok || !response.body) {
+      const detail = await response.text().catch(() => '')
+      throw new CloudClientError(`stream failed: HTTP ${response.status} ${detail.slice(0, 200)}`)
+    }
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() ?? ''
+      for (const part of parts) {
+        const line = part.split('\n').find(l => l.startsWith('data:'))
+        if (!line) continue
+        try {
+          onEvent(JSON.parse(line.slice(5).trim()))
+        } catch {
+          // 忽略无法解析的 SSE 帧
+        }
+      }
+    }
+  }
+
+  /** 在分配文件夹内执行一条终端命令，真实返回 stdout/stderr/exit_code。 */
+  runTerminal(
+    sessionId: string,
+    command: string,
+    cwd?: string | null
+  ) {
+    return this.request<{
+      stdout: string
+      stderr: string
+      exit_code: number
+      cwd: string
+    }>(
+      'POST',
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/terminal`,
+      { command, ...(cwd ? { cwd } : {}) }
+    )
+  }
 }
 
 export default CloudClient

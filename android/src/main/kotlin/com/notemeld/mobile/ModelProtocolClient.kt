@@ -26,7 +26,17 @@ class ModelProtocolClient(
         val contextWindow: Int,
     )
 
-    class ProtocolException(message: String) : Exception(message)
+    class ProtocolException(
+        message: String,
+        val statusCode: Int = -1,
+    ) : Exception(message)
+
+    /** 连接测试结果：ok 为是否通过；message 为可展示的中文结果；status 为 HTTP 状态码（网络错误为 -1）。 */
+    data class TestResult(
+        val ok: Boolean,
+        val message: String,
+        val status: Int,
+    )
 
     /**
      * 拉取模型列表。
@@ -45,16 +55,17 @@ class ModelProtocolClient(
     }
 
     /**
-     * 最小连接测试；网络/状态码/响应结构失败返回 false，参数缺失抛 [ProtocolException]。
+     * 最小连接测试；返回 [TestResult]，可区分鉴权失败/模型不存在/网络错误等具体原因。
+     * 参数缺失抛 [ProtocolException]。
      */
-    fun testConnection(protocol: String, baseUrl: String, apiKey: String = "", modelId: String = ""): Boolean {
+    fun testConnection(protocol: String, baseUrl: String, apiKey: String = "", modelId: String = ""): TestResult {
         val normalizedProtocol = normalizeProtocol(protocol)
         val normalizedUrl = requireUrl(baseUrl)
         return when (normalizedProtocol) {
             "ollama" -> runCatching {
                 httpGet("$normalizedUrl/api/tags")
-                true
-            }.getOrDefault(false)
+                TestResult(true, "本地 Ollama 可连接。", 200)
+            }.getOrElse { TestResult(false, "无法连接本地 Ollama，请确认服务已启动。", -1) }
             "anthropic-messages" -> {
                 if (apiKey.isBlank()) throw ProtocolException("请填写 API 密钥")
                 if (modelId.isBlank()) throw ProtocolException("请选择或填写要测试的模型 ID")
@@ -98,35 +109,49 @@ class ModelProtocolClient(
         return result
     }
 
-    private fun testOpenAiChat(baseUrl: String, apiKey: String, modelId: String): Boolean =
-        runCatching {
-            val payload = JSONObject()
-                .put("model", modelId)
-                .put("messages", JSONArray().put(
-                    JSONObject().put("role", "user").put("content", "ping"),
-                ))
-                .put("max_tokens", 1)
-                .put("stream", false)
+    private fun testOpenAiChat(baseUrl: String, apiKey: String, modelId: String): TestResult {
+        val payload = JSONObject()
+            .put("model", modelId)
+            .put("messages", JSONArray().put(
+                JSONObject().put("role", "user").put("content", "ping"),
+            ))
+            .put("max_tokens", 1)
+            .put("stream", false)
+        return try {
             val body = httpPost("$baseUrl/chat/completions", payload, bearer(apiKey))
-            JSONObject(body).optJSONArray("choices") != null
-        }.getOrDefault(false)
+            if (JSONObject(body).optJSONArray("choices") != null) {
+                TestResult(true, "连接成功，模型已返回响应。", 200)
+            } else {
+                TestResult(false, "服务端返回结构异常，请确认模型 ID 是否正确。", 200)
+            }
+        } catch (error: ProtocolException) {
+            TestResult(false, error.message ?: "连接失败", error.statusCode)
+        }
+    }
 
-    private fun testAnthropic(baseUrl: String, apiKey: String, modelId: String): Boolean =
-        runCatching {
-            val payload = JSONObject()
-                .put("model", modelId)
-                .put("max_tokens", 1)
-                .put("messages", JSONArray().put(
-                    JSONObject().put("role", "user").put("content", "ping"),
-                ))
-            val headers = mapOf(
-                "x-api-key" to apiKey,
-                "anthropic-version" to ANTHROPIC_VERSION,
-            )
+    private fun testAnthropic(baseUrl: String, apiKey: String, modelId: String): TestResult {
+        val payload = JSONObject()
+            .put("model", modelId)
+            .put("max_tokens", 1)
+            .put("messages", JSONArray().put(
+                JSONObject().put("role", "user").put("content", "ping"),
+            ))
+        val headers = mapOf(
+            "x-api-key" to apiKey,
+            "anthropic-version" to ANTHROPIC_VERSION,
+        )
+        return try {
             val body = httpPost("$baseUrl/v1/messages", payload, headers)
             val response = JSONObject(body)
-            response.opt("content") != null || response.optString("id").isNotBlank()
-        }.getOrDefault(false)
+            if (response.opt("content") != null || response.optString("id").isNotBlank()) {
+                TestResult(true, "连接成功，模型已返回响应。", 200)
+            } else {
+                TestResult(false, "服务端返回结构异常，请确认模型 ID 是否正确。", 200)
+            }
+        } catch (error: ProtocolException) {
+            TestResult(false, error.message ?: "连接失败", error.statusCode)
+        }
+    }
 
     private fun bearer(apiKey: String): Map<String, String> =
         if (apiKey.isBlank()) emptyMap() else mapOf("Authorization" to "Bearer $apiKey")
@@ -179,7 +204,13 @@ class ModelProtocolClient(
                 }
             }
             val status = connection.responseCode
-            if (status !in 200..299) throw ProtocolException("请求失败（HTTP $status）")
+            if (status !in 200..299) {
+                val errorBody = runCatching {
+                    val stream = connection.errorStream ?: connection.inputStream
+                    stream.bufferedReader().use { readBounded(it, MAX_ERROR_CHARS) }
+                }.getOrDefault("")
+                throw ProtocolException(describeHttpError(status, errorBody), status)
+            }
             val stream = connection.inputStream
             return stream.bufferedReader().use { readBounded(it, MAX_RESPONSE_CHARS) }
         } catch (error: ProtocolException) {
@@ -189,6 +220,21 @@ class ModelProtocolClient(
         } finally {
             connection?.disconnect()
         }
+    }
+
+    /** 按状态码给出可操作的中文原因；附带服务端 error.message（若有，截断且不含密钥）。 */
+    private fun describeHttpError(status: Int, errorBody: String): String {
+        val serverMessage = runCatching { JSONObject(errorBody).optString("message") }
+            .getOrDefault("")
+            ?.takeIf { it.isNotBlank() }
+        val reason = when (status) {
+            401, 403 -> "鉴权失败：API Key 无效、未开通该套餐（如 Coding Plan）或无权限。"
+            404 -> "接口或模型不存在：请确认服务商地址与模型 ID。"
+            429 -> "请求过于频繁或已限流，请稍后重试。"
+            in 500..599 -> "服务商暂时异常，请稍后重试。"
+            else -> "请求失败（HTTP $status）。"
+        }
+        return if (serverMessage.isNullOrBlank()) reason else "$reason（$serverMessage）"
     }
 
     private fun networkErrorMessage(urlText: String): String =
@@ -213,5 +259,6 @@ class ModelProtocolClient(
     companion object {
         private const val ANTHROPIC_VERSION = "2023-06-01"
         private const val MAX_RESPONSE_CHARS = 4 * 1024 * 1024
+        private const val MAX_ERROR_CHARS = 8 * 1024
     }
 }

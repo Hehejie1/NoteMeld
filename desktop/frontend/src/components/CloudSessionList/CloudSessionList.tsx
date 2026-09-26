@@ -164,12 +164,12 @@ export function CloudSessionList({
               return (
                 <li
                   key={session.id}
-                  className="group relative flex items-center gap-1 rounded-lg px-1 hover:bg-[var(--surface-container)]"
+                  className={`group relative flex items-center gap-1 rounded-lg px-1 ${selectedId === session.id ? 'bg-[var(--surface-container-high)]' : 'hover:bg-[var(--surface-container)]'}`}
                 >
                   <button
                     type="button"
                     aria-current={selectedId === session.id ? 'page' : undefined}
-                    className="min-w-0 flex-1 rounded-md px-2 py-2 text-left aria-[current=page]:bg-[var(--surface-container-high)]"
+                    className="min-w-0 flex-1 rounded-md px-2 py-2 text-left"
                     onClick={() => onSelect(session)}
                   >
                     <span className="block truncate text-sm font-medium">

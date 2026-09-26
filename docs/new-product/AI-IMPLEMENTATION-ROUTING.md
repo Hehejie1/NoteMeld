@@ -2,6 +2,10 @@
 
 这份文件是把 `docs/new-product` 交给 AI 或开发者实施时的唯一入口。它不替代源码、测试或系统规范；目的是在开始改动前准确找到**应该改的层**，避免只改静态原型、重复实现状态机，或把端侧数据误写到 Cloud。
 
+跨端会话 Command、Transcript、等待队列和 Agent 事件语义以 [CONVERSATION-STREAM-PROTOCOL.md](./CONVERSATION-STREAM-PROTOCOL.md) 为产品目标契约；动运行时代码前仍须按本文件核对真实 API、schema、源码与测试。协议文档中标为“当前事实”的内容不自动代表目标能力已全部落地。
+
+**1:1 复刻 Cloud** 时以 [CLOUD-IMPLEMENTATION-SPEC.md](./CLOUD-IMPLEMENTATION-SPEC.md) 为权威实现规格：技术栈、全部数据表、API 清单、SSE/终端契约、root-jail 算法、状态机、安全边界与关键坑。该文档与当前 `cloud/` 代码对齐。
+
 ## 0. 先做判断
 
 1. 从用户描述确定页面编号（如 `C05`、`M07`、`D03`）；编号不明确时，先查 [PAGE-MAP.md](./PAGE-MAP.md) 与 [功能注册表](./config/feature-registry.json)，不要猜。
@@ -59,7 +63,7 @@
 |---|---|---|---|---|
 | C01 登录与申请 | `pages/cloud/c01.html` | `desktop/frontend/src/pages/CloudPage/index.tsx`、`CloudLoginPanel` | `cloud/app.py` 的 `/v1/auth/*`、访问申请/邀请处理 | `desktop/backend/tests/test_cloud_backend_slice.py`、`test_cloud_config.py` |
 | C02 AI 工作台 | `pages/cloud/c02.html` | `CloudPage/index.tsx`、`CloudSessionList` | `cloud/app.py` dashboard、session、usage 路由 | Cloud 页面与会话 contract tests |
-| C03 云端会话 | `pages/cloud/c03.html` | `CloudSessionPanel`、`CloudSharePanel`、`CloudApprovalList` | `cloud/app.py` session/command/event/approval 路由、`cloud/agent.py` | `test_cloud_agent.py`、`test_cloud_backend_slice.py` |
+| C03 云端会话 | `pages/cloud/c03.html` | `CloudSessionPanel`、`CloudSharePanel`、`CloudApprovalList` | `cloud/app.py` session/command/stream/terminal/event/approval 路由、`cloud/agent.py`、`cloud/terminal.py`；规格见 `CLOUD-IMPLEMENTATION-SPEC.md` | `test_cloud_agent.py`、`test_cloud_backend_slice.py` |
 | C04 人员管理 | `pages/cloud/c04.html` | `CloudUserList`、`CloudUserForm` | `cloud/app.py` admin users、access requests、invitations | Cloud admin/API tests |
 | C05 设备与远控 | `pages/cloud/c05.html` | `CloudDeviceList`、`CloudPairingPanel`、`CloudGrantPanel`、`CloudRemoteAgentPanel` | `cloud/app.py` device/pairing/grant、`desktop/backend/app/cloud_sync/` | `test_cloud_relay_*`、`test_cloud_runtime.py`、`test_cloud_sync_protocol.py` |
 | C06 设置 | `pages/cloud/c06.html` | `CloudPage/index.tsx` 的 `SettingsView`、`CloudModelList`、`CloudWorkspaceBrowser` | `cloud/app.py` preferences/models/workspaces/audits、`cloud/db.py` | `test_cloud_config.py`、Cloud settings/client contract tests |

@@ -10,7 +10,7 @@
   <body
     class="cloud-page cloud-session-page"
     data-page="C03"
-    data-new-session="true"
+    data-new-session="false"
   >
     <div class="cloud-app">
       <aside class="cloud-sidebar">
@@ -37,26 +37,7 @@
         </div>
       </aside>
       <main class="cloud-main cloud-session-main">
-        <header class="cloud-session-header" aria-label="会话面板">
-          <div class="header-actions">
-            <button
-              class="icon-button"
-              title="打开底部面板"
-              aria-label="打开底部面板"
-              data-c03-bottom-panel
-            >
-              <i data-icon="panel-bottom"></i></button
-            ><button
-              class="icon-button"
-              title="打开侧边面板"
-              aria-label="打开侧边面板"
-              data-c03-panel-toggle
-            >
-              <i data-icon="panel-right"></i>
-            </button>
-          </div>
-        </header>
-        <div class="session-layout">
+        <div class="workspace-shell">
           <aside class="cloud-conversation-list" aria-label="云端会话列表">
             <div class="conversation-list-head">
               <strong>会话</strong
@@ -64,7 +45,6 @@
                 class="icon-button"
                 type="button"
                 aria-label="新建会话"
-                data-go="C03"
               >
                 <i data-icon="plus"></i>
               </button>
@@ -74,87 +54,184 @@
               ><input placeholder="搜索会话" aria-label="搜索会话"
             /></label>
             <div class="conversation-items" data-session-list>
-              <p class="empty-cloud-state">正在读取会话…</p>
-            </div>
-          </aside>
-          <section
-            class="session-thread"
-            aria-label="云端会话消息"
-            data-session-thread
-          >
-            <div class="empty-cloud-state" data-session-empty>
-              选择一个会话后，这里会显示真实消息、Agent 事件和执行状态。
-            </div>
-            <div class="cloud-composer-wrap">
-              <div class="workspace-chip">
-                <i data-icon="folder"></i
-                ><strong data-workspace-name>default</strong
-                ><span>默认 Workspace</span><i data-icon="chevron-down"></i>
-              </div>
-              <div class="cloud-composer">
-                <div class="attachment-row"></div>
-                <textarea
-                  aria-label="输入消息"
-                  maxlength="4000"
-                  placeholder="继续告诉 Agent 你要完成什么…"
-                ></textarea>
-                <div class="composer-toolbar">
-                  <button class="text-action" title="添加文件" data-attach-file>
-                    <i data-icon="plus"></i><span>添加</span></button
-                  ><input type="file" data-file-input multiple hidden /><button
-                    class="permission-button"
-                  >
-                    <i data-icon="shield-check"></i><span>默认权限</span
-                    ><i data-icon="chevron-down"></i></button
-                  ><span class="toolbar-spacer"></span
-                  ><button class="model-button" data-no-model="true">
-                    <i data-icon="sparkles"></i><span>没有模型</span
-                    ><i data-icon="chevron-down"></i></button
-                  ><span class="count">0 / 4000</span
-                  ><button class="send-button" aria-label="发送" disabled>
-                    <i data-icon="arrow-up"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-          <aside class="session-summary" aria-label="会话摘要">
-            <div class="summary-title">
-              <h2>会话摘要</h2>
-              <button
-                class="icon-button"
-                title="关闭摘要"
-                aria-label="关闭摘要"
-                data-c03-summary-close
-              >
-                <i data-icon="x"></i>
+              <button class="conversation-item active" type="button">
+                <span class="conversation-status running"></span>
+                <span
+                  ><strong>整理本周研究报告</strong
+                  ><small>running · cloud_native</small></span
+                >
+              </button>
+              <button class="conversation-item" type="button">
+                <span class="conversation-status approval"></span>
+                <span
+                  ><strong>审批新依赖升级方案</strong
+                  ><small>approval · cloud_native</small></span
+                >
+              </button>
+              <button class="conversation-item" type="button">
+                <span class="conversation-status completed"></span>
+                <span
+                  ><strong>梳理上周会议 Wiki</strong
+                  ><small>completed · cloud_native</small></span
+                >
               </button>
             </div>
-            <section>
-              <h3>执行命令 <span data-command-count>0</span></h3>
-              <div data-command-summary class="empty-cloud-state">暂无命令</div>
-            </section>
-            <section>
-              <h3>审批 <span data-approval-count>0</span></h3>
-              <div data-approval-summary class="empty-cloud-state">
-                暂无待审批操作
-              </div>
-            </section>
-            <section>
-              <h3>事件 <span data-event-count>0</span></h3>
-              <div data-event-summary class="empty-cloud-state">暂无事件</div>
-            </section>
           </aside>
+
+          <div class="session-red" data-session-red>
+            <div class="session-top">
+              <section
+                class="session-thread"
+                aria-label="云端会话消息"
+                data-session-thread
+              >
+                <div class="conversation-frame">
+                  <header class="conversation-header">
+                    <h1 data-session-title>整理本周研究报告</h1>
+                    <div class="header-actions">
+                      <button
+                        class="icon-button panel-toggle"
+                        title="打开底部面板"
+                        aria-label="打开底部面板"
+                        data-panel-toggle="bottom"
+                        aria-pressed="false"
+                      >
+                        <i data-icon="panel-bottom"></i></button
+                      ><button
+                        class="icon-button panel-toggle"
+                        title="打开侧边面板"
+                        aria-label="打开侧边面板"
+                        data-panel-toggle="side"
+                        aria-pressed="false"
+                      >
+                        <i data-icon="panel-right"></i>
+                      </button>
+                    </div>
+                  </header>
+                  <div class="conversation-scroll" data-session-scroll>
+                    <div data-session-empty hidden></div>
+                  </div>
+                  <footer class="conversation-composer">
+                    <div class="cloud-composer">
+                      <div class="attachment-row"></div>
+                      <textarea
+                        aria-label="输入消息"
+                        maxlength="4000"
+                        placeholder="继续告诉 Agent 你要完成什么…"
+                      ></textarea>
+                      <div class="composer-toolbar">
+                        <button
+                          class="text-action"
+                          title="添加文件"
+                          data-attach-file
+                        >
+                          <i data-icon="plus"></i><span>添加</span></button
+                        ><input
+                          type="file"
+                          data-file-input
+                          multiple
+                          hidden /><button
+                          class="permission-button"
+                          type="button"
+                          title="默认权限：常规操作直接执行，高风险操作会请求审批"
+                        >
+                          <i data-icon="shield-check"></i><span>默认权限</span
+                          ><i data-icon="chevron-down"></i></button
+                        ><span class="toolbar-spacer"></span
+                        ><button
+                          class="model-button"
+                          type="button"
+                          data-no-model="true"
+                          title="暂无可用模型，请先到设置中配置模型"
+                        >
+                          <i data-icon="sparkles"></i
+                          ><span data-model-label>暂无模型</span
+                          ><i data-icon="chevron-down"></i></button
+                        ><button
+                          class="send-button"
+                          aria-label="发送"
+                          disabled
+                        >
+                          <i data-icon="arrow-up"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </footer>
+                </div>
+              </section>
+
+              <div
+                class="resize-handle vertical"
+                data-resize="side"
+                title="拖拽调整侧边区域宽度"
+              ></div>
+              <aside class="explorer panel" data-panel="side" aria-label="资源管理器">
+                <div class="explorer-main">
+                  <header class="explorer-head">
+                    <strong>资源管理器</strong>
+                    <button class="icon-button" title="更多操作" aria-label="更多操作" data-explorer-menu><i data-icon="ellipsis"></i></button>
+                  </header>
+                  <div class="explorer-search" data-explorer-search>
+                    <i data-icon="search"></i
+                    ><input type="search" placeholder="搜索文件" aria-label="搜索文件" data-explorer-search-input />
+                  </div>
+                  <div class="explorer-section">
+                    <div class="file-tree" data-file-tree></div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+
+            <div
+              class="resize-handle horizontal"
+              data-resize="bottom"
+              title="拖拽调整底部区域高度"
+            ></div>
+            <section class="bottom-panel panel" data-panel="bottom" aria-label="终端">
+              <header class="terminal-tabs">
+                <div class="terminal-tab active">
+                  <i data-icon="terminal"></i><span>ssh</span
+                  ><button
+                    class="terminal-tab-close"
+                    title="关闭终端标签"
+                    aria-label="关闭终端标签"
+                  >
+                    <i data-icon="x"></i>
+                  </button>
+                </div>
+                <button
+                  class="terminal-add"
+                  title="新建终端"
+                  aria-label="新建终端"
+                >
+                  <i data-icon="plus"></i
+                ></button>
+                <span class="terminal-spacer"></span>
+                <button
+                  class="icon-button"
+                  title="关闭底部面板"
+                  aria-label="关闭底部面板"
+                  data-panel-close="bottom"
+                >
+                  <i data-icon="x"></i>
+                </button>
+              </header>
+              <div class="terminal-body" data-bottom-logs><div class="terminal-line"><span class="t-prompt-user">hehejie@hehejie</span><span class="t-colon">:</span><span class="t-path">~</span><span class="t-colon">$</span><span class="t-cursor"></span></div></div>
+            </section>
+          </div>
         </div>
       </main>
     </div>
     <script src="../../assets/vendor/lucide.js"></script>
     <script src="../../assets/page.js"></script>
-    <script src="../../assets/c03-layout-fix.js"></script>
     <script src="../../assets/cloud.js"></script>
     <script src="../../assets/c03-live.js"></script>
     <script src="../../assets/c03-new-session.js"></script>
     <script src="../../assets/c03-send-fix.js"></script>
     <script src="../../assets/c03-controls.js"></script>
+    <script src="../../assets/c03-panels.js"></script>
+    <script src="../../assets/c03-explorer.js"></script>
+    <script src="../../assets/c03-stream-live.js"></script>
+    <script src="../../assets/c03-terminal-live.js"></script>
   </body>
 </html>

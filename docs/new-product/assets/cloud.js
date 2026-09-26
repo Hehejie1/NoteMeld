@@ -105,7 +105,7 @@
   if(page==='C06'){const modelButton=document.querySelector('[data-model-manager]');modelButton?.addEventListener('click',async()=>{try{const models=await api('/v1/models');const modal=document.createElement('div');modal.className='modal-backdrop';modal.innerHTML=`<section class="create-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-model-title"><header><div><span class="section-kicker">Model registry</span><h2 id="cloud-model-title">模型管理</h2><p>${models.length?models.map(item=>escape(item.name)).join(' · '):'尚未配置模型'}</p></div><button class="icon-button" type="button" data-close-model aria-label="关闭"><i data-icon="x"></i></button></header><form data-model-form><label>显示名称<input name="name" required placeholder="例如：工作模型"></label><div class="form-grid"><label>Provider<input name="provider" required placeholder="openai-compatible"></label><label>模型 ID<input name="model" required placeholder="gpt-4o-mini"></label></div><label>服务地址<input name="base_url" type="url" placeholder="https://api.example.com/v1"></label><label>API Key <small class="optional-label">可选，加密保存</small><input name="api_key" type="password"></label><p class="form-message" data-model-message role="status"></p><div class="dialog-actions"><button class="secondary-button" type="button" data-close-model>取消</button><button class="primary-button" type="submit">保存模型</button></div></form></section>`;document.body.append(modal);renderIcons();modal.querySelectorAll('[data-close-model]').forEach(button=>button.addEventListener('click',()=>modal.remove()));modal.querySelector('form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,message=form.querySelector('[data-model-message]'),submit=form.querySelector('[type="submit"]');submit.disabled=true;try{await api('/v1/models',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});message.textContent='模型已保存';message.className='form-message info';setTimeout(()=>modal.remove(),500)}catch(error){message.textContent=error.message;message.className='form-message'}finally{submit.disabled=false}})}catch(error){alert(error.message)}});
     const backupButton=document.querySelector('[data-backup-manager]');backupButton?.addEventListener('click',async()=>{try{const workspaces=await api('/v1/workspaces');const workspace=workspaces[0]?.id;if(!workspace){alert('暂无可备份的 Workspace');return}const backups=await api(`/v1/workspaces/${encodeURIComponent(workspace)}/backups`);const action=confirm(`${workspace} 当前有 ${backups.length} 个备份。点击“确定”立即创建新备份，取消仅查看。`);if(action){backupButton.disabled=true;await api(`/v1/workspaces/${encodeURIComponent(workspace)}/backups`,{method:'POST'});backupButton.textContent='备份已创建';setTimeout(()=>{backupButton.textContent='管理备份';backupButton.disabled=false},1200)}else{alert(backups.length?backups.map(item=>item.backup_id||item.id).join('\n'):'暂无历史备份')}}catch(error){alert(error.message);backupButton.disabled=false}})}
   const renderSessions=sessions=>{const list=document.querySelector('[data-session-list]');if(!list)return;if(!sessions.length){list.innerHTML='<p class="empty-cloud-state">数据库中暂无云端会话，请先新建会话。</p>';return}list.innerHTML=sessions.map((session,index)=>`<button class="conversation-item${index===0?' active':''}" type="button" data-session-id="${escape(session.id)}"><span class="conversation-status ${escape(session.status)}"></span><span><strong>${escape(session.title)}</strong><small>${escape(session.status)} · ${escape(session.kind)}</small></span></button>`).join('');list.querySelectorAll('[data-session-id]').forEach(button=>button.addEventListener('click',()=>loadSession(button.dataset.sessionId)))};
-  const renderSnapshot=({session,events},commands,approvals)=>{document.body.dataset.sessionId=session.id;document.querySelector('[data-session-title]')?.replaceChildren(session.title);document.querySelector('[data-session-meta]')?.replaceChildren(`${session.kind} · ${session.status} · Workspace ${session.workspace_id}`);document.querySelector('[data-workspace-name]').textContent=session.workspace_id;const thread=document.querySelector('[data-session-thread]');const composer=thread.querySelector('.cloud-composer-wrap');thread.querySelectorAll('.real-cloud-message,.empty-cloud-state').forEach(node=>node.remove());const rows=[];commands.forEach(command=>{rows.push(`<div class="message user-message real-cloud-message"><small>你 · ${new Date(command.created_at*1000).toLocaleString()}</small><div class="message-bubble">${escape(command.input_text||'')}</div></div>`);const event=events.find(item=>item.payload?.command_id===command.id);if(event){const output=event.payload.output||event.payload.error?.message||event.event_type;rows.push(`<div class="message agent-message real-cloud-message"><small><span class="status-dot"></span> NoteMeld Agent · ${escape(event.event_type)}</small><article class="agent-card"><p>${escape(output)}</p><small>模型：${escape(event.payload.model||session.model_id||'默认')}</small></article></div>`)}});thread.insertAdjacentHTML('afterbegin',rows.join(''));document.querySelector('[data-session-empty]').hidden=Boolean(rows.length);document.querySelector('[data-command-count]').textContent=commands.length;document.querySelector('[data-event-count]').textContent=events.length;document.querySelector('[data-approval-count]').textContent=approvals.length;document.querySelector('[data-command-summary]').textContent=commands.length?`${commands.length} 条命令，最新状态：${commands[commands.length-1].status}`:'暂无命令';document.querySelector('[data-event-summary]').textContent=events.length?`${events.length} 个真实事件`:'暂无事件';document.querySelector('[data-approval-summary]').textContent=approvals.length?approvals.map(item=>`${item.tool_name} · ${item.status}`).join('、'):'暂无待审批操作'};
+  const renderSnapshot=({session,events},commands,approvals)=>{document.body.dataset.sessionId=session.id;document.body.dataset.newSession='false';const titleNode=document.querySelector('[data-session-title]');if(titleNode){titleNode.textContent=session.title;titleNode.hidden=false}document.querySelector('[data-session-meta]')?.replaceChildren(`${session.kind} · ${session.status} · Workspace ${session.workspace_id}`);const scroll=document.querySelector('[data-session-scroll]');scroll.querySelectorAll('.real-cloud-message').forEach(node=>node.remove());const rows=[];commands.forEach(command=>{rows.push(`<div class="message user-message real-cloud-message"><small>你 · ${new Date(command.created_at*1000).toLocaleString()}</small><div class="message-bubble">${escape(command.input_text||'')}</div></div>`);const event=events.find(item=>item.payload?.command_id===command.id);if(event){const output=event.payload.output||event.payload.error?.message||event.event_type;rows.push(`<div class="message agent-message real-cloud-message"><small><span class="status-dot"></span> NoteMeld Agent · ${escape(event.event_type)}</small><article class="agent-card"><p>${escape(output)}</p><small>模型：${escape(event.payload.model||session.model_id||'默认')}</small></article></div>`)}});scroll.insertAdjacentHTML('beforeend',rows.join(''));document.querySelector('[data-session-empty]').hidden=Boolean(rows.length);scroll.scrollTop=scroll.scrollHeight;document.querySelector('[data-command-count]').textContent=commands.length;document.querySelector('[data-event-count]').textContent=events.length;document.querySelector('[data-approval-count]').textContent=approvals.length;document.querySelector('[data-command-summary]').textContent=commands.length?`${commands.length} 条命令，最新状态：${commands[commands.length-1].status}`:'暂无命令';document.querySelector('[data-event-summary]').textContent=events.length?`${events.length} 个真实事件`:'暂无事件';document.querySelector('[data-approval-summary]').textContent=approvals.length?approvals.map(item=>`${item.tool_name} · ${item.status}`).join('、'):'暂无待审批操作'};
   const loadSession=async sessionId=>{try{const [snapshot,commands,approvals]=await Promise.all([api(`/v1/cloud/sessions/${encodeURIComponent(sessionId)}/snapshot`),api(`/v1/cloud/sessions/${encodeURIComponent(sessionId)}/commands`),api(`/v1/cloud/sessions/${encodeURIComponent(sessionId)}/approvals`)]);renderSnapshot(snapshot,commands,approvals)}catch(error){const node=document.createElement('p');node.className='form-message';node.textContent=error.message;document.querySelector('.session-thread')?.prepend(node);setTimeout(()=>node.remove(),3000)}};
   api('/v1/cloud/sessions').then(sessions=>{renderSessions(sessions);const requested=location.hash.startsWith('#session=')?decodeURIComponent(location.hash.slice(9)):'';if(page==='C03'&&requested)loadSession(requested)}).catch(()=>{});
   if(page==='C03'){
@@ -114,7 +114,7 @@
     composerInput?.addEventListener('input',()=>{sendButton.disabled=!composerInput.value.trim()||document.querySelector('.cloud-composer .model-button')?.dataset.noModel==='true'});
     attachButton?.addEventListener('click',()=>fileInput?.click());
     fileInput?.addEventListener('change',()=>{attachmentRow.innerHTML='';[...(fileInput.files||[])].slice(0,16).forEach(file=>attachmentRow.insertAdjacentHTML('beforeend',`<span class="attachment-chip" data-name="${escape(file.name)}">${escape(file.name)} · ${file.size} B</span>`))});
-    api('/v1/models').then(models=>{const button=document.querySelector('.cloud-composer .model-button');if(!button)return;if(!models.length){button.dataset.noModel='true';button.querySelector('span')?.replaceChildren('没有模型');button.title='请先到设置添加模型';button.addEventListener('click',()=>navigate('C06'));return}button.dataset.modelId=models.find(item=>item.is_default&&item.enabled)?.id||models.find(item=>item.enabled)?.id||'';button.querySelector('span')?.replaceChildren(models.find(item=>item.id===button.dataset.modelId)?.name||'选择模型');button.addEventListener('click',()=>{const index=Math.max(0,models.findIndex(item=>item.id===button.dataset.modelId));const next=models[(index+1)%models.length];button.dataset.modelId=next.id;button.querySelector('span')?.replaceChildren(next.name)})}).catch(()=>{});
+    api('/v1/models').then(models=>{const button=document.querySelector('.cloud-composer .model-button');if(!button)return;const enabled=models.filter(item=>item.enabled);if(!enabled.length){button.dataset.noModel='true';button.querySelector('[data-model-label]')?.replaceChildren('暂无模型');button.title='暂无可用模型，请先到设置中配置模型';button.addEventListener('click',()=>navigate('C06'));return}button.dataset.noModel='false';button.dataset.modelId='';button.querySelector('[data-model-label]')?.replaceChildren('Auto');button.title='Auto：根据发送的文件自动匹配合适的模型，报错时自动切换'}).catch(()=>{});
     document.addEventListener('click',async event=>{
       const send=event.target.closest('.cloud-composer .send-button');
       if(!send)return;
@@ -143,15 +143,71 @@
   const confirmAction=(message,action)=>{if(window.confirm(message))action()};
 
   if(page==='C03'){
-    const thread=document.querySelector('.session-thread'),composer=document.querySelector('.cloud-composer textarea'),send=document.querySelector('.cloud-composer .send-button');
-    const append=(className,html)=>{const node=document.createElement('div');node.className='message '+className;node.innerHTML=html;thread?.insertBefore(node,document.querySelector('.cloud-composer-wrap'));node.scrollIntoView({behavior:'smooth',block:'end'});return node};
+    const thread=document.querySelector('.session-thread'),scroll=document.querySelector('[data-session-scroll]'),composer=document.querySelector('.cloud-composer textarea'),send=document.querySelector('.cloud-composer .send-button');
+    const append=(className,html)=>{const node=document.createElement('div');node.className='message '+className;node.innerHTML=html;scroll?.append(node);node.scrollIntoView({behavior:'smooth',block:'end'});return node};
     send?.addEventListener('click',()=>{const value=composer?.value.trim();if(!value)return;append('user-message','<small>你 · 刚刚</small><div class="message-bubble"></div>').querySelector('.message-bubble').textContent=value;composer.value='';const reply=append('agent-message','<small><span class="status-dot"></span> NoteMeld Agent · 处理中</small><article class="agent-card"><p>已收到，我正在整理 Workspace 内容并准备下一步结果。</p><div class="progress-line"><span></span></div></article>');toast('消息已发送，Agent 正在处理');setTimeout(()=>{reply.querySelector('small').innerHTML='<span class="status-dot"></span> NoteMeld Agent · 已完成';reply.querySelector('.progress-line')?.remove();toast('Agent 已完成本轮处理')},900)});
-    composer?.addEventListener('input',()=>{const count=document.querySelector('.cloud-composer .count');if(count)count.textContent=`${composer.value.length} / 4000`});
-    document.querySelectorAll('.conversation-item').forEach(item=>item.addEventListener('click',()=>{document.querySelectorAll('.conversation-item').forEach(node=>node.classList.toggle('active',node===item));const title=item.querySelector('strong')?.textContent;const heading=document.querySelector('.cloud-session-header h1');if(title&&heading)heading.textContent=title;toast('已切换会话')}));
-    document.querySelector('.cloud-session-header .header-actions button:nth-child(2)')?.addEventListener('click',()=>{const summary=document.querySelector('.session-summary');if(summary)summary.hidden=!summary.hidden});
-    document.querySelector('.session-summary .icon-button')?.addEventListener('click',()=>{const summary=document.querySelector('.session-summary');if(summary)summary.hidden=true});
-    document.querySelector('.cloud-composer .permission-button')?.addEventListener('click',event=>{const button=event.currentTarget;const full=button.dataset.full==='true';button.dataset.full=String(!full);button.querySelector('span')?.replaceChildren(!full?'完全授权':'默认权限');toast(!full?'已开启完全授权':'已恢复默认权限')});
-    document.querySelector('.cloud-composer .model-button')?.addEventListener('click',()=>{const models=['Auto','Hy4 preview','GLM-5.3'];const button=document.querySelector('.cloud-composer .model-button'),current=button.querySelector('span')?.textContent||'Auto',next=models[(models.indexOf(current)+1)%models.length];button.querySelector('span').textContent=next;toast(`模型已切换为 ${next}`)});
+  const DEMO_THREADS={
+    '整理本周研究报告':[
+      {role:'user',text:'帮我把本周收集的研究资料整理成一份结构化报告，包含核心结论和待验证项。',time:'今天 09:12'},
+      {role:'agent',text:'已读取 Workspace 中的 12 份资料，正在按主题聚类并提取核心论点，完成后会列出结论与证据来源。',status:'已完成'},
+      {role:'user',text:'报告里补充各结论对应的原始资料链接，待验证项单独成节。',time:'今天 09:15'},
+      {role:'agent',text:'已补充资料引用，3 个待验证项已单列在报告末尾，正在生成最终 Markdown。',status:'进行中'}
+    ],
+    '审批新依赖升级方案':[
+      {role:'user',text:'检查这次依赖升级的影响范围，给我一份升级方案和回滚预案。',time:'昨天 16:40'},
+      {role:'agent',text:'已比对 2 个直接依赖与 6 个传递依赖，发现 1 处 breaking change，方案已生成，需要你审批后执行。',status:'待审批'},
+      {role:'user',text:'先在隔离环境验证，通过后再审批。',time:'昨天 16:48'},
+      {role:'agent',text:'隔离环境验证已通过，审批请求已挂起，等待你在摘要面板确认。',status:'待审批'}
+    ],
+    '梳理上周会议 Wiki':[
+      {role:'user',text:'把上周三场会议的纪要同步进 Wiki，并更新相关页面的交叉引用。',time:'周一 10:02'},
+      {role:'agent',text:'已解析三场会议纪要，识别出 5 个已有页面和 2 个待新建页面。',status:'已完成'},
+      {role:'user',text:'新建页面补上负责人和截止时间。',time:'周一 10:09'},
+      {role:'agent',text:'2 个新页面已创建，负责人与截止时间已写入，交叉引用全部更新完毕。',status:'已完成'}
+    ]
+  };
+  const renderDemoThread=title=>{
+    const scroll=document.querySelector('[data-session-scroll]');
+    if(!scroll)return;
+    scroll.querySelectorAll('.real-cloud-message').forEach(node=>node.remove());
+    const empty=scroll.querySelector('[data-session-empty]');
+    if(empty)empty.hidden=true;
+    const rows=(DEMO_THREADS[title]||[]).map(item=>{
+      if(item.role==='user'){
+        return `<div class="message user-message real-cloud-message"><small>你 · ${item.time}</small><div class="message-bubble"></div></div>`;
+      }
+      return `<div class="message agent-message real-cloud-message"><small><span class="status-dot"></span> NoteMeld Agent · ${item.status}</small><article class="agent-card"><p></p></article></div>`;
+    }).join('');
+    scroll.insertAdjacentHTML('beforeend',rows);
+    const nodes=scroll.querySelectorAll('.real-cloud-message');
+    (DEMO_THREADS[title]||[]).forEach((item,index)=>{
+      if(item.role==='user')nodes[index]?.querySelector('.message-bubble')?.replaceChildren(item.text);
+      else nodes[index]?.querySelector('.agent-card p')?.replaceChildren(item.text);
+    });
+    scroll.scrollTop=scroll.scrollHeight;
+  };
+  document.querySelectorAll('.conversation-item').forEach(item=>item.addEventListener('click',()=>{
+    document.querySelectorAll('.conversation-item').forEach(node=>node.classList.toggle('active',node===item));
+    const title=item.querySelector('strong')?.textContent?.trim()||'';
+    document.body.dataset.newSession='false';
+    const heading=document.querySelector('.conversation-header h1');
+    if(heading){heading.textContent=title;heading.hidden=false}
+    renderDemoThread(title);
+  }));
+  const resetToNew=()=>{
+    document.body.dataset.newSession='true';
+    document.querySelectorAll('.conversation-item').forEach(node=>node.classList.remove('active'));
+    const heading=document.querySelector('.conversation-header h1');
+    if(heading){heading.textContent='';heading.hidden=true}
+    document.querySelector('[data-session-scroll]')?.querySelectorAll('.real-cloud-message').forEach(node=>node.remove());
+    const empty=document.querySelector('[data-session-empty]');if(empty)empty.hidden=false;
+    const textarea=document.querySelector('.cloud-composer textarea');if(textarea)textarea.value='';
+  };
+  document.querySelector('.conversation-list-head button')?.addEventListener('click',event=>{
+    event.preventDefault();event.stopPropagation();
+    resetToNew();
+  });
+  setTimeout(()=>{document.querySelector('.conversation-item.active')?.click()},60);
   }
 
   if(page==='C04'){

@@ -59,6 +59,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
@@ -380,52 +381,133 @@ fun MobileSurface(initialState: MobileSurfaceState = MobileSurfaceState(), tasks
     val enabled = canInteractWithAgent(s)
     val canSend = enabled && s.permissionGranted && !s.sending && s.inputText.isNotBlank()
     var inputFocused by remember { mutableStateOf(false) }
+    var showNoModelDialog by remember { mutableStateOf(false) }
     val expanded = forceExpanded || inputFocused || s.inputText.isNotBlank()
+
+    // 汇总当前可用模型（本机 / Cloud+配对）
+    val availableModelLabel: String? = if (s.location == AgentLocation.LOCAL) {
+        s.localModels.firstOrNull { it.id == s.selectedLocalModelId }?.displayName
+            ?: s.localModels.firstOrNull { it.isDefault }?.displayName
+            ?: s.localModels.firstOrNull()?.displayName
+    } else {
+        val cloudChoices = s.cloudModels + s.pairedModels
+        cloudChoices.firstOrNull { it.id == s.selectedCloudModelId }?.let { it.name.ifBlank { it.modelId } }
+            ?: cloudChoices.firstOrNull { it.isDefault }?.let { it.name.ifBlank { it.modelId } }
+            ?: cloudChoices.firstOrNull()?.let { it.name.ifBlank { it.modelId } }
+    }
+    val hasModel = !availableModelLabel.isNullOrBlank()
+    val modelLabel: String = availableModelLabel ?: mobileText(s.language, "noModel")
+
     Column(modifier.fillMaxWidth().padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Surface(modifier = Modifier.fillMaxWidth().shadow(12.dp, RoundedCornerShape(if (expanded) 22.dp else 30.dp)).semantics { contentDescription = "notemeld-agent-input" }, shape = RoundedCornerShape(if (expanded) 22.dp else 30.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, NoteMeldTokens.border)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-              // 上部：纯输入区（不再在两侧放添加/发送）
-              Box(Modifier.fillMaxWidth().height(48.dp)) {
-                    if (s.inputText.isBlank()) Text(mobileText(s.language, placeholderKey), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                    BasicTextField(value = s.inputText, onValueChange = { d(MobileSurfaceAction.SetInputText(it)) }, enabled = enabled, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().onFocusChanged { inputFocused = it.isFocused })
+        Surface(
+            modifier = Modifier.fillMaxWidth().shadow(12.dp, RoundedCornerShape(20.dp)).semantics { contentDescription = "notemeld-agent-input" },
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, NoteMeldTokens.border),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+              // 上部：纯输入区（高度 46，输入文本 15sp，下分隔）
+              Box(Modifier.fillMaxWidth().height(46.dp)) {
+                    BasicTextField(
+                        value = s.inputText,
+                        onValueChange = { d(MobileSurfaceAction.SetInputText(it)) },
+                        enabled = enabled,
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).onFocusChanged { inputFocused = it.isFocused },
+                    )
+                    if (s.inputText.isBlank()) Text(
+                        mobileText(s.language, placeholderKey),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
               }
               HorizontalDivider(color = NoteMeldTokens.border)
-              // 底部一排：添加文件 · 权限 · 模型 …… 发送
-              Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.IconButton(onClick = pickAttachment, enabled = enabled && s.permissionGranted, modifier = Modifier.size(40.dp).semantics { contentDescription = "notemeld-agent-add-file" }) { Icon(painterResource(com.notemeld.mobile.R.drawable.ic_plus), contentDescription = "添加附件", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
+              // 底部一排：添加文件(34) · 权限 …… 模型 · 发送(44)
+              Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.IconButton(onClick = pickAttachment, enabled = enabled && s.permissionGranted, modifier = Modifier.size(34.dp).semantics { contentDescription = "notemeld-agent-add-file" }) {
+                    Icon(painterResource(com.notemeld.mobile.R.drawable.ic_plus), contentDescription = "添加附件", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                }
 
-                TextButton(onClick = { d(MobileSurfaceAction.OpenSheet("permission")) }, enabled = enabled, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp), modifier = Modifier.semantics { contentDescription = "notemeld-agent-permission" }) {
+                TextButton(onClick = { d(MobileSurfaceAction.OpenSheet("permission")) }, enabled = enabled, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 3.dp), modifier = Modifier.height(44.dp).semantics { contentDescription = "notemeld-agent-permission" }) {
                     Icon(painterResource(com.notemeld.mobile.R.drawable.ic_shield), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(3.dp))
-                    Text(mobileText(s.language, when (s.permissionMode) { "default" -> "permissionDefault"; "full" -> "permissionFull"; else -> "permission" }), maxLines = 1)
+                    Text(mobileText(s.language, when (s.permissionMode) { "full" -> "permissionFull"; else -> "permissionDefault" }), maxLines = 1, style = MaterialTheme.typography.labelMedium, fontSize = 12.sp)
                 }
 
                 Spacer(Modifier.weight(1f))
-                run {
-                    val modelLabel = if (s.location == AgentLocation.LOCAL) {
-                        s.localModels.firstOrNull { it.id == s.selectedLocalModelId }?.displayName
-                            ?: s.localModels.firstOrNull { it.isDefault }?.displayName
-                            ?: s.selectedModel
-                    } else {
-                        val cloudChoices = s.cloudModels + s.pairedModels
-                        cloudChoices.firstOrNull { it.id == s.selectedCloudModelId }?.let { choice -> choice.name.ifBlank { choice.modelId } }
-                            ?: cloudChoices.firstOrNull { it.isDefault }?.let { choice -> choice.name.ifBlank { choice.modelId } }
-                            ?: s.selectedModel
-                    }
-                    TextButton(onClick = { d(MobileSurfaceAction.OpenSheet("model")) }, enabled = enabled, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp), modifier = Modifier.semantics { contentDescription = "notemeld-agent-model" }) { Text(modelLabel, maxLines = 1) }
+
+                TextButton(onClick = {
+                    if (hasModel) d(MobileSurfaceAction.OpenSheet("model")) else showNoModelDialog = true
+                }, enabled = enabled, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 3.dp), modifier = Modifier.height(44.dp).semantics { contentDescription = "notemeld-agent-model" }) {
+                    Icon(painterResource(com.notemeld.mobile.R.drawable.ic_sparkles), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text(modelLabel, maxLines = 1, style = MaterialTheme.typography.labelMedium, fontSize = 12.sp, color = if (hasModel) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
-                androidx.compose.material3.IconButton(onClick = { startAgentTurn(s.inputText) }, enabled = canSend, modifier = Modifier.size(44.dp).background(if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, CircleShape).semantics { contentDescription = "notemeld-start-chat" }) { Icon(painterResource(com.notemeld.mobile.R.drawable.ic_send), contentDescription = "发送", tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) }
+                // 发送：44 圆形，内部图标 19
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp).semantics { contentDescription = "notemeld-start-chat" }) {
+                    Surface(
+                        onClick = { startAgentTurn(s.inputText) },
+                        enabled = canSend,
+                        shape = CircleShape,
+                        color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(painterResource(com.notemeld.mobile.R.drawable.ic_send), contentDescription = "发送", tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+                        }
+                    }
+                }
               }
             }
         }
         if (showInlineActionMenu && s.showActionMenu) Card(Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { TextButton(onClick = pickAttachment) { Text(mobileText(s.language, "addFile")) }; TextButton(onClick = { d(MobileSurfaceAction.ShowProducts) }) { Text(mobileText(s.language, "allArtifacts")) } } }
         if (showDisclaimer) Text(mobileText(s.language, "aiDisclaimer"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
     }
+
+    if (showNoModelDialog) {
+        NoteMeldAlertDialog(
+            onDismissRequest = { showNoModelDialog = false },
+            title = mobileText(s.language, "noModelTitle"),
+            text = mobileText(s.language, "noModelDesc"),
+            confirmLabel = mobileText(s.language, "goSetup"),
+            onConfirm = {
+                showNoModelDialog = false
+                d(MobileSurfaceAction.Navigate(MobileScreen.MODEL_SETTINGS))
+            },
+            dismissLabel = mobileText(s.language, "cancel"),
+        )
+    }
 }
 
 @Composable private fun ComposerChip(label: String, onClick: () -> Unit, modifier: Modifier, tag: String, icon: Int) {
     OutlinedButton(onClick = onClick, modifier = modifier.height(44.dp).semantics { contentDescription = tag }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(label, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
+}
+
+/** 统一的确认弹窗：标题/正文 + 取消、确认（确认通常用于跳转或提交）。 */
+@Composable
+private fun NoteMeldAlertDialog(
+    onDismissRequest: () -> Unit,
+    title: String,
+    text: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    dismissLabel: String,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        text = { Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) { Text(dismissLabel) }
+        },
+    )
 }
 
 @Composable private fun SessionScreen(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit, pickAttachment: () -> Unit, onSend: (String, (String, String?) -> Unit) -> Unit, onCancelLocal: () -> Unit, onSteerLocal: (String) -> Unit, onCloudSend: (String, String, String?, (String, String?) -> Unit) -> Unit, onRemoteSend: (String, RemoteDevice, String, (String, Int?) -> Unit, (String, String?) -> Unit) -> Unit, onDeleteTask: (String, (Boolean) -> Unit) -> Unit, onLocalModelSelect: (String?) -> Unit) {
@@ -596,9 +678,13 @@ private fun ModelSettingsScreen(s: MobileSurfaceState, d: (MobileSurfaceAction) 
                         onTest = {
                             scope.launch(Dispatchers.IO) {
                                 val apiKey = secretStore.get(provider.id)?.trim().orEmpty()
-                                val ok = runCatching { client.testConnection(provider.protocol, provider.baseUrl, apiKey, model.modelId) }.getOrDefault(false)
+                                val result = runCatching { client.testConnection(provider.protocol, provider.baseUrl, apiKey, model.modelId) }
+                                    .getOrElse { error ->
+                                        ModelProtocolClient.TestResult(false, (error as? ModelProtocolClient.ProtocolException)?.message ?: "连接失败", -1)
+                                    }
                                 val now = System.currentTimeMillis()
-                                dao.updateModel(model.copy(testStatus = if (ok) "ok" else "failed", updatedAt = now))
+                                dao.updateModel(model.copy(testStatus = if (result.ok) "ok" else "failed", updatedAt = now))
+                                d(MobileSurfaceAction.ShowToast(result.message))
                                 refresh()
                             }
                         },
@@ -1177,8 +1263,11 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
                     }
                     busy = true
                     scope.launch(Dispatchers.IO) {
-                        val ok = runCatching { client.testConnection(protocol, effectiveUrl, effectiveKey(), testModel) }.getOrDefault(false)
-                        d(MobileSurfaceAction.ShowToast(mobileText(s.language, if (ok) "testOk" else "testFailed")))
+                        val result = runCatching { client.testConnection(protocol, effectiveUrl, effectiveKey(), testModel) }
+                            .getOrElse { error ->
+                                ModelProtocolClient.TestResult(false, (error as? ModelProtocolClient.ProtocolException)?.message ?: mobileText(s.language, "testFailed"), -1)
+                            }
+                        d(MobileSurfaceAction.ShowToast(result.message))
                         busy = false
                     }
                 }, Modifier.weight(1f), enabled = !busy, testTag = "notemeld-model-test")

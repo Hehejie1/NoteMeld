@@ -37,7 +37,7 @@ const Provider = () => {
   return (
     <div className="flex flex-col gap-2">
       <div className="text-sm font-light">下载器配置</div>
-      <div>
+      <div className="grid gap-1.5">
         {videoPlatforms &&
           videoPlatforms.map((provider, index) => {
             if (provider.value !== 'local')

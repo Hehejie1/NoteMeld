@@ -1,6 +1,5 @@
 import { type ComponentType } from 'react'
-import styles from './index.module.css'
-import { useNavigate, useParams } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 export interface IProviderCardProps {
   id: string
@@ -14,23 +13,16 @@ const ProviderCard = ({
   id,
   cookieConfigured,
 }: IProviderCardProps) => {
-  const navigate = useNavigate()
-  const handleClick = () => {
-    navigate(`/settings/download/${id}`)
-  }
-
-  const { id: currentId } = useParams<{ id: string }>()
-  const isActive = currentId === id
   return (
-    <div
-      onClick={() => {
-        handleClick()
-      }}
-      className={
-        styles.card +
-        ' flex h-14 items-center justify-between rounded border border-[#f3f3f3] p-2' +
-        (isActive ? ' bg-[#F0F0F0] font-semibold text-blue-600' : '')
-      }
+    <NavLink
+      to={`/settings/download/${id}`}
+      className={({ isActive }) => [
+        'flex h-14 min-w-0 items-center justify-between rounded-md border p-2 no-underline transition-colors',
+        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+        isActive
+          ? 'border-primary/30 bg-primary/10 font-semibold text-primary'
+          : 'border-border-subtle bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface',
+      ].join(' ')}
     >
       <div className="flex min-w-0 items-center gap-2 text-lg">
         <div className="flex h-6 w-6 items-center">{<Icon></Icon>}</div>
@@ -39,12 +31,12 @@ const ProviderCard = ({
       {cookieConfigured && (
         <Badge
           variant="outline"
-          className="ml-2 border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[11px] font-medium text-emerald-700"
+          className="ml-2 shrink-0 border-border-subtle bg-surface-container-low px-1.5 py-0 text-[11px] font-medium text-on-surface-variant"
         >
           已设置
         </Badge>
       )}
-    </div>
+    </NavLink>
   )
 }
 export default ProviderCard

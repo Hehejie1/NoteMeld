@@ -37,6 +37,8 @@
 - Current C01 OTP probe (2026-09-19): against the running development Cloud, password login, `/v1/auth/me`, verification-code delivery, and verification-code login all returned success; the probe printed no email, code, token, or other secret values. Production OTP behavior remains covered by the no-code-leak backend test.
 - Current browser smoke refresh (2026-09-19): corrected the English/live smoke locators to match the current settings navigation label `通用`; English route smoke passed in `8.5s`, and the full real-provider Cloud smoke passed in `26.9s` after the correction.
 - Current config-sync live probe (2026-09-19): against the running Cloud API, a unique preference change returned 200, repeating the same idempotency key returned the same successful result, a stale revision returned 409, and deleting the probe key returned 200 with a tombstone visible in the subsequent snapshot. No secret values were printed.
+- Current persistence refresh (2026-09-21): without rebuilding or replacing the running container, the real-provider Cloud smoke passed again in `19.6s`, confirming the existing data volume, configured default model, C01-C06 controls, attachment flow, and Agent turn remain usable after the service stayed running.
+- Computer Use refresh (2026-09-21): `mcp__cua_repl.getState()` again timed out during kernel/browser initialization and reset the kernel before exposing a browser surface; no CU evidence is claimed.
 
 - Rebuilt `notemeld-cloud:rc-current` from source commit `88f48833713db998df112d7476c588cb36d85f49`.
 - Restarted the service on `http://127.0.0.1:18583` using the existing Cloud data volume and no placeholder Provider URL; `/ready` reports the new image digest and canonical SDK backend.

@@ -13,8 +13,8 @@ function mountIcons(){
   document.querySelectorAll('.agent-header-actions button').forEach(node=>put(node,headerIcons[node.getAttribute('aria-label')]||'more-horizontal'));
   document.querySelectorAll('.workspace-picker span,.workspace-context span').forEach(node=>{node.innerHTML='<i data-lucide="folder-open"></i>'});
   document.querySelectorAll('.add-button').forEach(node=>{node.innerHTML='<i data-lucide="plus"></i><span>添加</span>'});
-  document.querySelectorAll('.permission-button').forEach(node=>{node.innerHTML='<i data-lucide="shield-check"></i><span>默认权限</span><span class="chevron">⌄</span>'});
-  document.querySelectorAll('.model-button').forEach(node=>{node.innerHTML='<i data-lucide="sparkles"></i><span data-model-label>Auto</span><span class="chevron">⌄</span>'});
+  document.querySelectorAll('.permission-button').forEach(node=>{node.innerHTML='<i data-lucide="shield-check"></i><span>默认权限</span><i data-lucide="chevron-down"></i>'});
+  document.querySelectorAll('.model-button').forEach(node=>{const current=node.querySelector('[data-model-label]')?.textContent?.trim();const label=current||(node.dataset.noModel==='true'?'暂无模型':'Auto');node.innerHTML=`<i data-lucide="sparkles"></i><span data-model-label>${label}</span><i data-lucide="chevron-down"></i>`});
   document.querySelectorAll('.voice-button').forEach(node=>put(node,'mic'));
   document.querySelectorAll('.send-button').forEach(node=>put(node,'arrow-up'));
   document.querySelectorAll('.panel-close,[data-popup-close]').forEach(node=>put(node,'x'));

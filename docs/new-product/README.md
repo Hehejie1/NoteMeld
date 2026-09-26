@@ -21,3 +21,7 @@
 首页只负责目录浏览：左侧按桌面端、云端、移动端分类列出所有页面，右侧通过 iframe 加载对应的独立 HTML 页面。页面内部的跨页链接会同步首页左侧选中项；分隔条可以拖拽调整目录宽度。
 
 页面清单和功能范围见 [PAGE-MAP.md](./PAGE-MAP.md)。
+
+跨桌面、Cloud、移动端和远程设备的用户消息 envelope、排队展示、思考/工具事件与流式最终答复，见 [跨端会话发送与流式响应协议](./CONVERSATION-STREAM-PROTOCOL.md)。该协议区分目标契约与各端当前实现状态。
+
+需要对 Cloud 做 1:1 实现时，见 [Cloud 实现规格](./CLOUD-IMPLEMENTATION-SPEC.md)：技术栈、数据表、全部 API、SSE 流式、沙箱终端、root-jail 与关键坑，与当前 `cloud/` 代码对齐。

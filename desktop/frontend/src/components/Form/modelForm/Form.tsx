@@ -340,7 +340,7 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
   if (loading) return <div className="p-4 text-sm text-on-surface-variant">加载中...</div>
 
   return (
-    <div className="flex min-h-full min-w-0 flex-col gap-5 bg-surface-container/40 p-3 pb-8 md:gap-8 md:bg-white md:p-6">
+    <div className="flex min-h-full w-full min-w-0 flex-col gap-5 bg-surface-container-lowest p-3 pb-8 md:gap-8 md:p-6">
       {importedBanner && (
         <div
           data-imported-banner
