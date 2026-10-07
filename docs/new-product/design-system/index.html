@@ -4,7 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NoteMeld · Design System</title>
-  <link rel="stylesheet" href="./tokens.css">
+  <!-- 独立组件包 @notemeld/ui（vendor 为包的单向镜像，由 sync_ui_package.py 生成）。
+       浏览器 bundle 已内联全部样式并自动注册全部 nm-* 组件，故此处不再单独 link 组件 CSS。 -->
+  <!-- 旧展示区与内联样式使用的长名变量，别名映射到包变量 -->
+  <link rel="stylesheet" href="./alias.css">
   <link rel="stylesheet" href="./primitives.css">
   <style>
     * { box-sizing: border-box; }
@@ -25,6 +28,17 @@
     [data-nm-toast].is-visible { transform: translate(-50%, 0); opacity: 1; }
     [data-nm-toast] { padding: 10px 14px; border-radius: var(--nm-radius-pill); background: var(--nm-color-text); color: var(--nm-color-surface); transition: transform var(--nm-motion-fast), opacity var(--nm-motion-fast); }
     @media (max-width: 640px) { main { width: min(100% - 24px, 1120px); padding-top: 28px; } section { padding: 18px; } }
+
+    /* galaxy 组件展示区局部样式 */
+    .galaxy-section h2 { display:flex; align-items:center; gap:8px; }
+    .galaxy-section .tag { font-size:10px; font-weight:800; letter-spacing:.08em; color:var(--nm-color-accent-strong); background:var(--nm-color-accent-soft); padding:2px 7px; border-radius:var(--nm-radius-pill); }
+    .demo-row { display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+    .demo-row + .demo-row { margin-top:14px; }
+    .demo-label { font-size:11px; color:var(--nm-color-text-muted); font-weight:700; min-width:64px; }
+    .nm-card .card-body { padding:16px; }
+    .nm-card h3 { margin:0 0 6px; font-size:14px; }
+    .nm-card p { margin:0; font-size:12px; }
+    .theme-toggle-btn { position:fixed; right:20px; bottom:20px; z-index:50; }
   </style>
 </head>
 <body>
@@ -74,7 +88,278 @@
         <div class="swatch"><i style="--swatch: var(--nm-color-danger-soft)"></i><small>危险背景 / --nm-color-danger-soft</small></div>
       </div>
     </section>
+
+    <!-- ============ galaxy 层：8 个高频基础组件 ============ -->
+    <section class="nm-surface galaxy-section">
+      <h2>galaxy 组件层 <span class="tag">galaxy 灵感 · token 驱动 · 可访问</span></h2>
+      <p>交互动效灵感来自 uiverse-io/galaxy，但颜色/尺寸全部来自 token，结构是语义元素，支持焦点、键盘、禁用与 reduced-motion。契约见 GALAXY-COMPONENTS.md。</p>
+    </section>
+
+    <!-- ① Button -->
+    <section class="nm-surface galaxy-section">
+      <h2>① Button <span class="tag">光泽扫过 · 回弹按压</span></h2>
+      <div class="demo-row">
+        <button class="nm-button" data-variant="primary">Primary</button>
+        <button class="nm-button" data-variant="secondary">Secondary</button>
+        <button class="nm-button" data-variant="ghost">Ghost</button>
+        <button class="nm-button" data-variant="danger">Danger</button>
+        <button class="nm-button" data-variant="primary" disabled>Disabled</button>
+      </div>
+      <div class="demo-row">
+        <span class="demo-label">尺寸</span>
+        <button class="nm-button" data-variant="secondary" data-size="sm">Small</button>
+        <button class="nm-button" data-variant="secondary">Medium</button>
+        <button class="nm-button" data-variant="secondary" data-size="lg">Large</button>
+      </div>
+    </section>
+
+    <!-- ② Icon Button -->
+    <section class="nm-surface galaxy-section">
+      <h2>② Icon Button <span class="tag">弹性缩放</span></h2>
+      <div class="demo-row">
+        <button class="nm-icon-button" aria-label="搜索">🔍</button>
+        <button class="nm-icon-button" aria-label="设置">⚙️</button>
+        <button class="nm-icon-button" aria-label="更多">⋯</button>
+        <button class="nm-icon-button" aria-label="禁用" disabled>🔕</button>
+      </div>
+    </section>
+
+    <!-- ③ Input / Field -->
+    <section class="nm-surface galaxy-section">
+      <h2>③ Input <span class="tag">聚焦上浮 · 错误态</span></h2>
+      <div class="grid">
+        <label class="nm-field"><span class="nm-visually-hidden">名称</span><input placeholder="输入名称"></label>
+        <label class="nm-field" data-invalid="true"><span class="nm-visually-hidden">邮箱</span><input placeholder="错误的邮箱" aria-invalid="true"></label>
+      </div>
+    </section>
+
+    <!-- ④ Switch -->
+    <section class="nm-surface galaxy-section">
+      <h2>④ Switch <span class="tag">弹簧滑块</span></h2>
+      <div class="demo-row">
+        <label class="nm-switch">
+          <input type="checkbox" class="nm-switch-input">
+          <span class="nm-switch-track"><span class="nm-switch-thumb"></span></span>
+          <span>自动运行</span>
+        </label>
+        <label class="nm-switch">
+          <input type="checkbox" class="nm-switch-input" checked>
+          <span class="nm-switch-track"><span class="nm-switch-thumb"></span></span>
+          <span>已开启</span>
+        </label>
+        <label class="nm-switch" data-size="sm">
+          <input type="checkbox" class="nm-switch-input">
+          <span class="nm-switch-track"><span class="nm-switch-thumb"></span></span>
+          <span>小尺寸</span>
+        </label>
+        <label class="nm-switch">
+          <input type="checkbox" class="nm-switch-input" disabled>
+          <span class="nm-switch-track"><span class="nm-switch-thumb"></span></span>
+          <span>禁用</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ⑤ Checkbox -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑤ Checkbox <span class="tag">勾选 pop</span></h2>
+      <div class="demo-row">
+        <label class="nm-checkbox">
+          <input type="checkbox" class="nm-checkbox-input">
+          <span class="nm-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+          <span>记住选择</span>
+        </label>
+        <label class="nm-checkbox">
+          <input type="checkbox" class="nm-checkbox-input" checked>
+          <span class="nm-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+          <span>已同意条款</span>
+        </label>
+        <label class="nm-checkbox">
+          <input type="checkbox" class="nm-checkbox-input" disabled>
+          <span class="nm-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+          <span>禁用</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ⑥ Card -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑥ Card <span class="tag">悬浮抬升</span></h2>
+      <div class="grid">
+        <div class="nm-card"><div class="card-body"><h3>普通卡片</h3><p>不可交互，不抬升。</p></div></div>
+        <div class="nm-card" data-interactive="true" tabindex="0"><div class="card-body"><h3>可交互卡片</h3><p>hover 抬升、focus 同样有阴影。</p></div></div>
+      </div>
+    </section>
+
+    <!-- ⑦ Tooltip -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑦ Tooltip <span class="tag">淡入位移 · 无需 JS</span></h2>
+      <div class="demo-row">
+        <span class="nm-tooltip-wrapper">
+          <button class="nm-button" data-variant="secondary">悬停查看</button>
+          <span class="nm-tooltip" role="tooltip">这是上方提示</span>
+        </span>
+        <span class="nm-tooltip-wrapper">
+          <button class="nm-button" data-variant="secondary">下方提示</button>
+          <span class="nm-tooltip" data-placement="bottom" role="tooltip">这是下方提示</span>
+        </span>
+      </div>
+    </section>
+
+    <!-- ⑧ Loader -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑧ Loader <span class="tag">旋转 · 三点 · 进度条</span></h2>
+      <div class="demo-row">
+        <span class="nm-loader-spin" role="status" aria-label="加载中"></span>
+        <span class="nm-loader-dots" role="status" aria-label="加载中"><span></span><span></span><span></span></span>
+      </div>
+      <div class="demo-row" style="width:240px">
+        <span class="nm-loader-bar" role="progressbar" aria-label="加载进度"></span>
+      </div>
+    </section>
+
+    <!-- ⑨ Radio -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑨ Radio <span class="tag">弹性填充 · 单选组</span></h2>
+      <div class="nm-radio-group" data-orientation="horizontal">
+        <label class="nm-radio">
+          <input type="radio" name="demo-radio" class="nm-radio-input" checked>
+          <span class="nm-radio-circle"></span><span>选项 A</span>
+        </label>
+        <label class="nm-radio">
+          <input type="radio" name="demo-radio" class="nm-radio-input">
+          <span class="nm-radio-circle"></span><span>选项 B</span>
+        </label>
+        <label class="nm-radio">
+          <input type="radio" name="demo-radio" class="nm-radio-input" disabled>
+          <span class="nm-radio-circle"></span><span>禁用</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ⑩ Progress -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑩ Progress <span class="tag">确定进度</span></h2>
+      <div class="demo-row" style="width:320px"><span class="nm-progress"><span class="nm-progress-fill" style="width:65%"></span></span></div>
+      <div class="demo-row" style="width:320px"><span class="nm-progress" data-size="sm"><span class="nm-progress-fill" style="width:40%"></span></span></div>
+    </section>
+
+    <!-- ⑪ Notice -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑪ Notice <span class="tag">内联通知</span></h2>
+      <div class="nm-notice" data-tone="info"><div><div class="nm-notice-title">提示</div><div class="nm-notice-body">这是一条信息通知。</div></div></div>
+      <div class="nm-notice" data-tone="success"><div><div class="nm-notice-title">成功</div><div class="nm-notice-body">操作已完成。</div></div></div>
+      <div class="nm-notice" data-tone="warning"><div><div class="nm-notice-title">注意</div><div class="nm-notice-body">请检查后再继续。</div></div></div>
+    </section>
+
+    <!-- ⑫ Patterns -->
+    <section class="nm-surface galaxy-section">
+      <h2>⑫ Patterns <span class="tag">背景图案</span></h2>
+      <div class="demo-row">
+        <div class="nm-pattern-dots" style="width:120px;height:70px;border-radius:8px;border:1px solid var(--nm-border)"></div>
+        <div class="nm-pattern-grid" style="width:120px;height:70px;border-radius:8px;border:1px solid var(--nm-border)"></div>
+        <div class="nm-pattern-diagonal" style="width:120px;height:70px;border-radius:8px;border:1px solid var(--nm-border)"></div>
+      </div>
+    </section>
+
+    <!-- ============ Web Components：真正的 nm-* 自定义元素 ============ -->
+    <section class="nm-surface galaxy-section" id="wc">
+      <h2>Web Components <span class="tag">@notemeld/ui · 自动注册 · 一套代码多端自适应</span></h2>
+      <p>以下是真正的自定义元素（非 CSS 类）。缩小浏览器到平板 / 手机宽度，Table、List、Dialog、Select 会自动改变形态。</p>
+    </section>
+
+    <section class="nm-surface galaxy-section">
+      <h2>Button / IconButton <span class="tag">自定义元素</span></h2>
+      <div class="demo-row">
+        <nm-button variant="primary">主要操作</nm-button>
+        <nm-button variant="secondary">次要</nm-button>
+        <nm-button variant="ghost">幽灵</nm-button>
+        <nm-button variant="primary" loading>加载中</nm-button>
+        <nm-icon-button name="settings" label="设置"></nm-icon-button>
+        <nm-icon-button name="bell" label="通知"></nm-icon-button>
+      </div>
+    </section>
+
+    <section class="nm-surface galaxy-section">
+      <h2>Input / Select / Switch <span class="tag">声明式输入</span></h2>
+      <div class="grid wc-controls">
+        <nm-input placeholder="输入名称" clearable></nm-input>
+        <nm-select placeholder="选择环境" id="demoSelect"></nm-select>
+      </div>
+      <div class="demo-row">
+        <nm-switch id="demoSwitch"></nm-switch><span>自动运行</span>
+        <nm-checkbox id="demoCheckbox"></nm-checkbox><span>记住选择</span>
+      </div>
+    </section>
+
+    <section class="nm-surface galaxy-section">
+      <h2>Table <span class="tag">PC 表格 ↔ 手机卡片</span></h2>
+      <nm-table id="demoTable" striped hoverable></nm-table>
+    </section>
+
+    <section class="nm-surface galaxy-section">
+      <h2>Overlay <span class="tag">Dialog / Sheet</span></h2>
+      <div class="demo-row">
+        <nm-button variant="secondary" id="openDialog">打开对话框</nm-button>
+        <nm-button variant="secondary" id="openSheet">打开底部 Sheet</nm-button>
+      </div>
+      <nm-modal id="demoModal" title="确认操作">
+        <p style="margin:0">这是一个焦点陷阱对话框：Tab 循环、Esc 关闭，关闭后焦点归还按钮。</p>
+        <span slot="footer">
+          <nm-button variant="secondary" id="cancelDialog">取消</nm-button>
+          <nm-button variant="primary" id="okDialog">确认</nm-button>
+        </span>
+      </nm-modal>
+      <nm-sheet id="demoSheet" title="更多操作">
+        <p style="margin:0">底部动作面板，移动端为主要形态。</p>
+      </nm-sheet>
+    </section>
+
+    <button class="nm-button theme-toggle-btn" data-variant="secondary" id="themeToggle" type="button">切换明暗</button>
   </main>
+  <script src="./vendor/notemeld-ui/notemeld-ui.min.js"></script>
   <script src="./primitives.js"></script>
+  <script src="./galaxy.js"></script>
+  <script>
+    // 展示页：明暗主题切换（在 <html> 上切 data-theme）。
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      const root = document.documentElement;
+      const dark = root.getAttribute('data-theme') === 'dark';
+      if (dark) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'dark');
+    });
+
+    // 给 Web Components 喂 property 数据（等价于 HTML 嵌套写法）。
+    (function () {
+      const select = document.getElementById('demoSelect');
+      if (select) {
+        select.options = [
+          { value: 'dev', label: '开发环境' },
+          { value: 'staging', label: '预发环境' },
+          { value: 'prod', label: '生产环境' },
+        ];
+      }
+      const table = document.getElementById('demoTable');
+      if (table) {
+        table.columns = [
+          { key: 'name', title: '名称' },
+          { key: 'status', title: '状态', hideBelow: 'wide' },
+          { key: 'updated', title: '更新时间' },
+        ];
+        table.rows = [
+          { id: '1', name: 'main.py', status: '运行中', updated: '10:24' },
+          { id: '2', name: 'app.tsx', status: '等待审批', updated: '09:51' },
+          { id: '3', name: 'README.md', status: '已完成', updated: '昨天' },
+        ];
+      }
+
+      const modal = document.getElementById('demoModal');
+      const sheet = document.getElementById('demoSheet');
+      const open = el => { if (el) el.open = true; };
+      document.getElementById('openDialog')?.addEventListener('nm:press', () => open(modal));
+      document.getElementById('openSheet')?.addEventListener('nm:press', () => open(sheet));
+      document.getElementById('cancelDialog')?.addEventListener('nm:press', () => { if (modal) modal.open = false; });
+      document.getElementById('okDialog')?.addEventListener('nm:press', () => { if (modal) modal.open = false; });
+    })();
+  </script>
 </body>
 </html>

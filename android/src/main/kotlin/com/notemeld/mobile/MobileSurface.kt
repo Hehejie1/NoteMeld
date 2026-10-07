@@ -94,6 +94,8 @@ import com.notemeld.ui.NoteMeldTokens
 import com.notemeld.ui.NoteMeldSegmentedControl
 import com.notemeld.ui.NoteMeldBottomSheet
 import com.notemeld.ui.NoteMeldChoiceSheet
+import com.notemeld.ui.NoteMeldIconButton
+import androidx.compose.runtime.mutableStateListOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -672,6 +674,26 @@ private fun ModelSettingsScreen(s: MobileSurfaceState, d: (MobileSurfaceAction) 
                             Text(provider.displayName, style = MaterialTheme.typography.titleMedium)
                             Text("${provider.protocol} · ${provider.baseUrl}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                         }
+                        NoteMeldIconButton(
+                            mobileText(s.language, "editModel"),
+                            { d(MobileSurfaceAction.OpenModelAddPage(provider.id)) },
+                            testTag = "notemeld-provider-edit-${provider.id}",
+                        ) {
+                            Icon(painterResource(com.notemeld.mobile.R.drawable.ic_edit), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        NoteMeldIconButton(
+                            mobileText(s.language, "deleteProvider"),
+                            {
+                                scope.launch(Dispatchers.IO) {
+                                    secretStore.clear(provider.id)
+                                    dao.deleteProvider(provider.id)
+                                    refresh()
+                                }
+                            },
+                            testTag = "notemeld-provider-delete-${provider.id}",
+                        ) {
+                            Icon(painterResource(com.notemeld.mobile.R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                     if (models.isEmpty()) Text(mobileText(s.language, "noLocalModels"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     models.forEach { model -> LocalModelRow(s.language, model,
@@ -699,7 +721,6 @@ private fun ModelSettingsScreen(s: MobileSurfaceState, d: (MobileSurfaceAction) 
                         },
                     ) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NoteMeldSecondaryButton(mobileText(s.language, "editModel"), { d(MobileSurfaceAction.OpenModelAddPage(provider.id)) }, Modifier.weight(1f), testTag = "notemeld-provider-edit-${provider.id}")
                         NoteMeldSecondaryButton(mobileText(s.language, "shareConfig"), {
                             val link = ModelSharePayload.encode(
                                 provider.vendorId, provider.displayName, provider.protocol, provider.baseUrl,
@@ -708,13 +729,6 @@ private fun ModelSettingsScreen(s: MobileSurfaceState, d: (MobileSurfaceAction) 
                             clipboard.setText(AnnotatedString(link))
                             d(MobileSurfaceAction.ShowToast(mobileText(s.language, "shareLinkCopied")))
                         }, Modifier.weight(1f), testTag = "notemeld-provider-share-${provider.id}")
-                        NoteMeldSecondaryButton(mobileText(s.language, "deleteProvider"), {
-                            scope.launch(Dispatchers.IO) {
-                                secretStore.clear(provider.id)
-                                dao.deleteProvider(provider.id)
-                                refresh()
-                            }
-                        }, Modifier.weight(1f), testTag = "notemeld-provider-delete-${provider.id}")
                     }
                 }
             }
@@ -730,18 +744,51 @@ private fun LocalModelRow(
     onSetDefault: () -> Unit,
     onToggle: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(model.displayName, style = MaterialTheme.typography.bodyMedium)
-                if (model.isDefault) NoteMeldBadge(mobileText(language, "defaultBadge"))
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, NoteMeldTokens.border),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // 上行：模型名 + 默认徽标（允许完整显示，不挤压）
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(model.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    if (model.isDefault) NoteMeldBadge(mobileText(language, "defaultBadge"))
+                }
+                Text(model.modelId, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                val statusText = mobileText(language, when (model.testStatus) { "ok" -> "testOk"; "failed" -> "testFailed"; else -> "testUntested" })
+                Text(
+                    statusText,
+                    color = when (model.testStatus) {
+                        "ok" -> MaterialTheme.colorScheme.primary
+                        "failed" -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
-            Text("${model.modelId} · ${model.contextWindow}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-            Text(mobileText(language, when (model.testStatus) { "ok" -> "testOk"; "failed" -> "testFailed"; else -> "testUntested" }), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            // 下行：测试连接 icon + 设默认/启停 按钮
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NoteMeldIconButton(
+                    mobileText(language, "testConnection"), onTest,
+                    testTag = "notemeld-model-test-${model.id}",
+                ) {
+                    Icon(painterResource(com.notemeld.mobile.R.drawable.ic_bolt), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+                NoteMeldSecondaryButton(
+                    mobileText(language, "setDefault"), onSetDefault,
+                    Modifier.weight(1f),
+                )
+                NoteMeldSecondaryButton(
+                    mobileText(language, if (model.enabled) "disableModel" else "enableModel"),
+                    onToggle,
+                    Modifier.weight(1f),
+                    testTag = "notemeld-model-toggle-${model.id}",
+                )
+            }
         }
-        NoteMeldTextButton(onClick = onTest, modifier = Modifier.semantics { contentDescription = "notemeld-model-test-${model.id}" }) { Text(mobileText(language, "testConnection"), style = MaterialTheme.typography.labelSmall) }
-        NoteMeldTextButton(onClick = onSetDefault, enabled = !model.isDefault, modifier = Modifier.semantics { contentDescription = "notemeld-model-default-${model.id}" }) { Text(mobileText(language, "setDefault"), style = MaterialTheme.typography.labelSmall) }
-        NoteMeldTextButton(onClick = onToggle, modifier = Modifier.semantics { contentDescription = "notemeld-model-toggle-${model.id}" }) { Text(mobileText(language, if (model.enabled) "disableModel" else "enableModel"), style = MaterialTheme.typography.labelSmall) }
     }
 }
 
@@ -1131,10 +1178,13 @@ private fun PermissionChoice(title: String, description: String, selected: Boole
     }
 }
 
-/** 添加/编辑页面内的候选模型行。 */
+/** 添加/编辑页面内的候选模型草稿（保存前在页面内编辑，不落库）。 */
 private data class CandidateModel(
     val id: String,
-    val selected: Boolean,
+    val contextWindow: Int = VendorRegistry.DEFAULT_CONTEXT,
+    val supportsStreaming: Boolean = true,
+    val supportsVision: Boolean = false,
+    val supportsTools: Boolean = false,
 )
 
 /**
@@ -1158,16 +1208,30 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
     var customName by remember { mutableStateOf(if (editing?.vendorId == "custom") editing.displayName else "") }
     var customUrl by remember { mutableStateOf(if (editing?.vendorId == "custom") editing.baseUrl else "") }
     var apiKey by remember { mutableStateOf("") }
-    var candidates: List<CandidateModel> by remember {
+    // 已选模型（有序；第一个即默认）。编辑模式从既有模型预填。
+    var picked: List<CandidateModel> by remember {
         mutableStateOf(
-            editingId?.let { id -> dao.listModels(id).map { CandidateModel(it.modelId, true) } }
-                ?: emptyList(),
+            editingId?.let { id ->
+                dao.listModels(id).map {
+                    CandidateModel(it.modelId, it.contextWindow, it.supportsStreaming, it.supportsVision, it.supportsTools)
+                }
+            } ?: emptyList(),
         )
     }
+    var modelPickerOpen by remember { mutableStateOf(false) }
     var vendorPickerOpen by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
-
+    // 候选池：discover 的结果进入此池；已选 picked 单独维护。
+    var pool: List<CandidateModel> by remember {
+        mutableStateOf(
+            editingId?.let { id ->
+                dao.listModels(id).map {
+                    CandidateModel(it.modelId, it.contextWindow, it.supportsStreaming, it.supportsVision, it.supportsTools)
+                }
+            } ?: emptyList(),
+        )
+    }
     val vendor = VendorRegistry.getVendor(vendorId)
     val isCustom = vendor?.custom == true
     val protocol = vendor?.protocol?.takeIf { it != "bedrock" } ?: "openai-compatible"
@@ -1238,7 +1302,7 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
                 }
             }
 
-            // 拉取 / 测试
+            // 拉取 / 测试（测试只测默认模型，即已选第一个）
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 NoteMeldSecondaryButton(mobileText(s.language, "fetchModels"), {
                     if (vendor == null) { d(MobileSurfaceAction.ShowToast(mobileText(s.language, "selectVendor"))); return@NoteMeldSecondaryButton }
@@ -1247,8 +1311,9 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
                     scope.launch(Dispatchers.IO) {
                         val result = runCatching { client.discover(protocol, effectiveUrl, effectiveKey()) }
                         result.onSuccess { remote ->
-                            val existingIds = candidates.map { it.id }.toSet()
-                            candidates = candidates + remote.filter { it.id !in existingIds }.map { CandidateModel(it.id, true) }
+                            val existingIds = pool.map { it.id }.toSet()
+                            pool = pool + remote.filter { it.id !in existingIds }
+                                .map { CandidateModel(it.id, it.contextWindow) }
                             statusText = null
                         }.onFailure { error -> statusText = error.message ?: mobileText(s.language, "discoverFailed") }
                         busy = false
@@ -1256,7 +1321,7 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
                 }, Modifier.weight(1f), enabled = !busy, testTag = "notemeld-model-fetch")
                 NoteMeldSecondaryButton(mobileText(s.language, "testConnection"), {
                     if (vendor == null) { d(MobileSurfaceAction.ShowToast(mobileText(s.language, "selectVendor"))); return@NoteMeldSecondaryButton }
-                    val testModel = candidates.firstOrNull { it.selected }?.id ?: ""
+                    val testModel = picked.firstOrNull()?.id ?: ""
                     if (needsKey) {
                         if (effectiveUrl.isBlank()) { d(MobileSurfaceAction.ShowToast(mobileText(s.language, "baseUrl"))); return@NoteMeldSecondaryButton }
                         if (testModel.isBlank()) { d(MobileSurfaceAction.ShowToast(mobileText(s.language, "modelSelection"))); return@NoteMeldSecondaryButton }
@@ -1273,42 +1338,40 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
                 }, Modifier.weight(1f), enabled = !busy, testTag = "notemeld-model-test")
             }
 
-            // 模型多选（固定高度滚动）
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(mobileText(s.language, "modelSelection"), style = MaterialTheme.typography.labelMedium)
-                NoteMeldTextButton(onClick = {
-                    val allSelected = candidates.isNotEmpty() && candidates.all { it.selected }
-                    candidates = candidates.map { it.copy(selected = !allSelected) }
-                }) { Text(if (candidates.isNotEmpty() && candidates.all { it.selected }) mobileText(s.language, "cancel") else mobileText(s.language, "confirm"), style = MaterialTheme.typography.labelSmall) }
-            }
-            Surface(
-                Modifier.fillMaxWidth().heightIn(max = 260.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, NoteMeldTokens.border),
-            ) {
-                if (candidates.isEmpty()) {
-                    Text(mobileText(s.language, "noLocalModels"), Modifier.padding(16.dp), color = NoteMeldTokens.mutedText, style = MaterialTheme.typography.bodySmall)
-                } else {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        candidates.forEachIndexed { index, model ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable {
-                                        candidates = candidates.toMutableList().also { it[index] = model.copy(selected = !model.selected) }
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Checkbox(checked = model.selected, onCheckedChange = { checked ->
-                                    candidates = candidates.toMutableList().also { it[index] = model.copy(selected = checked) }
-                                })
-                                Text(model.id, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
+            // 选择模型：右箭头入口，点击底部弹窗多选
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    onClick = { modelPickerOpen = true },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "notemeld-model-select" },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, NoteMeldTokens.border),
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(mobileText(s.language, "modelSelection"), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Icon(painterResource(com.notemeld.mobile.R.drawable.ic_chevron_right), contentDescription = null, tint = NoteMeldTokens.mutedText, modifier = Modifier.size(18.dp))
                     }
                 }
+            }
+
+            // 已选模型列表：右侧 默认 / 编辑 / 删除 icon
+            picked.forEachIndexed { index, model ->
+                PickedModelRow(
+                    language = s.language,
+                    model = model,
+                    isDefault = index == 0,
+                    onSetDefault = {
+                        if (index != 0) {
+                            picked = listOf(model) + picked.filterIndexed { i, _ -> i != index }
+                        }
+                    },
+                    onEdit = { edited ->
+                        picked = picked.toMutableList().also { it[index] = edited }
+                    },
+                    onDelete = {
+                        picked = picked.filterIndexed { i, _ -> i != index }
+                    },
+                )
             }
             statusText?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
         }
@@ -1316,9 +1379,9 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
         // 底部保存
         NoteMeldActionButton(
             onClick = {
-                val picked = candidates.filter { it.selected }
+                val pickedModels = picked
                 val keyProvided = apiKey.trim().isNotBlank()
-                val inputs = picked.map { VendorRegistry.ModelInput(it.id, null, VendorRegistry.DEFAULT_CONTEXT) }
+                val inputs = pickedModels.map { VendorRegistry.ModelInput(it.id, null, it.contextWindow) }
                 val errors = VendorRegistry.validateModelConfig(
                     effectiveName, protocol, effectiveUrl, apiKey,
                     hasStoredKey = editing?.hasApiKey == true || keyProvided,
@@ -1346,15 +1409,18 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
                         updatedAt = now,
                     )
                     if (editing == null) dao.createProvider(record) else dao.updateProvider(record)
-                    val modelRows = picked.map { m ->
+                    val modelRows = pickedModels.mapIndexed { i, m ->
                         ModelRecord(
                             id = java.util.UUID.randomUUID().toString(),
                             providerId = providerId,
                             modelId = m.id,
                             displayName = m.id,
-                            contextWindow = VendorRegistry.DEFAULT_CONTEXT,
+                            contextWindow = m.contextWindow,
                             enabled = true,
-                            isDefault = false,
+                            isDefault = i == 0,
+                            supportsStreaming = m.supportsStreaming,
+                            supportsVision = m.supportsVision,
+                            supportsTools = m.supportsTools,
                             testStatus = "untested",
                             createdAt = now,
                             updatedAt = now,
@@ -1369,6 +1435,22 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
             enabled = vendor != null && !busy,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 10.dp).semantics { contentDescription = "notemeld-model-save" },
         ) { Text(mobileText(s.language, "saveConfig")) }
+    }
+
+    // 模型选择底部弹窗：顶部搜索 + 固定高度多选；确定后生效
+    if (modelPickerOpen) {
+        ModelPickerSheet(
+            language = s.language,
+            pool = pool,
+            initialPicked = picked.map { it.id }.toSet(),
+            onDismiss = { modelPickerOpen = false },
+            onConfirm = { selected ->
+                // 保留已有草稿的能力字段，新选项用池默认值；默认=第一个
+                val byId = picked.associateBy { it.id }
+                picked = selected.map { byId[it] ?: pool.first { c -> c.id == it } }
+                modelPickerOpen = false
+            },
+        )
     }
 
     // 服务商选择底部弹窗：固定高度滚动
@@ -1410,6 +1492,173 @@ private fun ModelAddPage(s: MobileSurfaceState, d: (MobileSurfaceAction) -> Unit
         }
     }
 }
+
+/** 模型选择底部弹窗：顶部搜索固定、固定高度列表多选，右上确定/取消。 */
+@Composable
+private fun ModelPickerSheet(
+    language: String,
+    pool: List<CandidateModel>,
+    initialPicked: Set<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    // 勾选状态用可变 Set 暂存；确定才提交，取消则丢弃。
+    val checked = remember { mutableStateListOf<String>().apply { addAll(initialPicked) } }
+
+    val filtered = pool.filter { it.id.contains(query.trim(), ignoreCase = true) }
+
+    NoteMeldBottomSheet(
+        title = mobileText(language, "modelSelection"),
+        onDismiss = onDismiss,
+        testTag = "notemeld-model-picker",
+    ) {
+        // 顶部：搜索 + 确定/取消（固定，不随列表滚动）
+        NoteMeldField(
+            query, { query = it }, mobileText(language, "searchModel"),
+            testTag = "notemeld-model-search",
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            NoteMeldTextButton(onClick = onDismiss) { Text(mobileText(language, "cancel")) }
+            NoteMeldTextButton(
+                onClick = {
+                    // 保持 pool 顺序输出已选
+                    onConfirm(pool.filter { it.id in checked }.map { it.id })
+                },
+                modifier = Modifier.semantics { contentDescription = "notemeld-model-picker-confirm" },
+            ) { Text(mobileText(language, "confirm")) }
+        }
+        Spacer(Modifier.height(4.dp))
+        // 固定高度可滚动列表；默认不勾选（仅 initialPicked 预选）
+        Surface(
+            Modifier.fillMaxWidth().heightIn(max = 340.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, NoteMeldTokens.border),
+        ) {
+            if (filtered.isEmpty()) {
+                Text(mobileText(language, "noLocalModels"), Modifier.padding(16.dp), color = NoteMeldTokens.mutedText, style = MaterialTheme.typography.bodySmall)
+            } else {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    filtered.forEach { item ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable {
+                                    if (item.id in checked) checked.remove(item.id) else checked.add(item.id)
+                                }
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Checkbox(
+                                checked = item.id in checked,
+                                onCheckedChange = { value ->
+                                    if (value) checked.add(item.id) else checked.remove(item.id)
+                                },
+                            )
+                            Text(item.id, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** 已选模型行：名称 + 默认徽标，右侧 默认 / 编辑 / 删除 icon。 */
+@Composable
+private fun PickedModelRow(
+    language: String,
+    model: CandidateModel,
+    isDefault: Boolean,
+    onSetDefault: () -> Unit,
+    onEdit: (CandidateModel) -> Unit,
+    onDelete: () -> Unit,
+) {
+    var editOpen by remember { mutableStateOf(false) }
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, NoteMeldTokens.border),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(model.id, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    if (isDefault) NoteMeldBadge(mobileText(language, "defaultBadge"))
+                }
+                Text("${model.contextWindow}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            NoteMeldIconButton(
+                mobileText(language, "setDefault"), onSetDefault,
+                enabled = !isDefault,
+                testTag = "notemeld-picked-default-${model.id}",
+            ) {
+                Icon(painterResource(com.notemeld.mobile.R.drawable.ic_star), contentDescription = null, modifier = Modifier.size(20.dp), tint = if (isDefault) MaterialTheme.colorScheme.primary else NoteMeldTokens.mutedText)
+            }
+            NoteMeldIconButton(
+                mobileText(language, "editModel"), { editOpen = true },
+                testTag = "notemeld-picked-edit-${model.id}",
+            ) {
+                Icon(painterResource(com.notemeld.mobile.R.drawable.ic_edit), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            NoteMeldIconButton(
+                mobileText(language, "deleteProvider"), onDelete,
+                testTag = "notemeld-picked-delete-${model.id}",
+            ) {
+                Icon(painterResource(com.notemeld.mobile.R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    if (editOpen) {
+        ModelEditDialog(language, model, onDismiss = { editOpen = false }, onSave = {
+            onEdit(it)
+            editOpen = false
+        })
+    }
+}
+
+/** 模型编辑中间弹窗：上下文 + 是否流式/图像/工具。 */
+@Composable
+private fun ModelEditDialog(
+    language: String,
+    model: CandidateModel,
+    onDismiss: () -> Unit,
+    onSave: (CandidateModel) -> Unit,
+) {
+    var context by remember { mutableStateOf(model.contextWindow.toString()) }
+    var streaming by remember { mutableStateOf(model.supportsStreaming) }
+    var vision by remember { mutableStateOf(model.supportsVision) }
+    var tools by remember { mutableStateOf(model.supportsTools) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("notemeld-model-edit-dialog"),
+        title = { Text(mobileText(language, "editModelTitle")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                NoteMeldField(context, { context = it }, mobileText(language, "contextWindow"), testTag = "notemeld-edit-context")
+                NoteMeldSwitchRow(mobileText(language, "supportsStreaming"), streaming, onCheckedChange = { streaming = it })
+                NoteMeldSwitchRow(mobileText(language, "supportsVision"), vision, onCheckedChange = { vision = it })
+                NoteMeldSwitchRow(mobileText(language, "supportsTools"), tools, onCheckedChange = { tools = it })
+            }
+        },
+        confirmButton = {
+            NoteMeldTextButton(onClick = {
+                val ctx = context.trim().toIntOrNull()?.let { ModelSchema.normalizeContext(it) } ?: VendorRegistry.DEFAULT_CONTEXT
+                onSave(model.copy(contextWindow = ctx, supportsStreaming = streaming, supportsVision = vision, supportsTools = tools))
+            }) { Text(mobileText(language, "confirm")) }
+        },
+        dismissButton = {
+            NoteMeldTextButton(onClick = onDismiss) { Text(mobileText(language, "cancel")) }
+        },
+    )
+}
+
+
 
 /** 组件库模块定义：按 label 分组，androidImpl 描述该组件在 Android 的实现。 */
 private data class ComponentLibItem(val id: String, val name: String, val androidImpl: String)

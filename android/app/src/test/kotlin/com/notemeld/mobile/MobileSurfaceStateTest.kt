@@ -88,7 +88,7 @@ class MobileSurfaceStateTest {
     @Test
     fun localAndCloudModelCatalogsAreHeldAsUiProjections() {
         val providers = listOf(ProviderRecord("p1", "DeepSeek", "deepseek", "openai-compatible", "https://api.deepseek.com", "bearer", null, false, 0L, 0L))
-        val models = listOf(ModelRecord("m1", "p1", "deepseek-chat", "DeepSeek Chat", 128000, true, true, "untested", 0L, 0L))
+        val models = listOf(ModelRecord("m1", "p1", "deepseek-chat", "DeepSeek Chat", 128000, true, true, true, false, false, "untested", 0L, 0L))
         val withLocal = reduceMobileSurface(
             reduceMobileSurface(
                 reduceMobileSurface(MobileSurfaceState(), MobileSurfaceAction.SetLocalProviders(providers)),

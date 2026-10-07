@@ -116,3 +116,53 @@
 .dark .explorer-search{background:#3c3c3c;border-color:#3c3c3c}
 .dark .explorer-search input{color:#cccccc}
 .dark .terminal-tab-close:hover{background:#3a3d41;color:#fff}
+
+/* ===== 设置页布局对齐（右侧独立滚动、左侧 tab 固定） ===== */
+/* 主内容区固定为视口减去 72px 顶栏，且自身不滚动（滚动交给右侧面板）。 */
+.cloud-product-main{
+  height:calc(100dvh - 72px);
+  min-height:0;
+  overflow:hidden;
+}
+/* 设置视图填满主内容区，不再用 min-height 撑出整页滚动。 */
+.cloud-settings-view,
+.cloud-settings-view.cloud-focused-view{
+  height:100%;
+  min-height:0;
+  padding:0;
+}
+/* 设置布局：占满高度；左侧 nav 固定不滚动，右侧内容区独立滚动。 */
+.cloud-settings-view .cloud-settings-layout{
+  height:100%;
+  max-width:none;
+  gap:0;
+  grid-template-columns:13rem minmax(0,1fr);
+}
+.cloud-settings-view .cloud-settings-nav{
+  height:100%;
+  overflow:visible;
+  align-content:start;
+  padding:1.25rem .9rem;
+}
+/* 右侧内容容器占满高度；内部 scroll 区域独立上下滚动。 */
+.cloud-settings-view .cloud-settings-content{
+  height:100%;
+  min-width:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  overflow:hidden;
+}
+.cloud-settings-view .cloud-settings-scroll{
+  height:100%;
+  overflow-y:auto;
+  padding:1.5rem 1.75rem;
+}
+/* 卡片在设置页不再作为带框容器（去除 border/背景/圆角/内边距）。 */
+.cloud-settings-view .cloud-surface-card{
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:0;
+}

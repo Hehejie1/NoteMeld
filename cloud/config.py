@@ -60,6 +60,8 @@ class CloudSettings:
     deployment_env: str = "development"
     build_commit: str | None = None
     image_digest: str | None = None
+    terminal_root: Path | None = None
+    terminal_use_bwrap: bool = False
 
     @property
     def database_path(self) -> Path:
@@ -107,6 +109,8 @@ class CloudSettings:
             raise ValueError("unsupported backup storage backend")
         if self.backup_storage_backend == "s3" and not self.s3_bucket:
             raise ValueError("S3 bucket is required when S3 backup storage is enabled")
+        if self.terminal_use_bwrap and self.terminal_root is None:
+            raise ValueError("terminal root is required when bubblewrap terminal isolation is enabled")
         if self.s3_endpoint_url:
             parsed = urlparse(self.s3_endpoint_url)
             if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -216,6 +220,8 @@ def load_settings() -> CloudSettings:
         deployment_env=os.getenv("NOTEMELD_CLOUD_ENV", "development").strip().lower(),
         build_commit=os.getenv("NOTEMELD_CLOUD_BUILD_COMMIT") or None,
         image_digest=os.getenv("NOTEMELD_CLOUD_IMAGE_DIGEST") or None,
+        terminal_root=Path(os.getenv("NOTEMELD_CLOUD_TERMINAL_ROOT")).expanduser().resolve() if os.getenv("NOTEMELD_CLOUD_TERMINAL_ROOT") else None,
+        terminal_use_bwrap=os.getenv("NOTEMELD_CLOUD_TERMINAL_BWRAP", "0").strip().lower() in {"1", "true", "yes"},
     )
 
 

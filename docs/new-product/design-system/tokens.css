@@ -58,6 +58,22 @@
   --nm-motion-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --nm-motion-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
   --nm-motion-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  /* Spring-ish 反馈曲线（按压回弹等 galay 灵感微动效）。 */
+  --nm-motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 组件级变量：统一的交互增强层（galaxy 灵感）。 */
+  --nm-switch-track: #cfd6e2;
+  --nm-switch-track-checked: var(--nm-color-accent);
+  --nm-switch-thumb: #ffffff;
+  --nm-card-shadow: 0 1px 2px rgb(20 30 50 / 4%), 0 4px 14px rgb(20 30 50 / 6%);
+  --nm-card-shadow-hover: 0 2px 6px rgb(20 30 50 / 7%), 0 14px 32px rgb(20 30 50 / 12%);
+  --nm-ring: var(--nm-color-accent);
+  --nm-tooltip-bg: #202533;
+  --nm-tooltip-text: #ffffff;
+  --nm-overlay-shade: rgb(15 22 40 / 46%);
+  /* 按下/悬浮的位移与缩放幅度，集中管控保证跨组件一致。 */
+  --nm-press-y: 1px;
+  --nm-hover-lift: -2px;
 }
 
 /* Platforms can opt into the same semantic contract with their own surface values. */
@@ -78,6 +94,11 @@
   --nm-color-success-soft: #163b32;
   --nm-color-warning-soft: #493719;
   --nm-color-danger-soft: #48242a;
+  --nm-switch-track: #39445e;
+  --nm-tooltip-bg: #0c101b;
+  --nm-tooltip-text: #f2f5fc;
+  --nm-card-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 18px rgb(0 0 0 / 34%);
+  --nm-card-shadow-hover: 0 2px 8px rgb(0 0 0 / 38%), 0 16px 36px rgb(0 0 0 / 46%);
 }
 
 @media (prefers-reduced-motion: reduce) {

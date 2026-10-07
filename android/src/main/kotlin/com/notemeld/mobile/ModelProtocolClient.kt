@@ -222,19 +222,27 @@ class ModelProtocolClient(
         }
     }
 
-    /** 按状态码给出可操作的中文原因；附带服务端 error.message（若有，截断且不含密钥）。 */
+    /**
+     * 按状态码给出可操作的中文原因；附带服务端错误码与 message（截断、不含密钥）。
+     * 火山方舟错误体形如 {"error":{"code":"...","message":"..."}}，同时兼容顶层 code/message。
+     */
     private fun describeHttpError(status: Int, errorBody: String): String {
-        val serverMessage = runCatching { JSONObject(errorBody).optString("message") }
-            .getOrDefault("")
-            ?.takeIf { it.isNotBlank() }
+        val parsed = runCatching { JSONObject(errorBody) }.getOrNull()
+        val errorNode = parsed?.optJSONObject("error")
+        val serverCode = errorNode?.optString("code")?.takeIf { it.isNotBlank() }
+            ?: parsed?.optString("code")?.takeIf { it.isNotBlank() }
+        val serverMessage = errorNode?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: parsed?.optString("message")?.takeIf { it.isNotBlank() }
+
         val reason = when (status) {
             401, 403 -> "鉴权失败：API Key 无效、未开通该套餐（如 Coding Plan）或无权限。"
-            404 -> "接口或模型不存在：请确认服务商地址与模型 ID。"
+            404 -> "接口或模型不存在：可能是模型 ID 无权访问或账号未开通该模型。"
             429 -> "请求过于频繁或已限流，请稍后重试。"
             in 500..599 -> "服务商暂时异常，请稍后重试。"
             else -> "请求失败（HTTP $status）。"
         }
-        return if (serverMessage.isNullOrBlank()) reason else "$reason（$serverMessage）"
+        val detail = listOfNotNull(serverCode?.let { "code=$it" }, serverMessage).joinToString("：")
+        return if (detail.isBlank()) reason else "$reason（$detail）"
     }
 
     private fun networkErrorMessage(urlText: String): String =

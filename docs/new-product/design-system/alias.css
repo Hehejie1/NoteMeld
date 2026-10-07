@@ -1,0 +1,45 @@
+/* ============================================================================
+   别名映射：旧展示区 / primitives / 内联样式使用的长名 --nm-color-* 等，
+   统一映射到 @notemeld/ui 包的权威短名变量。
+   这样页面只维护一份 token（来自组件包），旧代码无需改动即可跟随主题。
+   ============================================================================ */
+:root {
+  --nm-color-bg: var(--nm-bg);
+  --nm-color-surface: var(--nm-surface);
+  --nm-color-surface-muted: var(--nm-surface-muted);
+  --nm-color-surface-raised: var(--nm-surface-raised);
+  --nm-color-text: var(--nm-text);
+  --nm-color-text-muted: var(--nm-text-muted);
+  --nm-color-text-subtle: var(--nm-text-subtle);
+  --nm-color-border: var(--nm-border);
+  --nm-color-border-subtle: var(--nm-border-soft);
+  --nm-color-accent: var(--nm-accent);
+  --nm-color-accent-strong: var(--nm-accent-strong);
+  --nm-color-accent-soft: var(--nm-accent-soft);
+  --nm-color-success: var(--nm-success);
+  --nm-color-success-soft: var(--nm-success-soft);
+  --nm-color-warning: var(--nm-warning);
+  --nm-color-warning-soft: var(--nm-warning-soft);
+  --nm-color-danger: var(--nm-danger);
+  --nm-color-danger-soft: var(--nm-danger-soft);
+  --nm-color-info: var(--nm-info);
+  --nm-border-subtle: var(--nm-border-soft);
+  --nm-surface-container: var(--nm-surface-muted);
+  --nm-surface-container-low: var(--nm-surface);
+  --nm-primary: var(--nm-accent);
+  --nm-primary-light: var(--nm-accent-soft);
+  --nm-on-surface: var(--nm-text);
+  --nm-on-surface-variant: var(--nm-text-muted);
+  --nm-error: var(--nm-danger);
+}
+
+/* primitives.css 的控件/动效变量也指向包变量 */
+:root {
+  --nm-control-height-sm: var(--nm-control-sm);
+  --nm-control-height-md: var(--nm-control-md);
+  --nm-control-height-lg: var(--nm-control-lg);
+  --nm-motion-fast: var(--nm-fast);
+  --nm-motion-normal: var(--nm-normal);
+  --nm-motion-slow: var(--nm-slow);
+  --nm-radius-pill: var(--nm-radius-pill);
+}

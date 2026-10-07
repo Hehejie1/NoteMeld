@@ -35,10 +35,11 @@ from .db import CloudDB
 from .agent import OpenAICompatibleAgentRunner, create_agent_runner
 from .security import decrypt_secret, encrypt_secret, hash_password, issue_token, parse_token, token_digest, token_expiry, verify_password
 from .workspace import Workspace, workspace_mutation_lock
-from .terminal import SandboxedShell, TerminalError, open_workspace_shell
+from .terminal import SandboxedShell, TerminalError, open_deployment_shell
 from .backup_storage import BackupStorage, create_backup_storage
 from .relay import InMemoryRelayBroker, RedisRelayBroker
 from .mailer import MailDeliveryError, send_invitation as deliver_invitation, send_verification_code as deliver_verification_code
+from . import documents as docs
 
 
 TOKEN_SCOPES = frozenset({"*", "auth.token", "admin", "device.read", "device.write", "grant.read", "grant.write", "session.read", "session.write", "share.read", "share.write", "workspace.read", "workspace.write", "model.read", "model.write"})
@@ -399,6 +400,10 @@ class SessionRename(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+class SessionAuthMode(BaseModel):
+    auth_mode: str = Field(pattern="^(default|full)$")
+
+
 class ModelCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=128)
@@ -556,6 +561,25 @@ class StreamCreate(BaseModel):
     request_id: str = Field(min_length=1, max_length=64)
     model_id: str | None = None
     authorization_mode: str = Field(default="default", pattern="^(default|full)$")
+    attachments: list["AttachmentIn"] = Field(default_factory=list, max_length=8)
+
+
+class AttachmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=256)
+    size: int = Field(ge=0, le=10 * 1024 * 1024)
+    type: str = Field(min_length=1, max_length=128)
+    # 图片：临时签名链接；其它文件：服务器引用路径。
+    file_url: str | None = Field(default=None, max_length=1024)
+    ref_path: str | None = Field(default=None, max_length=512)
+
+
+class FileUploadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=256)
+    content_base64: str = Field(min_length=1, max_length=10 * 1024 * 1024)
+    mime: str = Field(default="application/octet-stream", max_length=128)
+    description: str = Field(default="", max_length=500)
 
 
 class TerminalExec(BaseModel):
@@ -589,6 +613,25 @@ class ShareTokenCreate(BaseModel):
         if len(set(value)) != len(value) or any(scope not in SHARE_SCOPES for scope in value):
             raise ValueError("invalid share scope")
         return value
+
+
+def _external_base_url() -> str:
+    """对外可达的站点根地址（用于拼接图片临时链接）。"""
+    return os.getenv("NOTEMELD_CLOUD_PUBLIC_URL", "https://admin.notemeld.wiki").rstrip("/")
+
+
+def _file_signing_secret() -> str:
+    """图片临时链接的签名密钥；未显式配置时回退到云端 secret_key。"""
+    secret = os.getenv("NOTEMELD_CLOUD_FILE_SECRET")
+    if secret and len(secret) >= 16:
+        return secret
+    # 复用 create_app 已校验的 secret_key（生产/部署均已注入）。
+    from .config import load_settings
+
+    configured = load_settings().secret_key
+    if not configured:
+        raise RuntimeError("file signing secret is unavailable")
+    return configured
 
 
 def create_app(settings: CloudSettings | None = None) -> FastAPI:
@@ -2758,6 +2801,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             raise HTTPException(404, "session not found")
         return {"code": 0, "msg": "success", "data": {"session_id": session_id, "title": title}}
 
+    @app.put("/v1/cloud/sessions/{session_id}/auth-mode")
+    def update_session_auth_mode(session_id: str, payload: SessionAuthMode, current=Depends(_auth_dependency(db, required_scope="session.write"))):
+        _owned_session(db, session_id, current["id"])
+        now = int(time.time())
+        with db.connect() as cx:
+            result = cx.execute(
+                "UPDATE sessions SET auth_mode=?, updated_at=? WHERE id=? AND user_id=?",
+                (payload.auth_mode, now, session_id, current["id"]),
+            )
+        if result.rowcount != 1:
+            raise HTTPException(404, "session not found")
+        return {"code": 0, "msg": "success", "data": {"session_id": session_id, "auth_mode": payload.auth_mode}}
+
     @app.delete("/v1/sessions/{session_id}")
     @app.delete("/v1/cloud/sessions/{session_id}")
     def delete_session(session_id: str, current=Depends(_auth_dependency(db, required_scope="session.write"))):
@@ -2867,16 +2923,71 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.post("/v1/cloud/sessions/{session_id}/terminal")
     def terminal_exec(session_id: str, payload: TerminalExec, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
-        """在分配文件夹内执行一条 shell 命令并真实返回结果。"""
-        session = _owned_session(db, session_id, current["id"])
-        shell = open_workspace_shell(
-            app.state.settings.workspaces_dir, current["id"], str(session["workspace_id"])
-        )
+        """在固定部署目录内执行一条 shell 命令并真实返回结果。"""
+        _owned_session(db, session_id, current["id"])
+        settings = app.state.settings
+        terminal_root = settings.terminal_root or (settings.data_dir / "projects")
+        shell = open_deployment_shell(terminal_root, use_bwrap=settings.terminal_use_bwrap)
         try:
             data = shell.run(payload.command, payload.cwd)
         except TerminalError as exc:
             raise HTTPException(400, str(exc))
         return {"code": 0, "msg": "success", "data": data}
+
+    @app.post("/v1/cloud/sessions/{session_id}/files")
+    def upload_session_file(session_id: str, payload: FileUploadRequest, current=Depends(_auth_dependency(db, required_scope="workspace.write"))):
+        """图片/附件统一先上传服务器并注册，返回 file_id（图片另附临时签名链接）。"""
+        import base64 as _b64
+
+        session = _owned_session(db, session_id, current["id"])
+        try:
+            content = _b64.b64decode(payload.content_base64, validate=True)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "invalid base64 content")
+        workspace = Workspace(
+            app.state.settings.workspaces_dir / current["id"] / str(session["workspace_id"])
+        )
+        stored = docs.register_file(
+            db=db, workspace=workspace, user_id=current["id"],
+            workspace_id=str(session["workspace_id"]),
+            name=payload.name, content=content,
+            mime=payload.mime or "application/octet-stream",
+            description=payload.description or "",
+            session_id=session_id,
+        )
+        data: dict[str, Any] = {**stored.to_catalog(), "path": stored.path}
+        # 图片：给 LLM 的是短期签名链接，过期后中转无法再获取。
+        if stored.kind == "image":
+            data["temp_url"] = docs.signed_url(
+                base_url=_external_base_url(),
+                secret=_file_signing_secret(),
+                file_id=stored.id,
+            )
+        return {"code": 0, "msg": "success", "data": data}
+
+    @app.get("/v1/cloud/files/{file_id}")
+    def fetch_signed_file(file_id: str, expires: str, sig: str, request: Request):
+        """凭短期签名链接取回图片本体（仅在有效期内）。"""
+        # 仅凭签名即可取对应文件；先查归属以定位 workspace。
+        with db.connect() as cx:
+            row = cx.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "file not found")
+        if not docs.verify_signed_url(
+            secret=_file_signing_secret(), file_id=file_id, expires=expires, sig=sig
+        ):
+            raise HTTPException(403, "invalid or expired file link")
+        workspace = Workspace(
+            app.state.settings.workspaces_dir / row["user_id"] / row["workspace_id"]
+        )
+        target = workspace.path(row["path"])
+        if not target.is_file():
+            raise HTTPException(404, "file is unavailable")
+        return FileResponse(
+            target,
+            media_type=row["mime"] or "application/octet-stream",
+            headers={"Cache-Control": "private, max-age=300"},
+        )
 
     @app.post("/v1/cloud/sessions/{session_id}/stream")
     async def stream_turn(
@@ -2888,11 +2999,37 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         from starlette.concurrency import run_in_threadpool, iterate_in_threadpool
 
         session = await run_in_threadpool(_owned_session, db, session_id, current["id"])
+        # 会话级持久授权模式：传给持久化函数，保证每轮一致。
+        session_auth_mode = (
+            session["auth_mode"] if "auth_mode" in session.keys() else payload.authorization_mode
+        )
+        try:
+            # extra=forbid，改用动态属性传递，不进入请求校验。
+            object.__setattr__(payload, "session_auth_mode", session_auth_mode)
+        except Exception:
+            pass
         command_id, sequence = await run_in_threadpool(
             _persist_running_command, db, session_id, payload, current["id"]
         )
         history = await run_in_threadpool(_cloud_history, db, session_id)
-        messages = history + [{"role": "user", "content": payload.input}]
+        # 图片用临时签名链接（短期有效）；其它附件只给名称+引用路径，
+        # 由模型通过工具自行决定是否读取/解析/检索。
+        content: Any = payload.input
+        if payload.attachments:
+            parts: list[dict[str, Any]] = [{"type": "text", "text": payload.input}]
+            for item in payload.attachments:
+                if item.type.startswith("image/") and item.file_url:
+                    parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": item.file_url},
+                    })
+                elif item.ref_path:
+                    parts.append({
+                        "type": "text",
+                        "text": f"[引用文件] {item.name}，服务器路径：{item.ref_path}（可用 file.read/file.parse/file.search 按此 file 读取）",
+                    })
+            content = parts
+        messages = history + [{"role": "user", "content": content}]
 
         def blocking_events():
             # provider I/O 全部阻塞：整体放到线程池迭代，避免卡住事件循环。
@@ -3571,7 +3708,14 @@ def _run_session_worker(app: FastAPI, db: CloudDB, session_id: str, user_id: str
             runner = app.state.agent_runner
             try:
                 session = _owned_session(db, session_id, user_id)
-                messages = _cloud_history(db, session_id, exclude_command_id=command_id)
+                history = _cloud_history(db, session_id, exclude_command_id=command_id)
+                # 系统提示词只在对话开头注入一次。
+                messages = (
+                    [{"role": "system", "content": docs.system_prompt()}]
+                    + history
+                    if not any(m.get("role") == "system" for m in history)
+                    else history
+                )
                 options = json.loads(command["options_json"] or "{}")
                 tools, tool_handler = _cloud_workspace_tools(settings=app.state.settings, session=session, user_id=user_id, db=db, command_id=command_id, authorization_mode=options.get("authorization_mode", "default"), app=app)
                 runner = _runner_for_session(app, db, session, command_model_id=options.get("model_id"))
@@ -3852,7 +3996,19 @@ def _persist_running_command(
     db: CloudDB, session_id: str, payload: Any, user_id: str
 ) -> tuple[str, int]:
     """为流式轮次插入 running 命令（幂等：相同 request_id 复用）。"""
-    options = {"model_id": payload.model_id, "authorization_mode": payload.authorization_mode}
+    # 附件元数据持久化（不含 base64 正文，正文只用于本次模型调用）。
+    attachments_meta = [
+        {
+            "name": item.name,
+            "size": item.size,
+            "type": item.type,
+            **({"ref_path": item.ref_path} if item.ref_path else {}),
+        }
+        for item in payload.attachments
+    ]
+    # 授权模式以会话级持久配置为准（每轮一致），请求体只作兜底。
+    auth_mode = payload.session_auth_mode if getattr(payload, "session_auth_mode", None) else payload.authorization_mode
+    options = {"model_id": payload.model_id, "authorization_mode": auth_mode}
     digest = hashlib.sha256(
         json.dumps({"input": payload.input, "options": options}, sort_keys=True).encode()
     ).hexdigest()
@@ -3879,7 +4035,7 @@ def _persist_running_command(
             "INSERT INTO commands(id,session_id,request_id,payload_hash,sequence,input_text,"
             "attachments_json,options_json,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (command_id, session_id, payload.request_id, digest, sequence, payload.input,
-             "[]", json.dumps(options), "running", now),
+             json.dumps(attachments_meta), json.dumps(options), "running", now),
         )
         queued = {"command_id": command_id, "command_sequence": sequence, "status": "running"}
         cx.execute(
@@ -4165,22 +4321,8 @@ def _validate_lan_endpoints(value: list[str]) -> list[str]:
 
 def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: str, db: CloudDB | None = None, command_id: str | None = None, authorization_mode: str = "default", app: FastAPI | None = None) -> tuple[list[dict[str, Any]], Any]:
     workspace = Workspace(settings.workspaces_dir / user_id / str(session["workspace_id"]))
-    tools = [
-        {
-            "name": "workspace.list",
-            "description": "List files in the current cloud workspace.",
-            "parameters": {"type": "object", "properties": {"prefix": {"type": "string"}}, "additionalProperties": False},
-            "risk": "safe",
-            "safe": True,
-        },
-        {
-            "name": "workspace.read",
-            "description": "Read a UTF-8 text file from the current cloud workspace.",
-            "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
-            "risk": "safe",
-            "safe": True,
-        },
-    ]
+    # 面向 LLM 的读取/解析/检索工具（职责互不重叠，schema 集中在 documents 模块）。
+    tools: list[dict[str, Any]] = list(docs.tool_schemas())
     if db is not None:
         tools.extend([
             {
@@ -4200,18 +4342,44 @@ def _cloud_workspace_tools(*, settings: CloudSettings, session: Any, user_id: st
         ])
 
     def handle(name: str, arguments: dict[str, Any]) -> Any:
-        if name == "workspace.list":
-            prefix = arguments.get("prefix", "")
-            if not isinstance(prefix, str) or len(prefix) > 1024:
-                return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace prefix"}}
-            files = workspace.list_files(prefix, limit=201)
-            return {"ok": True, "files": files[:200], "truncated": len(files) > 200}
-        if name == "workspace.read":
-            path = arguments.get("path")
-            if not isinstance(path, str) or len(path) > 1024:
-                return {"ok": False, "error": {"code": "invalid_arguments", "message": "invalid workspace path"}}
-            content, truncated = workspace.read_text_bounded(path, 100_000)
-            return {"ok": True, "path": path, "content": content, "truncated": truncated}
+        # ---- 只读类：file.list / file.read / file.parse / file.search ----
+        if name == "file.list":
+            return {"ok": True, "files": docs.list_registered(db, user_id)}
+        if name == "file.read":
+            file_id = arguments.get("file_id")
+            if not isinstance(file_id, str):
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "file_id required"}}
+            try:
+                return docs.read_text_file(
+                    db=db, workspace=workspace, user_id=user_id, file_id=file_id,
+                    offset=int(arguments.get("offset", 0) or 0),
+                    limit=int(arguments.get("limit", docs.READ_LIMIT_BYTES) or docs.READ_LIMIT_BYTES),
+                )
+            except docs.DocumentError as exc:
+                return {"ok": False, "error": {"code": "document_error", "message": str(exc)}}
+        if name == "file.parse":
+            file_id = arguments.get("file_id")
+            if not isinstance(file_id, str):
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "file_id required"}}
+            try:
+                return docs.parse_document(
+                    db=db, workspace=workspace, user_id=user_id, file_id=file_id
+                )
+            except docs.DocumentError as exc:
+                return {"ok": False, "error": {"code": "document_error", "message": str(exc)}}
+        if name == "file.search":
+            query = arguments.get("query")
+            if not isinstance(query, str) or not query.strip():
+                return {"ok": False, "error": {"code": "invalid_arguments", "message": "query required"}}
+            file_id = arguments.get("file_id")
+            try:
+                return docs.search_chunks(
+                    db=db, user_id=user_id, query=query,
+                    file_id=file_id if isinstance(file_id, str) else None,
+                    top_k=int(arguments.get("top_k", docs.MAX_SEARCH_RESULTS) or docs.MAX_SEARCH_RESULTS),
+                )
+            except docs.DocumentError as exc:
+                return {"ok": False, "error": {"code": "document_error", "message": str(exc)}}
         if name in {"workspace.write", "workspace.delete"}:
             path = arguments.get("path")
             if not isinstance(path, str) or len(path) > 1024:

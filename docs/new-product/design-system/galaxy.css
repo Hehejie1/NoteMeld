@@ -1,0 +1,237 @@
+/* ============================================================================
+   NoteMeld · galaxy layer
+   以 uiverse-io/galaxy 的生动交互动效为灵感，但全部：
+     · token 驱动（颜色/尺寸/动效来自 tokens.css，可主题化）
+     · 语义结构（真实 button/input/label，可组合、有状态）
+     · 可访问（焦点环、aria、键盘、reduced-motion）
+   本层只增强交互，不改变 HTML 语义契约。类名前缀 nm-*。
+   ============================================================================ */
+
+/* ---------------- ① Button：光泽扫过 + 回弹按压 ---------------- */
+.nm-button { position: relative; isolation: isolate; overflow: hidden; }
+.nm-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgb(255 255 255 / 28%) 50%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+  transition: transform 600ms var(--nm-motion-ease-out);
+  pointer-events: none;
+}
+.nm-button:hover::after { transform: translateX(120%); }
+/* 非实心（secondary/ghost/dashed/link）不叠白色光泽，避免发灰。 */
+.nm-button[data-variant="secondary"]::after,
+.nm-button[data-variant="ghost"]::after,
+.nm-button[data-variant="dashed"]::after,
+.nm-button[data-variant="link"]::after { display: none; }
+.nm-button:active { transform: translateY(var(--nm-press-y)) scale(.985); }
+.nm-button[disabled]::after { display: none; }
+.nm-button > * { position: relative; z-index: 2; }
+
+/* ---------------- ② Icon Button：弹性缩放 + 环形反馈 ---------------- */
+.nm-icon-button { transition: transform var(--nm-motion-normal) var(--nm-motion-spring),
+  background-color var(--nm-motion-fast), color var(--nm-motion-fast); }
+.nm-icon-button:active { transform: scale(.88); }
+
+/* ---------------- ③ Input / Field：聚焦上浮 + 平滑描边 ---------------- */
+.nm-field { transition: border-color var(--nm-motion-fast),
+  box-shadow var(--nm-motion-fast), background-color var(--nm-motion-fast); }
+.nm-field:focus-within {
+  border-color: var(--nm-ring);
+  box-shadow: 0 0 0 3px rgb(75 124 243 / 16%);
+}
+/* 错误态字段：描边与光晕用危险色。 */
+.nm-field[data-invalid="true"] { border-color: var(--nm-color-danger); }
+.nm-field[data-invalid="true"]:focus-within {
+  border-color: var(--nm-color-danger);
+  box-shadow: 0 0 0 3px rgb(191 61 71 / 15%);
+}
+
+/* ---------------- ④ Switch（开关）：滑块平滑 + 轨道过渡 ---------------- */
+/* 结构：label.nm-switch > input[type=checkbox].nm-switch-input + span.nm-switch-track
+        > span.nm-switch-thumb；文字放在 label 内或外部。 */
+.nm-switch { display: inline-flex; align-items: center; gap: var(--nm-space-2);
+  cursor: pointer; user-select: none; }
+.nm-switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.nm-switch-track {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--nm-radius-pill);
+  background: var(--nm-switch-track);
+  transition: background-color var(--nm-motion-fast);
+}
+.nm-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--nm-switch-thumb);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  transition: transform var(--nm-motion-normal) var(--nm-motion-spring);
+}
+.nm-switch-input:checked + .nm-switch-track { background: var(--nm-switch-track-checked); }
+.nm-switch-input:checked + .nm-switch-track .nm-switch-thumb { transform: translateX(18px); }
+.nm-switch-input:focus-visible + .nm-switch-track {
+  outline: 2px solid var(--nm-ring);
+  outline-offset: 2px;
+}
+.nm-switch-input:disabled + .nm-switch-track { opacity: .5; cursor: not-allowed; }
+.nm-switch input[disabled] ~ *,
+.nm-switch:has(input:disabled) { cursor: not-allowed; }
+
+/* 尺寸：sm。 */
+.nm-switch[data-size="sm"] .nm-switch-track { width: 32px; height: 18px; }
+.nm-switch[data-size="sm"] .nm-switch-thumb { width: 12px; height: 12px; }
+.nm-switch[data-size="sm"] .nm-switch-input:checked + .nm-switch-track .nm-switch-thumb { transform: translateX(14px); }
+
+/* ---------------- ⑤ Checkbox：勾选弹性 pop ---------------- */
+/* 结构：label.nm-checkbox > input.nm-checkbox-input + span.nm-checkbox-box(含 svg check)。 */
+.nm-checkbox { display: inline-flex; align-items: center; gap: var(--nm-space-2);
+  cursor: pointer; user-select: none; }
+.nm-checkbox-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.nm-checkbox-box {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1.5px solid var(--nm-color-border);
+  border-radius: 5px;
+  background: var(--nm-color-surface);
+  color: #fff;
+  transition: background-color var(--nm-motion-fast),
+    border-color var(--nm-motion-fast), transform var(--nm-motion-fast);
+}
+.nm-checkbox-box svg { width: 12px; height: 12px; opacity: 0; transform: scale(.4);
+  transition: opacity var(--nm-motion-fast), transform var(--nm-motion-normal) var(--nm-motion-spring); }
+.nm-checkbox-input:checked + .nm-checkbox-box { background: var(--nm-color-accent);
+  border-color: var(--nm-color-accent); }
+.nm-checkbox-input:checked + .nm-checkbox-box svg { opacity: 1; transform: scale(1); }
+.nm-checkbox-input:active + .nm-checkbox-box { transform: scale(.9); }
+.nm-checkbox-input:focus-visible + .nm-checkbox-box {
+  outline: 2px solid var(--nm-ring); outline-offset: 2px;
+}
+.nm-checkbox-input:disabled + .nm-checkbox-box { opacity: .5; cursor: not-allowed; }
+
+/* ---------------- ⑥ Card：悬浮抬升 + 阴影渐变 ---------------- */
+.nm-card {
+  background: var(--nm-color-surface);
+  border: 1px solid var(--nm-color-border);
+  border-radius: var(--nm-radius-lg);
+  box-shadow: var(--nm-card-shadow);
+  transition: transform var(--nm-motion-normal) var(--nm-motion-ease-out),
+    box-shadow var(--nm-motion-normal) var(--nm-motion-ease-out);
+}
+/* 可交互卡片（带 button/链接或 data-interactive）才抬升。 */
+.nm-card[data-interactive="true"] { cursor: pointer; }
+.nm-card[data-interactive="true"]:hover {
+  transform: translateY(var(--nm-hover-lift));
+  box-shadow: var(--nm-card-shadow-hover);
+}
+.nm-card[data-interactive="true"]:active { transform: translateY(0); }
+
+/* ---------------- ⑦ Tooltip：淡入 + 轻微位移（CSS 原生，无需 JS） ---------------- */
+/* 结构：span.nm-tooltip-wrapper > 触发元素 + span.nm-tooltip。 */
+.nm-tooltip-wrapper { position: relative; display: inline-flex; }
+.nm-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 20;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--nm-tooltip-bg);
+  color: var(--nm-tooltip-text);
+  font-size: var(--nm-font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition: opacity var(--nm-motion-fast), transform var(--nm-motion-fast);
+}
+.nm-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--nm-tooltip-bg);
+}
+.nm-tooltip-wrapper:hover .nm-tooltip,
+.nm-tooltip-wrapper:focus-within .nm-tooltip,
+.nm-tooltip[data-show="true"] { opacity: 1; transform: translate(-50%, 0); }
+.nm-tooltip[data-placement="bottom"] {
+  bottom: auto; top: calc(100% + 8px);
+  transform: translate(-50%, -4px);
+}
+.nm-tooltip[data-placement="bottom"]::after {
+  top: auto; bottom: 100%;
+  border: 4px solid transparent;
+  border-bottom-color: var(--nm-tooltip-bg);
+}
+.nm-tooltip-wrapper:hover .nm-tooltip[data-placement="bottom"],
+.nm-tooltip-wrapper:focus-within .nm-tooltip[data-placement="bottom"] { transform: translate(-50%, 0); }
+
+/* ---------------- ⑧ Loader：旋转 / 三点 / 进度条 ---------------- */
+.nm-loader-spin {
+  width: 22px; height: 22px;
+  border: 2.5px solid var(--nm-color-surface-muted);
+  border-top-color: var(--nm-color-accent);
+  border-radius: 50%;
+  animation: nm-spin 700ms linear infinite;
+}
+@keyframes nm-spin { to { transform: rotate(360deg); } }
+
+.nm-loader-dots { display: inline-flex; gap: 5px; align-items: center; }
+.nm-loader-dots span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--nm-color-accent);
+  animation: nm-bounce 1s var(--nm-motion-ease-in-out) infinite;
+}
+.nm-loader-dots span:nth-child(2) { animation-delay: .15s; }
+.nm-loader-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes nm-bounce {
+  0%, 80%, 100% { transform: scale(.6); opacity: .5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.nm-loader-bar { width: 100%; height: 4px; overflow: hidden;
+  border-radius: var(--nm-radius-pill); background: var(--nm-color-surface-muted); }
+.nm-loader-bar::after {
+  content: ""; display: block; height: 100%; width: 40%;
+  border-radius: inherit; background: var(--nm-color-accent);
+  animation: nm-indeterminate 1.1s var(--nm-motion-ease-in-out) infinite;
+}
+@keyframes nm-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* ---------------- 可访问性：reduced-motion 全部即时完成 ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .nm-button::after,
+  .nm-switch-thumb,
+  .nm-checkbox-box,
+  .nm-checkbox-box svg,
+  .nm-card,
+  .nm-tooltip,
+  .nm-loader-spin,
+  .nm-loader-dots span,
+  .nm-loader-bar::after { transition: none !important; animation: none !important; }
+  .nm-switch-input:checked + .nm-switch-track .nm-switch-thumb { transform: translateX(18px); }
+  .nm-switch[data-size="sm"] .nm-switch-input:checked + .nm-switch-track .nm-switch-thumb { transform: translateX(14px); }
+  .nm-checkbox-input:checked + .nm-checkbox-box svg { opacity: 1; transform: scale(1); }
+}

@@ -60,6 +60,7 @@ export interface CloudSession {
   workspace_id: string
   model_id?: string | null
   status?: string
+  auth_mode?: 'default' | 'full'
 }
 export interface CloudEvent {
   sequence: number
@@ -175,7 +176,9 @@ export interface CloudAttachment {
   name: string
   size: number
   type: string
-  content_base64?: string
+  // 图片：临时签名链接；其它文件：服务器引用路径。
+  file_url?: string
+  ref_path?: string
 }
 export interface CloudToken {
   id: string
@@ -1059,6 +1062,13 @@ export class CloudClient {
       { title }
     )
   }
+  updateSessionAuthMode(sessionId: string, authMode: 'default' | 'full') {
+    return this.request<{ session_id: string; auth_mode: string }>(
+      'PUT',
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/auth-mode`,
+      { auth_mode: authMode }
+    )
+  }
   recoverCommand(sessionId: string, commandId: string, mode: 'resume' | 'abandon') {
     return this.request<Record<string, unknown>>(
       'POST',
@@ -1159,6 +1169,7 @@ export class CloudClient {
       requestId: string
       model_id?: string | null
       authorization_mode?: 'default' | 'full'
+      attachments?: CloudAttachment[]
     },
     onEvent: (event: Record<string, unknown>) => void,
     signal?: AbortSignal
@@ -1178,6 +1189,9 @@ export class CloudClient {
           request_id: payload.requestId,
           ...(payload.model_id ? { model_id: payload.model_id } : {}),
           authorization_mode: payload.authorization_mode ?? 'default',
+          ...(payload.attachments?.length
+            ? { attachments: payload.attachments }
+            : {}),
         }),
         signal,
       }
@@ -1205,6 +1219,34 @@ export class CloudClient {
         }
       }
     }
+  }
+
+  /** 把用户本地的图片/附件上传到会话 workspace 并注册，返回 file_id；
+   *  图片另带短期签名链接 temp_url。 */
+  uploadSessionFile(
+    sessionId: string,
+    name: string,
+    contentBase64: string,
+    mime: string,
+    description?: string
+  ) {
+    return this.request<{
+      file_id: string
+      name: string
+      size: number
+      path: string
+      kind: string
+      temp_url?: string
+    }>(
+      'POST',
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/files`,
+      {
+        name,
+        content_base64: contentBase64,
+        mime,
+        ...(description ? { description } : {}),
+      }
+    )
   }
 
   /** 在分配文件夹内执行一条终端命令，真实返回 stdout/stderr/exit_code。 */

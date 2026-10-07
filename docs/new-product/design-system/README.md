@@ -11,6 +11,8 @@
 - `tokens.css`：颜色、字体、间距、圆角、控件尺寸、焦点和动效 token。
 - `primitives.css`：基础 HTML 原语，包括按钮、图标按钮、字段、Badge、状态反馈和可见性工具类。
 - `primitives.js`：静态原型中的基础行为，包括 toast、表单 busy 状态和旧页面 class 的兼容标记。
+- `galaxy.css` / `galaxy.js`：galaxy 交互层——8 个高频基础组件的 token 化动效增强（灵感来自 uiverse-io/galaxy）。
+- `GALAXY-COMPONENTS.md`：8 组件的 HTML 结构、属性、状态与可访问性契约。
 - `index.html`：可直接打开的交互展示页。
 
 ## 使用边界

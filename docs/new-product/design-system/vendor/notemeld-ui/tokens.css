@@ -1,0 +1,134 @@
+/* 自动生成，请勿手改。
+ * 来源：@notemeld/ui（packages/notemeld-ui）
+ * 同步时间：2026-10-07 09:43
+ * 重新生成：python docs/new-product/design-system/sync_ui_package.py
+ */
+/* ============================================================================
+   @notemeld/ui · Design Tokens
+   框架无关。桌面端与云端共用同一份语义契约。
+   用法：import "@notemeld/ui/styles";（引入全部，含本文件）
+   明暗：在任意容器或 <html> 上设置 data-theme="dark"。
+   ============================================================================ */
+:root {
+  /* ---- 表面与文字 ---- */
+  --nm-bg: #f7f8fb;
+  --nm-surface: #ffffff;
+  --nm-surface-muted: #f1f3f8;
+  --nm-surface-raised: #ffffff;
+  --nm-text: #202533;
+  --nm-text-muted: #7d879a;
+  --nm-text-subtle: #9aa3b2;
+  --nm-border: #dfe4ec;
+  --nm-border-soft: #edf0f5;
+
+  /* ---- 品牌 / 功能色 ---- */
+  --nm-accent: #4b7cf3;
+  --nm-accent-strong: #2864e8;
+  --nm-accent-soft: #e8efff;
+  --nm-success: #168a63;
+  --nm-success-soft: #e7f6f0;
+  --nm-warning: #a86608;
+  --nm-warning-soft: #fff2dd;
+  --nm-danger: #bf3d47;
+  --nm-danger-soft: #fbeaec;
+  --nm-info: #356fe8;
+  --nm-on-accent: #ffffff;
+
+  /* ---- 字体 ---- */
+  --nm-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --nm-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --nm-text-xs: 10px;
+  --nm-text-sm: 12px;
+  --nm-text-md: 14px;
+  --nm-text-lg: 16px;
+  --nm-text-xl: 20px;
+  --nm-line-tight: 1.25;
+  --nm-line-normal: 1.5;
+  --nm-line-relaxed: 1.7;
+
+  /* ---- 间距 ---- */
+  --nm-space-1: 4px;
+  --nm-space-2: 8px;
+  --nm-space-3: 12px;
+  --nm-space-4: 16px;
+  --nm-space-5: 20px;
+  --nm-space-6: 24px;
+  --nm-space-8: 32px;
+  --nm-space-10: 40px;
+
+  /* ---- 圆角 ---- */
+  --nm-radius-sm: 7px;
+  --nm-radius-md: 9px;
+  --nm-radius-lg: 12px;
+  --nm-radius-xl: 14px;
+  --nm-radius-pill: 999px;
+
+  /* ---- 控件尺寸 ---- */
+  --nm-control-sm: 32px;
+  --nm-control-md: 40px;
+  --nm-control-lg: 44px;
+
+  /* ---- 自适应断点（视口宽度） ---- */
+  --nm-bp-tablet: 1024px;
+  --nm-bp-phone: 640px;
+
+  /* ---- 动效 ---- */
+  --nm-motion-fast: 160ms;
+  --nm-motion-normal: 240ms;
+  --nm-motion-slow: 320ms;
+  --nm-fast: 160ms;
+  --nm-normal: 240ms;
+  --nm-slow: 320ms;
+  --nm-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --nm-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --nm-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --nm-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- 组件级变量 ---- */
+  --nm-switch-track: #cfd6e2;
+  --nm-switch-track-on: var(--nm-accent);
+  --nm-switch-thumb: #ffffff;
+  --nm-card-shadow: 0 1px 2px rgb(20 30 50 / 4%), 0 4px 14px rgb(20 30 50 / 6%);
+  --nm-card-shadow-hover: 0 2px 6px rgb(20 30 50 / 7%), 0 14px 32px rgb(20 30 50 / 12%);
+  --nm-ring: var(--nm-accent);
+  --nm-tooltip-bg: #202533;
+  --nm-tooltip-text: #ffffff;
+  --nm-overlay-shade: rgb(15 22 40 / 46%);
+  --nm-press-y: 1px;
+  --nm-hover-lift: -2px;
+  --nm-focus-ring: 0 0 0 3px rgb(75 124 243 / 18%);
+}
+
+/* ---- 暗色主题 ---- */
+[data-theme="dark"] {
+  --nm-bg: #101522;
+  --nm-surface: #181f31;
+  --nm-surface-muted: #202a40;
+  --nm-surface-raised: #1c263b;
+  --nm-text: #f2f5fc;
+  --nm-text-muted: #9da9c0;
+  --nm-text-subtle: #78859d;
+  --nm-border: #303b55;
+  --nm-border-soft: #27324a;
+  --nm-accent: #769aff;
+  --nm-accent-strong: #9fb7ff;
+  --nm-accent-soft: #22345d;
+  --nm-success-soft: #163b32;
+  --nm-warning-soft: #493719;
+  --nm-danger-soft: #48242a;
+  --nm-switch-track: #39445e;
+  --nm-tooltip-bg: #0c101b;
+  --nm-tooltip-text: #f2f5fc;
+  --nm-card-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 18px rgb(0 0 0 / 34%);
+  --nm-card-shadow-hover: 0 2px 8px rgb(0 0 0 / 38%), 0 16px 36px rgb(0 0 0 / 46%);
+  --nm-focus-ring: 0 0 0 3px rgb(118 154 255 / 28%);
+}
+
+/* ---- reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --nm-fast: 0ms; --nm-normal: 0ms; --nm-slow: 0ms;
+    --nm-motion-fast: 0ms; --nm-motion-normal: 0ms; --nm-motion-slow: 0ms;
+  }
+}

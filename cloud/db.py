@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   title TEXT NOT NULL, workspace_id TEXT NOT NULL, status TEXT NOT NULL, copied_from TEXT,
   next_sequence INTEGER NOT NULL DEFAULT 1, next_event_sequence INTEGER NOT NULL DEFAULT 1, authority_epoch INTEGER NOT NULL DEFAULT 1, model_id TEXT,
   lease_owner TEXT, lease_expires_at INTEGER,
+  auth_mode TEXT NOT NULL DEFAULT 'default',
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS session_archives (
@@ -90,6 +91,20 @@ CREATE TABLE IF NOT EXISTS session_import_requests (
   user_id TEXT NOT NULL REFERENCES users(id), request_id TEXT NOT NULL,
   payload_hash TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id),
   created_at INTEGER NOT NULL, PRIMARY KEY(user_id, request_id)
+);
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
+  session_id TEXT REFERENCES sessions(id), workspace_id TEXT NOT NULL,
+  name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+  mime TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('image','document','text','other')),
+  path TEXT NOT NULL, sha256 TEXT NOT NULL, size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS file_chunks (
+  id TEXT PRIMARY KEY, file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL, content TEXT NOT NULL,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(file_id, ordinal)
 );
 CREATE TABLE IF NOT EXISTS providers (
   id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -254,6 +269,8 @@ class CloudDB:
                 connection.execute("ALTER TABLE sessions ADD COLUMN lease_owner TEXT")
             if "lease_expires_at" not in columns:
                 connection.execute("ALTER TABLE sessions ADD COLUMN lease_expires_at INTEGER")
+            if "auth_mode" not in columns:
+                connection.execute("ALTER TABLE sessions ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'default'")
             token_columns = {row[1] for row in connection.execute("PRAGMA table_info(tokens)").fetchall()}
             if "audience" not in token_columns:
                 connection.execute("ALTER TABLE tokens ADD COLUMN audience TEXT NOT NULL DEFAULT 'cloud-api'")
