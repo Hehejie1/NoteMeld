@@ -14,6 +14,7 @@ import {
   trimUrl,
   validateModelConfig,
 } from '../../lib/modelVendorRegistry'
+import { Button, Input, Select, SelectItem } from '@notemeld/ui-web'
 
 type SelectedModel = {
   model_id: string
@@ -250,62 +251,65 @@ export function CloudModelForm({
     {readOnly ? <p role="alert" className="text-sm text-[var(--error)]">{t('models.read-only', '组织成员仅可查看模型，不能修改。')}</p> : null}
     {!providerToEdit ? <>
       <label htmlFor="model-vendor" className="text-sm font-medium">{t('models.provider-preset', '厂商预设')}</label>
-      <select id="model-vendor" value={vendorId} onChange={event => applyVendor(event.target.value)} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
-        {MODEL_VENDORS.map(vendor => <option key={vendor.id} value={vendor.id} disabled={Boolean(vendor.unsupported)}>
-          {vendor.name}{vendor.unsupported ? `（${t('models.unsupported', '暂不支持')}）` : ''}
-        </option>)}
-      </select>
+      <Select value={vendorId} onValueChange={value => applyVendor(value)}>
+        {MODEL_VENDORS.filter(vendor => !vendor.unsupported).map(vendor => <SelectItem key={vendor.id} value={vendor.id}>
+          {vendor.name}
+        </SelectItem>)}
+      </Select>
       {selectedVendor?.url_note ? <p className="text-xs text-[var(--muted)]">{selectedVendor.url_note}</p> : null}
     </> : null}
     <label htmlFor="model-name" className="text-sm font-medium">{t('models.display-name', '厂商显示名称')}</label>
-    <input id="model-name" required value={displayName} onChange={event => setDisplayName(event.target.value)} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2" />
+    <Input id="model-name" required value={displayName} onValueChange={setDisplayName} className="rounded border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2" />
     {!providerToEdit ? <>
       <label htmlFor="model-protocol" className="text-sm font-medium">{t('models.protocol', '协议')}</label>
-      <select id="model-protocol" value={protocol} onChange={event => setProtocol(event.target.value as typeof protocol)} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
-        {PROTOCOLS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-      </select>
+      <Select value={protocol} onValueChange={value => setProtocol(value as typeof protocol)}>
+        {PROTOCOLS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}
+      </Select>
     </> : null}
     <label htmlFor="model-base-url" className="text-sm font-medium">{t('models.base-url', 'Base URL')}</label>
-    <input id="model-base-url" type="url" required value={baseUrl} onChange={event => setBaseUrl(event.target.value)} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2" />
+    <Input id="model-base-url" type="url" required value={baseUrl} onValueChange={setBaseUrl} className="rounded border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2" />
     {needsKey ? <>
       <label htmlFor="model-api-key" className="text-sm font-medium">
         {hasStoredKey ? t('models.api-key-keep', 'API Key（留空保持不变）') : t('models.api-key', 'API Key')}
       </label>
-      <input id="model-api-key" type="password" autoComplete="new-password" value={apiKey} onChange={event => setApiKey(event.target.value)} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2" />
+      {/* 受控值经 onValueChange 透传到 Web Component，浏览器实际生效情况待验证 */}
+      <Input id="model-api-key" type="password" autoComplete="new-password" value={apiKey} onValueChange={setApiKey} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2" />
     </> : null}
     <div className="flex gap-2">
-      <button type="button" disabled={discoverDisabled} onClick={() => void discover()} className="flex-1 rounded border border-[var(--border-subtle)] px-3 py-2 text-sm hover:bg-[var(--surface-container)] disabled:opacity-50">
+      <Button type="button" variant="outline" disabled={discoverDisabled} onClick={() => void discover()} className="flex-1 rounded border-[var(--border-subtle)] px-3 py-2 text-sm hover:bg-[var(--surface-container)] disabled:opacity-50">
         {discovering ? t('models.discovering', '读取模型中…') : t('models.discover', '读取模型列表')}
-      </button>
-      <button type="button" disabled={testing || discoverDisabled} onClick={() => void testConnection()} className="flex-1 rounded border border-[var(--border-subtle)] px-3 py-2 text-sm hover:bg-[var(--surface-container)] disabled:opacity-50">
+      </Button>
+      <Button type="button" variant="outline" disabled={testing || discoverDisabled} onClick={() => void testConnection()} className="flex-1 rounded border-[var(--border-subtle)] px-3 py-2 text-sm hover:bg-[var(--surface-container)] disabled:opacity-50">
         {testing ? t('models.testing', '测试中…') : t('models.test', '测试连接')}
-      </button>
-      <button type="button" onClick={addManualModel} className="rounded border border-[var(--border-subtle)] px-3 py-2 text-sm hover:bg-[var(--surface-container)]">
+      </Button>
+      <Button type="button" variant="outline" onClick={addManualModel} className="rounded border-[var(--border-subtle)] px-3 py-2 text-sm hover:bg-[var(--surface-container)]">
         {t('models.add-id', '+ ID')}
-      </button>
+      </Button>
     </div>
     {protocol === 'anthropic-messages' && !discovered.length ? <p className="text-xs text-[var(--muted)]">
       {t('models.anthropic-catalog', `Anthropic 无公开列表接口，使用内置目录：${ANTHROPIC_BUILTIN_MODELS.map(item => item.id).join('、')}`)}
     </p> : null}
     {models.length ? <ul role="list" className="max-h-40 space-y-1 overflow-y-auto rounded border border-[var(--border-subtle)] p-2">
       {models.map(item => <li key={item.model_id} className="flex items-center gap-2 text-sm">
+        {/* 绑定包暂无 Radio 组件，单选默认模型暂保留原生 input[type=radio] */}
         <input type="radio" name="cloud-default-model" checked={item.is_default} onChange={() => updateModel(item.model_id, { is_default: true })} aria-label={t('models.default', '默认')} />
         <span className="min-w-0 flex-1 truncate">{item.display_name} <span className="text-xs text-[var(--muted)]">{item.model_id}</span></span>
-        <input type="number" min={512} max={4_000_000} value={item.context_window} onChange={event => updateModel(item.model_id, { context_window: Number(event.target.value) })} className="w-28 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-xs" aria-label={t('models.context-window', '上下文窗口')} />
-        {!existingModelIds.has(item.model_id) ? <button type="button" onClick={() => removeModel(item.model_id)} className="text-xs text-[var(--error)]">{t('models.remove', '移除')}</button> : <span className="text-xs text-[var(--muted)]">{t('models.saved', '已保存')}</span>}
+        {/* 受控值经 onValueChange 透传到 Web Component，浏览器实际生效情况待验证 */}
+        <Input type="number" min={512} max={4_000_000} value={item.context_window} onValueChange={value => updateModel(item.model_id, { context_window: Number(value) })} className="w-28 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-xs" aria-label={t('models.context-window', '上下文窗口')} />
+        {!existingModelIds.has(item.model_id) ? <Button type="button" variant="ghost" size="sm" onClick={() => removeModel(item.model_id)} className="text-xs text-[var(--error)]">{t('models.remove', '移除')}</Button> : <span className="text-xs text-[var(--muted)]">{t('models.saved', '已保存')}</span>}
       </li>)}
     </ul> : null}
     {!providerToEdit ? <div className="rounded border border-[var(--border-subtle)] p-2">
       <p className="mb-1 text-sm font-medium">{t('models.share-import', '分享 / 导入')}</p>
       <div className="flex gap-2">
-        <input value={shareText} onChange={event => setShareText(event.target.value)} placeholder="notemeld://model-add?d=…" className="min-w-0 flex-1 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-xs" />
-        <button type="button" onClick={() => void importShare()} className="rounded border border-[var(--border-subtle)] px-2 py-1 text-xs">{t('models.import', '导入')}</button>
-        <button type="button" onClick={() => void copyShare()} className="rounded border border-[var(--border-subtle)] px-2 py-1 text-xs">{t('models.share', '分享')}</button>
+        <Input value={shareText} onValueChange={setShareText} placeholder="notemeld://model-add?d=…" className="min-w-0 flex-1 rounded border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-xs" />
+        <Button type="button" variant="outline" size="sm" onClick={() => void importShare()} className="rounded border-[var(--border-subtle)] px-3 py-1 text-xs">{t('models.import', '导入')}</Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => void copyShare()} className="rounded border-[var(--border-subtle)] px-3 py-1 text-xs">{t('models.share', '分享')}</Button>
       </div>
     </div> : null}
-    <button type="submit" disabled={busy || readOnly} className="rounded bg-[var(--primary)] px-3 py-2 text-sm text-white disabled:opacity-50">
+    <Button type="submit" disabled={busy || readOnly} className="rounded px-3 py-2 text-sm text-white disabled:opacity-50">
       {busy ? t('models.saving', '保存中…') : t('models.save', '保存配置')}
-    </button>
+    </Button>
     {message ? <p role="status" className="text-sm text-emerald-700">{message}</p> : null}
     {error ? <p role="alert" className="text-sm text-[var(--error)]">{error}</p> : null}
   </form>

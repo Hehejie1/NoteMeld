@@ -1,3 +1,38 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 全部产物</title><link rel="stylesheet" href="../../assets/mobile.css"><link rel="stylesheet" href="../../assets/mobile-artifacts.css"></head>
-<body class="mobile-preview" data-page="M09"><div class="iphone-shell"><div class="iphone-island"></div><main class="mobile-screen artifact-screen"><header class="mobile-header artifact-header artifact-list-header"><button class="icon-only" data-go="M02" aria-label="返回会话"><i data-icon="chevron-left"></i></button><h1>检查系统架构</h1><span class="artifact-count" data-file-count></span></header><div class="artifact-list" data-artifact-list aria-live="polite"></div></main></div><script src="../../assets/vendor/lucide.js"></script><script src="../../assets/mobile.js"></script><script src="../../assets/mobile-artifacts.js"></script></body></html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 全部产物</title>
+<link rel="stylesheet" href="../../assets/mobile.css"><link rel="stylesheet" href="../../assets/mobile-artifacts.css">
+<style>
+  .artifact-header nm-icon-button{width:40px;height:40px;color:#283447;}
+  .artifact-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+  /* 文件数徽章 */
+  .artifact-list-header nm-badge.artifact-count{font-size:10px;font-weight:700;color:#3975ed;background:#e8efff;padding:3px 9px;border-radius:999px;}
+</style>
+</head>
+<body class="mobile-preview" data-page="M09"><div class="iphone-shell"><div class="iphone-island"></div><main class="mobile-screen artifact-screen"><header class="mobile-header artifact-header artifact-list-header"><nm-icon-button name="chevronLeft" label="返回会话" data-go="M02"></nm-icon-button><h1>检查系统架构</h1><nm-badge class="artifact-count" tone="info" data-file-count></nm-badge></header><nm-list class="artifact-list" data-artifact-list data-form="wide" aria-live="polite"></nm-list></main></div>
+<script src="../../assets/vendor/lucide.js"></script>
+<script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+<script src="../../assets/mobile.js"></script>
+<script src="../../assets/mobile-artifacts.js"></script>
+<script>
+  (()=>{
+    // 兼容桥接：旧 mobile-artifacts.js 用 textContent 写入 [data-file-count]，
+    // 但 nm-badge 只渲染 slotted label，故用 MutationObserver 将文本同步为 slotted 子节点。
+    const badge=document.querySelector('[data-file-count]');
+    if(badge){
+      const sync=()=>{
+        const text=badge.textContent.trim();
+        const slot=badge.querySelector('[slot="default"]');
+        if(text && !(slot&&slot.textContent===text)){
+          badge.replaceChildren();
+          const span=document.createElement('span');
+          span.setAttribute('slot','default');
+          span.textContent=text;
+          badge.append(span);
+        }
+      };
+      new MutationObserver(sync).observe(badge,{childList:true,characterData:true,subtree:true});
+      setTimeout(sync,0);
+    }
+  })();
+</script>
+</body></html>

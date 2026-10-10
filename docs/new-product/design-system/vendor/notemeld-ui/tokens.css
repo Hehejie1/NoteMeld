@@ -1,6 +1,6 @@
 /* 自动生成，请勿手改。
  * 来源：@notemeld/ui（packages/notemeld-ui）
- * 同步时间：2026-10-07 09:43
+ * 同步时间：2026-10-09 15:06
  * 重新生成：python docs/new-product/design-system/sync_ui_package.py
  */
 /* ============================================================================
@@ -95,6 +95,9 @@
   --nm-tooltip-bg: #202533;
   --nm-tooltip-text: #ffffff;
   --nm-overlay-shade: rgb(15 22 40 / 46%);
+  /* 浮层（挂到 body 的 popover/sheet/dropdown）专用表面与阴影 */
+  --nm-surface-floating: var(--nm-surface-raised);
+  --nm-shadow-floating: 0 6px 16px rgb(20 30 50 / 12%), 0 24px 48px rgb(20 30 50 / 16%);
   --nm-press-y: 1px;
   --nm-hover-lift: -2px;
   --nm-focus-ring: 0 0 0 3px rgb(75 124 243 / 18%);
@@ -118,6 +121,9 @@
   --nm-warning-soft: #493719;
   --nm-danger-soft: #48242a;
   --nm-switch-track: #39445e;
+  --nm-surface-floating: var(--nm-surface-raised);
+  --nm-shadow-floating: 0 6px 18px rgb(0 0 0 / 42%), 0 28px 56px rgb(0 0 0 / 50%);
+  /* Tooltip 始终深底白字（与 antd 一致，不随主题翻转） */
   --nm-tooltip-bg: #0c101b;
   --nm-tooltip-text: #f2f5fc;
   --nm-card-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 18px rgb(0 0 0 / 34%);

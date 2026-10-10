@@ -1,0 +1,14 @@
+{
+  "extends": "../ui-web/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["react", "react-dom"],
+    "baseUrl": ".",
+    "paths": {
+      "@notemeld/ui": ["../../../../../packages/notemeld-ui/dist/index.d.ts"],
+      "@notemeld/ui/*": ["../../../../../packages/notemeld-ui/dist/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

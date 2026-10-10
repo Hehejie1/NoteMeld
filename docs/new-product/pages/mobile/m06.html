@@ -1,14 +1,27 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 存储空间</title><link rel="stylesheet" href="../../assets/mobile.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 存储空间</title>
+<link rel="stylesheet" href="../../assets/mobile.css">
+<style>
+  .detail-header nm-icon-button{width:40px;height:40px;color:#283447;}
+  .detail-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+  /* 总占用进度条 */
+  .storage-meter nm-progress{height:7px;}
+  .storage-meter nm-progress .nm-progress{height:7px;border-radius:99px;background:#e7ebf1;}
+  .storage-meter nm-progress .nm-progress-fill{border-radius:99px;background:linear-gradient(90deg,var(--mobile-accent),#6d91ee);}
+  /* 全部清除：危险幽灵按钮 */
+  .storage-summary nm-button.danger-text{height:auto;padding:0;font-size:11px;font-weight:800;color:var(--mobile-danger);min-height:44px;}
+  .storage-summary nm-button.danger-text:hover{background:transparent;color:var(--mobile-danger);}
+</style>
+</head>
 <body class="mobile-preview" data-page="M06">
   <div class="iphone-shell"><div class="iphone-island"></div>
     <main class="mobile-screen detail-screen storage-page">
-      <header class="mobile-header detail-header"><button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button><strong>存储空间</strong><span></span></header>
+      <header class="mobile-header detail-header"><nm-icon-button name="chevronLeft" label="返回设置" data-go="M03"></nm-icon-button><strong>存储空间</strong><span></span></header>
       <section class="storage-summary" data-motion>
         <div><span>NoteMeld 占用空间</span><strong data-storage-total>9.27 MB</strong></div>
-        <button class="danger-text" data-clear-all-storage>全部清除</button>
-        <div class="storage-meter"><span style="--portion:92%"></span></div>
+        <nm-button variant="ghost" size="sm" class="danger-text" data-clear-all-storage>全部清除</nm-button>
+        <div class="storage-meter"><nm-progress value="92"></nm-progress></div>
         <small>最近统计于今天 20:09</small>
       </section>
       <section class="storage-list" data-motion>
@@ -20,5 +33,7 @@
       <div class="toast" data-toast hidden>清理完成</div>
     </main>
   </div>
-  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script><script src="../../assets/mobile.js?v=20260901-7"></script>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/mobile.js?v=20260901-7"></script>
 </body></html>

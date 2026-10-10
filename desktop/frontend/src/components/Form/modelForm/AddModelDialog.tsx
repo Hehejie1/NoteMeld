@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useModelStore } from '@/store/modelStore'
 import {
   fetchModelsByConfig,
@@ -413,12 +414,12 @@ export function AddModelDialog({
                   const checked = Boolean(selected[model.model_id])
                   return (
                     <li key={model.model_id} className="flex items-center gap-3 px-3 py-2">
-                      <input
-                        type="checkbox"
+                      {/* 绑定包 Checkbox 不透传 data-*，data-model-checkbox 选择器在 cloud-web 下待验证 */}
+                      <Checkbox
                         data-model-checkbox={model.model_id}
                         className="h-4 w-4 shrink-0 accent-blue-600"
                         checked={checked}
-                        onChange={event => toggleModel(model, event.target.checked)}
+                        onCheckedChange={value => toggleModel(model, Boolean(value))}
                       />
                       <span className="min-w-0 flex-1 truncate text-sm" title={model.model_id}>
                         {model.model_id}
@@ -446,6 +447,7 @@ export function AddModelDialog({
                     return (
                       <li key={item.model_id} className="flex flex-wrap items-center gap-2 px-3 py-2">
                         <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                          {/* 绑定包暂无 Radio 组件，默认模型单选暂保留原生 input[type=radio] */}
                           <input
                             type="radio"
                             name="default-model"
@@ -485,14 +487,16 @@ export function AddModelDialog({
                                   ? '未通过'
                                   : '测试'}
                           </Button>
-                          <button
+                          {/* 图标按钮：ghost 变体，原有 p-1 类覆盖默认内边距 */}
+                          <Button
                             type="button"
+                            variant="ghost"
                             className="rounded p-1 text-neutral-400 hover:text-neutral-600"
                             onClick={() => toggleModel(item, false)}
                             aria-label={`移除 ${item.model_id}`}
                           >
                             <X className="h-4 w-4" />
-                          </button>
+                          </Button>
                         </div>
                         {error && <span className="w-full pl-6 text-xs text-red-500">{error}</span>}
                       </li>

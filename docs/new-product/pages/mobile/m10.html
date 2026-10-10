@@ -1,3 +1,61 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 文件预览</title><link rel="stylesheet" href="../../assets/mobile.css"><link rel="stylesheet" href="../../assets/mobile-artifacts.css"></head>
-<body class="mobile-preview" data-page="M10"><div class="iphone-shell"><div class="iphone-island"></div><main class="mobile-screen artifact-screen"><header class="mobile-header artifact-header artifact-preview-header"><button class="icon-only" data-go="M09" aria-label="返回文件列表"><i data-icon="chevron-left"></i></button><h1 data-preview-name>文件预览</h1><div class="artifact-preview-actions" role="group" aria-label="文件显示方式"><button data-preview-mode="rendered" aria-pressed="true">预览</button><button data-preview-mode="source" aria-pressed="false">原文</button></div></header><section class="artifact-preview-panel" aria-label="文件内容"><div class="artifact-preview-bar"><strong data-preview-label>预览</strong><a data-preview-download download><i data-icon="download"></i>下载</a></div><div class="artifact-preview-body" data-preview-body aria-live="polite"></div></section></main></div><script src="../../assets/vendor/lucide.js"></script><script src="../../assets/mobile.js"></script><script src="../../assets/mobile-artifacts.js"></script></body></html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 文件预览</title>
+<link rel="stylesheet" href="../../assets/mobile.css"><link rel="stylesheet" href="../../assets/mobile-artifacts.css">
+<style>
+  .artifact-header nm-icon-button{width:40px;height:40px;color:#283447;}
+  .artifact-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+  /* 预览内容内 nm-markdown / nm-code 撑满宽度 */
+  .artifact-preview-body nm-markdown,
+  .artifact-preview-body nm-code{display:block;width:100%;}
+  .artifact-preview-body nm-code .nm-code__pre{margin:0;background:transparent;}
+</style>
+</head>
+<body class="mobile-preview" data-page="M10"><div class="iphone-shell"><div class="iphone-island"></div><main class="mobile-screen artifact-screen"><header class="mobile-header artifact-header artifact-preview-header"><nm-icon-button name="chevronLeft" label="返回文件列表" data-go="M09"></nm-icon-button><h1 data-preview-name>文件预览</h1><div class="artifact-preview-actions" role="group" aria-label="文件显示方式"><button data-preview-mode="rendered" aria-pressed="true">预览</button><button data-preview-mode="source" aria-pressed="false">原文</button></div></header><section class="artifact-preview-panel" aria-label="文件内容"><div class="artifact-preview-bar"><strong data-preview-label>预览</strong><a data-preview-download download><i data-icon="download"></i>下载</a></div><div class="artifact-preview-body" data-preview-body aria-live="polite"></div></section></main></div>
+<script src="../../assets/vendor/lucide.js"></script>
+<script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+<script src="../../assets/mobile.js"></script>
+<script src="../../assets/mobile-artifacts.js"></script>
+<script>
+  (()=>{
+    // 兼容桥接：旧 mobile-artifacts.js 动态渲染 markdown <article> 或源码 <pre>。
+    // 用 MutationObserver 把这两类产物原地升级为 nm-markdown / nm-code，
+    // iframe、img、media 等保持原样，不改变旧脚本逻辑。
+    const body=document.querySelector('[data-preview-body]');
+    if(!body)return;
+    const upgradeArticle=article=>{
+      if(article.closest('nm-markdown'))return;
+      // 将旧脚本渲染出的语义 HTML 反向重建为 Markdown 文本，再交给 nm-markdown 渲染，
+      // 保留标题/列表/段落层级。
+      const lines=[];
+      article.querySelectorAll('h1,h2,h3,ul,p').forEach(node=>{
+        if(node.tagName==='UL'){
+          node.querySelectorAll('li').forEach(li=>lines.push('- '+li.textContent.trim()));
+        }else if(node.tagName[0]==='H'){
+          lines.push('#'.repeat(Number(node.tagName[1]))+' '+node.textContent.trim());
+        }else{
+          lines.push(node.textContent.trim());
+        }
+        lines.push('');
+      });
+      const nm=document.createElement('nm-markdown');
+      nm.textContent=lines.join('\n').trim();
+      article.replaceWith(nm);
+    };
+    const upgradePre=pre=>{
+      if(pre.closest('nm-code'))return;
+      const nm=document.createElement('nm-code');
+      nm.language=pre.querySelector('code')?.dataset.language||'';
+      nm.textContent=(pre.querySelector('code')?.textContent)||pre.textContent;
+      pre.replaceWith(nm);
+    };
+    const scan=()=>{
+      // Markdown 渲染产物：article.artifact-markdown（含 h1-h3/ul/p）
+      body.querySelectorAll('article.artifact-markdown').forEach(upgradeArticle);
+      // 原文 / 代码：pre（含 code[data-language]）
+      body.querySelectorAll('pre').forEach(upgradePre);
+    };
+    new MutationObserver(()=>{scan();}).observe(body,{childList:true,subtree:true});
+    setTimeout(scan,0);
+  })();
+</script>
+</body></html>

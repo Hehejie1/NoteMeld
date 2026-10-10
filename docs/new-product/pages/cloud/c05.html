@@ -30,9 +30,9 @@
             <span class="section-kicker">Trusted devices</span>
             <h1>设备管理</h1>
           </div>
-          <button class="primary-button" type="button" data-open-pairing>
+          <nm-button variant="primary" class="primary-button" type="button" data-open-pairing>
             <i data-icon="plus"></i>添加设备
-          </button>
+          </nm-button>
         </header>
         <section class="device-groups">
           <div class="section-heading">
@@ -41,7 +41,7 @@
               <span>3 台设备</span>
             </div>
             <div class="scope-tabs">
-              <button class="active">用户设备</button><button>运行节点</button>
+              <nm-button variant="ghost" class="active">用户设备</nm-button><nm-button variant="ghost">运行节点</nm-button>
             </div>
           </div>
           <article class="device-row">
@@ -54,7 +54,7 @@
               ><strong>文件读取、远程执行</strong
               ><small>高风险操作需审批</small></span
             ><span><strong>凭证正常</strong><small>2026-08-28 配对</small></span
-            ><button class="secondary-button">管理</button>
+            ><nm-button variant="secondary" class="secondary-button">管理</nm-button>
           </article>
           <article class="device-row">
             <span class="device-icon"><i data-icon="monitor"></i></span
@@ -64,7 +64,7 @@
             ><span><strong>离线</strong><small>昨天 22:18</small></span
             ><span><strong>仅查看状态</strong><small>禁止文件访问</small></span
             ><span><strong>待更新</strong><small>建议轮换凭证</small></span
-            ><button class="secondary-button">管理</button>
+            ><nm-button variant="secondary" class="secondary-button">管理</nm-button>
           </article>
         </section>
         <section class="security-callout">
@@ -89,24 +89,18 @@
             <span class="section-kicker">Pair device</span>
             <h2>添加设备</h2>
           </div>
-          <button
-            class="icon-button"
-            type="button"
-            data-close-pairing
-            aria-label="关闭"
-          >
-            <i data-icon="x"></i>
-          </button>
+          <nm-icon-button class="icon-button" name="x" label="关闭" data-close-pairing></nm-icon-button>
         </header>
         <div class="pairing-content">
           <div class="qr-placeholder"><i data-icon="qr-code"></i></div>
           <h3>使用桌面端扫描二维码</h3>
           <p>凭证 10 分钟内有效，仅可使用一次。</p>
           <code>NM-7K2P-9Q4D</code
-          ><button class="secondary-button" type="button">复制配对链接</button>
+          ><nm-button variant="secondary" class="secondary-button" type="button">复制配对链接</nm-button>
         </div>
       </section>
     </div>
+    <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
     <script src="../../assets/vendor/lucide.js"></script>
     <script src="../../assets/page.js"></script>
     <script src="../../assets/cloud.js"></script>

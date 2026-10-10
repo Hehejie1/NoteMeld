@@ -1,1 +1,414 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 监控应用</title><link rel="stylesheet" href="../../assets/page.css"><link rel="stylesheet" href="../../assets/d01.css"><link rel="stylesheet" href="../../assets/apps.css"></head><body data-page="APP03"><div class="desktop-app app-product"><aside class="desktop-sidebar"><div class="sidebar-head"><div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div><div class="sidebar-actions"><button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button><button aria-label="通知"><i data-icon="bell"></i></button><button aria-label="搜索"><i data-icon="search"></i></button></div></div><nav class="quick-nav" aria-label="主要功能"><a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a><a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a><a class="quick-link" href="#" data-go="D09"><span>⚙</span>设置</a></nav><section class="session-list"><div class="section-label"><span>最近应用</span></div><a class="session" href="#" data-go="APP01"><strong>笔记应用</strong><small>12 篇笔记 · 3 个 Wiki 空间</small></a><a class="session" href="#" data-go="APP02"><strong>学习应用</strong><small>2 个学习空间 · 4 个待复习</small></a><a class="session" href="#" data-go="APP03"><strong>监控应用</strong><small>本地运行正常</small></a><a class="session" href="#" data-go="APP04"><strong>系统运行</strong><small>1 个审批待处理</small></a></section><div class="sidebar-footer"><span class="connection"><i></i>本地 Agent 已连接</span><button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button></div></aside><main class="app-main"><header class="app-topbar"><div class="app-brandline"><span class="app-brandmark"><i data-icon="activity"></i></span><div><strong>监控应用</strong><small>观察 Agent、模型、插件和本机运行环境</small></div></div><div class="app-top-actions"><label class="app-search"><i data-icon="search"></i><input data-app-search type="search" aria-label="搜索监控项目" placeholder="搜索任务、Provider 或插件"></label><button type="button"><i data-icon="refresh-cw"></i> 刷新</button><button type="button" class="primary"><i data-icon="download"></i> 导出报告</button></div></header><nav class="app-nav" aria-label="监控应用导航"><button class="active" data-app-tab="overview">运行总览</button><button data-app-tab="usage">Token 用量</button><button data-app-tab="runtime">运行环境</button><button data-app-tab="health">健康检查</button></nav><div class="app-scroll"><section class="app-view active" data-app-view="overview"><header class="app-heading"><div><p class="app-kicker">RUNTIME OBSERVABILITY</p><h1>运行总览</h1><p>从 Agent 任务、模型调用、插件执行和本机资源四个层面观察系统是否健康。</p></div><div class="app-heading-meta"><i></i>所有核心服务正常</div></header><div class="app-metric-grid"><div class="app-metric"><strong>2</strong><span>运行中任务</span></div><div class="app-metric"><strong>14</strong><span>今日 Agent 调用</span></div><div class="app-metric"><strong>98.4%</strong><span>任务成功率</span></div><div class="app-metric"><strong>42%</strong><span>本机内存占用</span></div></div><div class="app-section"><div class="app-section-head"><div><h2>运行中的任务</h2><p>任务状态来自 Agent Turn 和事件持久化</p></div><button type="button">打开诊断 <i data-icon="arrow-up-right"></i></button></div><div class="app-list"><article class="app-list-row" data-app-item><div><strong>生成 Markdown 架构报告</strong><p>Agent Turn · 读取 Workspace · 事件序号 1842</p></div><span class="app-chip success">运行中</span><time>42%</time></article><article class="app-list-row" data-app-item><div><strong>资料检索 Agent</strong><p>研究搜索插件 · 4 个来源 · 最后事件 12 秒前</p></div><span class="app-chip">等待模型</span><time>刚刚</time></article></div></div><div class="app-section"><div class="app-section-head"><div><h2>组件状态</h2><p>Provider、MCP、插件和转写器</p></div></div><div class="app-card-grid"><article class="app-card" data-app-item><div class="app-card-top"><div class="app-card-icon"><i data-icon="cpu"></i></div><span class="app-chip success">正常</span></div><h3>deepseek-v4-flash</h3><p>Provider 响应正常 · 平均延迟 1.8s · 今日 14 次调用</p><small>最后检查 30 秒前</small></article><article class="app-card" data-app-item><div class="app-card-top"><div class="app-card-icon"><i data-icon="puzzle"></i></div><span class="app-chip warn">需配置</span></div><h3>Browser 插件</h3><p>缺少浏览器授权，调用会在发送前进入授权流程。</p><small>权限范围：网页读取 · 交互执行</small></article></div></div></section><section class="app-view" data-app-view="usage"><header class="app-heading"><div><p class="app-kicker">MODEL USAGE</p><h1>Token 用量</h1><p>按 Provider、模型、任务和时间查看真实调用消耗。</p></div><span class="app-chip">本月统计</span></header><div class="app-metric-grid"><div class="app-metric"><strong>186.4k</strong><span>总 Token</span></div><div class="app-metric"><strong>112.8k</strong><span>输入 Token</span></div><div class="app-metric"><strong>73.6k</strong><span>输出 Token</span></div><div class="app-metric"><strong>¥12.40</strong><span>估算成本</span></div></div><div class="app-list"><article class="app-list-row" data-app-item><div><strong>deepseek-v4-flash</strong><p>研究报告 · 8 次调用 · 输入 42.2k / 输出 28.1k</p></div><span class="app-chip">60%</span><time>¥4.20</time></article><article class="app-list-row" data-app-item><div><strong>GLM-5.3</strong><p>代码审查 · 4 次调用 · 输入 70.6k / 输出 45.5k</p></div><span class="app-chip">40%</span><time>¥8.20</time></article></div></section><section class="app-view" data-app-view="runtime"><header class="app-heading"><div><p class="app-kicker">LOCAL RUNTIME</p><h1>运行环境</h1><p>本机 Agent、GPU、CUDA、转写器和 MCP 服务的运行事实。</p></div><span class="app-chip success">本机在线</span></header><div class="app-card-grid"><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="server"></i></div><span class="app-chip success">已连接</span></div><h3>Desktop Agent Host</h3><p>端口 8483 · Agent SDK ready · 事件流正常</p><small>自动启动：已开启</small></article><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="zap"></i></div><span class="app-chip success">可用</span></div><h3>GPU / CUDA</h3><p>GPU 0 · CUDA 12.4 · 当前占用 28%</p><small>显存 3.2 GB / 12 GB</small></article><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="plug-zap"></i></div><span class="app-chip success">3 已连接</span></div><h3>MCP 服务</h3><p>Filesystem、GitHub、NoteMeld Wiki 正常响应。</p><small>1 个服务需要重新授权</small></article><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="captions"></i></div><span class="app-chip">未运行</span></div><h3>转写器</h3><p>Whisper large-v3 已下载，等待任务时按需启动。</p><small>最近任务：昨天 18:32</small></article></div></section><section class="app-view" data-app-view="health"><header class="app-heading"><div><p class="app-kicker">HEALTH CHECK</p><h1>健康检查</h1><p>把异常定位到组件、配置或最近一次失败任务。</p></div><button class="app-top-actions primary" type="button">重新检查</button></header><div class="app-timeline"><article class="app-timeline-item"><i></i><div><strong>Agent Host 心跳</strong><p>通过 · 8483 端口响应正常 · 30 秒前</p></div></article><article class="app-timeline-item"><i></i><div><strong>Provider 连接</strong><p>通过 · 默认模型响应 1.8s · 1 分钟前</p></div></article><article class="app-timeline-item"><i></i><div><strong>插件权限</strong><p>警告 · Browser 插件等待授权，不影响其他任务。</p></div></article></div></section></div></main></div><script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/apps.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NoteMeld · 监控应用</title>
+  <link rel="stylesheet" href="../../assets/page.css">
+  <link rel="stylesheet" href="../../assets/d01.css">
+  <link rel="stylesheet" href="../../assets/apps.css">
+</head>
+<body data-page="APP03">
+  <div class="desktop-app app-product">
+    <aside class="desktop-sidebar">
+      <div class="sidebar-head">
+        <div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div>
+        <div class="sidebar-actions">
+          <button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button>
+          <button aria-label="通知"><i data-icon="bell"></i></button>
+          <button aria-label="搜索"><i data-icon="search"></i></button>
+        </div>
+      </div>
+      <nav class="quick-nav" aria-label="主要功能">
+        <a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a>
+        <a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a>
+        <a class="quick-link" href="#" data-go="D09"><span>⚙</span>设置</a>
+      </nav>
+      <section class="session-list">
+        <div class="section-label"><span>最近应用</span></div>
+        <a class="session" href="#" data-go="APP01"><strong>笔记应用</strong><small>12 篇笔记 · 3 个 Wiki 空间</small></a>
+        <a class="session" href="#" data-go="APP02"><strong>学习应用</strong><small>2 个学习空间 · 4 个待复习</small></a>
+        <a class="session" href="#" data-go="APP03"><strong>监控应用</strong><small>本地运行正常</small></a>
+        <a class="session" href="#" data-go="APP04"><strong>系统运行</strong><small>1 个审批待处理</small></a>
+      </section>
+      <div class="sidebar-footer">
+        <span class="connection"><i></i>本地 Agent 已连接</span>
+        <button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button>
+      </div>
+    </aside>
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="app-brandline">
+          <span class="app-brandmark"><i data-icon="activity"></i></span>
+          <div><strong>监控应用</strong><small>观察 Agent、模型、插件和本机运行环境</small></div>
+        </div>
+        <div class="app-top-actions">
+          <nm-search class="app-search" data-app-search placeholder="搜索任务、Provider 或插件" aria-label="搜索监控项目"></nm-search>
+          <nm-button variant="secondary" id="app03Refresh"><span slot="leading" data-icon="refresh"></span>刷新</nm-button>
+          <nm-button variant="primary"><span slot="leading" data-icon="download"></span>导出报告</nm-button>
+        </div>
+      </header>
+      <nm-tabs class="app-nav" aria-label="监控应用导航" value="overview">
+        <nm-tab key="overview" label="运行总览"></nm-tab>
+        <nm-tab key="usage" label="Token 用量"></nm-tab>
+        <nm-tab key="runtime" label="运行环境"></nm-tab>
+        <nm-tab key="health" label="健康检查"></nm-tab>
+      </nm-tabs>
+      <div class="app-scroll">
+        <section class="app-view active" data-app-view="overview">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">RUNTIME OBSERVABILITY</p>
+              <h1>运行总览</h1>
+              <p>从 Agent 任务、模型调用、插件执行和本机资源四个层面观察系统是否健康。</p>
+            </div>
+            <div class="app-heading-meta"><i></i>所有核心服务正常</div>
+          </header>
+          <div class="app-metric-grid">
+            <div class="app-metric"><strong>2</strong><span>运行中任务</span></div>
+            <div class="app-metric"><strong>14</strong><span>今日 Agent 调用</span></div>
+            <div class="app-metric"><strong>98.4%</strong><span>任务成功率</span></div>
+            <div class="app-metric"><strong>42%</strong><span>本机内存占用</span></div>
+          </div>
+          <div class="app-section">
+            <div class="app-section-head">
+              <div><h2>运行中的任务</h2><p>任务状态来自 Agent Turn 和事件持久化</p></div>
+              <nm-button variant="link" size="sm"><span slot="leading" data-icon="externalLink"></span>打开诊断</nm-button>
+            </div>
+            <nm-list class="app-list" bordered>
+              <nm-list-item class="app-list-row" data-app-item>
+                <span slot="extra">
+                  <strong>生成 Markdown 架构报告</strong>
+                  <p>Agent Turn · 读取 Workspace · 事件序号 1842</p>
+                </span>
+                <nm-badge class="app-chip" slot="trailing" tone="success">运行中</nm-badge>
+                <nm-progress class="app-task-progress" value="42" size="sm" slot="trailing"></nm-progress>
+              </nm-list-item>
+              <nm-list-item class="app-list-row" data-app-item>
+                <span slot="extra">
+                  <strong>资料检索 Agent</strong>
+                  <p>研究搜索插件 · 4 个来源 · 最后事件 12 秒前</p>
+                </span>
+                <nm-badge class="app-chip" slot="trailing" tone="neutral">等待模型</nm-badge>
+                <time slot="trailing">刚刚</time>
+              </nm-list-item>
+            </nm-list>
+          </div>
+          <div class="app-section">
+            <div class="app-section-head">
+              <div><h2>组件状态</h2><p>Provider、MCP、插件和转写器</p></div>
+            </div>
+            <div class="app-card-grid">
+              <nm-card class="app-card" data-app-item>
+                <div>
+                  <div class="app-card-top">
+                    <div class="app-card-icon"><i data-icon="cpu"></i></div>
+                    <nm-badge class="app-chip" tone="success">正常</nm-badge>
+                  </div>
+                  <h3>deepseek-v4-flash</h3>
+                  <p>Provider 响应正常 · 平均延迟 1.8s · 今日 14 次调用</p>
+                  <small>最后检查 30 秒前</small>
+                </div>
+              </nm-card>
+              <nm-card class="app-card" data-app-item>
+                <div>
+                  <div class="app-card-top">
+                    <div class="app-card-icon"><i data-icon="puzzle"></i></div>
+                    <nm-badge class="app-chip" tone="warning">需配置</nm-badge>
+                  </div>
+                  <h3>Browser 插件</h3>
+                  <p>缺少浏览器授权，调用会在发送前进入授权流程。</p>
+                  <small>权限范围：网页读取 · 交互执行</small>
+                </div>
+              </nm-card>
+            </div>
+          </div>
+        </section>
+
+        <section class="app-view" data-app-view="usage">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">MODEL USAGE</p>
+              <h1>Token 用量</h1>
+              <p>按 Provider、模型、任务和时间查看真实调用消耗。</p>
+            </div>
+            <nm-badge class="app-chip" tone="neutral">本月统计</nm-badge>
+          </header>
+          <div class="app-metric-grid">
+            <div class="app-metric"><strong>186.4k</strong><span>总 Token</span></div>
+            <div class="app-metric"><strong>112.8k</strong><span>输入 Token</span></div>
+            <div class="app-metric"><strong>73.6k</strong><span>输出 Token</span></div>
+            <div class="app-metric"><strong>¥12.40</strong><span>估算成本</span></div>
+          </div>
+          <div class="app-filter-bar">
+            <nm-select id="app03Provider" placeholder="全部供应商" aria-label="按供应商筛选">
+              <nm-option value="" label="全部供应商"></nm-option>
+              <nm-option value="deepseek" label="DeepSeek"></nm-option>
+              <nm-option value="zhipu" label="智谱 GLM"></nm-option>
+            </nm-select>
+            <nm-select id="app03Range" placeholder="本月" aria-label="按时间范围筛选">
+              <nm-option value="month" label="本月" selected></nm-option>
+              <nm-option value="week" label="近 7 天"></nm-option>
+              <nm-option value="today" label="今天"></nm-option>
+            </nm-select>
+          </div>
+          <nm-table id="app03Table" bordered class="app-usage-table">
+            <nm-column key="model" title="模型"></nm-column>
+            <nm-column key="provider" title="供应商" hide-below="wide"></nm-column>
+            <nm-column key="detail" title="调用说明"></nm-column>
+            <nm-column key="share" title="用量占比" align="center"></nm-column>
+            <nm-column key="cost" title="成本" align="right"></nm-column>
+            <nm-row id="row-deepseek" data-provider="deepseek">
+              <nm-cell name="model">deepseek-v4-flash</nm-cell>
+              <nm-cell name="provider">DeepSeek</nm-cell>
+              <nm-cell name="detail">研究报告 · 8 次调用 · 输入 42.2k / 输出 28.1k</nm-cell>
+              <nm-cell name="share">60%</nm-cell>
+              <nm-cell name="cost">¥4.20</nm-cell>
+            </nm-row>
+            <nm-row id="row-zhipu" data-provider="zhipu">
+              <nm-cell name="model">GLM-5.3</nm-cell>
+              <nm-cell name="provider">智谱 GLM</nm-cell>
+              <nm-cell name="detail">代码审查 · 4 次调用 · 输入 70.6k / 输出 45.5k</nm-cell>
+              <nm-cell name="share">40%</nm-cell>
+              <nm-cell name="cost">¥8.20</nm-cell>
+            </nm-row>
+          </nm-table>
+          <nm-alert class="app-usage-alert" tone="info">
+            <span slot="title">口径说明</span>
+            <span slot="default">用量为近实时统计；结算金额以账单页（T+1）为准，二者不一致属于正常现象。</span>
+          </nm-alert>
+        </section>
+
+        <section class="app-view" data-app-view="runtime">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">LOCAL RUNTIME</p>
+              <h1>运行环境</h1>
+              <p>本机 Agent、GPU、CUDA、转写器和 MCP 服务的运行事实。</p>
+            </div>
+            <nm-badge class="app-chip" tone="success">本机在线</nm-badge>
+          </header>
+          <div class="app-card-grid">
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="server"></i></div>
+                  <nm-badge class="app-chip" tone="success">已连接</nm-badge>
+                </div>
+                <h3>Desktop Agent Host</h3>
+                <p>端口 8483 · Agent SDK ready · 事件流正常</p>
+                <small>自动启动：已开启</small>
+              </div>
+            </nm-card>
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="zap"></i></div>
+                  <nm-badge class="app-chip" tone="success">可用</nm-badge>
+                </div>
+                <h3>GPU / CUDA</h3>
+                <p>GPU 0 · CUDA 12.4 · 当前占用 28%</p>
+                <nm-progress class="app-progress" value="28"></nm-progress>
+                <small>显存 3.2 GB / 12 GB</small>
+              </div>
+            </nm-card>
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="plug-zap"></i></div>
+                  <nm-badge class="app-chip" tone="success">3 已连接</nm-badge>
+                </div>
+                <h3>MCP 服务</h3>
+                <p>Filesystem、GitHub、NoteMeld Wiki 正常响应。</p>
+                <small>1 个服务需要重新授权</small>
+              </div>
+            </nm-card>
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="captions"></i></div>
+                  <nm-badge class="app-chip" tone="neutral">未运行</nm-badge>
+                </div>
+                <h3>转写器</h3>
+                <p>Whisper large-v3 已下载，等待任务时按需启动。</p>
+                <small>最近任务：昨天 18:32</small>
+              </div>
+            </nm-card>
+          </div>
+        </section>
+
+        <section class="app-view" data-app-view="health">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">HEALTH CHECK</p>
+              <h1>健康检查</h1>
+              <p>把异常定位到组件、配置或最近一次失败任务。</p>
+            </div>
+            <nm-button variant="primary" class="app-heading-button" id="app03Recheck">重新检查</nm-button>
+          </header>
+          <nm-alert class="app-health-alert" tone="warning">
+            <span slot="title">1 个警告（不影响其他任务）</span>
+            <span slot="default">Browser 插件缺少浏览器授权，相关调用会先进入授权流程。</span>
+          </nm-alert>
+          <nm-timeline class="app-timeline">
+            <nm-timeline-item title="Agent Host 心跳" time="30 秒前" tone="success">通过 · 8483 端口响应正常</nm-timeline-item>
+            <nm-timeline-item title="Provider 连接" time="1 分钟前" tone="success">通过 · 默认模型响应 1.8s</nm-timeline-item>
+            <nm-timeline-item title="插件权限" time="2 分钟前" tone="warning">警告 · Browser 插件等待授权</nm-timeline-item>
+          </nm-timeline>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+    /* 升级时序保护（必须在 bundle 执行前运行）：
+       DOM 先于 bundle 就绪，各 nm-* 升级时宿主的 collectSlots 会穿透进嵌套
+       自定义元素内部误收用户投影（含 nm-badge 内部 label），造成丢失/污染。
+       保存 nm-list-item 直接子节点与 nm-badge/nm-tag 文本，由底部脚本重建。 */
+    function __nmProtect() {
+      document.querySelectorAll('nm-list-item').forEach(host => {
+        const saved = Array.from(host.children).filter(el => !el.hasAttribute('data-nm-internal'));
+        if (saved.length) host.__nmSaved = saved;
+      });
+      document.querySelectorAll('nm-badge,nm-tag,nm-button').forEach(host => {
+        const children = Array.from(host.children).filter(el => !el.hasAttribute('data-nm-internal'));
+        if (children.length) host.__nmSavedInner = children;
+        const text = host.textContent.trim();
+        if (text) host.__nmText = text;
+      });
+    }
+    __nmProtect();
+  </script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../assets/page.js"></script>
+  <script src="../../assets/d01.js"></script>
+  <script src="../../assets/apps.js"></script>
+  <script>
+    /* 升级后恢复（配合上方保护脚本）：重建被污染的 nm-badge/nm-tag 内部结构，
+       并把 nm-list-item 保存的子节点放回对应 slot 占位、解除占位 hidden。 */
+    function __nmKindOf(host) {
+      const tag = host.tagName.toLowerCase();
+      return tag === 'nm-tag' ? ['nm-tag__label', null]
+        : tag === 'nm-button' ? ['nm-button__label', null]
+        : ['nm-badge__label', 'nm-badge__dot'];
+    }
+    function __nmFixBadge(host) {
+      const text = host.__nmText;
+      const savedInner = host.__nmSavedInner;
+      const [labelClass, dotClass] = __nmKindOf(host);
+      const labelEl = host.querySelector('.' + labelClass);
+      if (labelEl?.textContent === text || (!text && !savedInner)) {
+        delete host.__nmText; host.__nmSavedInner = null;
+        return true;
+      }
+      const inner = (savedInner || []).filter(n => n.getAttribute('slot') !== 'leading' && n.getAttribute('slot') !== 'trailing');
+      host.textContent = '';
+      if (dotClass) {
+        const dot = document.createElement('span');
+        dot.className = dotClass;
+        dot.setAttribute('aria-hidden', 'true');
+        host.append(dot);
+      }
+      const label = document.createElement('span');
+      label.className = labelClass;
+      if (inner.length) label.append(...inner);
+      else if (text != null) label.textContent = text;
+      host.append(label);
+      host.__nmSavedInner = null;
+      delete host.__nmText;
+      return true;
+    }
+    function __nmRestoreOnce() {
+      document.querySelectorAll('nm-badge,nm-tag,nm-button').forEach(h => __nmFixBadge(h));
+      document.querySelectorAll('nm-list-item').forEach(item => {
+        const saved = item.__nmSaved;
+        if (!saved || !saved.length || !item.querySelector('.nm-list-item__main')) return;
+        saved.forEach(node => {
+          const slot = node.getAttribute('slot');
+          const selector = slot === 'extra' ? '.nm-list-item__extra'
+            : slot === 'trailing' ? '.nm-list-item__trailing'
+            : slot === 'leading' ? '.nm-list-item__leading'
+            : '.nm-list-item__main';
+          const target = item.querySelector(selector);
+          if (target && !target.contains(node)) {
+            target.append(node);
+            target.removeAttribute('hidden');
+          }
+        });
+        item.__nmSaved = null;
+      });
+    }
+    let __nmTries = 0;
+    (function __nmLoop() {
+      __nmRestoreOnce();
+      if (++__nmTries < 30) setTimeout(__nmLoop, 60);
+    })();
+  </script>
+  <script>
+    /* 最小兼容脚本：
+       1) nm-tabs nm:change → 旧 data-app-view 视图切换；
+       2) apps.js 的 .is-filtered 补充可见性（对列表/卡片生效）；
+       3) 供应商 nm-select → nm-table 行真实筛选（兼容 wide 表格 / compact 卡片两种形态）；
+       4) 刷新 / 重新检查按钮 → 内联 nm-alert 反馈，不伪造数据。 */
+    document.querySelectorAll('nm-tabs').forEach(tabs => {
+      tabs.addEventListener('nm:change', e => {
+        const target = e.detail?.value;
+        if (!target) return;
+        document.querySelectorAll('[data-app-view]').forEach(view => {
+          view.classList.toggle('active', view.dataset.appView === target);
+        });
+      });
+    });
+    if (!document.getElementById('app03FilteredStyle')) {
+      const filteredStyle = document.createElement('style');
+      filteredStyle.id = 'app03FilteredStyle';
+      filteredStyle.textContent = '.is-filtered{display:none !important}';
+      document.head.append(filteredStyle);
+    }
+
+    const table = document.getElementById('app03Table');
+    function rowElements() {
+      return Array.from(table.querySelectorAll('.nm-table__tr, .nm-table__card'));
+    }
+    function rowIdOf(el) {
+      const id = el.dataset.id || el.getAttribute('data-id') || '';
+      return id.replace(/^row-/, '');
+    }
+    const providerSelect = document.getElementById('app03Provider');
+    providerSelect?.addEventListener('nm:change', e => {
+      const provider = e.detail?.value ?? '';
+      rowElements().forEach(el => {
+        el.toggleAttribute('hidden', !!provider && rowIdOf(el) !== provider);
+      });
+    });
+    document.getElementById('app03Range')?.addEventListener('nm:change', e => {
+      const rangeSelect = document.getElementById('app03Range');
+      const label = rangeSelect?.querySelector('nm-option[value="' + (e.detail?.value ?? '') + '"]')?.getAttribute('label');
+      if (!label) return;
+      const alert = document.querySelector('.app-usage-alert');
+      if (alert) alert.querySelector('.nm-notice-body')?.replaceChildren();
+      const body = document.createElement('span');
+      body.textContent = '当前时间范围：' + label + '；原型仅展示本月数据，切换范围不做假聚合。';
+      alert?.querySelector('.nm-notice-body')?.append(body);
+    });
+
+    function flashAlert(container, tone, title) {
+      if (!container) return;
+      const existing = container.querySelector('nm-alert.nm-flash-alert');
+      if (existing) existing.remove();
+      const alert = document.createElement('nm-alert');
+      alert.setAttribute('tone', tone);
+      alert.setAttribute('title', title);
+      alert.className = 'nm-flash-alert';
+      alert.innerHTML = '<span slot="default">刷新时间 ' + new Date().toLocaleTimeString('zh-CN') + '，数据口径未变化。</span>';
+      container.prepend(alert);
+    }
+    document.getElementById('app03Refresh')?.addEventListener('nm:press', () => {
+      flashAlert(document.querySelector('[data-app-view="overview"]'), 'info', '已刷新');
+    });
+    document.getElementById('app03Recheck')?.addEventListener('nm:press', () => {
+      flashAlert(document.querySelector('[data-app-view="health"]'), 'success', '检查完成');
+    });
+  </script>
+</body>
+</html>

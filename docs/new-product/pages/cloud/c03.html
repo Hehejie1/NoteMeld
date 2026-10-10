@@ -169,7 +169,7 @@
                 <div class="explorer-main">
                   <header class="explorer-head">
                     <strong>资源管理器</strong>
-                    <button class="icon-button" title="更多操作" aria-label="更多操作" data-explorer-menu><i data-icon="ellipsis"></i></button>
+                    <nm-icon-button name="moreHorizontal" label="更多操作" data-explorer-menu></nm-icon-button>
                   </header>
                   <div class="explorer-search" data-explorer-search>
                     <i data-icon="search"></i
@@ -191,30 +191,11 @@
               <header class="terminal-tabs">
                 <div class="terminal-tab active">
                   <i data-icon="terminal"></i><span>ssh</span
-                  ><button
-                    class="terminal-tab-close"
-                    title="关闭终端标签"
-                    aria-label="关闭终端标签"
-                  >
-                    <i data-icon="x"></i>
-                  </button>
+                  ><nm-icon-button class="terminal-tab-close" name="x" label="关闭终端标签"></nm-icon-button>
                 </div>
-                <button
-                  class="terminal-add"
-                  title="新建终端"
-                  aria-label="新建终端"
-                >
-                  <i data-icon="plus"></i
-                ></button>
+                <nm-icon-button class="terminal-add" name="plus" label="新建终端"></nm-icon-button>
                 <span class="terminal-spacer"></span>
-                <button
-                  class="icon-button"
-                  title="关闭底部面板"
-                  aria-label="关闭底部面板"
-                  data-panel-close="bottom"
-                >
-                  <i data-icon="x"></i>
-                </button>
+                <nm-icon-button class="icon-button" name="x" label="关闭底部面板" data-panel-close="bottom"></nm-icon-button>
               </header>
               <div class="terminal-body" data-bottom-logs><div class="terminal-line"><span class="t-prompt-user">hehejie@hehejie</span><span class="t-colon">:</span><span class="t-path">~</span><span class="t-colon">$</span><span class="t-cursor"></span></div></div>
             </section>
@@ -222,6 +203,7 @@
         </div>
       </main>
     </div>
+    <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
     <script src="../../assets/vendor/lucide.js"></script>
     <script src="../../assets/page.js"></script>
     <script src="../../assets/cloud.js"></script>

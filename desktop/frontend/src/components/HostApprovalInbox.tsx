@@ -4,6 +4,7 @@ import {
   resolveAgentApproval,
   type PendingAgentApproval,
 } from '@/services/agent'
+import { Button } from '@notemeld/ui-web'
 
 interface Props {
   backendReady: boolean
@@ -68,7 +69,10 @@ export default function HostApprovalInbox({ backendReady, visible, onCountChange
       <strong>{approval.session_title}</strong>
       <p>{approval.summary || 'Agent 请求执行受保护操作'}</p>
       <small>{approval.risk ? `风险：${approval.risk} · ` : ''}{formatDeadline(approval.deadline)}</small>
-      <div><button type="button" disabled={busyId === approval.approval_id} onClick={() => void decide(approval.approval_id, 'deny')} aria-label={`notemeld-host-approval-deny:${approval.approval_id}`}>拒绝</button><button type="button" disabled={busyId === approval.approval_id} onClick={() => void decide(approval.approval_id, 'approve')} aria-label={`notemeld-host-approval-approve:${approval.approval_id}`}>批准</button></div>
+      <div>
+        <Button type="button" variant="secondary" disabled={busyId === approval.approval_id} onClick={() => void decide(approval.approval_id, 'deny')} aria-label={`notemeld-host-approval-deny:${approval.approval_id}`}>拒绝</Button>
+        <Button type="button" variant="default" disabled={busyId === approval.approval_id} onClick={() => void decide(approval.approval_id, 'approve')} aria-label={`notemeld-host-approval-approve:${approval.approval_id}`}>批准</Button>
+      </div>
     </li>)}</ol>}
   </div>
 }

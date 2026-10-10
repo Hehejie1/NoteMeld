@@ -33,6 +33,9 @@ import {
   Check,
   X,
 } from 'lucide-react'
+import { Button } from '@notemeld/ui-web/button'
+import { Input } from '@notemeld/ui-web/input'
+import { Textarea } from '@notemeld/ui-web/textarea'
 import CloudClient, { type CloudAttachment, type CloudModel } from '../../services/cloud'
 import { useCloudSession } from '../../hooks/useCloudSession'
 import { localizeCloudError, useCloudLocale } from '../../pages/CloudPage/cloudLocale'
@@ -460,14 +463,16 @@ export function CloudSessionPanel({
                       >
                         <FileText className="h-3 w-3 text-[var(--primary)]" />
                         <span className="max-w-[150px] truncate">{ref.path.split('/').pop()}</span>
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           type="button"
                           aria-label={t('session.remove-ref', '移除引用')}
                           onClick={() => setRefs(current => current.filter(item => item.id !== ref.id))}
-                          className="text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]"
+                          className="h-auto w-auto text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]"
                         >
                           <X className="h-3 w-3" />
-                        </button>
+                        </Button>
                       </span>
                     ))}
                   </div>
@@ -480,9 +485,9 @@ export function CloudSessionPanel({
                     <span className="mr-1">📎</span>{attachmentName}
                   </p>
                 ) : null}
-                <textarea
+                <Textarea
                   value={input}
-                  onChange={event => setInput(event.target.value)}
+                  onValueChange={setInput}
                   onPaste={event => {
                     const file = Array.from(event.clipboardData.files).find(item =>
                       item.type.startsWith('image/')
@@ -500,6 +505,7 @@ export function CloudSessionPanel({
                   <label className="flex cursor-pointer items-center gap-1.5 px-1 py-1 text-xs font-semibold text-[var(--primary)]">
                     <Plus className="h-4 w-4" />
                     {t('session.add', '添加')}
+                    {/* nm-input 仅支持 text/password 类型，无法承载文件选择，隐藏文件输入保留原生实现 */}
                     <input
                       type="file"
                       className="sr-only"
@@ -519,15 +525,16 @@ export function CloudSessionPanel({
                     }}
                     client={client}
                   />
-                  <button
+                  <Button
                     type="submit"
+                    size="icon"
                     aria-label={t('session.send', '发送')}
                     disabled={sending || !input.trim() || !model}
                     title={!model ? t('session.model-hint', '请先在设置中配置模型') : ''}
-                    className="grid h-9 w-9 place-items-center rounded-full bg-[var(--primary)] text-white disabled:opacity-40"
+                    className="h-9 w-9 rounded-full bg-[var(--primary)] text-white disabled:opacity-40"
                   >
                     <ArrowUp className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -598,10 +605,11 @@ function TurnBlock({ turn }: { turn: Turn }) {
       {reasoning.length ? (
         <div className="flex justify-start">
           <div className="max-w-[92%] overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-container-low,transparent)]">
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => setReasoningOpen(value => !value)}
-              className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[12px] text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]"
+              className="flex w-full items-center justify-start gap-1.5 rounded-none px-3 py-1.5 text-[12px] font-normal text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]"
               aria-expanded={reasoningOpen}
             >
               <ChevronDown
@@ -610,7 +618,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
               <Brain className="h-3.5 w-3.5" />
               <span>{t('session.thought', '思考过程')}</span>
               {turn.streaming && !hasAnswer ? <ThinkingDots /> : null}
-            </button>
+            </Button>
             {reasoningOpen ? (
               <div className="space-y-2 border-t border-[var(--border-subtle)] px-3 py-2">
                 {reasoning.map((part, index) => (
@@ -669,16 +677,18 @@ function IconToggle({
   children: ReactNode
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon"
       type="button"
       title={label}
       aria-label={label}
       aria-pressed={active}
       onClick={onClick}
-      className={`grid h-8 w-8 place-items-center rounded text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] ${active ? 'bg-[var(--primary-light)] text-[var(--primary)]' : ''}`}
+      className={`h-8 w-8 rounded text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] ${active ? 'bg-[var(--primary-light)] text-[var(--primary)]' : ''}`}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -703,7 +713,7 @@ function SidePanelIcon() {
 /* ---------------- Popover (antd Select Dropdown 风格) ---------------- */
 
 function usePopoverPosition(
-  triggerRef: React.RefObject<HTMLButtonElement | null>,
+  triggerRef: React.RefObject<HTMLElement | null>,
   panelRef: React.RefObject<HTMLDivElement | null>
 ) {
   const [rect, setRect] = useState<{ top: number; left: number; width: number; up: boolean } | null>(null)
@@ -731,7 +741,7 @@ function usePopoverPosition(
 // trigger / panel 决定开合；trigger 本身不再绑 onClick，避免同一次点击与
 // 外部关闭、选项点击竞态。
 function useSelectOpen() {
-  const triggerRef = useRef<HTMLButtonElement>(null)
+  const triggerRef = useRef<HTMLElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const openRef = useRef(false)
   const [open, setOpenState] = useState(false)
@@ -791,12 +801,13 @@ function AuthModeOption({
   onClick: () => void
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       role="menuitemradio"
       aria-checked={active}
       onClick={onClick}
-      className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-[var(--surface-container)] ${active ? 'bg-[var(--surface-container-low)]' : ''}`}
+      className={`flex h-auto w-full items-start justify-start gap-2 rounded-lg px-2 py-2 text-left text-[13px] font-normal hover:bg-[var(--surface-container)] ${active ? 'bg-[var(--surface-container-low)]' : ''}`}
     >
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--on-surface)]">
@@ -807,7 +818,7 @@ function AuthModeOption({
         </span>
       </span>
       {active ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--primary)]" /> : null}
-    </button>
+    </Button>
   )
 }
 
@@ -848,17 +859,18 @@ function ModelSelect({
 
   return (
     <>
-      <button
+      <Button
         ref={triggerRef}
+        variant="ghost"
         type="button"
         aria-expanded={open}
         title={model ? '' : t('session.model-hint', '请先在设置中配置模型')}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]"
+        className="flex h-auto items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-normal text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)]"
       >
         <SparklesIcon />
         {auto ? t('session.model-auto', 'Auto') : currentName || t('session.no-model', '暂无模型')}
         <ChevronDown className="h-3 w-3" />
-      </button>
+      </Button>
       {open
         ? createPortal(
             <div
@@ -922,11 +934,12 @@ function ModelChoice({
   onClick: () => void
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       aria-selected={selected}
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--primary-light)]"
+      className="flex h-auto w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-xs font-normal hover:bg-[var(--primary-light)]"
     >
       <span className="flex flex-col gap-0.5">
         <strong className={`text-[12px] font-semibold ${selected ? 'text-[var(--primary)]' : 'text-[var(--on-surface)]'}`}>
@@ -935,7 +948,7 @@ function ModelChoice({
         <small className="text-[11px] font-normal text-[var(--on-surface-variant)]">{subtitle}</small>
       </span>
       {trailing ? <span className="flex-none text-[11px] text-[var(--on-surface-variant)]">{trailing}</span> : null}
-    </button>
+    </Button>
   )
 }
 
@@ -1223,7 +1236,9 @@ function SideExplorer({
         <strong className="text-[11px] font-bold tracking-wide">
           {t('explorer.title', '资源管理器')}
         </strong>
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           data-menu-trigger
           title={t('explorer.more', '更多操作')}
@@ -1251,36 +1266,37 @@ function SideExplorer({
               ],
             })
           }}
-          className="grid h-[22px] w-6 place-items-center rounded text-[var(--explorer-muted,#7c7c7c)] hover:bg-[var(--explorer-hover,#e8e8e8)] hover:text-[var(--explorer-text,#333)]"
+          className="h-[22px] w-6 rounded text-[var(--explorer-muted,#7c7c7c)] hover:bg-[var(--explorer-hover,#e8e8e8)] hover:text-[var(--explorer-text,#333)]"
         >
           <MoreHorizontal className="h-4 w-4" />
-        </button>
+        </Button>
       </header>
       <div className="mx-2 mb-2 flex flex-none items-center gap-1.5 rounded border border-[var(--explorer-border,#e2e2e2)] bg-white px-2 py-1">
         <Search className="h-3.5 w-3.5 flex-none text-[var(--explorer-muted,#7c7c7c)]" />
-        <input
+        <Input
           type="search"
           value={query}
-          onChange={event => setQuery(event.target.value)}
+          onValueChange={setQuery}
           placeholder={t('explorer.search', '搜索文件')}
           aria-label={t('explorer.search', '搜索文件')}
-          className="min-w-0 flex-1 border-0 bg-transparent text-[12px] outline-none"
+          className="min-w-0 h-auto flex-1 border-0 bg-transparent text-[12px] outline-none"
         />
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {searchResults ? (
           searchResults.length ? (
             searchResults.map(file => (
-              <button
+              <Button
                 key={file.path}
+                variant="ghost"
                 type="button"
                 onClick={() => setActiveFile(file.path)}
                 onContextMenu={event => openNodeMenu(event, file)}
-                className={`flex h-6 w-full items-center gap-1.5 px-2 text-left text-[13px] hover:bg-[var(--explorer-hover,#e8e8e8)] ${activeFile === file.path ? 'bg-[var(--explorer-active,#e4e4f4)]' : ''}`}
+                className={`flex h-6 w-full items-center justify-start gap-1.5 rounded-none px-2 text-left text-[13px] font-normal hover:bg-[var(--explorer-hover,#e8e8e8)] ${activeFile === file.path ? 'bg-[var(--explorer-active,#e4e4f4)]' : ''}`}
               >
                 {iconForNode(file.name, 'file', false)}
                 <span className="truncate">{file.name}</span>
-              </button>
+              </Button>
             ))
           ) : (
             <p className="p-3 text-[12px] text-[var(--explorer-muted,#7c7c7c)]">
@@ -1343,18 +1359,19 @@ function CtxMenu({ menu, onClose }: { menu: { x: number; y: number; items: MenuI
         item.divider ? (
           <hr key={index} className="mx-1.5 my-1 border-0 border-t border-[var(--border-subtle)]" />
         ) : (
-          <button
+          <Button
             key={index}
+            variant="ghost"
             type="button"
             onClick={() => {
               onClose()
               item.action()
             }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] hover:bg-[var(--primary-light)] hover:text-[var(--primary)]"
+            className="flex h-auto w-full items-center justify-start gap-2 rounded-md px-2 py-1.5 text-left text-[12px] font-normal hover:bg-[var(--primary-light)] hover:text-[var(--primary)]"
           >
             {item.icon ? <item.icon className="h-[15px] w-[15px] flex-none" /> : null}
             {item.label}
-          </button>
+          </Button>
         )
       )}
     </div>
@@ -1395,12 +1412,13 @@ function ExplorerNode({
   }
   return (
     <div>
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={() => (node.type === 'folder' ? onToggleFolder(node) : onSelectFile(node))}
         onContextMenu={event => onContextMenu(event, node)}
         style={{ paddingLeft: depth * 12 + 8 }}
-        className={`flex h-6 w-full items-center gap-1.5 text-left text-[13px] hover:bg-[var(--explorer-hover,#e8e8e8)] ${activeFile === node.path ? 'bg-[var(--explorer-active,#e4e4f4)]' : ''}`}
+        className={`flex h-6 w-full items-center justify-start gap-1.5 rounded-none text-left text-[13px] font-normal hover:bg-[var(--explorer-hover,#e8e8e8)] ${activeFile === node.path ? 'bg-[var(--explorer-active,#e4e4f4)]' : ''}`}
       >
         {node.type === 'folder' ? (
           node.expanded ? (
@@ -1413,7 +1431,7 @@ function ExplorerNode({
         )}
         {iconForNode(node.name, node.type, node.expanded)}
         <span className="truncate font-normal">{node.name}</span>
-      </button>
+      </Button>
       {node.type === 'folder' && node.expanded
         ? node.children.map(child => (
             <ExplorerNode
@@ -1480,7 +1498,9 @@ function BottomTerminal({ client, sessionId }: { client: CloudClient; sessionId:
           >
             <Terminal className="h-3.5 w-3.5 text-[#d7ba7d]" />
             <span>{id === 1 ? 'ssh' : `ssh ${id}`}</span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               type="button"
               title={t('terminal.close', '关闭终端标签')}
               aria-label={t('terminal.close', '关闭终端标签')}
@@ -1488,21 +1508,23 @@ function BottomTerminal({ client, sessionId }: { client: CloudClient; sessionId:
                 event.stopPropagation()
                 closeTab(id)
               }}
-              className="grid h-[18px] w-[18px] place-items-center rounded hover:bg-[#d5d5d5] hover:text-[var(--term-text,#333)]"
+              className="h-[18px] w-[18px] rounded hover:bg-[#d5d5d5] hover:text-[var(--term-text,#333)]"
             >
               <X className="h-3 w-3" />
-            </button>
+            </Button>
           </div>
         ))}
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           title={t('terminal.new', '新建终端')}
           aria-label={t('terminal.new', '新建终端')}
           onClick={addTab}
-          className="grid w-[34px] place-items-center hover:text-[var(--term-text,#333)]"
+          className="h-full w-[34px] rounded-none hover:text-[var(--term-text,#333)]"
         >
           <Plus className="h-[15px] w-[15px]" />
-        </button>
+        </Button>
       </header>
       <TerminalBody key={active} client={client} sessionId={session} />
     </div>
@@ -1611,12 +1633,12 @@ function TerminalBody({
         <span className="text-[var(--term-text,#333)]">:</span>
         <span className="text-[var(--term-blue,#098658)]">{cwd}</span>
         <span className="text-[var(--term-text,#333)]">$&nbsp;</span>
-        <input
+        <Input
           value={value}
-          onChange={event => setValue(event.target.value)}
+          onValueChange={setValue}
           aria-label="terminal input"
           autoFocus
-          className="min-w-0 flex-1 border-0 bg-transparent font-mono text-[13px] text-[var(--term-text,#333)] outline-none"
+          className="min-w-0 h-auto flex-1 border-0 bg-transparent font-mono text-[13px] text-[var(--term-text,#333)] outline-none"
         />
       </form>
     </div>
@@ -1643,14 +1665,15 @@ function CloudApprovalBar({ client, sessionId }: { client: CloudClient; sessionI
   if (!pendingCount) return null
   return (
     <div className="mb-2 overflow-hidden rounded-lg border border-amber-300 bg-amber-500/10">
-      <button
+      <Button
+        variant="ghost"
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-amber-700"
+        className="flex h-auto w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-xs font-medium text-amber-700"
         onClick={() => setOpen(value => !value)}
       >
         <span aria-hidden="true">{open ? '▼' : '▶'}</span>
         {t('sessions.pending-approvals', '待处理审批')}（{pendingCount}）
-      </button>
+      </Button>
       {open ? <CloudApprovalList client={client} sessionId={sessionId} /> : null}
     </div>
   )
@@ -1700,10 +1723,10 @@ function NewCloudSessionView({
             {error ? (
               <p role="alert" className="mb-2 text-xs text-[var(--error)]">{error}</p>
             ) : null}
-            <textarea
+            <Textarea
               autoFocus
               value={input}
-              onChange={event => setInput(event.target.value)}
+              onValueChange={setInput}
               rows={1}
               maxLength={4000}
               placeholder={t('session.placeholder', '继续告诉 Agent 你要完成什么…')}
@@ -1724,15 +1747,16 @@ function NewCloudSessionView({
                 }}
                 client={client}
               />
-              <button
+              <Button
                 type="submit"
+                size="icon"
                 aria-label={t('session.send', '发送')}
                 disabled={sending || !input.trim() || !model}
                 title={!model ? t('session.model-hint', '请先在设置中配置模型') : ''}
-                className="grid h-9 w-9 place-items-center rounded-full bg-[var(--primary)] text-white disabled:opacity-40"
+                className="h-9 w-9 rounded-full bg-[var(--primary)] text-white disabled:opacity-40"
               >
                 <ArrowUp className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           </div>
         </div>

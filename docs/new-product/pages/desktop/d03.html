@@ -17,7 +17,7 @@
     <aside class="desktop-sidebar">
       <div class="sidebar-head">
         <div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div>
-        <div class="sidebar-actions"><button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button><button aria-label="通知"><i data-icon="bell"></i></button><button aria-label="搜索"><i data-icon="search"></i></button></div>
+        <div class="sidebar-actions"><nm-icon-button name="chevronLeft" label="收起侧边栏"></nm-icon-button><nm-icon-button name="bell" label="通知"></nm-icon-button><nm-icon-button name="search" label="搜索"></nm-icon-button></div>
       </div>
       <nav class="quick-nav" aria-label="主要功能">
         <a class="quick-link" href="#" data-go="D01"><span><i data-icon="plus"></i></span>新对话</a>
@@ -25,11 +25,13 @@
         <a class="quick-link" href="#" data-go="D09"><span><i data-icon="settings-2"></i></span>设置</a>
       </nav>
       <section class="session-list">
-        <div class="section-label"><span>会话</span><button aria-label="筛选会话"><i data-icon="list-filter"></i></button></div>
-        <a class="session active" href="#" data-go="D03"><strong>检查系统架构</strong><small>刚刚 · 本地 Agent</small></a>
-        <a class="session" href="#" data-go="D03"><strong>整理研究报告</strong><small>昨天 · 本地 Agent</small></a>
-        <a class="session" href="#" data-go="C02"><strong>云端项目规划</strong><small>2 天前 · 云端会话</small></a>
-        <a class="session" href="#" data-go="D03"><strong>远程设备排查</strong><small>上周 · 远程设备</small></a>
+        <div class="section-label"><span>会话</span><nm-icon-button name="filter" label="筛选会话"></nm-icon-button></div>
+        <nm-list divided>
+          <nm-list-item class="session active" href="#" data-go="D03" title="检查系统架构" description="刚刚 · 本地 Agent" active selected></nm-list-item>
+          <nm-list-item class="session" href="#" data-go="D03" title="整理研究报告" description="昨天 · 本地 Agent"></nm-list-item>
+          <nm-list-item class="session" href="#" data-go="C02" title="云端项目规划" description="2 天前 · 云端会话"></nm-list-item>
+          <nm-list-item class="session" href="#" data-go="D03" title="远程设备排查" description="上周 · 远程设备"></nm-list-item>
+        </nm-list>
       </section>
       <div class="sidebar-footer"><span class="connection"><i></i>本地 Agent 已连接</span><button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button></div>
     </aside>
@@ -38,34 +40,43 @@
       <header class="agent-header session-header">
         <h1>检查系统架构</h1>
         <div class="agent-header-actions">
-          <button aria-label="分享" data-tooltip="分享当前会话"><i data-icon="share-2"></i></button><button aria-label="切换置顶摘要" data-tooltip="显示或隐藏置顶摘要"><i data-icon="pin"></i></button><button aria-label="切换底部面板" data-tooltip="打开底部面板：命令行与运行日志" data-panel-toggle="bottom"><i data-icon="panel-bottom"></i></button><button aria-label="切换侧边面板" data-tooltip="打开侧边面板：选择文件并查看内容" data-panel-toggle="side"><i data-icon="panel-right"></i></button><button class="more" aria-label="更多" data-tooltip="更多会话操作"><i data-icon="more-horizontal"></i></button>
+          <nm-icon-button name="externalLink" label="分享当前会话" data-tooltip="分享当前会话"></nm-icon-button><nm-icon-button name="star" label="显示或隐藏置顶摘要" data-tooltip="显示或隐藏置顶摘要"></nm-icon-button><nm-icon-button name="terminal" label="打开底部面板：命令行与运行日志" data-tooltip="打开底部面板：命令行与运行日志" data-panel-toggle="bottom"></nm-icon-button><nm-icon-button name="layers" label="打开侧边面板：选择文件并查看内容" data-tooltip="打开侧边面板：选择文件并查看内容" data-panel-toggle="side"></nm-icon-button>
+          <nm-menu class="more">
+            <nm-icon-button slot="trigger" name="moreHorizontal" label="更多会话操作" data-tooltip="更多会话操作"></nm-icon-button>
+            <nm-menu-item data-key="rename">重命名会话</nm-menu-item>
+            <nm-menu-item data-key="branch">创建分支</nm-menu-item>
+            <nm-menu-item data-key="archive">归档会话</nm-menu-item>
+            <nm-menu-item data-key="delete" data-danger="true">删除会话</nm-menu-item>
+          </nm-menu>
         </div>
       </header>
 
       <section class="conversation">
         <div class="message-meta">你 · 10:42</div>
         <div class="message user-message">检查当前系统架构，整理风险和下一步工作。</div>
-        <div class="message-meta agent-meta"><span class="agent-dot">●</span> NoteMeld Agent · 分析中</div>
+        <div class="message-meta agent-meta"><span class="agent-dot">●</span> NoteMeld Agent · <nm-badge tone="info">分析中</nm-badge></div>
         <article class="agent-message">
           <p>我会先读取当前工作区中的架构资料，再整理结论、引用和下一步工作。</p>
-          <div class="tool-call"><span><i data-icon="file-search"></i></span><strong>读取工作区文件</strong><small>event_bus_config.yaml · 已完成</small></div>
+          <nm-card class="tool-call">
+            <span class="tool-call-icon">⌕</span><strong>读取工作区文件</strong><small>event_bus_config.yaml · 已完成</small>
+          </nm-card>
           <p class="muted">已发现 3 个需要确认的架构风险，正在生成结构化报告。</p>
         </article>
       </section>
 
       <div class="composer-dock">
-        <button type="button" class="workspace-context"><span><i data-icon="folder-open"></i></span><strong>notemeld-project</strong><small>当前工作空间</small><b><i data-icon="chevron-down"></i></b></button>
+        <button type="button" class="workspace-context"><span><i data-lucide="folder-open"></i></span><strong>notemeld-project</strong><small>当前工作空间</small><b><i data-lucide="chevron-down"></i></b></button>
         <form class="composer-panel" data-composer>
-          <div class="attachment-row"><span class="attachment"><i data-icon="file-text"></i>系统架构研究报告.md <button type="button" aria-label="移除附件"><i data-icon="x"></i></button></span></div>
-          <textarea aria-label="输入任务" rows="3" maxlength="4000" placeholder="继续告诉 Agent 你要完成什么…"></textarea>
+          <div class="attachment-row"><span class="attachment">⌕ 系统架构研究报告.md <nm-icon-button name="x" label="移除附件"></nm-icon-button></span></div>
+          <nm-textarea class="composer-textarea" aria-label="输入任务" rows="3" maxlength="4000" placeholder="继续告诉 Agent 你要完成什么…" auto-grow></nm-textarea>
           <div class="composer-footer">
-            <button type="button" class="add-button"><i data-icon="plus"></i><span>添加</span></button>
-            <button type="button" class="permission-button" data-popup-toggle="permission"><i data-icon="shield-check"></i><span>默认权限</span><i data-icon="chevron-down"></i></button>
+            <nm-button type="button" variant="ghost" class="add-button"><span slot="leading" data-icon="plus"></span>添加</nm-button>
+            <nm-button type="button" variant="ghost" class="permission-button" data-popup-toggle="permission">◉ 默认权限 ⌄</nm-button>
             <span class="composer-spacer"></span>
-            <button type="button" class="model-button" data-popup-toggle="model"><i data-icon="sparkles"></i><span>Auto</span><i data-icon="chevron-down"></i></button>
-            <button type="button" class="voice-button" aria-label="语音输入"><i data-icon="mic"></i></button>
+            <nm-button type="button" variant="ghost" class="model-button" data-popup-toggle="model">✦ Auto ⌄</nm-button>
+            <nm-icon-button name="mic" class="voice-button" label="语音输入"></nm-icon-button>
             <span class="limit">0 / 4000</span>
-            <button type="button" class="send-button" aria-label="发送"><span>发送</span><i data-icon="arrow-up"></i></button>
+            <nm-button type="button" variant="primary" class="send-button" aria-label="发送">发送 ↑</nm-button>
           </div>
           <div class="composer-popup permission-popup" data-popup="permission">
             <strong>默认权限</strong><button type="button" data-popup-close>×</button>
@@ -84,18 +95,38 @@
         </form>
       </div>
 
-    <section class="workspace-panel bottom-panel" data-panel="bottom" aria-label="底部工作区面板"><span class="panel-resizer" data-resize="bottom"></span><div class="panel-bar"><strong>底部面板</strong><div class="panel-tabs"><button class="panel-tab active" type="button" data-panel-tab="terminal">⌘ 命令行</button><button class="panel-tab" type="button" data-panel-tab="logs">运行日志</button></div><button class="panel-close" type="button" data-panel-close>×</button></div><div class="panel-view terminal-view active" data-panel-view="terminal"><div><span class="terminal-prompt">➜ notemeld-project</span> <span class="terminal-command">git status --short</span></div><div>working tree clean</div><div><span class="terminal-prompt">➜</span> <span class="terminal-cursor"></span></div></div><div class="panel-view" data-panel-view="logs"><div class="log-line"><time>10:42:08</time><span class="log-level">INFO</span><span>Agent session started</span></div><div class="log-line"><time>10:42:12</time><span class="log-level">INFO</span><span>Read event_bus_config.yaml</span></div><div class="log-line warn"><time>10:42:18</time><span class="log-level">WARN</span><span>3 architecture risks require review</span></div></div></section><section class="workspace-panel side-panel" data-panel="side" aria-label="侧边文件面板"><span class="panel-resizer" data-resize="side"></span><div class="file-panel-header"><strong>选择文件</strong><button class="panel-close" type="button" data-panel-close>×</button></div><div class="file-panel-body"><div class="file-list"><button class="file-item active" type="button" data-file="event_bus_config.yaml">▧ event_bus_config.yaml</button><button class="file-item" type="button" data-file="系统架构研究报告.md">▤ 系统架构研究报告.md</button><button class="file-item" type="button" data-file="架构风险清单.html">▤ 架构风险清单.html</button></div><div class="file-preview"><strong>event_bus_config.yaml</strong><p>选择文件后，在此查看文件摘要、类型、大小和最近修改信息。</p></div></div></section>
+    <section class="workspace-panel bottom-panel" data-panel="bottom" aria-label="底部工作区面板"><span class="panel-resizer" data-resize="bottom"></span><div class="panel-bar"><strong>底部面板</strong><div class="panel-tabs"><nm-button variant="ghost" class="panel-tab active" type="button" data-panel-tab="terminal">⌘ 命令行</nm-button><nm-button variant="ghost" class="panel-tab" type="button" data-panel-tab="logs">运行日志</nm-button></div><nm-icon-button name="x" class="panel-close" label="关闭面板" data-panel-close></nm-icon-button></div><div class="panel-view terminal-view active" data-panel-view="terminal"><div><span class="terminal-prompt">➜ notemeld-project</span> <span class="terminal-command">git status --short</span></div><div>working tree clean</div><div><span class="terminal-prompt">➜</span> <span class="terminal-cursor"></span></div></div><div class="panel-view" data-panel-view="logs"><div class="log-line"><time>10:42:08</time><span class="log-level">INFO</span><span>Agent session started</span></div><div class="log-line"><time>10:42:12</time><span class="log-level">INFO</span><span>Read event_bus_config.yaml</span></div><div class="log-line warn"><time>10:42:18</time><span class="log-level">WARN</span><span>3 architecture risks require review</span></div></div></section><section class="workspace-panel side-panel" data-panel="side" aria-label="侧边文件面板"><span class="panel-resizer" data-resize="side"></span><div class="file-panel-header"><strong>选择文件</strong><nm-icon-button name="x" class="panel-close" label="关闭面板" data-panel-close></nm-icon-button></div><div class="file-panel-body"><div class="file-list"><nm-button variant="ghost" class="file-item active" type="button" data-file="event_bus_config.yaml">▧ event_bus_config.yaml</nm-button><nm-button variant="ghost" class="file-item" type="button" data-file="系统架构研究报告.md">▤ 系统架构研究报告.md</nm-button><nm-button variant="ghost" class="file-item" type="button" data-file="架构风险清单.html">▤ 架构风险清单.html</nm-button></div><div class="file-preview"><strong>event_bus_config.yaml</strong><p>选择文件后，在此查看文件摘要、类型、大小和最近修改信息。</p></div></div></section>
     </main>
 
 
     <aside class="context-panel">
-      <div class="context-heading"><h2>置顶摘要</h2><button aria-label="关闭摘要"><i data-icon="x"></i></button></div>
-      <section class="context-section"><h3>输出内容 <button aria-label="添加输出"><i data-icon="plus"></i></button></h3><a href="#" data-go="D03"><i data-icon="file-text"></i>系统架构研究报告.md <span><i data-icon="arrow-up-right"></i></span></a><a href="#" data-go="D03"><i data-icon="file-code-2"></i>架构风险清单.html <span><i data-icon="arrow-up-right"></i></span></a></section>
-      <section class="context-section"><h3>子智能体 <span class="count">2</span></h3><div class="context-row"><i class="status running"></i><span>架构分析 Agent</span><small>运行中</small></div><div class="context-row"><i class="status success"></i><span>资料检索 Agent</span><small>已完成</small></div></section>
-      <section class="context-section"><h3>后台进程 <span class="count">1</span></h3><div class="process"><span><i data-icon="file-output"></i></span><div><strong>生成 Markdown 报告</strong><small>正在处理 · 42%</small><div class="progress"><b></b></div></div></div></section>
-      <section class="context-section"><h3>来源 <button aria-label="添加来源"><i data-icon="plus"></i></button></h3><a href="#" class="source" data-go="D03"><i data-icon="file-text"></i>2026-08-29-stitch-multiplatform-prompts.md</a><a href="#" class="source" data-go="D03"><i data-icon="file-code-2"></i>event_bus_config.yaml</a></section>
+      <div class="context-heading"><h2>置顶摘要</h2><nm-icon-button name="x" label="关闭摘要"></nm-icon-button></div>
+      <section class="context-section"><h3>输出内容 <nm-icon-button name="plus" label="添加输出"></nm-icon-button></h3><nm-list-item href="#" data-go="D03" title="系统架构研究报告.md"><span slot="trailing">↗</span></nm-list-item><nm-list-item href="#" data-go="D03" title="架构风险清单.html"><span slot="trailing">↗</span></nm-list-item></section>
+      <section class="context-section"><h3>子智能体 <nm-badge>2</nm-badge></h3><div class="context-row"><i class="status running"></i><span>架构分析 Agent</span><nm-badge tone="info">运行中</nm-badge></div><div class="context-row"><i class="status success"></i><span>资料检索 Agent</span><nm-badge tone="success">已完成</nm-badge></div></section>
+      <section class="context-section"><h3>后台进程 <nm-badge>1</nm-badge></h3><div class="process"><span>⎙</span><div><strong>生成 Markdown 报告</strong><small>正在处理 · 42%</small><nm-progress value="42"></nm-progress></div></div></section>
+      <section class="context-section"><h3>来源 <nm-icon-button name="plus" label="添加来源"></nm-icon-button></h3><nm-list-item href="#" class="source" data-go="D03" title="2026-08-29-stitch-multiplatform-prompts.md"></nm-list-item><nm-list-item href="#" class="source" data-go="D03" title="event_bus_config.yaml"></nm-list-item></section>
     </aside>
   </div>
+    <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
     <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/workspace-panels.js"></script>
+    <style>
+      /* nm-* 迁移后的最小视觉兼容 */
+      nm-list{display:block;width:100%}
+      nm-list .nm-list-item.session{padding-left:8px;padding-right:8px}
+      nm-card.tool-call{padding:0;margin:10px 0;background:transparent;border:0;border-radius:0;box-shadow:none}
+      nm-card.tool-call .nm-card__body{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;padding:10px 12px;background:#f1f3f8;border-radius:8px;color:#4f5b71}
+      nm-card.tool-call .tool-call-icon{display:grid;place-items:center}
+      nm-card.tool-call small{color:#8791a5;white-space:nowrap}
+      nm-textarea.composer-textarea{display:block}
+      nm-textarea.composer-textarea textarea{min-height:72px}
+      nm-button.send-button:after{content:none}
+      nm-progress{display:block;height:4px;margin-top:7px}
+      nm-list-item{min-height:auto;padding:7px 0}
+    </style>
+    <script>
+      /* 兼容 d01.js：发送、面板逻辑均通过保留的 class/data-* 命中，无需桥接。
+         workspace-context 因 page.js 会清空其内部 span，保留为原生 button。 */
+      document.querySelector('nm-menu.more')?.addEventListener('nm:select',()=>{});
+    </script>
 </body>
 </html>

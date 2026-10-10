@@ -1,1 +1,417 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 系统运行</title><link rel="stylesheet" href="../../assets/page.css"><link rel="stylesheet" href="../../assets/d01.css"><link rel="stylesheet" href="../../assets/apps.css"></head><body data-page="APP04"><div class="desktop-app app-product"><aside class="desktop-sidebar"><div class="sidebar-head"><div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div><div class="sidebar-actions"><button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button><button aria-label="通知"><i data-icon="bell"></i></button><button aria-label="搜索"><i data-icon="search"></i></button></div></div><nav class="quick-nav" aria-label="主要功能"><a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a><a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a><a class="quick-link" href="#" data-go="D09"><span>⚙</span>设置</a></nav><section class="session-list"><div class="section-label"><span>最近应用</span></div><a class="session" href="#" data-go="APP01"><strong>笔记应用</strong><small>12 篇笔记 · 3 个 Wiki 空间</small></a><a class="session" href="#" data-go="APP02"><strong>学习应用</strong><small>2 个学习空间 · 4 个待复习</small></a><a class="session" href="#" data-go="APP03"><strong>监控应用</strong><small>本地运行正常</small></a><a class="session" href="#" data-go="APP04"><strong>系统运行</strong><small>1 个审批待处理</small></a></section><div class="sidebar-footer"><span class="connection"><i></i>本地 Agent 已连接</span><button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button></div></aside><main class="app-main"><header class="app-topbar"><div class="app-brandline"><span class="app-brandmark"><i data-icon="shield-check"></i></span><div><strong>系统运行</strong><small>诊断 Agent、管理应用 Host、审批高风险操作和设备连接</small></div></div><div class="app-top-actions"><label class="app-search"><i data-icon="search"></i><input data-app-search type="search" aria-label="搜索系统运行记录" placeholder="搜索 Turn、应用或设备"></label><button type="button"><i data-icon="refresh-cw"></i> 重新检查</button><button type="button" class="primary"><i data-icon="settings-2"></i> 系统设置</button></div></header><nav class="app-nav" aria-label="系统运行导航"><button class="active" data-app-tab="diagnostics">Agent 诊断</button><button data-app-tab="applications">Application Host</button><button data-app-tab="approvals">安全审批</button><button data-app-tab="devices">设备与更新</button></nav><div class="app-scroll"><section class="app-view active" data-app-view="diagnostics"><header class="app-heading"><div><p class="app-kicker">AGENT DIAGNOSTICS</p><h1>Agent 诊断</h1><p>查看 Turn 生命周期、事件序号、恢复点和最后一次错误，不用猜测页面状态。</p></div><div class="app-heading-meta"><i></i>运行时已连接</div></header><div class="app-metric-grid"><div class="app-metric"><strong>8</strong><span>最近任务</span></div><div class="app-metric"><strong>1,842</strong><span>最后事件序号</span></div><div class="app-metric"><strong>0</strong><span>未恢复错误</span></div><div class="app-metric"><strong>2.4s</strong><span>平均事件延迟</span></div></div><div class="app-list"><article class="app-list-row" data-app-item><div><strong>turn_01H9 · 生成架构报告</strong><p>session_架构研究 · 事件 1842 · 最近状态：running</p></div><span class="app-chip success">运行中</span><button type="button">查看事件</button></article><article class="app-list-row" data-app-item><div><strong>turn_01H8 · 研究检索</strong><p>session_研究报告 · 事件 921 · 最近状态：completed</p></div><span class="app-chip">已完成</span><button type="button">查看诊断</button></article></div></section><section class="app-view" data-app-view="applications"><header class="app-heading"><div><p class="app-kicker">APPLICATION HOST</p><h1>Application Host</h1><p>管理应用实例、项目目录、外部文件读取权限和运行故障。</p></div><button class="app-top-actions primary" type="button">刷新应用状态</button></header><div class="app-card-grid"><article class="app-card" data-app-item><div class="app-card-top"><div class="app-card-icon"><i data-icon="app-window"></i></div><span class="app-chip success">运行中</span></div><h3>Wiki</h3><p>实例 wiki-default · Workspace 只读 · 最近运行 2 分钟前</p><small>权限：读取文件、读取 Wiki、生成产物</small></article><article class="app-card" data-app-item><div class="app-card-top"><div class="app-card-icon"><i data-icon="folder-cog"></i></div><span class="app-chip warn">需确认</span></div><h3>Research Board</h3><p>外部读取目录未配置，应用可以启动但无法读取额外资料。</p><small>可配置项目目录和授权读取目录</small></article></div><div class="app-section"><div class="app-section-head"><div><h2>Candidate 安全检查</h2><p>模型生成的应用声明必须经过验证和人工审批</p></div><button type="button">打开审批队列 <i data-icon="arrow-right"></i></button></div><div class="app-list"><article class="app-list-row"><div><strong>Data Canvas · v0.4.1</strong><p>权限：读取 Workspace · 写入产物 · 验证 8/8 · rollback 已保存</p></div><span class="app-chip warn">待审批</span><button type="button">查看</button></article></div></div></section><section class="app-view" data-app-view="approvals"><header class="app-heading"><div><p class="app-kicker">SAFETY GATE</p><h1>安全审批</h1><p>高风险工具调用、远程控制和应用权限必须由用户明确批准。</p></div><span class="app-chip warn">1 项待处理</span></header><div class="app-list"><article class="app-list-row" data-app-item><div><strong>允许 Application 写入 Workspace</strong><p>来源：Research Board · 目标：/reports/ · 操作：创建 Markdown 文件</p></div><span class="app-chip warn">待审批</span><button type="button">查看详情</button></article><article class="app-list-row" data-app-item><div><strong>Browser 访问外部网页</strong><p>来源：当前 Agent Turn · 域名：docs.example.com · 仅限本次任务</p></div><span class="app-chip">已批准</span><button type="button">查看审计</button></article></div></section><section class="app-view" data-app-view="devices"><header class="app-heading"><div><p class="app-kicker">DEVICES & UPDATE</p><h1>设备与更新</h1><p>本地设备身份、LAN 优先连接、Relay 加密和桌面端更新状态。</p></div><span class="app-chip success">当前设备可信</span></header><div class="app-card-grid"><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="laptop"></i></div><span class="app-chip success">在线</span></div><h3>MacBook Pro · 当前设备</h3><p>设备身份 nm-dev-8f2a · LAN 优先 · 公钥已登记</p><small>最后握手 18 秒前 · Relay 备用已启用</small></article><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="download-cloud"></i></div><span class="app-chip">可更新</span></div><h3>NoteMeld Desktop 0.2.0</h3><p>包含 Agent Host 稳定性和远程连接修复。</p><small>当前版本 0.1.0 · 下载并安装前需要确认</small></article></div><div class="app-section"><div class="app-section-head"><div><h2>连接记录</h2><p>LAN、Relay、加密帧和授权撤销都保留可审计信息</p></div></div><div class="app-timeline"><article class="app-timeline-item"><i></i><div><strong>LAN handshake 成功</strong><p>当前设备 ↔ Cloud Relay · 18 秒前 · frame sequence 284</p></div></article><article class="app-timeline-item"><i></i><div><strong>远程设备授权已撤销</strong><p>Windows Workstation · 昨天 16:24 · 旧 Token 已失效</p></div></article></div></div></section></div></main></div><script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/apps.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NoteMeld · 系统运行</title>
+  <link rel="stylesheet" href="../../assets/page.css">
+  <link rel="stylesheet" href="../../assets/d01.css">
+  <link rel="stylesheet" href="../../assets/apps.css">
+</head>
+<body data-page="APP04">
+  <div class="desktop-app app-product">
+    <aside class="desktop-sidebar">
+      <div class="sidebar-head">
+        <div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div>
+        <div class="sidebar-actions">
+          <button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button>
+          <button aria-label="通知"><i data-icon="bell"></i></button>
+          <button aria-label="搜索"><i data-icon="search"></i></button>
+        </div>
+      </div>
+      <nav class="quick-nav" aria-label="主要功能">
+        <a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a>
+        <a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a>
+        <a class="quick-link" href="#" data-go="D09"><span>⚙</span>设置</a>
+      </nav>
+      <section class="session-list">
+        <div class="section-label"><span>最近应用</span></div>
+        <a class="session" href="#" data-go="APP01"><strong>笔记应用</strong><small>12 篇笔记 · 3 个 Wiki 空间</small></a>
+        <a class="session" href="#" data-go="APP02"><strong>学习应用</strong><small>2 个学习空间 · 4 个待复习</small></a>
+        <a class="session" href="#" data-go="APP03"><strong>监控应用</strong><small>本地运行正常</small></a>
+        <a class="session" href="#" data-go="APP04"><strong>系统运行</strong><small>1 个审批待处理</small></a>
+      </section>
+      <div class="sidebar-footer">
+        <span class="connection"><i></i>本地 Agent 已连接</span>
+        <button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button>
+      </div>
+    </aside>
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="app-brandline">
+          <span class="app-brandmark"><i data-icon="shield-check"></i></span>
+          <div><strong>系统运行</strong><small>诊断 Agent、管理应用 Host、审批高风险操作和设备连接</small></div>
+        </div>
+        <div class="app-top-actions">
+          <nm-search class="app-search" data-app-search placeholder="搜索 Turn、应用或设备" aria-label="搜索系统运行记录"></nm-search>
+          <nm-button variant="secondary"><span slot="leading" data-icon="refresh"></span>重新检查</nm-button>
+          <nm-button variant="primary"><span slot="leading" data-icon="settings"></span>系统设置</nm-button>
+        </div>
+      </header>
+      <nm-tabs class="app-nav" aria-label="系统运行导航" value="diagnostics">
+        <nm-tab key="diagnostics" label="Agent 诊断"></nm-tab>
+        <nm-tab key="applications" label="Application Host"></nm-tab>
+        <nm-tab key="approvals" label="安全审批"></nm-tab>
+        <nm-tab key="devices" label="设备与更新"></nm-tab>
+      </nm-tabs>
+      <div class="app-scroll">
+        <section class="app-view active" data-app-view="diagnostics">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">AGENT DIAGNOSTICS</p>
+              <h1>Agent 诊断</h1>
+              <p>查看 Turn 生命周期、事件序号、恢复点和最后一次错误，不用猜测页面状态。</p>
+            </div>
+            <div class="app-heading-meta"><i></i>运行时已连接</div>
+          </header>
+          <div class="app-metric-grid">
+            <div class="app-metric"><strong>8</strong><span>最近任务</span></div>
+            <div class="app-metric"><strong>1,842</strong><span>最后事件序号</span></div>
+            <div class="app-metric"><strong>0</strong><span>未恢复错误</span></div>
+            <div class="app-metric"><strong>2.4s</strong><span>平均事件延迟</span></div>
+          </div>
+          <nm-list class="app-list" bordered>
+            <nm-list-item class="app-list-row" data-app-item>
+              <span slot="extra">
+                <strong>turn_01H9 · 生成架构报告</strong>
+                <p>session_架构研究 · 事件 1842 · 最近状态：running</p>
+              </span>
+              <nm-badge class="app-chip" slot="trailing" tone="success">运行中</nm-badge>
+              <nm-button class="app-row-button" variant="secondary" size="sm" slot="trailing">查看事件</nm-button>
+            </nm-list-item>
+            <nm-list-item class="app-list-row" data-app-item>
+              <span slot="extra">
+                <strong>turn_01H8 · 研究检索</strong>
+                <p>session_研究报告 · 事件 921 · 最近状态：completed</p>
+              </span>
+              <nm-badge class="app-chip" slot="trailing" tone="neutral">已完成</nm-badge>
+              <nm-button class="app-row-button" variant="secondary" size="sm" slot="trailing">查看诊断</nm-button>
+            </nm-list-item>
+          </nm-list>
+        </section>
+
+        <section class="app-view" data-app-view="applications">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">APPLICATION HOST</p>
+              <h1>Application Host</h1>
+              <p>管理应用实例、项目目录、外部文件读取权限和运行故障。</p>
+            </div>
+            <nm-button variant="primary" class="app-heading-button">刷新应用状态</nm-button>
+          </header>
+          <div class="app-card-grid">
+            <nm-card class="app-card" data-app-item>
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="app-window"></i></div>
+                  <nm-badge class="app-chip" tone="success">运行中</nm-badge>
+                </div>
+                <h3>Wiki</h3>
+                <p>实例 wiki-default · Workspace 只读 · 最近运行 2 分钟前</p>
+                <div class="app-switch-row">
+                  <nm-switch checked size="sm" id="app04AutoStart"></nm-switch>
+                  <label for="app04AutoStart">实例随 Host 自动启动</label>
+                </div>
+                <small>权限：读取文件、读取 Wiki、生成产物</small>
+              </div>
+            </nm-card>
+            <nm-card class="app-card" data-app-item>
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="folder-cog"></i></div>
+                  <nm-badge class="app-chip" tone="warning">需确认</nm-badge>
+                </div>
+                <h3>Research Board</h3>
+                <p>外部读取目录未配置，应用可以启动但无法读取额外资料。</p>
+                <small>可配置项目目录和授权读取目录</small>
+              </div>
+            </nm-card>
+          </div>
+          <div class="app-section">
+            <div class="app-section-head">
+              <div><h2>Candidate 安全检查</h2><p>模型生成的应用声明必须经过验证和人工审批</p></div>
+              <nm-button variant="link" size="sm"><span slot="leading" data-icon="arrowRight"></span>打开审批队列</nm-button>
+            </div>
+            <nm-list class="app-list" bordered>
+              <nm-list-item class="app-list-row">
+                <span slot="extra">
+                  <strong>Data Canvas · v0.4.1</strong>
+                  <p>权限：读取 Workspace · 写入产物 · 验证 8/8 · rollback 已保存</p>
+                </span>
+                <nm-badge class="app-chip" slot="trailing" tone="warning">待审批</nm-badge>
+                <nm-button class="app-row-button app04-open-modal" variant="secondary" size="sm" slot="trailing">查看</nm-button>
+              </nm-list-item>
+            </nm-list>
+          </div>
+        </section>
+
+        <section class="app-view" data-app-view="approvals">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">SAFETY GATE</p>
+              <h1>安全审批</h1>
+              <p>高风险工具调用、远程控制和应用权限必须由用户明确批准。</p>
+            </div>
+            <nm-badge class="app-chip" tone="warning">1 项待处理</nm-badge>
+          </header>
+          <nm-alert class="app-approval-alert" tone="warning">
+            <span slot="title">审批不可被静默通过</span>
+            <span slot="default">写入 Workspace 属于高风险操作，必须由用户在本页明确批准，超时未处理将自动拒绝。</span>
+          </nm-alert>
+          <nm-list class="app-list" bordered>
+            <nm-list-item class="app-list-row" data-app-item>
+              <span slot="extra">
+                <strong>允许 Application 写入 Workspace</strong>
+                <p>来源：Research Board · 目标：/reports/ · 操作：创建 Markdown 文件</p>
+              </span>
+              <nm-badge class="app-chip" slot="trailing" tone="warning">待审批</nm-badge>
+              <nm-button class="app-row-button app04-open-modal" variant="secondary" size="sm" slot="trailing">查看详情</nm-button>
+            </nm-list-item>
+            <nm-list-item class="app-list-row" data-app-item>
+              <span slot="extra">
+                <strong>Browser 访问外部网页</strong>
+                <p>来源：当前 Agent Turn · 域名：docs.example.com · 仅限本次任务</p>
+              </span>
+              <nm-badge class="app-chip" slot="trailing" tone="success">已批准</nm-badge>
+              <nm-button class="app-row-button" variant="secondary" size="sm" slot="trailing">查看审计</nm-button>
+            </nm-list-item>
+          </nm-list>
+        </section>
+
+        <section class="app-view" data-app-view="devices">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">DEVICES & UPDATE</p>
+              <h1>设备与更新</h1>
+              <p>本地设备身份、LAN 优先连接、Relay 加密和桌面端更新状态。</p>
+            </div>
+            <nm-badge class="app-chip" tone="success">当前设备可信</nm-badge>
+          </header>
+          <div class="app-card-grid">
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="laptop"></i></div>
+                  <nm-badge class="app-chip" tone="success">在线</nm-badge>
+                </div>
+                <h3>MacBook Pro · 当前设备</h3>
+                <p>设备身份 nm-dev-8f2a · LAN 优先 · 公钥已登记</p>
+                <small>最后握手 18 秒前 · Relay 备用已启用</small>
+              </div>
+            </nm-card>
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="download-cloud"></i></div>
+                  <nm-badge class="app-chip" tone="neutral">可更新</nm-badge>
+                </div>
+                <h3>NoteMeld Desktop 0.2.0</h3>
+                <p>包含 Agent Host 稳定性和远程连接修复。</p>
+                <div class="app-switch-row">
+                  <nm-switch size="sm" id="app04AutoUpdate"></nm-switch>
+                  <label for="app04AutoUpdate">下载后安装前仍需我确认</label>
+                </div>
+                <small>当前版本 0.1.0 · 下载并安装前需要确认</small>
+              </div>
+            </nm-card>
+          </div>
+          <div class="app-section">
+            <div class="app-section-head">
+              <div><h2>连接记录</h2><p>LAN、Relay、加密帧和授权撤销都保留可审计信息</p></div>
+            </div>
+            <nm-timeline class="app-timeline">
+              <nm-timeline-item title="LAN handshake 成功" time="18 秒前" tone="success">当前设备 ↔ Cloud Relay · frame sequence 284</nm-timeline-item>
+              <nm-timeline-item title="远程设备授权已撤销" time="昨天 16:24" tone="danger">Windows Workstation · 旧 Token 已失效</nm-timeline-item>
+            </nm-timeline>
+          </div>
+        </section>
+      </div>
+
+      <nm-modal id="app04Modal" title="审批详情"></nm-modal>
+    </main>
+  </div>
+  <script>
+    /* 升级时序保护（必须在 bundle 执行前运行）：
+       DOM 先于 bundle 就绪，各 nm-* 升级时宿主的 collectSlots 会穿透进嵌套
+       自定义元素内部误收用户投影（含 nm-badge 内部 label），造成丢失/污染。
+       保存 nm-list-item 直接子节点与 nm-badge/nm-tag 文本，由底部脚本重建。 */
+    function __nmProtect() {
+      document.querySelectorAll('nm-list-item').forEach(host => {
+        const saved = Array.from(host.children).filter(el => !el.hasAttribute('data-nm-internal'));
+        if (saved.length) host.__nmSaved = saved;
+      });
+      document.querySelectorAll('nm-badge,nm-tag,nm-button').forEach(host => {
+        const children = Array.from(host.children).filter(el => !el.hasAttribute('data-nm-internal'));
+        if (children.length) host.__nmSavedInner = children;
+        const text = host.textContent.trim();
+        if (text) host.__nmText = text;
+      });
+    }
+    __nmProtect();
+  </script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../assets/page.js"></script>
+  <script src="../../assets/d01.js"></script>
+  <script src="../../assets/apps.js"></script>
+  <script>
+    /* 升级后恢复（配合上方保护脚本）：重建被污染的 nm-badge/nm-tag 内部结构，
+       并把 nm-list-item 保存的子节点放回对应 slot 占位、解除占位 hidden。 */
+    function __nmKindOf(host) {
+      const tag = host.tagName.toLowerCase();
+      return tag === 'nm-tag' ? ['nm-tag__label', null]
+        : tag === 'nm-button' ? ['nm-button__label', null]
+        : ['nm-badge__label', 'nm-badge__dot'];
+    }
+    function __nmFixBadge(host) {
+      const text = host.__nmText;
+      const savedInner = host.__nmSavedInner;
+      const [labelClass, dotClass] = __nmKindOf(host);
+      const labelEl = host.querySelector('.' + labelClass);
+      if (labelEl?.textContent === text || (!text && !savedInner)) {
+        delete host.__nmText; host.__nmSavedInner = null;
+        return true;
+      }
+      const inner = (savedInner || []).filter(n => n.getAttribute('slot') !== 'leading' && n.getAttribute('slot') !== 'trailing');
+      host.textContent = '';
+      if (dotClass) {
+        const dot = document.createElement('span');
+        dot.className = dotClass;
+        dot.setAttribute('aria-hidden', 'true');
+        host.append(dot);
+      }
+      const label = document.createElement('span');
+      label.className = labelClass;
+      if (inner.length) label.append(...inner);
+      else if (text != null) label.textContent = text;
+      host.append(label);
+      host.__nmSavedInner = null;
+      delete host.__nmText;
+      return true;
+    }
+    function __nmRestoreOnce() {
+      document.querySelectorAll('nm-badge,nm-tag,nm-button').forEach(h => __nmFixBadge(h));
+      document.querySelectorAll('nm-list-item').forEach(item => {
+        const saved = item.__nmSaved;
+        if (!saved || !saved.length || !item.querySelector('.nm-list-item__main')) return;
+        saved.forEach(node => {
+          const slot = node.getAttribute('slot');
+          const selector = slot === 'extra' ? '.nm-list-item__extra'
+            : slot === 'trailing' ? '.nm-list-item__trailing'
+            : slot === 'leading' ? '.nm-list-item__leading'
+            : '.nm-list-item__main';
+          const target = item.querySelector(selector);
+          if (target && !target.contains(node)) {
+            target.append(node);
+            target.removeAttribute('hidden');
+          }
+        });
+        item.__nmSaved = null;
+      });
+    }
+    let __nmTries = 0;
+    (function __nmLoop() {
+      __nmRestoreOnce();
+      if (++__nmTries < 30) setTimeout(__nmLoop, 60);
+    })();
+  </script>
+  <script>
+    /* 最小兼容脚本：
+       1) nm-tabs nm:change → 旧 data-app-view 视图切换；
+       2) apps.js 的 .is-filtered 补充可见性；
+       3) 「查看详情 / 查看」→ nm-modal；勾选确认前批准按钮禁用；
+       4) 批准 → 对应行徽章变 success 且弹窗关闭；拒绝 → danger 徽章。 */
+    document.querySelectorAll('nm-tabs').forEach(tabs => {
+      tabs.addEventListener('nm:change', e => {
+        const target = e.detail?.value;
+        if (!target) return;
+        document.querySelectorAll('[data-app-view]').forEach(view => {
+          view.classList.toggle('active', view.dataset.appView === target);
+        });
+      });
+    });
+    if (!document.getElementById('app04FilteredStyle')) {
+      const filteredStyle = document.createElement('style');
+      filteredStyle.id = 'app04FilteredStyle';
+      filteredStyle.textContent = '.is-filtered{display:none !important}';
+      document.head.append(filteredStyle);
+    }
+
+    const modal = document.getElementById('app04Modal');
+    let activeRow = null;
+    let confirmCheck, approveBtn, denyBtn;
+
+    /* 打开时动态注入内容（避免 modal 嵌套自定义元素在升级时序下被
+       collectSlots 串台污染）。每次打开重建，关闭时清空。 */
+    function fillModal() {
+      modal.textContent = '';
+
+      // body：单一根容器，显式 slot=default（overlay 不自动归默认 slot）
+      const body = document.createElement('div');
+      body.slot = 'default';
+      body.className = 'app-modal-detail';
+      body.innerHTML =
+        '<p><strong>操作：</strong>允许 Application 写入 Workspace</p>' +
+        '<p><strong>来源：</strong>Research Board</p>' +
+        '<p><strong>目标：</strong>/reports/（创建 Markdown 文件）</p>' +
+        '<p><strong>风险：</strong>应用产物将写入本地 Workspace，回滚点已保存。</p>';
+
+      confirmCheck = document.createElement('nm-checkbox');
+      confirmCheck.id = 'app04ConfirmCheck';
+      const checkLabel = document.createElement('span');
+      checkLabel.className = 'app-modal-check-label';
+      checkLabel.textContent = '我已核对目标路径与写入范围';
+      body.append(confirmCheck, checkLabel);
+      modal.append(body);
+
+      // footer 按钮用 CSS 类形式：overlay footer slot 对嵌套自定义元素存在
+      // 投影穿透（按钮 label 会串到 body），改用 .nm-button 类更可靠，样式已内联。
+      const footer = document.createElement('span');
+      footer.slot = 'footer';
+      denyBtn = document.createElement('button');
+      denyBtn.type = 'button';
+      denyBtn.id = 'app04Deny';
+      denyBtn.className = 'nm-button';
+      denyBtn.dataset.variant = 'secondary';
+      denyBtn.textContent = '拒绝';
+      approveBtn = document.createElement('button');
+      approveBtn.type = 'button';
+      approveBtn.id = 'app04Approve';
+      approveBtn.className = 'nm-button';
+      approveBtn.dataset.variant = 'primary';
+      approveBtn.disabled = true;
+      approveBtn.textContent = '批准';
+      footer.append(denyBtn, approveBtn);
+      modal.append(footer);
+
+      confirmCheck.addEventListener('nm:change', e => {
+        approveBtn.disabled = !e.detail?.checked;
+      });
+      approveBtn.addEventListener('click', () => {
+        if (approveBtn.disabled) return;
+        setRowBadge('success', '已批准');
+        modal.open = false;
+      });
+      denyBtn.addEventListener('click', () => {
+        setRowBadge('danger', '已拒绝');
+        modal.open = false;
+      });
+    }
+    document.querySelectorAll('.app04-open-modal').forEach(button => {
+      button.addEventListener('nm:press', () => {
+        activeRow = button.closest('nm-list-item');
+        fillModal();
+        // 等注入的子组件升级并完成投影，再打开，避免重渲染穿透串台
+        setTimeout(() => { modal.open = true; }, 80);
+      });
+    });
+    function setRowBadge(tone, text) {
+      const badge = activeRow?.querySelector('.nm-list-item__trailing nm-badge');
+      if (badge) {
+        badge.setAttribute('tone', tone);
+        badge.textContent = text;
+      }
+    }
+  </script>
+</body>
+</html>

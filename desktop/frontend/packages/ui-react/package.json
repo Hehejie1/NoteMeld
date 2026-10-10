@@ -1,0 +1,45 @@
+{
+  "name": "@notemeld/ui-react",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "React bindings for @notemeld/ui Web Components，供 cloud-web 使用，API 与 @notemeld/ui-web 对齐。",
+  "exports": {
+    ".": "./src/index.ts",
+    "./button": "./src/button.tsx",
+    "./input": "./src/input.tsx",
+    "./card": "./src/card.tsx",
+    "./badge": "./src/badge.tsx",
+    "./label": "./src/label.tsx",
+    "./textarea": "./src/textarea.tsx",
+    "./switch": "./src/switch.tsx",
+    "./checkbox": "./src/checkbox.tsx",
+    "./alert": "./src/alert.tsx",
+    "./tabs": "./src/tabs.tsx",
+    "./select": "./src/select.tsx",
+    "./dialog": "./src/dialog.tsx",
+    "./tooltip": "./src/tooltip.tsx",
+    "./feedback": "./src/feedback.tsx",
+    "./progress": "./src/progress.tsx",
+    "./skeleton": "./src/skeleton.tsx",
+    "./scroll-area": "./src/scroll-area.tsx",
+    "./resizable": "./src/resizable.tsx",
+    "./toast": "./src/toast.tsx",
+    "./sonner": "./src/sonner.tsx",
+    "./theme-provider": "./src/theme-provider.tsx",
+    "./popover": "./src/popover.tsx",
+    "./sheet": "./src/overlay-compounds.tsx",
+    "./drawer": "./src/overlay-compounds.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "next-themes": "^0.4.6"
+  }
+}

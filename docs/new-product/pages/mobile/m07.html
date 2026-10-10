@@ -6,6 +6,23 @@
   <title>NoteMeld · 模型设置</title>
   <link rel="stylesheet" href="../../assets/mobile.css">
   <link rel="stylesheet" href="../../assets/mobile-model-settings.css">
+  <style>
+    /* 顶栏图标按钮保持原密度 */
+    .model-header-actions nm-icon-button{width:34px;height:34px;border-radius:10px;color:var(--mobile-muted);}
+    .model-header-actions nm-icon-button:hover{background:var(--mobile-surface-muted);color:var(--mobile-ink);}
+    .model-header-actions nm-icon-button:last-child{color:var(--mobile-accent);}
+    .model-header-actions nm-icon-button .nm-icon-button__icon svg{width:17px;height:17px;}
+    .model-settings-header nm-icon-button.back-btn{width:40px;height:40px;color:var(--mobile-muted);}
+    .model-settings-header nm-icon-button.back-btn .nm-icon-button__icon svg{width:20px;}
+    /* 拉取/测试按钮桥接：保持原边框行样式 */
+    .model-button-row nm-button{min-height:44px;border:1px solid var(--mobile-line);border-radius:11px;background:var(--mobile-surface-muted);color:var(--mobile-accent);font-size:12px;font-weight:700;}
+    .model-button-row nm-button:hover{background:var(--mobile-surface-muted);color:var(--mobile-accent);}
+    .model-button-row nm-button[disabled]{opacity:.55;}
+    .model-button-row nm-button .nm-button__icon svg{width:16px;height:16px;}
+    /* 底部保存按钮 */
+    .model-add-scroll nm-button.model-save-bottom{display:flex;height:48px;border:0;border-radius:12px;background:var(--mobile-accent);color:#fff;font-size:14px;font-weight:800;min-height:48px;padding:0;}
+    .model-add-scroll nm-button.model-save-bottom:hover{background:var(--mobile-accent);color:#fff;}
+  </style>
 </head>
 <body class="mobile-preview" data-page="M07">
   <div class="iphone-shell"><div class="iphone-island"></div>
@@ -13,9 +30,9 @@
     <!-- 视图一：模型设置列表 -->
     <main class="mobile-screen model-settings-screen" data-view="list">
       <header class="mobile-header model-settings-header">
-        <button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button>
+        <span></span>
         <strong>模型设置</strong>
-        <span class="model-header-actions"><button class="icon-only" data-scan-open aria-label="扫一扫导入模型"><i data-icon="scan-line"></i></button><button class="icon-only" data-provider-open aria-label="添加模型"><i data-icon="plus"></i></button></span>
+        <span class="model-header-actions"><nm-icon-button name="qrCode" label="扫一扫导入模型" data-scan-open></nm-icon-button><nm-icon-button name="plus" label="添加模型" data-provider-open></nm-icon-button></span>
       </header>
       <p class="model-list-note">按服务商管理模型 · 原型配置仅当前页面内存有效；正式版使用端侧 SQLite + 系统密钥库长期保存</p>
       <div class="model-list-scroll" data-model-groups aria-live="polite"></div>
@@ -24,9 +41,9 @@
     <!-- 视图二：添加/编辑模型（独立页面） -->
     <main class="mobile-screen model-add-page" data-view="add" hidden>
       <header class="mobile-header model-settings-header">
-        <button class="icon-only" data-add-back aria-label="返回模型列表"><i data-icon="chevron-left"></i></button>
+        <nm-icon-button class="back-btn" name="chevronLeft" label="返回模型列表" data-add-back></nm-icon-button>
         <strong data-form-title>添加模型</strong>
-        <span class="model-header-actions"><button class="icon-only" data-add-save aria-label="保存"><i data-icon="check"></i></button></span>
+        <span class="model-header-actions"><nm-icon-button name="check" label="保存" data-add-save></nm-icon-button></span>
       </header>
 
       <div class="model-add-scroll">
@@ -63,8 +80,8 @@
 
         <!-- 拉取 + 测试 -->
         <div class="model-button-row">
-          <button type="button" data-fetch-models><i data-icon="download-cloud"></i>拉取模型</button>
-          <button type="button" data-test-model><i data-icon="plug-zap"></i>测试连接</button>
+          <nm-button variant="secondary" data-fetch-models><i data-icon="download" slot="leading"></i>拉取模型</nm-button>
+          <nm-button variant="secondary" data-test-model><i data-icon="zap" slot="leading"></i>测试连接</nm-button>
         </div>
         <p class="model-fetch-status" data-fetch-status role="status">填写密钥后拉取模型；Anthropic 与 Ollama 无需手填 Key。</p>
 
@@ -72,7 +89,7 @@
         <div class="model-field-head"><span>选择模型（可多选）</span><button type="button" class="model-check-all" data-check-all>全选</button></div>
         <div class="model-multi-select" data-model-options></div>
 
-        <button type="button" class="model-save-bottom" data-add-save-bottom>保存模型</button>
+        <nm-button class="model-save-bottom" variant="primary" data-add-save-bottom>保存模型</nm-button>
       </div>
     </main>
 
@@ -81,26 +98,29 @@
     <!-- 厂商选择底部弹窗：固定高度、上下滚动 -->
     <section class="mobile-sheet vendor-pick-sheet" data-vendor-pick hidden aria-label="选择服务商">
       <div class="sheet-handle"></div>
-      <div class="sheet-heading"><div><span class="sheet-eyebrow">新建配置</span><h2>选择服务商</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="sheet-heading"><div><span class="sheet-eyebrow">新建配置</span><h2>选择服务商</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <div class="vendor-pick-list" data-vendor-pick-list></div>
     </section>
 
-    <section class="mobile-sheet model-actions-sheet" data-actions-sheet hidden aria-label="模型操作"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-action-vendor></span><h2 data-action-title>模型操作</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div><button data-model-edit><i data-icon="pencil"></i>编辑模型<i data-icon="chevron-right"></i></button><button data-model-share><i data-icon="share-2"></i>分享给其他端<i data-icon="chevron-right"></i></button><button class="danger" data-model-delete><i data-icon="trash-2"></i>删除模型<i data-icon="chevron-right"></i></button></section>
-    <section class="mobile-sheet model-share-sheet" data-share-sheet hidden aria-label="分享模型配置"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>分享模型配置</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+    <section class="mobile-sheet model-actions-sheet" data-actions-sheet hidden aria-label="模型操作"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-action-vendor></span><h2 data-action-title>模型操作</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div><button data-model-edit><i data-icon="pencil"></i>编辑模型<i data-icon="chevron-right"></i></button><button data-model-share><i data-icon="share-2"></i>分享给其他端<i data-icon="chevron-right"></i></button><button class="danger" data-model-delete><i data-icon="trash-2"></i>删除模型<i data-icon="chevron-right"></i></button></section>
+    <section class="mobile-sheet model-share-sheet" data-share-sheet hidden aria-label="分享模型配置"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>分享模型配置</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <div class="share-qr" data-share-qr><div class="qr-placeholder"><i data-icon="qr-code"></i></div></div>
       <p class="model-fetch-status">扫码或复制信息到其他端导入。分享内容仅含厂商、地址与模型清单，<strong>不包含 API 密钥</strong>，导入后需自行填写。</p>
       <label class="share-uri-label">分享信息<input data-share-uri readonly></label>
       <button type="button" class="model-test" data-share-copy><i data-icon="copy"></i>复制分享信息</button>
     </section>
-    <section class="mobile-sheet model-import-sheet" data-import-sheet hidden aria-label="导入模型配置"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>导入模型配置</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+    <section class="mobile-sheet model-import-sheet" data-import-sheet hidden aria-label="导入模型配置"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>导入模型配置</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <textarea data-import-text rows="5" placeholder="粘贴 notemeld://model-add?d=... 链接或分享 JSON"></textarea>
       <p class="model-fetch-status" data-import-status role="status"></p>
       <button type="button" class="model-save" data-import-parse>解析并填入表单</button>
     </section>
     <section class="mobile-modal model-delete-modal" data-delete-modal hidden role="dialog" aria-modal="true" aria-labelledby="delete-model-title"><div class="modal-card"><span class="modal-icon"><i data-icon="trash-2"></i></span><h2 id="delete-model-title">删除模型？</h2><p>确定删除 <strong data-delete-name></strong> 的配置吗？此操作不可撤销。</p><div class="modal-actions"><button data-delete-cancel>取消</button><button class="danger" data-delete-confirm>删除模型</button></div></div></section>
-    <section class="mobile-sheet model-scan-sheet" data-scan-sheet hidden aria-label="扫码导入模型"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>扫一扫</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div><div class="scan-view"><i data-icon="scan-line"></i><p data-scan-status role="status">扫描其他端「分享模型配置」二维码，将自动填入厂商、地址与模型清单（不含 API 密钥）。也可识别设备配对码。</p><video data-scan-video playsinline muted hidden></video></div><button class="sheet-action" data-scan-start>开始扫描</button></section>
+    <section class="mobile-sheet model-scan-sheet" data-scan-sheet hidden aria-label="扫码导入模型"><div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">跨端快速添加</span><h2>扫一扫</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div><div class="scan-view"><i data-icon="scan-line"></i><p data-scan-status role="status">扫描其他端「分享模型配置」二维码，将自动填入厂商、地址与模型清单（不含 API 密钥）。也可识别设备配对码。</p><video data-scan-video playsinline muted hidden></video></div><button class="sheet-action" data-scan-start>开始扫描</button></section>
     <div class="toast" data-model-toast role="status" hidden></div>
   </div>
-  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/model-vendor-registry.js"></script><script src="../../assets/mobile.js"></script><script src="../../assets/mobile-model-settings.js"></script>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/model-vendor-registry.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/mobile.js"></script>
+  <script src="../../assets/mobile-model-settings.js"></script>
 </body>
 </html>

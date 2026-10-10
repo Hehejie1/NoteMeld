@@ -32,9 +32,9 @@
             <span class="section-kicker">People</span>
             <h1>人员管理</h1>
           </div>
-          <button class="primary-button" type="button" data-invite-member>
+          <nm-button variant="primary" class="primary-button" type="button" data-invite-member>
             <i data-icon="mail-plus"></i>邀请成员
-          </button>
+          </nm-button>
         </header>
         <section class="people-overview">
           <article>
@@ -53,8 +53,8 @@
         <section class="people-panel">
           <header>
             <div class="scope-tabs">
-              <button class="active" data-people-tab="requests">申请列表</button
-              ><button data-people-tab="members">已加入列表</button>
+              <nm-button variant="ghost" class="active" data-people-tab="requests">申请列表</nm-button
+              ><nm-button variant="ghost" data-people-tab="members">已加入列表</nm-button>
             </div>
             <div class="people-tools">
               <label class="select-field"
@@ -85,11 +85,10 @@
               ><span class="request-reason" data-request-reason
                 >申请使用云端 Agent 整理产品研究资料。</span
               ><time>刚刚</time><span class="review-meta">—</span
-              ><span class="status-badge approval"
-                ><i data-icon="clock-3"></i>待审核</span
-              ><span class="person-actions"
-                ><button class="secondary-button">拒绝</button
-                ><button class="primary-button">同意</button></span
+              ><nm-badge tone="warning" class="status-badge approval"><i data-icon="clock-3"></i>待审核</nm-badge>
+              <span class="person-actions"
+                ><nm-button variant="secondary" class="secondary-button">拒绝</nm-button
+                ><nm-button variant="primary" class="primary-button">同意</nm-button></span
               >
             </article>
           </div>
@@ -107,15 +106,64 @@
                 ></span
               ><span>普通用户 · 正常</span><span>申请加入</span
               ><span>2026-08-21 · 今天 09:42</span><span>MacBook Pro</span
-              ><button class="secondary-button">管理</button>
+              ><nm-button variant="secondary" class="secondary-button">管理</nm-button>
             </article>
           </div>
         </section>
       </main>
     </div>
+    <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+    <script>
+    // 兼容（必须在 cloud.js 前执行）：cloud.js 用原生 button 标签选择器查找邀请按钮，
+    // 这里提前创建一个原生代理按钮，cloud.js 会为它绑定打开邀请弹窗的逻辑。
+    (()=>{
+      const nmBtn=document.querySelector('[data-invite-member]');
+      if(nmBtn&&nmBtn.tagName!=='BUTTON'){
+        const proxy=document.createElement('button');
+        proxy.type='button';
+        proxy.textContent='邀请成员';
+        proxy.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)';
+        nmBtn.before(proxy);
+      }
+    })();
+    </script>
     <script src="../../assets/vendor/lucide.js"></script>
     <script src="../../assets/page.js"></script>
     <script src="../../assets/cloud.js"></script>
     <script src="../../assets/c04-live.js"></script>
+    <script>
+    // 兼容（须在 cloud.js 之后的逻辑使用）：cloud.js 用原生 button 标签选择器绑事件/建邀请弹窗，转发到 nm-* 标签。
+    (()=>{
+      // 邀请成员按钮：cloud.js 已在初始化时给其缓存的按钮绑定点击，
+      // 这里把该原生按钮的点击转由 nm-* 标签触发；点击 nm 按钮时转发。
+      const invite=document.querySelector('[data-invite-member]');
+      if(invite&&invite.tagName!=='BUTTON'){
+        invite.addEventListener('nm:press',()=>{
+          const orig=[...document.querySelectorAll('.workbench-header button')].find(b=>b.textContent.includes('邀请成员'));
+          orig?.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+        });
+      }
+      // cloud.js 的“同意/拒绝”通过 person-actions button 绑定
+      document.querySelectorAll('.person-actions nm-button').forEach(nb=>{
+        nb.addEventListener('nm:press',()=>{
+          const row=nb.closest('.person-row');
+          const approved=nb.textContent.includes('同意');
+          if(window.confirm((approved?'同意':'拒绝')+'这条访问申请？')){
+            const badge=row.querySelector('.status-badge');
+            badge.textContent=approved?'已同意':'已拒绝';
+            badge.classList.toggle('success',approved);
+            nb.parentElement.hidden=true;
+          }
+        });
+      });
+      // 成员行“管理”按钮（原型态）
+      const manage=document.querySelector('.member-row .secondary-button');
+      manage?.addEventListener('nm:press',()=>{
+        const row=manage.closest('.member-row');
+        const role=prompt('设置成员角色（管理员 / 普通用户）',row.querySelectorAll('span')[1]?.textContent||'普通用户');
+        if(role){row.querySelectorAll('span')[1].textContent=role+' · 正常'}
+      });
+    })();
+    </script>
   </body>
 </html>

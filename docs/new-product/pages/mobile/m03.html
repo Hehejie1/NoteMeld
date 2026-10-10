@@ -5,38 +5,61 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>NoteMeld · 设置</title>
   <link rel="stylesheet" href="../../assets/mobile.css">
+  <style>
+    /* 设置行使用 nm-list / nm-list-item，保留原密度与分隔 */
+    .settings-group{margin:13px 0;}
+    .settings-group nm-list-item{flex-wrap:nowrap;min-height:58px;padding:0 16px;background:transparent;gap:8px;}
+    .settings-group nm-list-item .nm-list-item__title{font-size:13px;font-weight:400;color:#273244;}
+    .settings-group nm-list-item .nm-list-item__main{gap:0;}
+    .settings-group nm-list-item .nm-list-item__extra{font-size:10px;font-style:normal;color:#8e97a1;}
+    .settings-group nm-list-item .nm-list-item__leading{color:#667286;}
+    .settings-group nm-list-item .nm-list-item__leading svg{width:17px;}
+    .settings-group nm-list-item .nm-list-item__trailing{color:#a0a8b3;}
+    .settings-group nm-list-item .nm-list-item__trailing svg{width:15px;}
+    .settings-group nm-list-item:hover{background:transparent;}
+    .settings-group nm-list-item.danger .nm-list-item__title,
+    .settings-group nm-list-item.danger .nm-list-item__leading{color:#d75561;}
+  </style>
 </head>
 <body class="mobile-preview" data-page="M03">
   <div class="iphone-shell">
     <div class="iphone-island"></div>
     <main class="mobile-screen settings-screen mobile-settings-hub">
       <header class="mobile-header settings-header">
-        <button class="icon-only" data-go="M01" aria-label="返回首页"><i data-icon="chevron-left"></i></button>
+        <nm-icon-button name="chevronLeft" label="返回首页" data-go="M01"></nm-icon-button>
         <strong>设置</strong><span></span>
       </header>
 
-      <section class="settings-group" data-motion>
-        <button data-go="M04"><span><i data-icon="brain"></i>记忆库</span><em>4 个分类</em><i data-icon="chevron-right"></i></button>
-        <button data-go="M11"><span><i data-icon="component"></i>组件库</span><em>Android 组件</em><i data-icon="chevron-right"></i></button>
-      </section>
+      <nm-list class="settings-group" data-motion data-form="wide" data-hydrate>
+        <template>
+          <nm-list-item data-go="M04" title="记忆库"><span slot="leading"><i data-icon="brain"></i></span><em slot="extra">4 个分类</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+          <nm-list-item data-go="M11" title="组件库"><span slot="leading"><i data-icon="component"></i></span><em slot="extra">Android 组件</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+        </template>
+      </nm-list>
 
-      <section class="settings-group" data-motion>
-        <button data-go="M07" aria-label="模型设置"><span><i data-icon="boxes"></i>模型设置</span><em>管理模型</em><i data-icon="chevron-right"></i></button>
-        <button data-go="M08" aria-label="远程连接"><span><i data-icon="monitor-smartphone"></i>远程连接</span><em>云端与设备</em><i data-icon="chevron-right"></i></button>
-      </section>
+      <nm-list class="settings-group" data-motion data-form="wide" data-hydrate>
+        <template>
+          <nm-list-item data-go="M07" title="模型设置"><span slot="leading"><i data-icon="boxes"></i></span><em slot="extra">管理模型</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+          <nm-list-item data-go="M08" title="远程连接"><span slot="leading"><i data-icon="monitor-smartphone"></i></span><em slot="extra">云端与设备</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+        </template>
+      </nm-list>
 
-      <section class="settings-group" data-motion>
-        <div class="setting-theme"><span><i data-icon="palette"></i>主题</span><div class="theme-tabs"><button class="active">系统</button><button>浅色</button><button>深色</button></div></div>
-        <button data-language-open><span><i data-icon="languages"></i>语言</span><em>跟随系统</em><i data-icon="chevron-right"></i></button>
-        <button data-go="M05"><span><i data-icon="type"></i>字体大小</span><em data-font-summary>标准</em><i data-icon="chevron-right"></i></button>
-        <button data-notification-toggle aria-pressed="true"><span><i data-icon="bell"></i>消息通知设置</span><em data-notification-state>已开启</em><i data-icon="chevron-right"></i></button>
-      </section>
+      <nm-list class="settings-group" data-motion data-form="wide" data-hydrate>
+        <template>
+          <div class="setting-theme"><span><i data-icon="palette"></i>主题</span><div class="theme-tabs"><button class="active">系统</button><button>浅色</button><button>深色</button></div></div>
+          <nm-list-item data-language-open title="语言"><span slot="leading"><i data-icon="languages"></i></span><em slot="extra">跟随系统</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+          <nm-list-item data-go="M05" title="字体大小"><span slot="leading"><i data-icon="type"></i></span><em slot="extra" data-font-summary>标准</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+          <nm-list-item data-notification-toggle aria-pressed="true" title="消息通知设置"><span slot="leading"><i data-icon="bell"></i></span><em slot="extra" data-notification-state>已开启</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+        </template>
+      </nm-list>
 
-      <section class="settings-group" data-motion>
-        <button data-log-export><span><i data-icon="message-square-share"></i>分享日志</span><em>生成 ZIP</em><i data-icon="chevron-right"></i></button>
-        <button class="danger" data-clear-log><span><i data-icon="trash-2"></i>清除日志</span><em data-log-state>42 MB</em><i data-icon="chevron-right"></i></button>
-        <button data-go="M06"><span><i data-icon="hard-drive"></i>存储空间</span><em>9.27 MB</em><i data-icon="chevron-right"></i></button>
-      </section>
+      <nm-list class="settings-group" data-motion data-form="wide" data-hydrate>
+        <template>
+          <nm-list-item data-log-export title="分享日志"><span slot="leading"><i data-icon="message-square-share"></i></span><em slot="extra">生成 ZIP</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+          <nm-list-item class="danger" data-clear-log title="清除日志"><span slot="leading"><i data-icon="trash-2"></i></span><em slot="extra" data-log-state>42 MB</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+          <nm-list-item data-go="M06" title="存储空间"><span slot="leading"><i data-icon="hard-drive"></i></span><em slot="extra">9.27 MB</em><span slot="trailing"><i data-icon="chevron-right"></i></span></nm-list-item>
+        </template>
+      </nm-list>
 
       <footer class="version-info" data-motion><span class="brand-mini"><img src="../../assets/logo.png" alt="NoteMeld"></span><strong>NoteMeld</strong><small>版本 1.4.0 · Build 20260901</small></footer>
     </main>
@@ -63,6 +86,19 @@
   </div>
   <script src="../../assets/vendor/lucide.js"></script>
   <script src="../../assets/vendor/gsap.min.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script>
+    // 兼容桥接：框架在“解析期”升级嵌套 nm-list > nm-list-item 时存在命名槽二次投影缺陷，
+    // 故列表内容暂存 <template>，待 nm-list 已连接后再注入，使每行只连接一次。
+    document.querySelectorAll('nm-list[data-hydrate]').forEach(list=>{
+      const tpl=list.querySelector('template');
+      if(!tpl)return;
+      const frag=tpl.content.cloneNode(true);
+      frag.querySelectorAll('nm-list-item').forEach(item=>item.setAttribute('data-form',list.currentForm));
+      list.append(frag);
+      tpl.remove();
+    });
+  </script>
   <script src="../../assets/mobile.js?v=20260901-7"></script>
 </body>
 </html>

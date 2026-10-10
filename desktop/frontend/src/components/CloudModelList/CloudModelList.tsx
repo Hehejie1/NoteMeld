@@ -3,6 +3,7 @@ import CloudClient, { type CatalogProvider } from '../../services/cloud'
 import { CloudModelForm } from '../CloudModelForm'
 import { EmptyState, ErrorState, LoadingState } from '../ui/feedback'
 import { useCloudLocale } from '../../pages/CloudPage/cloudLocale'
+import { Button, Checkbox, Badge } from '@notemeld/ui-web'
 
 export function CloudModelList({
   client,
@@ -92,7 +93,7 @@ export function CloudModelList({
           {t('models.configured', '已配置模型')}
         </h2>
         {!readOnly ? (
-          <button
+          <Button
             type="button"
             onClick={() => {
               setNotice(null)
@@ -100,10 +101,11 @@ export function CloudModelList({
               setEditingProvider(null)
               setOpen(true)
             }}
-            className="rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white transition hover:brightness-110"
+            size="sm"
+            className="rounded-lg px-3 py-2 text-xs font-medium transition hover:brightness-110"
           >
             {t('models.add', '添加模型')}
-          </button>
+          </Button>
         ) : (
           <span className="text-xs text-[var(--muted)]">{t('models.read-only-tag', '只读')}</span>
         )}
@@ -145,9 +147,11 @@ export function CloudModelList({
                   </div>
                   {!readOnly ? (
                     <div className="flex shrink-0 items-center gap-1">
-                      <button type="button" className="cloud-model-row-button" onClick={() => { setActionError(null); setEditingProvider(provider); setOpen(true) }}>{t('models.edit', '编辑')}</button>
-                      <button
+                      <Button type="button" variant="outline" size="sm" className="cloud-model-row-button" onClick={() => { setActionError(null); setEditingProvider(provider); setOpen(true) }}>{t('models.edit', '编辑')}</Button>
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         className="cloud-model-row-button cloud-model-row-danger"
                         onClick={() => {
                           if (!window.confirm(t('models.delete-provider-confirm', '删除厂商将同时移除其下全部模型，确定继续？'))) return
@@ -159,7 +163,7 @@ export function CloudModelList({
                         }}
                       >
                         {t('models.delete', '删除')}
-                      </button>
+                      </Button>
                     </div>
                   ) : null}
                 </div>
@@ -167,17 +171,15 @@ export function CloudModelList({
                   <ul role="list" className="mt-2 space-y-1 border-t border-[var(--border-subtle)] pt-2">
                     {providerModels.map(model => (
                       <li key={model.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={model.enabled}
                           disabled={readOnly}
-                          onChange={event => toggleModelEnabled(provider.id, model.id, event.target.checked)}
-                          aria-label={t('models.enabled', '启用')}
+                          onCheckedChange={checked => toggleModelEnabled(provider.id, model.id, checked)}
                         />
                         <span className="min-w-0 flex-1 truncate">
                           {model.display_name}
                           <span className="ml-1 text-xs text-[var(--muted)]">{model.model_id}</span>
-                          {model.is_default ? <span className="cloud-model-default-badge">{t('models.default', '默认')}</span> : null}
+                          {model.is_default ? <Badge className="cloud-model-default-badge">{t('models.default', '默认')}</Badge> : null}
                         </span>
                         <span className="hidden w-24 shrink-0 text-right text-[10px] text-[var(--muted)] sm:block">{(model.context_window ?? 0).toLocaleString()}</span>
                         {model.test_status && model.test_status !== 'unknown' ? (
@@ -186,8 +188,10 @@ export function CloudModelList({
                           </span>
                         ) : null}
                         {!readOnly && !model.is_default ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="outline"
+                            size="sm"
                             className="cloud-model-row-button"
                             onClick={() => {
                               setActionError(null)
@@ -198,11 +202,13 @@ export function CloudModelList({
                             }}
                           >
                             {t('models.make-default', '设为默认')}
-                          </button>
+                          </Button>
                         ) : null}
                         {!readOnly ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="outline"
+                            size="sm"
                             className="cloud-model-row-button cloud-model-row-danger"
                             onClick={() => {
                               if (!window.confirm(t('models.delete-confirm', '确定删除此模型？'))) return
@@ -214,7 +220,7 @@ export function CloudModelList({
                             }}
                           >
                             {t('models.remove', '移除')}
-                          </button>
+                          </Button>
                         ) : null}
                       </li>
                     ))}
@@ -240,14 +246,15 @@ export function CloudModelList({
             aria-labelledby="model-form-title"
             className="cloud-dialog"
           >
-            <button
+            <Button
               type="button"
+              variant="ghost"
               className="cloud-modal-close"
               onClick={() => setOpen(false)}
               aria-label={t('models.close', '关闭')}
             >
               ×
-            </button>
+            </Button>
             <CloudModelForm
               client={client}
               providerToEdit={editingProvider ?? undefined}

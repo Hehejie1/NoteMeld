@@ -1,20 +1,46 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 字体大小</title><link rel="stylesheet" href="../../assets/mobile.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 字体大小</title>
+<link rel="stylesheet" href="../../assets/mobile.css">
+<style>
+  .detail-header nm-icon-button{width:40px;height:40px;color:#283447;}
+  .detail-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+  /* 字号滑块 */
+  .range-wrap nm-slider{display:block;width:100%;}
+  .range-wrap nm-slider .nm-slider__control{width:100%;accent-color:var(--mobile-accent);}
+  .save-indicator nm-icon-button{width:16px;height:16px;color:#15976e;}
+</style>
+</head>
 <body class="mobile-preview" data-page="M05">
   <div class="iphone-shell"><div class="iphone-island"></div>
     <main class="mobile-screen detail-screen font-page">
-      <header class="mobile-header detail-header"><button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button><strong>字体大小</strong><button class="text-confirm" data-font-confirm>确认</button></header>
+      <header class="mobile-header detail-header"><nm-icon-button name="chevronLeft" label="返回设置" data-go="M03"></nm-icon-button><strong>字体大小</strong><nm-button variant="ghost" size="sm" class="text-confirm" data-font-confirm>确认</nm-button></header>
       <section class="font-preview" data-motion>
         <div class="preview-user" data-font-preview>帮我预览一下字号大小</div>
         <div class="preview-agent" data-font-preview><strong>NoteMeld Agent</strong><p>你可以拖动下方滑块调整全局字号。合适的字号能让信息阅读更轻松，同时保持清晰的内容层级。</p></div>
       </section>
       <section class="font-controls" data-motion>
         <div class="toggle-row"><span><strong>跟随系统</strong><small>开启后字体大小将跟随系统设置</small></span><button class="switch-control" data-system-font aria-pressed="false"><span></span></button></div>
-        <div class="range-wrap"><input type="range" min="13" max="19" step="1" value="16" data-font-range><div><span>A</span><strong data-font-label>标准 · 16px</strong><span class="large-a">A</span></div></div>
+        <div class="range-wrap"><nm-slider data-font-range min="13" max="19" step="1" value="16"></nm-slider><div><span>A</span><strong data-font-label>标准 · 16px</strong><span class="large-a">A</span></div></div>
       </section>
       <div class="save-indicator" data-font-saved hidden><i data-icon="check-circle-2"></i>字体大小已保存</div>
     </main>
   </div>
-  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script><script src="../../assets/mobile.js?v=20260901-7"></script>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/mobile.js?v=20260901-7"></script>
+  <script>
+    // 兼容桥接：旧脚本通过设置宿主 nm-slider.disabled 来跟随系统，
+    // 需同步到内部 range 控件。
+    (()=>{
+      const slider=document.querySelector('[data-font-range]');
+      const inner=slider?.querySelector('.nm-slider__control');
+      if(!slider||!inner)return;
+      const sync=()=>{if(inner.disabled!==slider.disabled)inner.disabled=slider.disabled;};
+      // 旧脚本在「跟随系统」按钮 click（冒泡）时设置宿主 nm-slider.disabled（property，不反射属性）。
+      // mobile.js 先注册其监听，本脚本在其后注册，故同一 click 冒泡中旧逻辑跑完后这里同步内部 range。
+      document.querySelector('[data-system-font]')?.addEventListener('click',sync);
+      sync();
+    })();
+  </script>
 </body></html>

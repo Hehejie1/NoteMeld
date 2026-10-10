@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import CloudClient from '../../services/cloud'
 import { useCloudLocale } from '../../pages/CloudPage/cloudLocale'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 
 export function CloudPairingPanel({
   client,
@@ -54,14 +56,15 @@ export function CloudPairingPanel({
           {t('pairing.description', '使用短时有效的配对码连接另一台 NoteMeld 设备。')}
         </p>
       </div>
-      <button
+      <Button
         type="button"
+        variant="secondary"
         disabled={busy}
         onClick={() => void start()}
         className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--on-surface)] transition-colors hover:border-[var(--primary)] hover:bg-[var(--surface-container)]"
       >
         {busy ? t('pairing.generating', '生成中…') : t('pairing.generate', '生成配对码')}
-      </button>
+      </Button>
       {code ? (
         <output
           aria-label="Pairing code"
@@ -74,40 +77,41 @@ export function CloudPairingPanel({
         <label htmlFor="pairing-code" className="text-sm font-medium text-[var(--on-surface)]">
           {t('pairing.code', '配对码')}
         </label>
-        <input
+        <Input
           id="pairing-code"
           value={code}
-          onChange={event => setCode(event.target.value)}
+          onValueChange={setCode}
           className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-[var(--on-surface)]"
         />
         <label htmlFor="pairing-device" className="text-sm font-medium text-[var(--on-surface)]">
           {t('pairing.device-id', '目标设备 ID')}
         </label>
-        <input
+        <Input
           id="pairing-device"
           required
           value={deviceId}
-          onChange={event => setDeviceId(event.target.value)}
+          onValueChange={setDeviceId}
           className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-[var(--on-surface)]"
         />
         <label htmlFor="pairing-name" className="text-sm font-medium text-[var(--on-surface)]">
           {t('pairing.display-name', '显示名称')}
         </label>
-        <input
+        <Input
           id="pairing-name"
           required
           value={displayName}
-          onChange={event => setDisplayName(event.target.value)}
+          onValueChange={setDisplayName}
           className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-[var(--on-surface)]"
         />
-        <button
+        <Button
           type="button"
+          variant="default"
           disabled={busy || !code || !deviceId || !displayName}
           onClick={() => void confirm()}
           className="rounded bg-[var(--primary)] px-3 py-2 text-sm text-white transition hover:brightness-110 disabled:opacity-50"
         >
           {t('pairing.confirm', '确认配对')}
-        </button>
+        </Button>
       </div>
       {message ? (
         <p role="status" className="text-sm text-[var(--on-surface-variant)]">

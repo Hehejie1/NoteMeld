@@ -1,1 +1,329 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NoteMeld · 学习应用</title><link rel="stylesheet" href="../../assets/page.css"><link rel="stylesheet" href="../../assets/d01.css"><link rel="stylesheet" href="../../assets/apps.css"></head><body data-page="APP02"><div class="desktop-app app-product"><aside class="desktop-sidebar"><div class="sidebar-head"><div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div><div class="sidebar-actions"><button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button><button aria-label="通知"><i data-icon="bell"></i></button><button aria-label="搜索"><i data-icon="search"></i></button></div></div><nav class="quick-nav" aria-label="主要功能"><a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a><a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a><a class="quick-link" href="#" data-go="D09"><span>⚙</span>设置</a></nav><section class="session-list"><div class="section-label"><span>最近应用</span></div><a class="session" href="#" data-go="APP01"><strong>笔记应用</strong><small>12 篇笔记 · 3 个 Wiki 空间</small></a><a class="session" href="#" data-go="APP02"><strong>学习应用</strong><small>2 个学习空间 · 4 个待复习</small></a><a class="session" href="#" data-go="APP03"><strong>监控应用</strong><small>本地运行正常</small></a><a class="session" href="#" data-go="APP04"><strong>系统运行</strong><small>1 个审批待处理</small></a></section><div class="sidebar-footer"><span class="connection"><i></i>本地 Agent 已连接</span><button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button></div></aside><main class="app-main"><header class="app-topbar"><div class="app-brandline"><span class="app-brandmark"><i data-icon="graduation-cap"></i></span><div><strong>学习应用</strong><small>把资料变成路径、证据和可复习的掌握结果</small></div></div><div class="app-top-actions"><label class="app-search"><i data-icon="search"></i><input data-app-search type="search" aria-label="搜索学习内容" placeholder="搜索主题、节点或来源"></label><button type="button"><i data-icon="calendar-clock"></i> 复习计划</button><button type="button" class="primary"><i data-icon="plus"></i> 新建学习空间</button></div></header><nav class="app-nav" aria-label="学习应用导航"><button class="active" data-app-tab="spaces">学习空间</button><button data-app-tab="canvas">学习画布</button><button data-app-tab="mastery">掌握验证</button><button data-app-tab="review">复习</button></nav><div class="app-scroll"><section class="app-view active" data-app-view="spaces"><header class="app-heading"><div><p class="app-kicker">LEARNING SPACES</p><h1>我的学习空间</h1><p>把本地知识、网页研究和 Agent 对话组织为可执行的学习路径。</p></div><div class="app-heading-meta"><i></i>学习进度已保存</div></header><div class="app-metric-grid"><div class="app-metric"><strong>2</strong><span>进行中的空间</span></div><div class="app-metric"><strong>18</strong><span>学习节点</span></div><div class="app-metric"><strong>7</strong><span>已掌握概念</span></div><div class="app-metric"><strong>4</strong><span>今日待复习</span></div></div><div class="app-section"><div class="app-section-head"><div><h2>学习路径</h2><p>按照当前掌握状态安排下一步</p></div><button type="button">查看全部 <i data-icon="arrow-right"></i></button></div><div class="app-card-grid"><article class="app-card" data-app-item><div class="app-card-top"><div class="app-card-icon"><i data-icon="network"></i></div><span class="app-chip success">进行中</span></div><h3>Agent 系统设计</h3><p>从事件循环、工具调度到可靠性边界，完成 12 个学习节点。</p><div class="app-progress"><span style="width:68%"></span></div><small>68% · 下一步：审批状态机</small></article><article class="app-card" data-app-item><div class="app-card-top"><div class="app-card-icon"><i data-icon="book-open"></i></div><span class="app-chip">待开始</span></div><h3>多端知识同步</h3><p>理解 Workspace、Relay、缓存投影和设备授权的完整链路。</p><div class="app-progress"><span style="width:18%"></span></div><small>18% · 2 个来源待阅读</small></article></div></div></section><section class="app-view" data-app-view="canvas"><header class="app-heading"><div><p class="app-kicker">SEMANTIC CANVAS</p><h1>学习画布</h1><p>通过卡片和关系整理概念，保留来源证据，并可以发布为笔记。</p></div><button class="app-top-actions primary" type="button">打开当前画布</button></header><div class="app-card-grid"><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="sticky-note"></i></div><span class="app-chip">14 张卡片</span></div><h3>Agent 系统设计画布</h3><p>12 个概念节点、9 条关系、3 个待验证主张。</p><small>最近编辑 10 分钟前 · 尚未发布</small></article><article class="app-card"><div class="app-card-top"><div class="app-card-icon"><i data-icon="share-2"></i></div><span class="app-chip success">已同步</span></div><h3>研究来源关系</h3><p>把论文、GitHub 项目和本地笔记连接为可追溯结构。</p><small>最近编辑昨天 · 已发布 1 篇笔记</small></article></div></section><section class="app-view" data-app-view="mastery"><header class="app-heading"><div><p class="app-kicker">MASTERY CHECK</p><h1>掌握验证</h1><p>通过问题、解释和证据判断是否真正理解一个概念。</p></div><span class="app-chip warn">3 个待验证</span></header><div class="app-list"><article class="app-list-row" data-app-item><div><strong>为什么 Agent 需要持久化事件序号？</strong><p>关联：Agent Runtime · 需要引用一个真实实现案例</p></div><span class="app-chip warn">待回答</span><button type="button">开始</button></article><article class="app-list-row" data-app-item><div><strong>Workspace 权限如何影响工具调用？</strong><p>关联：授权策略 · 已提交解释，等待复核</p></div><span class="app-chip">复核中</span><button type="button">查看</button></article></div></section><section class="app-view" data-app-view="review"><header class="app-heading"><div><p class="app-kicker">SPACED REVIEW</p><h1>复习计划</h1><p>按照遗忘曲线安排短时复习，不把复习结果伪装成已掌握。</p></div><button class="app-top-actions primary" type="button">开始今日复习</button></header><div class="app-timeline"><article class="app-timeline-item"><i></i><div><strong>Agent 事件模型</strong><p>今天到期 · 上次复习：3 天前 · 当前状态：熟悉</p></div></article><article class="app-timeline-item"><i></i><div><strong>Cloud Relay 授权</strong><p>明天到期 · 上次复习：7 天前 · 当前状态：学习中</p></div></article><article class="app-timeline-item"><i></i><div><strong>知识图谱增量重建</strong><p>后天到期 · 上次复习：12 天前 · 当前状态：待开始</p></div></article></div></section></div></main></div><script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/apps.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NoteMeld · 学习应用</title>
+  <link rel="stylesheet" href="../../assets/page.css">
+  <link rel="stylesheet" href="../../assets/d01.css">
+  <link rel="stylesheet" href="../../assets/apps.css">
+</head>
+<body data-page="APP02">
+  <div class="desktop-app app-product">
+    <aside class="desktop-sidebar">
+      <div class="sidebar-head">
+        <div class="brand-mark"><img src="../../assets/logo.png" alt="NoteMeld"></div>
+        <div class="sidebar-actions">
+          <button aria-label="收起侧边栏"><i data-icon="panel-left-close"></i></button>
+          <button aria-label="通知"><i data-icon="bell"></i></button>
+          <button aria-label="搜索"><i data-icon="search"></i></button>
+        </div>
+      </div>
+      <nav class="quick-nav" aria-label="主要功能">
+        <a class="quick-link" href="#" data-go="D01"><span>＋</span>新对话</a>
+        <a class="quick-link" href="#" data-go="D06"><span>◇</span>插件应用</a>
+        <a class="quick-link" href="#" data-go="D09"><span>⚙</span>设置</a>
+      </nav>
+      <section class="session-list">
+        <div class="section-label"><span>最近应用</span></div>
+        <a class="session" href="#" data-go="APP01"><strong>笔记应用</strong><small>12 篇笔记 · 3 个 Wiki 空间</small></a>
+        <a class="session" href="#" data-go="APP02"><strong>学习应用</strong><small>2 个学习空间 · 4 个待复习</small></a>
+        <a class="session" href="#" data-go="APP03"><strong>监控应用</strong><small>本地运行正常</small></a>
+        <a class="session" href="#" data-go="APP04"><strong>系统运行</strong><small>1 个审批待处理</small></a>
+      </section>
+      <div class="sidebar-footer">
+        <span class="connection"><i></i>本地 Agent 已连接</span>
+        <button class="theme-switch" type="button" data-theme-toggle><span></span><b>浅色</b><em>深色</em></button>
+      </div>
+    </aside>
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="app-brandline">
+          <span class="app-brandmark"><i data-icon="graduation-cap"></i></span>
+          <div><strong>学习应用</strong><small>把资料变成路径、证据和可复习的掌握结果</small></div>
+        </div>
+        <div class="app-top-actions">
+          <nm-search class="app-search" data-app-search placeholder="搜索主题、节点或来源" aria-label="搜索学习内容"></nm-search>
+          <nm-button variant="secondary"><span slot="leading" data-icon="clock"></span>复习计划</nm-button>
+          <nm-button variant="primary"><span slot="leading" data-icon="plus"></span>新建学习空间</nm-button>
+        </div>
+      </header>
+      <nm-tabs class="app-nav" aria-label="学习应用导航" value="spaces">
+        <nm-tab key="spaces" label="学习空间"></nm-tab>
+        <nm-tab key="canvas" label="学习画布"></nm-tab>
+        <nm-tab key="mastery" label="掌握验证"></nm-tab>
+        <nm-tab key="review" label="复习"></nm-tab>
+      </nm-tabs>
+      <div class="app-scroll">
+        <section class="app-view active" data-app-view="spaces">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">LEARNING SPACES</p>
+              <h1>我的学习空间</h1>
+              <p>把本地知识、网页研究和 Agent 对话组织为可执行的学习路径。</p>
+            </div>
+            <div class="app-heading-meta"><i></i>学习进度已保存</div>
+          </header>
+          <div class="app-metric-grid">
+            <div class="app-metric"><strong>2</strong><span>进行中的空间</span></div>
+            <div class="app-metric"><strong>18</strong><span>学习节点</span></div>
+            <div class="app-metric"><strong>7</strong><span>已掌握概念</span></div>
+            <div class="app-metric"><strong>4</strong><span>今日待复习</span></div>
+          </div>
+          <div class="app-section">
+            <div class="app-section-head">
+              <div><h2>学习路径</h2><p>按照当前掌握状态安排下一步</p></div>
+              <nm-button variant="link" size="sm"><span slot="leading" data-icon="arrowRight"></span>查看全部</nm-button>
+            </div>
+            <div class="app-card-grid">
+              <nm-card class="app-card" data-app-item>
+                <div>
+                  <div class="app-card-top">
+                    <div class="app-card-icon"><i data-icon="network"></i></div>
+                    <nm-badge class="app-chip" tone="success">进行中</nm-badge>
+                  </div>
+                  <h3>Agent 系统设计</h3>
+                  <p>从事件循环、工具调度到可靠性边界，完成 12 个学习节点。</p>
+                  <nm-progress class="app-progress" value="68"></nm-progress>
+                  <small>68% · 下一步：审批状态机</small>
+                </div>
+              </nm-card>
+              <nm-card class="app-card" data-app-item>
+                <div>
+                  <div class="app-card-top">
+                    <div class="app-card-icon"><i data-icon="book-open"></i></div>
+                    <nm-badge class="app-chip" tone="neutral">待开始</nm-badge>
+                  </div>
+                  <h3>多端知识同步</h3>
+                  <p>理解 Workspace、Relay、缓存投影和设备授权的完整链路。</p>
+                  <nm-progress class="app-progress" value="18"></nm-progress>
+                  <small>18% · 2 个来源待阅读</small>
+                </div>
+              </nm-card>
+            </div>
+          </div>
+        </section>
+
+        <section class="app-view" data-app-view="canvas">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">SEMANTIC CANVAS</p>
+              <h1>学习画布</h1>
+              <p>通过卡片和关系整理概念，保留来源证据，并可以发布为笔记。</p>
+            </div>
+            <nm-button variant="primary" class="app-heading-button">打开当前画布</nm-button>
+          </header>
+          <div class="app-card-grid">
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="sticky-note"></i></div>
+                  <nm-badge class="app-chip" tone="neutral">14 张卡片</nm-badge>
+                </div>
+                <h3>Agent 系统设计画布</h3>
+                <p>12 个概念节点、9 条关系、3 个待验证主张。</p>
+                <small>最近编辑 10 分钟前 · 尚未发布</small>
+              </div>
+            </nm-card>
+            <nm-card class="app-card">
+              <div>
+                <div class="app-card-top">
+                  <div class="app-card-icon"><i data-icon="share-2"></i></div>
+                  <nm-badge class="app-chip" tone="success">已同步</nm-badge>
+                </div>
+                <h3>研究来源关系</h3>
+                <p>把论文、GitHub 项目和本地笔记连接为可追溯结构。</p>
+                <div class="app-card-inline-actions">
+                  <nm-button variant="secondary" size="sm" id="app02Publish">发布为笔记</nm-button>
+                </div>
+                <small>最近编辑昨天 · 已发布 1 篇笔记</small>
+              </div>
+            </nm-card>
+          </div>
+        </section>
+
+        <section class="app-view" data-app-view="mastery">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">MASTERY CHECK</p>
+              <h1>掌握验证</h1>
+              <p>通过问题、解释和证据判断是否真正理解一个概念。</p>
+            </div>
+            <nm-badge class="app-chip" tone="warning">3 个待验证</nm-badge>
+          </header>
+          <div class="app-mastery-rate">
+            <label for="app02Score" class="app-mastery-rate-label">自评分（无 nm-rate 组件，使用 nm-slider + nm-badge）</label>
+            <nm-slider id="app02Score" value="60" min="0" max="100" step="5" aria-label="掌握程度自评分"></nm-slider>
+            <nm-badge id="app02ScoreBadge" tone="info">60 / 100</nm-badge>
+          </div>
+          <nm-list class="app-list" bordered>
+            <nm-list-item class="app-list-row" data-app-item>
+              <span slot="extra">
+                <strong>为什么 Agent 需要持久化事件序号？</strong>
+                <p>关联：Agent Runtime · 需要引用一个真实实现案例</p>
+              </span>
+              <nm-badge class="app-chip" slot="trailing" tone="warning">待回答</nm-badge>
+              <nm-button class="app-row-button" variant="secondary" size="sm" slot="trailing">开始</nm-button>
+            </nm-list-item>
+            <nm-list-item class="app-list-row" data-app-item>
+              <span slot="extra">
+                <strong>Workspace 权限如何影响工具调用？</strong>
+                <p>关联：授权策略 · 已提交解释，等待复核</p>
+              </span>
+              <nm-badge class="app-chip" slot="trailing" tone="neutral">复核中</nm-badge>
+              <nm-button class="app-row-button" variant="secondary" size="sm" slot="trailing">查看</nm-button>
+            </nm-list-item>
+          </nm-list>
+        </section>
+
+        <section class="app-view" data-app-view="review">
+          <header class="app-heading">
+            <div>
+              <p class="app-kicker">SPACED REVIEW</p>
+              <h1>复习计划</h1>
+              <p>按照遗忘曲线安排短时复习，不把复习结果伪装成已掌握。</p>
+            </div>
+            <nm-button variant="primary" class="app-heading-button">开始今日复习</nm-button>
+          </header>
+          <nm-timeline class="app-timeline">
+            <nm-timeline-item title="Agent 事件模型" time="今天到期">上次复习：3 天前 · 当前状态：熟悉</nm-timeline-item>
+            <nm-timeline-item title="Cloud Relay 授权" time="明天到期">上次复习：7 天前 · 当前状态：学习中</nm-timeline-item>
+            <nm-timeline-item title="知识图谱增量重建" time="后天到期">上次复习：12 天前 · 当前状态：待开始</nm-timeline-item>
+          </nm-timeline>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+    /* 升级时序保护（必须在 bundle 执行前运行）：
+       真实页面 DOM 先于 bundle 就绪。bundle 注册后各 nm-* 依次升级，宿主
+       （nm-list/nm-list-item）的 collectSlots 会穿透进嵌套自定义元素内部，
+       误收用户投影（含 nm-badge 内部 label），造成内容丢失或结构被污染。
+       升级前保存 nm-list-item 直接子节点引用与 nm-badge/nm-tag 文本，
+       由底部恢复脚本重建。 */
+    function __nmProtect() {
+      document.querySelectorAll('nm-list-item').forEach(host => {
+        const saved = Array.from(host.children).filter(el => !el.hasAttribute('data-nm-internal'));
+        if (saved.length) host.__nmSaved = saved;
+      });
+      /* badge/tag/button：保存直接子节点引用（含可能的前置图标），
+         恢复时整体放回；同时记录文本用于判断是否被污染。 */
+      document.querySelectorAll('nm-badge,nm-tag,nm-button').forEach(host => {
+        const children = Array.from(host.children).filter(el => !el.hasAttribute('data-nm-internal'));
+        if (children.length) host.__nmSavedInner = children;
+        const text = host.textContent.trim();
+        if (text) host.__nmText = text;
+      });
+    }
+    __nmProtect();
+  </script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../assets/page.js"></script>
+  <script src="../../assets/d01.js"></script>
+  <script src="../../assets/apps.js"></script>
+  <script>
+    /* 升级后恢复（配合上方保护脚本）：
+       A) 重建被污染的 nm-badge/nm-tag 内部结构（dot + 单一 label 文本）；
+       B) 把 nm-list-item 保存的子节点放回对应 slot 占位，并解除占位 hidden。 */
+    function __nmKindOf(host) {
+      const tag = host.tagName.toLowerCase();
+      return tag === 'nm-tag' ? ['tag', 'nm-tag__label', null]
+        : tag === 'nm-button' ? ['button', 'nm-button__label', null]
+        : ['badge', 'nm-badge__label', 'nm-badge__dot'];
+    }
+    function __nmFixBadge(host) {
+      const text = host.__nmText;
+      const savedInner = host.__nmSavedInner;
+      const [, labelClass, dotClass] = __nmKindOf(host);
+      const labelOk = host.querySelector('.' + labelClass)?.textContent === text;
+      if (labelOk || (!text && !savedInner)) {
+        delete host.__nmText; host.__nmSavedInner = null;
+        return true;
+      }
+      host.textContent = '';
+      if (dotClass) {
+        const dot = document.createElement('span');
+        dot.className = dotClass;
+        dot.setAttribute('aria-hidden', 'true');
+        host.append(dot);
+      }
+      const label = document.createElement('span');
+      label.className = labelClass;
+      if (savedInner && savedInner.length) {
+        label.append(...savedInner);
+      } else if (text != null) {
+        label.textContent = text;
+      }
+      host.append(label);
+      host.__nmSavedInner = null;
+      delete host.__nmText;
+      return true;
+    }
+    function __nmRestoreOnce() {
+      document.querySelectorAll('nm-badge,nm-tag,nm-button').forEach(h => __nmFixBadge(h));
+      document.querySelectorAll('nm-list-item').forEach(item => {
+        const saved = item.__nmSaved;
+        if (!saved || !saved.length || !item.querySelector('.nm-list-item__main')) return;
+        saved.forEach(node => {
+          const slot = node.getAttribute('slot');
+          const selector = slot === 'extra' ? '.nm-list-item__extra'
+            : slot === 'trailing' ? '.nm-list-item__trailing'
+            : slot === 'leading' ? '.nm-list-item__leading'
+            : '.nm-list-item__main';
+          const target = item.querySelector(selector);
+          if (target && !target.contains(node)) {
+            target.append(node);
+            target.removeAttribute('hidden');
+          }
+        });
+        item.__nmSaved = null;
+      });
+    }
+    let __nmTries = 0;
+    (function __nmLoop() {
+      __nmRestoreOnce();
+      if (++__nmTries < 30) setTimeout(__nmLoop, 60);
+    })();
+  </script>
+  <script>
+    /* 最小兼容脚本：
+       1) nm-tabs nm:change → 旧 data-app-view 视图切换；
+       2) nm-slider 自评分 → nm-badge 实时显示（代替不存在的 nm-rate）；
+       3) 发布为笔记 → nm-alert 内联反馈。 */
+    document.querySelectorAll('nm-tabs').forEach(tabs => {
+      tabs.addEventListener('nm:change', e => {
+        const target = e.detail?.value;
+        if (!target) return;
+        document.querySelectorAll('[data-app-view]').forEach(view => {
+          view.classList.toggle('active', view.dataset.appView === target);
+        });
+      });
+    });
+    if (!document.getElementById('app02FilteredStyle')) {
+      const filteredStyle = document.createElement('style');
+      filteredStyle.id = 'app02FilteredStyle';
+      filteredStyle.textContent = '.is-filtered{display:none !important}';
+      document.head.append(filteredStyle);
+    }
+    const score = document.getElementById('app02Score');
+    const scoreBadge = document.getElementById('app02ScoreBadge');
+    score?.addEventListener('nm:input', e => {
+      const value = Math.round(e.detail?.value ?? 0);
+      if (scoreBadge) {
+        scoreBadge.textContent = value + ' / 100';
+        scoreBadge.setAttribute('tone', value >= 80 ? 'success' : value >= 50 ? 'info' : 'warning');
+      }
+    });
+    document.getElementById('app02Publish')?.addEventListener('nm:press', () => {
+      if (document.getElementById('app02PublishAlert')) return;
+      const alert = document.createElement('nm-alert');
+      alert.id = 'app02PublishAlert';
+      alert.setAttribute('tone', 'success');
+      alert.setAttribute('title', '已发布为笔记');
+      alert.innerHTML = '<span slot="default">画布内容已发布到笔记应用，来源证据已保留。</span>';
+      document.querySelector('[data-app-view="canvas"] .app-card-grid')?.prepend(alert);
+    });
+  </script>
+</body>
+</html>

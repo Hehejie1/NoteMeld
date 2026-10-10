@@ -14,6 +14,7 @@ import CloudClient, { CloudSession } from '../../services/cloud'
 import { EmptyState, ErrorState, LoadingState } from '../ui/feedback'
 import { localizeCloudError, useCloudLocale } from '../../pages/CloudPage/cloudLocale'
 import { CloudRenameDialog } from './CloudRenameDialog'
+import { Button, Input } from '@notemeld/ui-web'
 
 type ListCommand = {
   id: string
@@ -122,13 +123,15 @@ export function CloudSessionList({
         title={t('session.read-failed', '会话读取失败')}
         description={localizeCloudError(error.message, t)}
         action={
-          <button
+          <Button
             type="button"
-            className="rounded border border-[var(--border-subtle)] px-3 py-1.5 text-xs"
+            variant="outline"
+            size="sm"
+            className="rounded border-[var(--border-subtle)] px-3 py-1.5 text-xs"
             onClick={() => void refresh()}
           >
             {t('session.retry', '重试')}
-          </button>
+          </Button>
         }
         className="min-h-24 border-0 p-3 text-[var(--error)]"
       />
@@ -143,9 +146,10 @@ export function CloudSessionList({
   return (
     <div className="flex min-h-0 flex-col">
       <label className="cloud-session-search mx-2 mt-2">
-        <input
+        <Input
           value={query}
           onChange={event => setQuery(event.target.value)}
+          onValueChange={setQuery}
           placeholder={t('session.search', '搜索会话')}
         />
       </label>
@@ -166,10 +170,11 @@ export function CloudSessionList({
                   key={session.id}
                   className={`group relative flex items-center gap-1 rounded-lg px-1 ${selectedId === session.id ? 'bg-[var(--surface-container-high)]' : 'hover:bg-[var(--surface-container)]'}`}
                 >
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     aria-current={selectedId === session.id ? 'page' : undefined}
-                    className="min-w-0 flex-1 rounded-md px-2 py-2 text-left"
+                    className="min-w-0 flex-1 flex-col items-stretch justify-start rounded-md px-2 py-2 text-left"
                     onClick={() => onSelect(session)}
                   >
                     <span className="block truncate text-sm font-medium">
@@ -179,11 +184,13 @@ export function CloudSessionList({
                       <StatusIcon className={`h-3 w-3 ${kind === 'running' ? 'animate-spin' : ''}`} />
                       {meta.label}
                     </span>
-                  </button>
+                  </Button>
                   {/* hover 显示：归档图标 + 三点菜单 */}
                   <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       title={archived ? t('session.restore', '恢复') : t('session.archive', '归档')}
                       disabled={busyId === session.id}
                       className="grid h-7 w-7 place-items-center rounded text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)] disabled:opacity-50"
@@ -196,25 +203,28 @@ export function CloudSessionList({
                       }
                     >
                       <Archive className="h-3.5 w-3.5" />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       title={t('session.more', '更多操作')}
                       className="grid h-7 w-7 place-items-center rounded text-[var(--on-surface-variant)] hover:bg-[var(--surface-container-high)]"
                       onClick={() => setMenuId(menuId === session.id ? null : session.id)}
                     >
                       <MoreVertical className="h-3.5 w-3.5" />
-                    </button>
+                    </Button>
                   </div>
                   {menuId === session.id ? (
                     <div
                       role="menu"
                       className="absolute top-9 right-1 z-30 w-40 overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-container-lowest)] py-1 text-xs shadow-lg"
                     >
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--surface-container)]"
+                        className="flex w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-[var(--on-surface)] font-normal hover:bg-[var(--surface-container)]"
                         onClick={() => {
                           setMenuId(null)
                           setRenaming(session)
@@ -222,20 +232,22 @@ export function CloudSessionList({
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         {t('session.rename', '重命名')}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="ghost"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--surface-container)]"
+                        className="flex w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-[var(--on-surface)] font-normal hover:bg-[var(--surface-container)]"
                         onClick={() => void exportMarkdown(session)}
                       >
                         <Download className="h-3.5 w-3.5" />
                         {t('session.export', '导出')}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="ghost"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--surface-container)]"
+                        className="flex w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-[var(--on-surface)] font-normal hover:bg-[var(--surface-container)]"
                         disabled={busyId === session.id}
                         onClick={() =>
                           void runAction(session, async () => {
@@ -246,11 +258,12 @@ export function CloudSessionList({
                       >
                         <Copy className="h-3.5 w-3.5" />
                         {t('session.copy-branch', '复制分支')}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="ghost"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[var(--error)] hover:bg-[var(--surface-container)]"
+                        className="flex w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-[var(--error)] font-normal hover:bg-[var(--surface-container)]"
                         disabled={busyId === session.id}
                         onClick={() => {
                           if (!window.confirm(t('sessions.delete-confirm', '永久删除此会话？'))) return
@@ -259,7 +272,7 @@ export function CloudSessionList({
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         {t('session.delete', '永久删除')}
-                      </button>
+                      </Button>
                     </div>
                   ) : null}
                 </li>
@@ -267,15 +280,17 @@ export function CloudSessionList({
             })}
           </ul>
           {filtered.length > 3 ? (
-            <button
+            <Button
               type="button"
-              className="w-full rounded-md px-2 py-2 text-xs text-[var(--primary)] hover:bg-[var(--surface-container)]"
+              variant="ghost"
+              size="sm"
+              className="w-full rounded-md px-2 py-2 text-xs text-[var(--primary)] font-normal hover:bg-[var(--surface-container)]"
               onClick={() => setShowAll(value => !value)}
             >
               {showAll
                 ? t('session.collapse', '收起')
                 : t('session.view-all', `查看全部 ${filtered.length} 个会话`)}
-            </button>
+            </Button>
           ) : null}
         </nav>
       )}

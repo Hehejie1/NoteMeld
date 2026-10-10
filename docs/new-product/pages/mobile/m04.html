@@ -1,26 +1,49 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 记忆库</title><link rel="stylesheet" href="../../assets/mobile.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NoteMeld · 记忆库</title>
+<link rel="stylesheet" href="../../assets/mobile.css">
+<style>
+  .detail-header nm-icon-button{width:40px;height:40px;color:#283447;}
+  .detail-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+  /* 记忆卡片 */
+  .memory-document{display:grid;gap:0;padding:4px 20px 6px;}
+  nm-card.memory-card{background:transparent;border:0;border-radius:0;box-shadow:none;padding:14px 0 12px;border-bottom:1px solid #edf0f4;}
+  nm-card.memory-card:last-child{border-bottom:0;}
+  nm-card.memory-card .nm-card__body{padding:8px 0 0;}
+  nm-card.memory-card .nm-card__title{margin:0 0 8px;font-size:17px;letter-spacing:-.02em;}
+  nm-card.memory-card p,nm-card.memory-card li{margin:0;color:#455166;font-size:12px;line-height:1.72;}
+  nm-card.memory-card ul{margin:0;padding-left:18px;}
+  /* 输入区 */
+  .memory-composer nm-textarea{width:100%;}
+  .memory-composer nm-textarea .nm-textarea__control{width:100%;resize:none;border:0;outline:0;background:transparent;color:var(--mobile-ink);line-height:1.45;padding:0;}
+  .memory-composer nm-textarea .nm-textarea__control:focus{outline:0;}
+  .memory-composer>div nm-icon-button{width:34px;height:34px;border-radius:50%;background:transparent;color:var(--mobile-accent);}
+  .memory-composer>div nm-icon-button.send{background:var(--mobile-accent);color:#fff;}
+  .memory-composer>div nm-icon-button .nm-icon-button__icon svg{width:18px;height:18px;}
+</style>
+</head>
 <body class="mobile-preview" data-page="M04">
   <div class="iphone-shell"><div class="iphone-island"></div>
     <main class="mobile-screen detail-screen memory-page">
-      <header class="mobile-header detail-header"><button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button><strong>记忆库</strong><button class="text-action" data-copy-memory><i data-icon="copy"></i>复制</button></header>
+      <header class="mobile-header detail-header"><nm-icon-button name="chevronLeft" label="返回设置" data-go="M03"></nm-icon-button><strong>记忆库</strong><nm-button variant="ghost" size="sm" class="text-action" data-copy-memory><i data-icon="copy" slot="leading"></i>复制</nm-button></header>
       <section class="detail-hero memory-hero" data-motion>
         <div><span class="eyebrow">我的记忆</span><strong>v7</strong></div>
         <p>最后更新 2026-08-31 09:25</p>
       </section>
       <section class="memory-document" data-memory-document data-motion>
-        <article><h2>工作背景</h2><p>负责 NoteMeld 产品规划与体验设计，关注本地、云端和远程设备之间的一致协作。</p></article>
-        <article><h2>个人背景</h2><p>偏好简洁、信息密度适中的界面，并要求操作反馈清晰可验证。</p></article>
-        <article><h2>当前关注</h2><p>正在完善移动端 Agent、云端管理和设备连接相关产品流程。</p></article>
-        <article><h2>近期动态</h2><ul><li>重新整理了移动端设置结构。</li><li>正在统一移动端与云端桌面的设计语言。</li></ul></article>
+        <nm-card class="memory-card" title="工作背景"><p>负责 NoteMeld 产品规划与体验设计，关注本地、云端和远程设备之间的一致协作。</p></nm-card>
+        <nm-card class="memory-card" title="个人背景"><p>偏好简洁、信息密度适中的界面，并要求操作反馈清晰可验证。</p></nm-card>
+        <nm-card class="memory-card" title="当前关注"><p>正在完善移动端 Agent、云端管理和设备连接相关产品流程。</p></nm-card>
+        <nm-card class="memory-card" title="近期动态"><ul><li>重新整理了移动端设置结构。</li><li>正在统一移动端与云端桌面的设计语言。</li></ul></nm-card>
       </section>
       <div class="memory-composer" data-motion>
-        <textarea data-memory-input rows="2" placeholder="告诉 NoteMeld 要记住或忘记什么…"></textarea>
-        <div><button aria-label="添加附件"><i data-icon="plus"></i></button><button class="send" data-add-memory aria-label="添加记忆"><i data-icon="arrow-up"></i></button></div>
+        <nm-textarea data-memory-input rows="2" placeholder="告诉 NoteMeld 要记住或忘记什么…"></nm-textarea>
+        <div><nm-icon-button name="plus" label="添加附件"></nm-icon-button><nm-icon-button class="send" name="arrowUp" label="添加记忆" data-add-memory></nm-icon-button></div>
       </div>
       <div class="toast" data-toast hidden>已复制到剪贴板</div>
     </main>
   </div>
-  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script><script src="../../assets/mobile.js?v=20260901-7"></script>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/vendor/gsap.min.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/mobile.js?v=20260901-7"></script>
 </body></html>

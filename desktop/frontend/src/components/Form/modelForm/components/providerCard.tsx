@@ -1,4 +1,5 @@
 import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
 import { type FC, type MouseEvent } from 'react'
 import styles from './index.module.css'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -90,15 +91,17 @@ const ProviderCard: FC<IProviderCardProps> = ({ provider }: IProviderCardProps) 
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <button
+          {/* 图标按钮：ghost 变体，原有 p-1 类覆盖默认内边距 */}
+          <Button
             type="button"
             data-provider-share={id}
+            variant="ghost"
             onClick={handleShare}
             title="复制模型配置分享链接（不含 API 密钥）"
             className="rounded p-1 text-neutral-400 hover:bg-blue-50 hover:text-blue-600"
           >
             <Share2 className="h-3.5 w-3.5" />
-          </button>
+          </Button>
           <Switch checked={isChecked} onCheckedChange={handleToggle} />
         </div>
       </div>

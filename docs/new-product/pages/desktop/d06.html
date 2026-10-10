@@ -15,31 +15,152 @@
   </aside>
   <main class="capability-main">
     <header class="capability-topbar">
-      <nav class="capability-tabs" aria-label="能力类型"><button class="active" type="button" data-capability-tab="plugins">插件</button><button type="button" data-capability-tab="skills">技能</button><button type="button" data-capability-tab="connectors">连接器</button><button type="button" data-capability-tab="applications">应用</button></nav>
-      <div class="capability-actions"><label class="capability-search"><span>⌕</span><input type="search" aria-label="搜索插件" placeholder="搜索插件" data-capability-search></label><button class="refresh-button" type="button" aria-label="刷新当前列表" title="刷新当前列表">↻</button><button class="primary-add" type="button" data-add-open>＋ 添加插件</button></div>
+      <nm-tabs class="capability-tabs" value="plugins" aria-label="能力类型">
+        <nm-tab key="plugins" label="插件" class="active" data-capability-tab="plugins"></nm-tab>
+        <nm-tab key="skills" label="技能" data-capability-tab="skills"></nm-tab>
+        <nm-tab key="connectors" label="连接器" data-capability-tab="connectors"></nm-tab>
+        <nm-tab key="applications" label="应用" data-capability-tab="applications"></nm-tab>
+      </nm-tabs>
+      <div class="capability-actions"><nm-search class="capability-search" placeholder="搜索插件" aria-label="搜索插件" data-capability-search></nm-search><nm-icon-button name="refresh" class="refresh-button" label="刷新当前列表" title="刷新当前列表"></nm-icon-button><nm-button variant="primary" class="primary-add" data-add-open>＋ 添加插件</nm-button></div>
     </header>
     <div class="capability-scroll">
       <section class="capability-view active" data-capability-view="plugins">
         <header class="view-heading"><h1>插件</h1><p>在 Agent 常用工具中提供确定性的执行能力。</p></header>
-        <section class="library-section"><div class="section-title"><h2>已安装</h2><button type="button" aria-label="管理已安装插件">⚙</button></div><div class="installed-strip"><button class="installed-icon selected" data-search-item="文件工具"><span>▤</span><small>文件工具</small></button><button class="installed-icon" data-search-item="Git"><span>⌘</span><small>Git</small></button><button class="installed-icon" data-search-item="浏览器"><span>◎</span><small>浏览器</small></button><button class="installed-icon" data-search-item="PDF"><span>PDF</span><small>PDF</small></button><button class="installed-icon" data-search-item="图表"><span>▦</span><small>图表</small></button></div></section>
-        <section class="library-section"><div class="section-title"><div><h2>推荐插件</h2><p>安装后可在 Agent 对话中自动调用。</p></div></div><div class="market-grid"><article class="market-item" data-search-item="GitHub 代码仓库"><span class="market-icon dark">GH</span><div><h3>GitHub</h3><p>管理仓库、Issue、PR 和自动化工作流。</p></div><button type="button">安装</button></article><article class="market-item" data-search-item="Browser 浏览器"><span class="market-icon blue">◎</span><div><h3>Browser</h3><p>读取页面、点击元素并采集网页信息。</p></div><button type="button">授权</button></article><article class="market-item" data-search-item="PDF 文档"><span class="market-icon red">PDF</span><div><h3>PDF Toolkit</h3><p>读取、渲染和检查 PDF 文档。</p></div><button type="button">安装</button></article><article class="market-item" data-search-item="Diagram 图表"><span class="market-icon green">◇</span><div><h3>Diagram</h3><p>生成架构图、流程图和数据关系图。</p></div><button type="button">安装</button></article></div></section>
+        <section class="library-section"><div class="section-title"><h2>已安装</h2><nm-icon-button name="settings" label="管理已安装插件"></nm-icon-button></div><div class="installed-strip"><nm-button variant="ghost" class="installed-icon selected" data-search-item="文件工具"><span>▤</span><small>文件工具</small></nm-button><nm-button variant="ghost" class="installed-icon" data-search-item="Git"><span>⌘</span><small>Git</small></nm-button><nm-button variant="ghost" class="installed-icon" data-search-item="浏览器"><span>◎</span><small>浏览器</small></nm-button><nm-button variant="ghost" class="installed-icon" data-search-item="PDF"><span>PDF</span><small>PDF</small></nm-button><nm-button variant="ghost" class="installed-icon" data-search-item="图表"><span>▦</span><small>图表</small></nm-button></div></section>
+        <section class="library-section"><div class="section-title"><div><h2>推荐插件</h2><p>安装后可在 Agent 对话中自动调用。</p></div></div><div class="market-grid"><article class="market-item" data-search-item="GitHub 代码仓库"><span class="market-icon dark">GH</span><div><h3>GitHub</h3><p>管理仓库、Issue、PR 和自动化工作流。</p></div><nm-button variant="secondary" size="sm">安装</nm-button></article><article class="market-item" data-search-item="Browser 浏览器"><span class="market-icon blue">◎</span><div><h3>Browser</h3><p>读取页面、点击元素并采集网页信息。</p></div><nm-button variant="secondary" size="sm">授权</nm-button></article><article class="market-item" data-search-item="PDF 文档"><span class="market-icon red">PDF</span><div><h3>PDF Toolkit</h3><p>读取、渲染和检查 PDF 文档。</p></div><nm-button variant="secondary" size="sm">安装</nm-button></article><article class="market-item" data-search-item="Diagram 图表"><span class="market-icon green">◇</span><div><h3>Diagram</h3><p>生成架构图、流程图和数据关系图。</p></div><nm-button variant="secondary" size="sm">安装</nm-button></article></div></section>
       </section>
       <section class="capability-view" data-capability-view="skills">
-        <header class="view-heading"><h1>技能</h1><p>通过任务专用说明和工作流扩展 Agent。</p></header><div class="scope-tabs" role="tablist"><button class="active" type="button">全部</button><button type="button">系统</button><button type="button">个人</button><button type="button">notemeld-project</button></div>
+        <header class="view-heading"><h1>技能</h1><p>通过任务专用说明和工作流扩展 Agent。</p></header><nm-segmented class="scope-tabs" value="all" role="tablist"><nm-segment value="all">全部</nm-segment><nm-segment value="system">系统</nm-segment><nm-segment value="personal">个人</nm-segment><nm-segment value="project">notemeld-project</nm-segment></nm-segmented>
         <section class="library-section"><div class="section-title"><div><h2>已安装技能</h2><p>技能按来源和作用域加载，可通过 <code>/</code> 调用。</p></div></div><div class="skill-grid"><article class="skill-item" data-search-item="代码审查 Code Review"><span class="skill-icon">◆</span><div><h3>代码审查</h3><p>分析改动、风险和测试缺口。</p><small>项目 · notemeld-project</small></div><span class="check">✓</span></article><article class="skill-item" data-search-item="架构设计 Codebase Design"><span class="skill-icon">◆</span><div><h3>架构设计</h3><p>梳理模块边界和依赖方向。</p><small>系统 · 所有项目</small></div><span class="check">✓</span></article><article class="skill-item" data-search-item="文档驱动 Doc Driven"><span class="skill-icon">◆</span><div><h3>文档驱动</h3><p>把讨论沉淀为需求和变更说明。</p><small>个人 · 当前用户</small></div><span class="check">✓</span></article><article class="skill-item" data-search-item="界面工程 Frontend UI"><span class="skill-icon">◆</span><div><h3>界面工程</h3><p>构建一致、可访问的产品界面。</p><small>系统 · 所有项目</small></div><span class="check">✓</span></article></div></section>
       </section>
       <section class="capability-view" data-capability-view="connectors">
         <header class="view-heading"><h1>连接器</h1><p>通过 MCP 将外部数据、服务和工具连接到 Agent。</p></header><section class="connector-summary"><div><strong>3</strong><span>已连接</span></div><div><strong>1</strong><span>需要配置</span></div><p>凭证只保存在本机，调用前按连接器权限范围检查。</p></section>
-        <div class="connector-grid"><article class="connector-card" data-search-item="Filesystem 本地文件"><div class="connector-head"><span class="market-icon blue">FS</span><button type="button">•••</button></div><h3>Filesystem</h3><p>读取当前 Workspace 中已授权的文件和目录。</p><footer><span class="state success">● 已连接</span><button type="button">配置</button></footer></article><article class="connector-card" data-search-item="GitHub 仓库"><div class="connector-head"><span class="market-icon dark">GH</span><button type="button">•••</button></div><h3>GitHub</h3><p>访问仓库、Issue、Pull Request 和 Actions。</p><footer><span class="state success">● 已连接</span><button type="button">配置</button></footer></article><article class="connector-card" data-search-item="知识库 Wiki"><div class="connector-head"><span class="market-icon green">W</span><button type="button">•••</button></div><h3>NoteMeld Wiki</h3><p>搜索本地知识图谱和结构化笔记。</p><footer><span class="state success">● 已连接</span><button type="button">配置</button></footer></article><article class="connector-card" data-search-item="浏览器 Browser"><div class="connector-head"><span class="market-icon amber">◎</span><button type="button">•••</button></div><h3>Browser</h3><p>连接浏览器读取页面并执行受控操作。</p><footer><span class="state warning">● 需授权</span><button type="button">授权</button></footer></article></div>
+        <div class="connector-grid"><article class="connector-card" data-search-item="Filesystem 本地文件"><div class="connector-head"><span class="market-icon blue">FS</span><nm-icon-button name="moreVertical" label="更多操作"></nm-icon-button></div><h3>Filesystem</h3><p>读取当前 Workspace 中已授权的文件和目录。</p><footer><nm-badge tone="success">● 已连接</nm-badge><nm-button variant="secondary" size="sm">配置</nm-button></footer></article><article class="connector-card" data-search-item="GitHub 仓库"><div class="connector-head"><span class="market-icon dark">GH</span><nm-icon-button name="moreVertical" label="更多操作"></nm-icon-button></div><h3>GitHub</h3><p>访问仓库、Issue、Pull Request 和 Actions。</p><footer><nm-badge tone="success">● 已连接</nm-badge><nm-button variant="secondary" size="sm">配置</nm-button></footer></article><article class="connector-card" data-search-item="知识库 Wiki"><div class="connector-head"><span class="market-icon green">W</span><nm-icon-button name="moreVertical" label="更多操作"></nm-icon-button></div><h3>NoteMeld Wiki</h3><p>搜索本地知识图谱和结构化笔记。</p><footer><nm-badge tone="success">● 已连接</nm-badge><nm-button variant="secondary" size="sm">配置</nm-button></footer></article><article class="connector-card" data-search-item="浏览器 Browser"><div class="connector-head"><span class="market-icon amber">◎</span><nm-icon-button name="moreVertical" label="更多操作"></nm-icon-button></div><h3>Browser</h3><p>连接浏览器读取页面并执行受控操作。</p><footer><nm-badge tone="warning">● 需授权</nm-badge><nm-button variant="secondary" size="sm">授权</nm-button></footer></article></div>
       </section>
       <section class="capability-view" data-capability-view="applications">
         <header class="view-heading"><h1>应用</h1><p>安装带独立界面的工作应用，并从 Agent 产物或会话中打开。</p></header>
-        <section class="library-section"><div class="section-title"><div><h2>已安装应用</h2><p>应用运行在隔离容器中，使用受控 Bridge 访问 Workspace。</p></div></div><div class="application-grid"><article class="application-card featured" data-search-item="Wiki 知识图谱"><div class="app-art wiki">W</div><div><span class="state success">● 已安装</span><h3>Wiki</h3><p>浏览知识图谱、文章和来源关系。</p><small>v1.2.0 · Workspace 只读</small></div><button type="button">打开应用</button></article><article class="application-card" data-search-item="Research Board 研究看板"><div class="app-art board">R</div><div><span class="state success">● 已安装</span><h3>Research Board</h3><p>组织研究资料、结论和引用关系。</p><small>v0.8.4 · 文件读写</small></div><button type="button">打开应用</button></article></div></section>
-        <section class="library-section"><div class="section-title"><div><h2>可安装应用</h2><p>安装后可从会话右侧扩展栏直接打开。</p></div></div><div class="market-grid"><article class="market-item" data-search-item="Data Canvas 数据画布"><span class="market-icon blue">DC</span><div><h3>Data Canvas</h3><p>把表格和分析结果组织成可交互画布。</p></div><button type="button">安装</button></article><article class="market-item" data-search-item="Presentation Studio 幻灯片"><span class="market-icon amber">PS</span><div><h3>Presentation Studio</h3><p>将 Agent 产物编排为演示文稿。</p></div><button type="button">安装</button></article></div></section>
+        <section class="library-section"><div class="section-title"><div><h2>已安装应用</h2><p>应用运行在隔离容器中，使用受控 Bridge 访问 Workspace。</p></div></div><div class="application-grid"><article class="application-card featured" data-search-item="Wiki 知识图谱"><div class="app-art wiki">W</div><div><nm-badge tone="success">● 已安装</nm-badge><h3>Wiki</h3><p>浏览知识图谱、文章和来源关系。</p><small>v1.2.0 · Workspace 只读</small></div><nm-button variant="secondary" size="sm">打开应用</nm-button></article><article class="application-card" data-search-item="Research Board 研究看板"><div class="app-art board">R</div><div><nm-badge tone="success">● 已安装</nm-badge><h3>Research Board</h3><p>组织研究资料、结论和引用关系。</p><small>v0.8.4 · 文件读写</small></div><nm-button variant="secondary" size="sm">打开应用</nm-button></article></div></section>
+        <section class="library-section"><div class="section-title"><div><h2>可安装应用</h2><p>安装后可从会话右侧扩展栏直接打开。</p></div></div><div class="market-grid"><article class="market-item" data-search-item="Data Canvas 数据画布"><span class="market-icon blue">DC</span><div><h3>Data Canvas</h3><p>把表格和分析结果组织成可交互画布。</p></div><nm-button variant="secondary" size="sm">安装</nm-button></article><article class="market-item" data-search-item="Presentation Studio 幻灯片"><span class="market-icon amber">PS</span><div><h3>Presentation Studio</h3><p>将 Agent 产物编排为演示文稿。</p></div><nm-button variant="secondary" size="sm">安装</nm-button></article></div></section>
       </section>
     </div>
   </main>
 </div>
-<dialog class="capability-dialog" data-add-dialog><form method="dialog"><header><div><h2 data-dialog-title>添加插件</h2><p data-dialog-description>从 Git 仓库、Git URL 或本地文件夹安装插件。</p></div><button value="cancel" aria-label="关闭">×</button></header><div class="dialog-body" data-dialog-body></div><footer><button value="cancel">取消</button><button class="primary" value="confirm" data-dialog-confirm>添加插件</button></footer></form></dialog>
-<script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/capability-center.js"></script>
+<nm-modal class="capability-dialog" data-add-dialog>
+  <div class="capability-dialog-content" slot="default">
+    <h2 class="capability-dialog-title" data-dialog-title>添加插件</h2>
+    <p class="capability-dialog-description" data-dialog-description>从 Git 仓库、Git URL 或本地文件夹安装插件。</p>
+    <div class="dialog-body" data-dialog-body></div>
+  </div>
+  <span slot="footer" class="capability-dialog-footer">
+    <button type="button" class="nm-legacy-button secondary" data-dialog-cancel>取消</button>
+    <button type="button" class="nm-legacy-button primary" data-dialog-confirm>添加插件</button>
+  </span>
+</nm-modal>
+<script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/d01.js"></script><script src="../../assets/capability-center.js"></script>
+  <style>
+    /* —— nm-* 迁移后的最小视觉兼容 —— */
+    /* 顶部分类 nm-tabs：沿用旧暗色激活样式 */
+    nm-tabs.capability-tabs .nm-tabs__tab{padding:9px 12px;border-radius:8px;color:#8791a5;font-weight:700}
+    nm-tabs.capability-tabs .nm-tabs__tab[aria-selected="true"]{background:#202533;color:#fff}
+    /* 搜索：nm-search 根节点保持旧外框 */
+    nm-search.capability-search{width:min(280px,30vw);height:36px;border:1px solid #dfe4ec;border-radius:8px;background:#fff;padding:0 10px}
+    nm-search.capability-search input{background:transparent}
+    /* 已安装 icon 按钮：垂直排列 */
+    nm-button.installed-icon{display:inline-flex;flex-direction:column;align-items:center;width:54px;height:auto;padding:0;color:#5f6b82}
+    nm-button.installed-icon .nm-button__label{display:inline-flex;flex-direction:column;align-items:center;width:100%}
+    nm-button.installed-icon span{width:42px;height:42px;display:grid;place-items:center;border:1px solid #dfe4ec;border-radius:10px;font-size:11px;overflow:hidden}
+    nm-button.installed-icon small{margin-top:6px;max-width:54px}
+    nm-button.installed-icon.selected span{border-color:#9fb7ff;background:#edf2ff}
+    /* 弹窗：隐藏 nm-modal 自带头部（标题在默认槽内自定义） */
+    nm-modal.capability-dialog .nm-overlay__panel{width:min(560px,calc(100vw - 32px));max-width:none}
+    nm-modal.capability-dialog .nm-overlay__header{display:none}
+    nm-modal.capability-dialog .nm-overlay__body{padding:0}
+    .capability-dialog-content{padding:16px 18px 0}
+    .capability-dialog-title{font-size:16px;margin:0 0 4px}
+    .capability-dialog-description{font-size:11px;color:#8791a5;margin:0 0 4px}
+    nm-modal .dialog-body{padding:18px 0}
+    .capability-dialog-footer{display:inline-flex;gap:8px;width:100%;justify-content:flex-end;padding-top:4px}
+    .nm-legacy-button{border:1px solid #dfe4ec;border-radius:8px;background:#fff;padding:8px 13px;font:inherit;cursor:pointer}
+    .nm-legacy-button.primary{border-color:#4b7cf3;background:#4b7cf3;color:#fff}
+  </style>
+  <script>
+    (function(){
+      /* ① nm-search：旧 capability-center.js 读 search.value。
+         nm-search 为 Light DOM，根 value 与内部 input 需要桥接同步。 */
+      const search=document.querySelector('[data-capability-search]');
+      let activeType='plugins';
+      if(search){
+        const sync=()=>{
+          const value=search.querySelector('input')?.value??'';
+          search.value=value;
+          // 旧 applySearch 依赖的闭包 activeType 无法随 nm-tabs 更新，
+          // 这里对当前激活视图执行等价过滤。
+          const view=document.querySelector(`[data-capability-view="${activeType}"]`);
+          view?.querySelectorAll('[data-search-item]').forEach(item=>{
+            item.classList.toggle('is-filtered',!item.dataset.searchItem.toLowerCase().includes(value.trim().toLowerCase()));
+          });
+        };
+        search.addEventListener('input',sync);
+        search.addEventListener('nm:change',sync);
+        window.__setActiveType=t=>{ activeType=t; };
+      }
+
+      /* ② nm-tabs 桥接：nm-tabs 会重渲染内部 tab，原 nm-tab 元素被移除，
+         旧 capability-center.js 绑在它们上面的 click 不会触发。
+         这里在 nm:change 时直接执行与 selectType 等价的视图切换 + 文案更新，
+         保证原行为；旧 JS 对残留 nm-tab 的 class 操作不再影响视觉（视觉由 aria-selected 控制）。 */
+      const tabMeta={
+        plugins:{label:'插件',search:'搜索插件'},
+        skills:{label:'技能',search:'搜索技能'},
+        connectors:{label:'连接器',search:'搜索连接器'},
+        applications:{label:'应用',search:'搜索应用'}
+      };
+      const tabs=document.querySelector('nm-tabs.capability-tabs');
+      if(tabs){
+        tabs.addEventListener('nm:change',event=>{
+          const key=event.detail?.value;
+          window.__setActiveType?.(key);
+          document.querySelectorAll('[data-capability-view]').forEach(view=>{
+            view.classList.toggle('active',view.dataset.capabilityView===key);
+            view.querySelectorAll('.is-filtered').forEach(item=>item.classList.remove('is-filtered'));
+          });
+          const meta=tabMeta[key];
+          const searchEl=document.querySelector('[data-capability-search]');
+          if(searchEl&&meta){
+            searchEl.value='';
+            const inner=searchEl.querySelector('input');
+            if(inner){ inner.value=''; inner.placeholder=meta.search; inner.setAttribute('aria-label',meta.search); }
+          }
+          const addEl=document.querySelector('[data-add-open]');
+          if(addEl&&meta) addEl.textContent=`＋ 添加${meta.label}`;
+        });
+      }
+
+      /* ③ nm-modal：旧 capability-center.js 调用 dialog.showModal() / 读取内部节点。
+         nm-modal 用 open 属性控制，这里补同名方法与关闭桥接。 */
+      const modal=document.querySelector('[data-add-dialog]');
+      if(modal){
+        modal.showModal=()=>{ modal.open=true; };
+        modal.close=()=>{ modal.open=false; };
+        modal.addEventListener('nm:close',()=>{ modal.open=false; });
+        modal.querySelector('[data-dialog-cancel]')?.addEventListener('click',()=>{ modal.open=false; });
+        modal.querySelector('[data-dialog-confirm]')?.addEventListener('click',()=>{ modal.open=false; });
+        /* 添加按钮为 nm-button：旧监听调 showModal 后，nm-button 的点击处理可能
+           再次影响状态；这里在 nm:press（先于旧 click 冒泡逻辑完成文案准备）打开弹窗。 */
+        document.querySelector('[data-add-open]')?.addEventListener('nm:press',()=>{
+          modal.open=true;
+        });
+      }
+
+      /* ④ 市场卡片安装按钮已从原生 button 换成 nm-button，
+         旧 JS 选择 .market-item>button 不再命中，改为对直接子 nm-button 绑定同样反馈。 */
+      document.querySelectorAll('.market-item>nm-button').forEach(button=>{
+        button.addEventListener('nm:press',()=>{
+          button.textContent='已安装';
+          button.disabled=true;
+        });
+      });
+    })();
+  </script>
 </body></html>

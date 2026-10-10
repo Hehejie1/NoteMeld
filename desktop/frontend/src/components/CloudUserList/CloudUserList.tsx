@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import CloudClient, { CloudAccessRequest, CloudUser } from '../../services/cloud'
 import { CloudUserForm } from '../CloudUserForm'
 import { EmptyState, ErrorState, LoadingState } from '../ui/feedback'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
+import { Select, SelectItem } from '../ui/select'
 import { useCloudLocale } from '../../pages/CloudPage/cloudLocale'
 
 export function CloudUserList({
@@ -102,10 +105,11 @@ export function CloudUserList({
     <section aria-label={t('users.title', '成员管理')}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-2">
         <div role="tablist" aria-label={t('users.title', '成员管理')} className="flex gap-2">
-          <button
+          <Button
             type="button"
             role="tab"
             aria-selected={tab === 'joined'}
+            variant={tab === 'joined' ? 'default' : 'ghost'}
             className={
               tab === 'joined'
                 ? 'rounded bg-[var(--primary)] px-3 py-1.5 text-xs text-white'
@@ -114,11 +118,12 @@ export function CloudUserList({
             onClick={() => setTab('joined')}
           >
             {t('users.title', '已加入成员')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             role="tab"
             aria-selected={tab === 'pending'}
+            variant={tab === 'pending' ? 'default' : 'ghost'}
             className={
               tab === 'pending'
                 ? 'rounded bg-[var(--primary)] px-3 py-1.5 text-xs text-white'
@@ -130,15 +135,16 @@ export function CloudUserList({
             {requests.length ? (
               <span className="ml-1 rounded-full bg-white/25 px-1.5 text-[10px]">{requests.length}</span>
             ) : null}
-          </button>
+          </Button>
         </div>
-        <button
+        <Button
           type="button"
+          variant="default"
           onClick={() => setAdding(true)}
           className="rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white transition hover:brightness-110"
         >
           {t('users.add', '添加用户')}
-        </button>
+        </Button>
       </div>
 
       {tab === 'pending' ? (
@@ -159,22 +165,24 @@ export function CloudUserList({
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
                       disabled={busy === request.id}
                       onClick={() => void review(request, 'approved')}
                       className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50"
                     >
                       {t('users.approve', '通过')}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="danger"
                       disabled={busy === request.id}
                       onClick={() => void review(request, 'rejected')}
                       className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                     >
                       {t('users.reject', '拒绝')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </li>
@@ -188,23 +196,21 @@ export function CloudUserList({
       ) : (
         <>
           <div className="mb-3 flex flex-wrap gap-2">
-            <input
+            <Input
               aria-label={t('users.search', '搜索成员')}
               value={query}
-              onChange={event => setQuery(event.target.value)}
+              onValueChange={setQuery}
               placeholder={t('users.search', '搜索用户名')}
               className="min-w-48 flex-1 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-sm"
             />
-            <select
-              aria-label={t('users.status-filter', '筛选成员状态')}
+            <Select
               value={status}
-              onChange={event => setStatus(event.target.value as typeof status)}
-              className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-sm"
+              onValueChange={value => setStatus(value as typeof status)}
             >
-              <option value="all">{t('users.all-statuses', '全部状态')}</option>
-              <option value="active">{t('users.active', '正常')}</option>
-              <option value="disabled">{t('users.disabled', '已停用')}</option>
-            </select>
+              <SelectItem value="all">{t('users.all-statuses', '全部状态')}</SelectItem>
+              <SelectItem value="active">{t('users.active', '正常')}</SelectItem>
+              <SelectItem value="disabled">{t('users.disabled', '已停用')}</SelectItem>
+            </Select>
           </div>
           {users.length ? (
             <div className="overflow-x-auto">
@@ -232,23 +238,25 @@ export function CloudUserList({
                         {user.disabled ? t('users.disabled', '已停用') : t('users.active', '正常')}
                       </td>
                       <td className="sticky right-0 bg-[var(--surface)] px-3 py-3 text-right whitespace-nowrap">
-                        <button
+                        <Button
                           type="button"
+                          variant="link"
                           disabled={user.role === 'admin'}
                           onClick={() => setEditing(user)}
                           className="mr-3 text-xs text-[var(--on-surface)] underline disabled:text-[var(--on-surface-variant)]"
                         >
                           {t('users.edit', '编辑')}
-                        </button>
+                        </Button>
                         {user.role === 'user' ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="link"
                             disabled={busy === user.id}
                             onClick={() => void remove(user)}
                             className="text-xs text-[var(--error)] underline disabled:opacity-50"
                           >
                             {t('users.delete', '删除')}
-                          </button>
+                          </Button>
                         ) : (
                           <span className="text-xs text-[var(--on-surface-variant)]">
                             {t('users.protected', '受保护')}
@@ -295,14 +303,15 @@ export function CloudUserList({
             aria-labelledby="user-form-title"
             className="cloud-dialog"
           >
-            <button
+            <Button
               type="button"
+              variant="ghost"
               className="cloud-modal-close"
               onClick={() => setAdding(false)}
               aria-label={t('cancel', '关闭')}
             >
               ×
-            </button>
+            </Button>
             <CloudUserForm
               client={client}
               onSaved={() => {

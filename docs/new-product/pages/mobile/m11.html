@@ -6,14 +6,22 @@
   <title>NoteMeld · 组件库</title>
   <link rel="stylesheet" href="../../assets/mobile.css">
   <link rel="stylesheet" href="../../assets/mobile-component-library.css">
+  <style>
+    .model-header-actions nm-icon-button{width:34px;height:34px;border-radius:10px;color:var(--mobile-muted);}
+    .model-header-actions nm-icon-button:hover{background:var(--mobile-surface-muted,var(--mobile-surface-muted));color:var(--mobile-ink);}
+    .model-header-actions nm-icon-button .nm-icon-button__icon svg{width:17px;height:17px;}
+    .component-library-header nm-icon-button{width:40px;height:40px;color:var(--mobile-muted);}
+    .component-library-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+    .mobile-sheet nm-icon-button.sheet-close{width:32px;height:32px;border-radius:50%;background:#f1f4f8;color:#7f8b9d;}
+  </style>
 </head>
 <body class="mobile-preview" data-page="M11">
   <div class="iphone-shell"><div class="iphone-island"></div>
     <main class="mobile-screen component-library-screen">
       <header class="mobile-header component-library-header">
-        <button class="icon-only" data-comp-back aria-label="返回设置"><i data-icon="chevron-left"></i></button>
+        <nm-icon-button name="chevronLeft" label="返回设置" data-comp-back></nm-icon-button>
         <strong>组件库</strong>
-        <span class="model-header-actions"><button class="icon-only" data-comp-menu aria-label="选择模块"><i data-icon="ellipsis"></i></button></span>
+        <span class="model-header-actions"><nm-icon-button name="moreHorizontal" label="选择模块" data-comp-menu></nm-icon-button></span>
       </header>
 
       <div class="comp-content-scroll" data-comp-content aria-live="polite"></div>
@@ -22,13 +30,14 @@
     <div class="sheet-backdrop" data-sheet-backdrop hidden></div>
     <section class="mobile-sheet comp-module-sheet" data-comp-module hidden aria-label="选择模块">
       <div class="sheet-handle"></div>
-      <div class="sheet-heading"><div><span class="sheet-eyebrow">组件库</span><h2>选择模块</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="sheet-heading"><div><span class="sheet-eyebrow">组件库</span><h2>选择模块</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <div class="comp-module-list" data-comp-module-list></div>
     </section>
 
     <div class="toast" data-comp-toast role="status" hidden></div>
   </div>
   <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
   <script src="../../assets/mobile-component-library.js"></script>
 </body>
 </html>

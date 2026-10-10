@@ -7,24 +7,43 @@
   <link rel="stylesheet" href="../../assets/mobile.css">
   <link rel="stylesheet" href="../../assets/mobile-model-settings.css">
   <link rel="stylesheet" href="../../assets/mobile-remote-settings.css">
+  <style>
+    .model-header-actions nm-icon-button{width:34px;height:34px;border-radius:10px;color:var(--mobile-muted);}
+    .model-header-actions nm-icon-button:hover{background:var(--mobile-surface-muted);color:var(--mobile-ink);}
+    .model-header-actions nm-icon-button:last-child{color:var(--mobile-accent);}
+    .model-header-actions nm-icon-button .nm-icon-button__icon svg{width:17px;height:17px;}
+    .model-settings-header nm-icon-button{width:40px;height:40px;color:var(--mobile-muted);}
+    .model-settings-header nm-icon-button .nm-icon-button__icon svg{width:20px;}
+    /* 表单中的 nm-select：保持全宽与原字段风格 */
+    .model-config-sheet form nm-select{width:100%;height:39px;border:1px solid var(--mobile-line);border-radius:10px;background:var(--mobile-panel);color:var(--mobile-ink);font-size:11px;}
+    .model-config-sheet form nm-select .nm-select__trigger{height:37px;border-radius:9px;background:transparent;color:var(--mobile-ink);font-size:11px;padding:0 11px;}
+    .model-config-sheet form nm-select .nm-select__chevron svg{width:14px;height:14px;}
+    .native-select-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+  </style>
 </head>
 <body class="mobile-preview" data-page="M08">
   <div class="iphone-shell"><div class="iphone-island"></div>
     <main class="mobile-screen model-settings-screen remote-settings-screen">
       <header class="mobile-header model-settings-header">
-        <button class="icon-only" data-go="M03" aria-label="返回设置"><i data-icon="chevron-left"></i></button>
+        <span></span>
         <strong>远程设置</strong>
-        <span class="model-header-actions"><button class="icon-only" data-remote-scan-open aria-label="扫一扫连接"><i data-icon="scan-line"></i></button><button class="icon-only" data-remote-add aria-label="添加远程连接"><i data-icon="plus"></i></button></span>
+        <span class="model-header-actions"><nm-icon-button name="qrCode" label="扫一扫连接" data-remote-scan-open></nm-icon-button><nm-icon-button name="plus" label="添加远程连接" data-remote-add></nm-icon-button></span>
       </header>
       <p class="model-list-note">云端与远程设备 · 连接状态以实际验证为准</p>
       <div class="model-list-scroll" data-remote-groups aria-live="polite"></div>
     </main>
     <div class="sheet-backdrop" data-sheet-backdrop hidden></div>
     <section class="mobile-sheet model-config-sheet remote-form-sheet" data-remote-form-sheet hidden aria-label="远程连接配置">
-      <div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-remote-eyebrow>新建配置</span><h2 data-remote-form-title>添加远程连接</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-remote-eyebrow>新建配置</span><h2 data-remote-form-title>添加远程连接</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <form data-remote-form>
-        <label>连接类型<select name="type"><option value="cloud">云端连接</option><option value="client">远程客户端</option></select></label>
-        <label data-cloud-parent hidden>所属云端<select name="cloudId"></select></label>
+        <label>连接类型
+          <nm-select data-nm-name="type" id="remoteTypeSelect"></nm-select>
+          <select name="type" class="native-select-hidden" aria-hidden="true" tabindex="-1"><option value="cloud">云端连接</option><option value="client">远程客户端</option></select>
+        </label>
+        <label data-cloud-parent hidden>所属云端
+          <nm-select data-nm-name="cloudId" id="remoteCloudSelect"></nm-select>
+          <select name="cloudId" class="native-select-hidden" aria-hidden="true" tabindex="-1"></select>
+        </label>
         <label>名称<input name="name" required autocomplete="off" placeholder="例如：工作云端 / 办公室电脑"></label>
         <label>连接地址<input name="address" required type="url" inputmode="url" autocomplete="url" placeholder="https://cloud.example.com"></label>
         <label>连接凭证<span class="field-hint">原型仅保存在当前页面内存</span><input name="credential" type="password" autocomplete="off" placeholder="输入连接凭证"></label>
@@ -34,18 +53,49 @@
       </form>
     </section>
     <section class="mobile-sheet model-config-sheet remote-scan-choice" data-remote-scan-choice hidden aria-label="选择扫码类型">
-      <div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">一次性配对码</span><h2>扫一扫连接</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow">一次性配对码</span><h2>扫一扫连接</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <button class="remote-choice" data-scan-type="cloud"><i data-icon="cloud"></i><span><strong>扫描云端</strong><small>建立与云端的连接配置</small></span><i data-icon="chevron-right"></i></button>
       <button class="remote-choice" data-scan-type="client"><i data-icon="monitor-smartphone"></i><span><strong>扫描远程客户端</strong><small>选择已连接云端下的设备</small></span><i data-icon="chevron-right"></i></button>
     </section>
     <section class="mobile-sheet model-scan-sheet" data-remote-scan-sheet hidden aria-label="扫描一次性配对码">
-      <div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-scan-kind>设备配对</span><h2>扫描二维码</h2></div><button class="sheet-close" data-sheet-close aria-label="关闭"><i data-icon="x"></i></button></div>
+      <div class="sheet-handle"></div><div class="sheet-heading"><div><span class="sheet-eyebrow" data-scan-kind>设备配对</span><h2>扫描二维码</h2></div><nm-icon-button class="sheet-close" name="x" label="关闭" data-sheet-close></nm-icon-button></div>
       <div class="scan-view"><i data-icon="scan-line"></i><p data-remote-scan-status role="status">二维码只能包含短时配对码，不能包含长期连接凭证。</p><video data-remote-video playsinline muted hidden></video></div>
       <button class="sheet-action" data-start-remote-scan>开始扫描</button>
     </section>
     <section class="mobile-modal model-delete-modal" data-remote-delete-modal hidden role="dialog" aria-modal="true" aria-labelledby="remote-delete-title"><div class="modal-card"><span class="modal-icon"><i data-icon="trash-2"></i></span><h2 id="remote-delete-title">删除连接？</h2><p data-remote-delete-copy></p><div class="modal-actions"><button data-remote-cancel>取消</button><button class="danger" data-remote-confirm>删除</button></div></div></section>
     <div class="toast" data-remote-toast role="status" hidden></div>
   </div>
-  <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/mobile.js"></script><script src="../../assets/mobile-remote-settings.js"></script>
+  <script src="../../assets/vendor/lucide.js"></script>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
+  <script src="../../assets/mobile.js"></script>
+  <script src="../../assets/mobile-remote-settings.js"></script>
+  <script>
+    (()=>{
+      // 兼容桥接：旧 mobile-remote-settings.js 依赖 form.elements.type / cloudId（原生 select）。
+      // 可见的 nm-select 与隐藏原生 select 双向同步，旧逻辑读写的均为隐藏原生 select。
+      const form=document.querySelector('[data-remote-form]');
+      const bind=(nmId,nativeName)=>{
+        const nm=document.getElementById(nmId);
+        const native=form.elements[nativeName];
+        if(!nm||!native)return;
+        const syncFromNative=()=>{
+          nm.options=[...native.options].map(o=>({value:o.value,label:o.textContent}));
+          nm.value=native.value;
+        };
+        syncFromNative();
+        nm.addEventListener('nm:change',e=>{
+          const v=e.detail.value;
+          if(native.value!==v){native.value=v;native.dispatchEvent(new Event('change',{bubbles:true}));}
+        });
+        // 旧脚本 syncType 重建 cloudId options 后，同步回 nm-select
+        if(nativeName==='cloudId'){
+          const mo=new MutationObserver(syncFromNative);
+          mo.observe(native,{childList:true,attributes:true,characterData:true,subtree:true});
+        }
+      };
+      bind('remoteTypeSelect','type');
+      bind('remoteCloudSelect','cloudId');
+    })();
+  </script>
 </body>
 </html>

@@ -255,6 +255,18 @@ importers:
 
   packages/ui-contract: {}
 
+  packages/ui-react:
+    dependencies:
+      next-themes:
+        specifier: ^0.4.6
+        version: 0.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
+
   packages/ui-web:
     dependencies:
       '@notemeld/ui-contract':

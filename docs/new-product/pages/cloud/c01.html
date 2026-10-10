@@ -30,14 +30,14 @@
           <label for="account">邮箱</label>
           <div class="field"><i data-icon="mail"></i><input id="account" name="account" type="email" autocomplete="email" placeholder="name@example.com" required></div>
           <label for="password">密码</label>
-          <div class="field"><i data-icon="lock-keyhole"></i><input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入密码" required><button type="button" data-password-toggle aria-label="显示密码"><i data-icon="eye"></i></button></div>
+          <div class="field"><i data-icon="lock-keyhole"></i><input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入密码" required><nm-icon-button name="eye" label="显示密码" data-password-toggle></nm-icon-button></div>
           <div class="field code-field" hidden><i data-icon="shield-check"></i><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="输入 6 位验证码"><button type="button" class="code-send-button" data-send-code>获取验证码</button></div>
-          <div class="auth-options"><label class="check-row"><input type="checkbox" name="remember" checked><span>记住登录状态</span></label><a href="#" data-password-reset>忘记密码？</a></div>
+          <div class="auth-options"><nm-checkbox class="check-row" checked><span>记住登录状态</span></nm-checkbox><a href="#" data-password-reset>忘记密码？</a></div>
           <p class="form-message" data-form-message role="alert" aria-live="polite"></p>
-          <button class="primary-button login-button" type="submit"><span>登录</span><i data-icon="arrow-right"></i></button>
+          <nm-button variant="primary" class="primary-button login-button" type="submit"><span>登录</span><i data-icon="arrow-right" slot="leading"></i></nm-button>
         </form>
         <div class="auth-divider"><span>还没有云端权限？</span></div>
-        <button class="secondary-button" type="button" data-open-access>申请访问</button>
+        <nm-button variant="secondary" class="secondary-button" type="button" data-open-access>申请访问</nm-button>
         <p class="security-note"><i data-icon="shield"></i>登录会话受加密保护，过期后需要重新验证身份。</p>
       </section>
     </section>
@@ -45,18 +45,19 @@
   </main>
   <div class="modal-backdrop" data-access-modal hidden>
     <section class="create-dialog access-dialog" role="dialog" aria-modal="true" aria-labelledby="access-title">
-      <header><div><span class="section-kicker">Access request</span><h2 id="access-title">申请访问 NoteMeld 云端</h2><p>提交后由管理员在人员管理中审核，不会自动创建账号。</p></div><button class="icon-button" type="button" data-close-access aria-label="关闭"><i data-icon="x"></i></button></header>
+      <header><div><span class="section-kicker">Access request</span><h2 id="access-title">申请访问 NoteMeld 云端</h2><p>提交后由管理员在人员管理中审核，不会自动创建账号。</p></div><nm-icon-button name="x" label="关闭" data-close-access></nm-icon-button></header>
       <form data-access-form>
         <div class="form-grid"><label>姓名或称呼<input name="name" autocomplete="name" placeholder="请输入姓名或称呼" required></label><label>邮箱<input name="email" type="email" autocomplete="email" placeholder="name@company.com" required></label></div>
         <div class="form-grid"><label>设置登录密码<input name="password" type="password" autocomplete="new-password" minlength="8" placeholder="至少 8 位" required></label><label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入密码" required></label></div>
         <label>申请说明 <small class="optional-label">选填，最多 100 字</small><textarea name="reason" rows="4" maxlength="100" placeholder="简要说明使用场景（最多 100 字）"></textarea><small class="field-hint" data-reason-count>0 / 100</small></label>
         <p class="form-message" data-access-message role="alert" aria-live="polite"></p>
         <p class="access-privacy"><i data-icon="shield-check"></i>密码加密传输，服务端只保存密码哈希；管理员无法查看原始密码。</p>
-        <div class="dialog-actions"><button class="secondary-button" type="button" data-close-access>取消</button><button class="primary-button" type="submit">提交申请</button></div>
+        <div class="dialog-actions"><nm-button variant="secondary" class="secondary-button" type="button" data-close-access>取消</nm-button><nm-button variant="primary" class="primary-button" type="submit">提交申请</nm-button></div>
       </form>
-      <div class="access-success" data-access-success hidden role="status"><span class="success-symbol"><i data-icon="circle-check"></i></span><h3>申请已提交</h3><p>申请已提交。审核结果将发送至你的邮箱。</p><button class="primary-button" type="button" data-close-access>完成</button></div>
+      <div class="access-success" data-access-success hidden role="status"><span class="success-symbol"><i data-icon="circle-check"></i></span><h3>申请已提交</h3><p>申请已提交。审核结果将发送至你的邮箱。</p><nm-button variant="primary" class="primary-button" type="button" data-close-access>完成</nm-button></div>
     </section>
   </div>
+  <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
   <script src="../../assets/vendor/lucide.js"></script><script src="../../assets/page.js"></script><script src="../../assets/cloud.js"></script><script src="../../assets/c01-live.js"></script><script src="../../assets/c01-invite-live.js"></script><script src="../../assets/c01-reset-live.js"></script><script>document.querySelector('[data-access-form] textarea')?.addEventListener('input',event=>{document.querySelector('[data-reason-count]')?.replaceChildren(`${event.target.value.length} / 100`)});</script>
 </body>
 </html>

@@ -347,14 +347,15 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
           className="flex max-w-2xl items-start justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700"
         >
           <span>{importedBanner}</span>
-          <button
+          <Button
             type="button"
-            className="shrink-0 text-blue-400 hover:text-blue-600"
+            variant="ghost"
+            className="shrink-0 p-0 text-blue-400 hover:text-blue-600"
             aria-label="关闭导入提示"
             onClick={() => setImportedBanner(null)}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       )}
       {/* Provider信息表单 */}
@@ -387,10 +388,11 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
                 const active = vendorId === vendor.id
                 const unsupported = Boolean(vendor.unsupported)
                 return (
-                  <button
+                  <Button
                     key={vendor.id}
                     type="button"
                     data-vendor-id={vendor.id}
+                    variant="outline"
                     disabled={unsupported}
                     title={unsupported ? vendor.unsupported : vendor.base_url || vendor.url_note}
                     onClick={() => handleSelectVendor(vendor.id)}
@@ -405,7 +407,7 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
                     ].join(' ')}
                   >
                     {vendor.name}
-                  </button>
+                  </Button>
                 )
               })}
             </div>
@@ -484,15 +486,16 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
                         }
                       />
                     </FormControl>
-                    <button
+                    <Button
                       type="button"
                       data-key-toggle
+                      variant="ghost"
                       onClick={() => setShowKey(previous => !previous)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0 text-neutral-400 hover:text-neutral-600"
                       aria-label={showKey ? '隐藏密钥' : '显示密钥'}
                     >
                       {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                    </Button>
                   </div>
                   <FormMessage />
                 </FormItem>
@@ -566,15 +569,16 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
                         默认
                       </span>
                     ) : (
-                      <button
+                      <Button
                         type="button"
                         data-set-default={model.model_id}
+                        variant="ghost"
                         onClick={() => handleSetDefault(model.model_id)}
                         title="设为供应商默认模型"
-                        className="text-blue-300 hover:text-green-600"
+                        className="p-0 text-blue-300 hover:text-green-600"
                       >
                         <Star className="h-3 w-3" />
-                      </button>
+                      </Button>
                     )}
                     {statusTag && (
                       <span
@@ -584,9 +588,9 @@ const ProviderForm = ({ isCreate = false }: { isCreate?: boolean }) => {
                         {statusTag.text}
                       </span>
                     )}
-                    <button type="button" onClick={() => handelDelete(model.id)} className="hover:text-blue-900">
+                    <Button type="button" variant="ghost" onClick={() => handelDelete(model.id)} className="p-0 hover:text-blue-900">
                       <X className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </span>
                 )
               })}

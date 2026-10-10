@@ -38,13 +38,14 @@
                   ><small data-default-workspace
                     >正在读取 Workspace…</small
                   ></span
-                ><button
+                ><nm-button
+                  variant="secondary"
                   class="secondary-button"
                   type="button"
                   data-workspace-picker
                 >
                   选择
-                </button>
+                </nm-button>
               </div>
               <div class="setting-row">
                 <span
@@ -72,32 +73,35 @@
                     >支持 OpenAI、Anthropic 和多个模型配置；模型列表可从
                     Provider 获取，也可手动创建。</small
                   ></span
-                ><button
-                  class="secondary-button"
-                  type="button"
-                  data-model-manager
-                >
-                  管理模型
-                </button>
+                  ><nm-button
+                    variant="secondary"
+                    class="secondary-button"
+                    type="button"
+                    data-model-manager
+                  >
+                    管理模型
+                  </nm-button>
               </div>
               <div class="setting-row">
                 <span
                   ><strong>当前默认模型</strong
                   ><small data-default-model>正在读取模型…</small></span
                 ><span class="setting-actions"
-                  ><button
+                  ><nm-button
+                    variant="secondary"
                     class="secondary-button"
                     type="button"
                     data-model-test
                   >
-                    测试连接</button
-                  ><button
+                    测试连接</nm-button
+                  ><nm-button
+                    variant="secondary"
                     class="secondary-button"
                     type="button"
                     data-model-download
                   >
                     下载配置
-                  </button></span
+                  </nm-button></span
                 >
               </div>
             </div>
@@ -107,13 +111,14 @@
                 <span
                   ><strong>Workspace 与容量</strong
                   ><small data-workspace-summary>正在读取空间…</small></span
-                ><button
-                  class="secondary-button"
-                  type="button"
-                  data-workspace-picker
-                >
-                  查看空间
-                </button>
+                  ><nm-button
+                    variant="secondary"
+                    class="secondary-button"
+                    type="button"
+                    data-workspace-picker
+                  >
+                    查看空间
+                  </nm-button>
               </div>
               <div class="setting-row">
                 <span
@@ -121,13 +126,14 @@
                   ><small data-backup-summary
                     >下载环境相关内容，启动服务端时可从备份目录恢复</small
                   ></span
-                ><button
-                  class="secondary-button"
-                  type="button"
-                  data-backup-manager
-                >
-                  创建备份并下载
-                </button>
+                  ><nm-button
+                    variant="secondary"
+                    class="secondary-button"
+                    type="button"
+                    data-backup-manager
+                  >
+                    创建备份并下载
+                  </nm-button>
               </div>
             </div>
             <div class="setting-card" data-setting-panel="security" hidden>
@@ -147,33 +153,35 @@
                 <span
                   ><strong>登录设备与会话</strong
                   ><small>通过设备管理查看和撤销登录设备</small></span
-                ><button class="secondary-button" type="button" data-go="C05">
-                  查看设备
-                </button>
+                ><nm-button variant="secondary" class="secondary-button" type="button" data-go="C05">
+                    查看设备
+                  </nm-button>
               </div>
               <div class="setting-row">
                 <span
                   ><strong>远程授权</strong
                   ><small data-grant-summary>正在读取授权记录…</small></span
-                ><button
-                  class="secondary-button"
-                  type="button"
-                  data-grant-manager
-                >
-                  管理授权
-                </button>
+                ><nm-button
+                    variant="secondary"
+                    class="secondary-button"
+                    type="button"
+                    data-grant-manager
+                  >
+                    管理授权
+                  </nm-button>
               </div>
               <div class="setting-row">
                 <span
                   ><strong>会话安全策略</strong
                   ><small>新建会话默认使用审批保护和短期令牌</small></span
-                ><button
-                  class="secondary-button"
-                  type="button"
-                  data-session-security
-                >
-                  查看策略
-                </button>
+                ><nm-button
+                    variant="secondary"
+                    class="secondary-button"
+                    type="button"
+                    data-session-security
+                  >
+                    查看策略
+                  </nm-button>
               </div>
             </div>
             <div class="setting-card" data-setting-panel="logs" hidden>
@@ -189,25 +197,28 @@
                     <option value="device">设备</option>
                     <option value="workspace">Workspace</option>
                     <option value="session">会话</option></select
-                  ><button
+                  ><nm-button
+                    variant="secondary"
                     class="secondary-button"
                     type="button"
                     data-audit-manager
                   >
-                    查看日志</button
-                  ><button
+                    查看日志</nm-button
+                  ><nm-button
+                    variant="secondary"
                     class="secondary-button"
                     type="button"
                     data-copy-logs
                   >
-                    复制日志</button
-                  ><button
+                    复制日志</nm-button
+                  ><nm-button
+                    variant="secondary"
                     class="secondary-button"
                     type="button"
                     data-download-logs
                   >
                     下载日志
-                  </button></span
+                  </nm-button></span
                 >
               </div>
               <div class="setting-row">
@@ -221,6 +232,7 @@
         </div>
       </main>
     </div>
+    <script src="../../design-system/vendor/notemeld-ui/notemeld-ui.min.js"></script>
     <script src="../../assets/vendor/lucide.js"></script>
     <script src="../../assets/page.js"></script>
     <script src="../../assets/model-vendor-registry.js"></script>
