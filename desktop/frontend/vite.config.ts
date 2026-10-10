@@ -6,6 +6,11 @@ import tailwindcss from '@tailwindcss/vite'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// 框架无关 Web Components 组件库的构建产物（仓库级 packages/notemeld-ui）。
+const nmUiDist = path.resolve(__dirname, '../../../packages/notemeld-ui/dist/index.js')
+// React 绑定包：把 '@notemeld/ui-web' 重定向到 nm-* Web Components 的 React 绑定。
+const uiReactSrc = path.resolve(__dirname, 'packages/ui-react/src')
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.resolve(__dirname, '../'))
@@ -23,9 +28,12 @@ export default defineConfig(({ mode }) => {
     base: env.VITE_BASE_PATH || '/',
     plugins: [react(), tailwindcss()],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-      },
+      alias: [
+        { find: /^@notemeld\/ui-web$/, replacement: path.join(uiReactSrc, 'index.ts') },
+        { find: /^@notemeld\/ui-web\/(.*)$/, replacement: path.join(uiReactSrc, '$1') },
+        { find: /^@notemeld\/ui$/, replacement: nmUiDist },
+        { find: '@', replacement: path.resolve(__dirname, './src') },
+      ],
     },
     build: {
       rollupOptions: {
